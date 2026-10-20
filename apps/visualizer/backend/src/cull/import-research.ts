@@ -22,8 +22,10 @@ import { libraryWrite } from '../db/library/write.js';
 import { LAYA_QUESTIONS } from '../laya/questions.js';
 import { canonicalJson } from '../utils/canonical-json.js';
 import { FRAMING_EXCUSAL_QID } from './decide.js';
+import { imageSignature } from './image-signature.js';
 import { decideAndStorePhoto, type CullContext } from './persist.js';
-import { recipeStageKey, resolveCurrentStages, SCORE_FORECAST_STAGE_KEY, type LayaModelIds } from './stages.js';
+import type { LayaModelIds } from '../laya/model-id.js';
+import { recipeStageKey, resolveCurrentStages, SCORE_FORECAST_STAGE_KEY } from './stages.js';
 import type { ResolvedStage, StageAnswers } from './types.js';
 
 /** Photos per transaction. */
@@ -45,7 +47,7 @@ export interface ResearchImportResult {
   photos: number;
   missing_from_library: number;
   missing_keys_sample: string[];
-  /** Level sets or Laya new answers with some questions missing, skipped. */
+  /** Photos with a level set or Laya new answer missing some questions; those answers are skipped. */
   partial: number;
   inserted: Record<string, number>;
   already_stored: Record<string, number>;
@@ -131,15 +133,6 @@ function assertResearchText(stage: ResolvedStage): void {
   }
 }
 
-function signatureIfOlder(path: string, fileMtimeMs: number): string | null {
-  try {
-    const st = statSync(path);
-    return st.mtimeMs <= fileMtimeMs ? `${st.size}:${Math.trunc(st.mtimeMs)}` : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function importResearchRuns(db: Db, opts: ResearchImportOptions): Promise<ResearchImportResult> {
   const [recipeFile, layaNewFile] = await Promise.all([
     readJsonl<RecipeLine>(opts.recipePath),
@@ -162,11 +155,16 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
     for (const [qid, a] of Object.entries(line.answers)) p.recipe[qid] = a.probabilities;
     if (line.copied_from) p.recipeFrom.push(line.copied_from);
   }
-  let partial = 0;
+  // Photos with an incomplete answer somewhere: counted once, however many lines or level sets.
+  const partial = new Set<string>();
   for (const line of layaNewFile.rows) {
     const p = photo(line.key, line.image);
-    p.layaNew = layaNewAnswers(line);
-    if (!p.layaNew) partial += 1;
+    const answers = layaNewAnswers(line);
+    if (!answers) {
+      partial.add(line.key);
+      continue;
+    }
+    p.layaNew = answers;
     p.layaNewFrom = [line.from, line.fix, line.why].filter(Boolean).join(' / ');
   }
 
@@ -179,7 +177,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
     photos: photos.size - missing.length,
     missing_from_library: missing.length,
     missing_keys_sample: missing.slice(0, 10),
-    partial,
+    partial: 0,
     inserted: {},
     already_stored: {},
     verdicts: { cut_by_culling_recipe: 0, cut_by_score_forecast: 0, pending: 0, sent: 0 },
@@ -230,7 +228,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
             const present = qids.filter((q) => p.recipe[q]);
             if (present.length === 0) continue;
             if (present.length < qids.length) {
-              partial += 1;
+              partial.add(key);
               continue;
             }
             if (stored[s.stageKey]) {
@@ -262,7 +260,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
               source: 'research_import',
               producedBy,
               imagePath: p.image,
-              imageSignature: signatureIfOlder(p.image, researchMtime),
+              imageSignature: imageSignature(p.image, researchMtime),
               ifAbsent: true,
             },
             sentByHand: sentByHand.has(key),
@@ -275,7 +273,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
         }
       });
     }
-    result.partial = partial;
+    result.partial = partial.size;
     libraryWrite(db, () => finishCullRun(db, runId, { status: 'complete', ...result }));
   } finally {
     if (opts.dryRun && db.inTransaction) db.exec('ROLLBACK');

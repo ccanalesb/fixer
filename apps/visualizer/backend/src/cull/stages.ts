@@ -2,7 +2,7 @@
  * The pipeline setting → the stages a photo goes through, each at its current version, and what the
  * Laya worker is asked for them.
  *
- * Recipe stage question ids are `<level set>|<dimension>`, the ids slice 1 and the research used, so
+ * Recipe stage question ids are `<level set>|<dimension>`, the ids #337 and the research used, so
  * the seeded recipe's stage versions hash the same text the research runs answered. In the worker the
  * ids are prefixed with the stage key, since two recipes may share a level set.
  */
@@ -10,18 +10,13 @@ import type { Db } from '../db/connection.js';
 import { getCullRecipe } from '../db/library/cull-recipes.js';
 import { getOrCreateStageVersion } from '../db/library/cull-stages.js';
 import { libraryWrite } from '../db/library/write.js';
+import type { LayaModelIds } from '../laya/model-id.js';
 import type { LayaAnswers } from '../laya/sessions.js';
 import { LAYA_QUESTIONS } from '../laya/questions.js';
 import type { LayaQuestion } from '../laya/rows.js';
 import type { PipelineSettingConfig, ResolvedStage, StageAnswers } from './types.js';
 
 export const SCORE_FORECAST_STAGE_KEY = 'score_forecast';
-
-/** `model.json` identity per Laya model; null `new` when Laya new is not set up. */
-export interface LayaModelIds {
-  base: string;
-  new: string | null;
-}
 
 /** The recipe "Model" field values the cull can run. */
 const RECIPE_MODELS: Record<string, 'base'> = { 'laya-base': 'base' };

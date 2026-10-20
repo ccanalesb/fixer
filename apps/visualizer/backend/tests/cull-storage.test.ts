@@ -100,7 +100,16 @@ describe('migration and seed', () => {
     expect(listCullRecipes(db)).toEqual([]);
   });
 
-  it('the seed file is the recipe the research ran: slice 1’s questions, word for word', () => {
+  it('is not marked seeded until a pipeline setting exists', () => {
+    for (const t of CULL_TABLES) db.exec(`DELETE FROM ${t}`);
+    db.prepare('DELETE FROM library_meta WHERE key = ?').run(CULL_DEFAULTS_SEEDED_META_KEY);
+    expect(seedCullingDefaults(db, join(dir, 'no-seeds'))).toBe(false);
+    expect(db.prepare('SELECT 1 FROM library_meta WHERE key = ?').get(CULL_DEFAULTS_SEEDED_META_KEY)).toBeUndefined();
+    expect(seedCullingDefaults(db)).toBe(true);
+    expect(getCurrentPipelineSetting(db).version).toBeGreaterThan(0);
+  });
+
+  it('the seed file is the recipe the research ran: #337’s questions, word for word', () => {
     const seed = JSON.parse(
       readFileSync(join(REPO_ROOT, 'prompts', 'culling-recipes', 'recipe-7h47.json'), 'utf8'),
     ) as { definition: RecipeDefinition };

@@ -23,8 +23,6 @@ import {
   type LayaRow,
 } from './rows.js';
 
-export { LAYA_QUESTIONS, type LayaModelName } from './questions.js';
-
 /** Level probabilities per question id, lowest level first. */
 export type LayaModelAnswers = Record<string, number[]>;
 

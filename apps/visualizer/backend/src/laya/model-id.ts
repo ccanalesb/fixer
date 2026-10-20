@@ -47,7 +47,13 @@ export async function layaNewModelId(newDir: string): Promise<string> {
   return `laya-new@sha256:${sha256}`;
 }
 
-export async function readLayaModelIds(files: LayaModelFiles): Promise<{ base: string; new: string | null }> {
+/** Each model's identity; `new` is null when Laya new is not set up. */
+export interface LayaModelIds {
+  base: string;
+  new: string | null;
+}
+
+export async function readLayaModelIds(files: LayaModelFiles): Promise<LayaModelIds> {
   return {
     base: layaBaseModelId(files.baseDir),
     new: files.newDir ? await layaNewModelId(files.newDir) : null,

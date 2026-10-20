@@ -14,7 +14,8 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { config, loadLibraryConfig } from '../src/config.js';
 import { referencePhotoPath, resolveLayaModelFiles } from '../src/laya/files.js';
 import { startLayaWithCheck } from '../src/laya/runtime.js';
-import { buildModelRows, loadLayaPixelValues, type LayaModelName } from '../src/laya/sessions.js';
+import type { LayaModelName } from '../src/laya/questions.js';
+import { buildModelRows, loadLayaPixelValues } from '../src/laya/sessions.js';
 
 const modelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir;
 const enabled = process.env.LT_LAYA_PARITY === '1' && existsSync(join(modelsDir, 'laya-base'));

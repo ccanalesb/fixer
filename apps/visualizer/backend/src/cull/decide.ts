@@ -101,25 +101,31 @@ function recipeStages(stages: readonly ResolvedStage[], slug: string): ResolvedS
   return stages.filter((s) => s.kind === 'culling_recipe' && s.recipeSlug === slug);
 }
 
-/** Cut, sent, or null while a level set is unanswered: a recipe never cuts on part of its answers. */
+/**
+ * Cut, sent, or null while a level set is unanswered: a recipe never cuts on part of its answers.
+ * A cut names the recipe's first level set that cut.
+ */
 function recipeOutcome(
   recipe: PipelineRecipe,
   stages: readonly ResolvedStage[],
   answers: Readonly<Record<string, StageAnswers>>,
   decisions: Record<string, StageDecision>,
-): CullVerdict | null {
-  const verdicts: (CullVerdict | null)[] = recipeStages(stages, recipe.recipe_slug).map((s) => {
+): { verdict: CullVerdict | null; cutStageKey: string | null } {
+  const own = recipeStages(stages, recipe.recipe_slug);
+  const verdicts: (CullVerdict | null)[] = own.map((s) => {
     const a = answers[s.stageKey];
     if (!a) return null;
     const d = decideRecipeLevelSet(recipe.rule, s.levelSet!, a);
     decisions[s.stageKey] = d;
     return d.verdict;
   });
-  if (verdicts.length === 0) return null;
-  if (recipe.rule.combine === 'any' && verdicts.includes('cut')) return 'cut';
-  if (verdicts.includes(null)) return null;
-  const cut = recipe.rule.combine === 'any' ? verdicts.includes('cut') : verdicts.every((v) => v === 'cut');
-  return cut ? 'cut' : 'sent';
+  const cutStageKey = own[verdicts.indexOf('cut')]?.stageKey ?? null;
+  let verdict: CullVerdict | null;
+  if (verdicts.length === 0) verdict = null;
+  else if (recipe.rule.combine === 'any' && verdicts.includes('cut')) verdict = 'cut';
+  else if (verdicts.includes(null)) verdict = null;
+  else verdict = verdicts.every((v) => v === 'cut') ? 'cut' : 'sent';
+  return { verdict, cutStageKey: verdict === 'cut' ? cutStageKey : null };
 }
 
 interface Walk {
@@ -146,7 +152,11 @@ function walk(
   for (const recipe of cfg.culling_recipes) {
     if (cutBy !== null && !recipe.run_after_cut) continue;
     required.push(...recipeStages(stages, recipe.recipe_slug));
-    if (recipeOutcome(recipe, stages, answers, decisions) === 'cut' && cutBy === null) cutBy = 'culling_recipe';
+    const outcome = recipeOutcome(recipe, stages, answers, decisions);
+    if (outcome.verdict === 'cut' && cutBy === null) {
+      cutBy = 'culling_recipe';
+      cutByStageKey = outcome.cutStageKey;
+    }
   }
 
   let scoreForecastP8: number | null = null;

@@ -139,6 +139,15 @@ describe('cull-import', () => {
     });
   });
 
+  it('a later incomplete Laya new line keeps the earlier complete answer; incomplete photos are counted once', async () => {
+    const partialLine = { key: 'fx-001-pass', image: '/research/vision/fx-001-pass.jpg', rows: [{ slug: 'framing', probs: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0] }] };
+    appendFileSync(layaNewPath, JSON.stringify(partialLine) + '\n' + JSON.stringify(partialLine) + '\n');
+    const r = await importAll();
+    expect(r.inserted['score_forecast']).toBe(4);
+    expect(r.partial).toBe(1);
+    expect(verdicts().find((v) => v.image_key === 'fx-001-pass')!.verdict).toBe('sent');
+  });
+
   it('never overwrites answers a job stored', async () => {
     await importAll();
     fx.exec("UPDATE cull_stage_answers SET source = 'job', answers_json = '{\"kept\":[1]}' WHERE image_key = 'fx-001-pass'");

@@ -12,7 +12,7 @@ import { run } from '../src/cli/main.js';
 import { LAYA_SETUP_COMMAND, LayaSetupError, resolveLayaModelFiles } from '../src/laya/files.js';
 import { rescaleToMaxLen, thumbnailSize } from '../src/laya/image.js';
 import { buildRow, renderOptions, softmax, tempBucket, type LayaModelMeta } from '../src/laya/rows.js';
-import { LAYA_QUESTIONS } from '../src/laya/sessions.js';
+import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import { layaBaseModelId, layaNewModelId } from '../src/laya/model-id.js';
 
 describe('image sizes', () => {

@@ -44,8 +44,8 @@ export async function withLibraryDb<T>(path: string, fn: (db: Db) => Promise<T>)
 /**
  * How loudly the UI should report a failure.
  *
- * `warning` is for the user's own inputs — a bad key, an expired token or a cull
- * whose models were never set up is not a defect. `critical` is for the two cases where continuing would be unsafe: the
+ * `warning` is for the user's own inputs — a bad key, an expired token or cull
+ * models that were never set up is not a defect. `critical` is for the two cases where continuing would be unsafe: the
  * filesystem refusing the process, and a write attempted against a catalog
  * Lightroom still holds open.
  */

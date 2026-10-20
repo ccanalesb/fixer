@@ -12,7 +12,6 @@ import {
   buildBatchEmbedImageCheckpointBody,
   buildBatchScoreCheckpointBody,
   buildBatchStackDetectCheckpointBody,
-  canonicalJson,
   fingerprintBatchDescribe,
   fingerprintBatchEmbedImage,
   fingerprintBatchScore,
@@ -22,6 +21,7 @@ import {
   persistAnalyzeStageCheckpoint,
   readAnalyzeCheckpoint,
 } from '../src/jobs/checkpoint.js';
+import { canonicalJson } from '../src/utils/canonical-json.js';
 
 const MISMATCH = 'checkpoint mismatch: batch_describe fingerprint changed, starting fresh';
 

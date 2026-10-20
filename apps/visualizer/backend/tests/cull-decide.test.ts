@@ -129,7 +129,7 @@ describe('the photo summary', () => {
 
   it('the recipe cuts only when both level sets cut', () => {
     const both = decidePhoto(PIPELINE, STAGES, { [S7.stageKey]: cut7, [S10.stageKey]: cut10, score_forecast: PASSING_FORECAST }, {});
-    expect(both).toMatchObject({ verdict: 'cut', cutBy: 'culling_recipe', cutByStageKey: null });
+    expect(both).toMatchObject({ verdict: 'cut', cutBy: 'culling_recipe', cutByStageKey: S7.stageKey });
     expect(both.stages[S7.stageKey]!.verdict).toBe('cut');
     const one = decidePhoto(PIPELINE, STAGES, { [S7.stageKey]: pass7, [S10.stageKey]: cut10, score_forecast: PASSING_FORECAST }, {});
     expect(one.verdict).toBe('sent');
@@ -142,7 +142,7 @@ describe('the photo summary', () => {
       culling_recipes: [{ ...PIPELINE.culling_recipes[0]!, rule: { ...VIDEO_LENIENT, combine: 'any' } }],
     };
     const d = decidePhoto(any, STAGES, { [S7.stageKey]: pass7, [S10.stageKey]: cut10, score_forecast: PASSING_FORECAST }, {});
-    expect(d.verdict).toBe('cut');
+    expect(d).toMatchObject({ verdict: 'cut', cutByStageKey: S10.stageKey });
   });
 
   it('a photo with no 7-level answer is not cut by the recipe, and stays pending', () => {

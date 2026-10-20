@@ -213,7 +213,7 @@ function readSeedFiles(dir: string): { file: string; seed: SeedFile }[] {
 
 /**
  * Copy the factory recipes into the table and write pipeline-setting version 1, once per library.
- * Returns whether it seeded. Runs from the version-11 upgrade and `initLibraryDb`; the cull job and
+ * Returns whether it seeded; the library is marked seeded only once a pipeline setting exists. Runs from the version-11 upgrade and `initLibraryDb`; the cull job and
  * the research import call it too, for databases made with the bare schema.
  */
 export function seedCullingDefaults(db: Db, dir: string = CULLING_RECIPE_SEED_DIR): boolean {
@@ -224,11 +224,13 @@ export function seedCullingDefaults(db: Db, dir: string = CULLING_RECIPE_SEED_DI
       if (getCullRecipe(db, seed.slug)) continue;
       createCullRecipe(db, { ...seed, measured: seed.measured ?? false, sourceFilename: file });
     }
-    const hasPipeline = db.prepare('SELECT 1 FROM cull_pipeline_settings LIMIT 1').get();
+    const hasPipeline = () => db.prepare('SELECT 1 FROM cull_pipeline_settings LIMIT 1').get() !== undefined;
     const recipe = getCullRecipe(db, DEFAULT_CULLING_RECIPE_SLUG);
-    if (!hasPipeline && recipe) {
+    if (!hasPipeline() && recipe) {
       createPipelineSettingVersion(db, defaultPipelineSetting(recipe.slug, recipe.rule), 'default');
     }
+    // Without a pipeline setting (no seed file found) the next open tries again.
+    if (!hasPipeline()) return false;
     db.prepare('INSERT INTO library_meta (key, value) VALUES (?, ?)').run(CULL_DEFAULTS_SEEDED_META_KEY, nowIsoUtc());
     return true;
   });

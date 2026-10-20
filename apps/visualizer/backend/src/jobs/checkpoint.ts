@@ -19,9 +19,10 @@
  * `batch_stack_detect` — bare catalog keys under `processed_image_keys`. Same
  * legacy field name.
  *
- * `batch_cull_photos_before_scoring` — `fingerprint`, `processed_by_stage` (stage key → photo keys
- * answered for it), `failed_keys` (photos Laya failed on, left pending; not retried until the next
- * job), `total_at_start`.
+ * `batch_cull_photos_before_scoring` — `fingerprint`, `done_by_stage` (stage key → photos answered
+ * for it so far), `failed_keys` (photos Laya failed on, left pending; a resumed run skips them, a
+ * fresh job retries them), `total_at_start`. No list of finished photos: their stored answers are
+ * what a restart skips.
  *
  * `batch_analyze` — the composite, and the one that is not flat: `stage` names the
  * pass that is running, and `describe` / `score` each hold a body of the shape
@@ -35,8 +36,6 @@ export const CHECKPOINT_VERSION = 1;
 
 /** Refuse to grow a checkpoint past this; `jobs.metadata` is one JSON column. */
 export const CHECKPOINT_MAX_ENTRIES = 100_000;
-
-export { canonicalJson } from '../utils/canonical-json.js';
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -215,7 +214,7 @@ export function fingerprintBatchCull(args: {
 }
 
 export interface CullResumeState {
-  processedByStage: Map<string, Set<string>>;
+  doneByStage: Record<string, number>;
   failed: Set<string>;
 }
 
@@ -227,10 +226,8 @@ export function buildBatchCullCheckpointBody(args: {
   return {
     job_type: 'batch_cull_photos_before_scoring',
     fingerprint: args.fingerprint,
-    processed_by_stage: Object.fromEntries(
-      [...args.state.processedByStage].map(([stage, keys]) => [stage, [...keys].sort()]),
-    ),
-    failed_keys: [...args.state.failed].sort(),
+    done_by_stage: { ...args.state.doneByStage },
+    failed_keys: [...args.state.failed].sort().slice(0, CHECKPOINT_MAX_ENTRIES),
     total_at_start: args.totalAtStart,
   };
 }
@@ -242,21 +239,18 @@ export function loadCullResumeState(args: {
   mismatchMessage: string;
   log: (message: string) => void;
 }): CullResumeState {
-  const empty: CullResumeState = { processedByStage: new Map(), failed: new Set() };
+  const empty: CullResumeState = { doneByStage: {}, failed: new Set() };
   const body = checkpointBody(args.metadata, 'batch_cull_photos_before_scoring');
   if (body === null) return empty;
   if (body['fingerprint'] !== args.fingerprint) {
     if (body['fingerprint']) args.log(args.mismatchMessage);
     return empty;
   }
-  const byStage = asBody(body['processed_by_stage']);
+  const done = asBody(body['done_by_stage']);
   const failed = body['failed_keys'];
   return {
-    processedByStage: new Map(
-      Object.entries(byStage).map(([stage, keys]) => [
-        stage,
-        new Set(Array.isArray(keys) ? keys.map((k) => String(k)) : []),
-      ]),
+    doneByStage: Object.fromEntries(
+      Object.entries(done).map(([stage, n]) => [stage, typeof n === 'number' ? n : 0]),
     ),
     failed: new Set(Array.isArray(failed) ? failed.map((k) => String(k)) : []),
   };

@@ -85,13 +85,26 @@ export function getCullVerdict(db: Db, imageKey: string): CullVerdictRow | null 
   };
 }
 
-/** What a summary row was decided under, to tell a current one from one a version change left behind. */
-export function loadCullVerdictStamps(db: Db): Map<string, { pipelineSettingVersion: number; stageVersionIds: string }> {
+export interface CullVerdictStamp {
+  pipelineSettingVersion: number;
+  stageVersionIds: number[];
+  pendingReason: string;
+}
+
+/** What each summary row was decided under, to tell a current one from one a version change left behind. */
+export function loadCullVerdictStamps(db: Db): Map<string, CullVerdictStamp> {
   const rows = db
-    .prepare('SELECT image_key, pipeline_setting_version, stage_version_ids FROM cull_verdicts')
-    .all() as { image_key: string; pipeline_setting_version: number; stage_version_ids: string }[];
+    .prepare('SELECT image_key, pipeline_setting_version, stage_version_ids, pending_reason FROM cull_verdicts')
+    .all() as { image_key: string; pipeline_setting_version: number; stage_version_ids: string; pending_reason: string }[];
   return new Map(
-    rows.map((r) => [r.image_key, { pipelineSettingVersion: r.pipeline_setting_version, stageVersionIds: r.stage_version_ids }]),
+    rows.map((r) => [
+      r.image_key,
+      {
+        pipelineSettingVersion: r.pipeline_setting_version,
+        stageVersionIds: JSON.parse(r.stage_version_ids) as number[],
+        pendingReason: r.pending_reason,
+      },
+    ]),
   );
 }
 

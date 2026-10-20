@@ -35,6 +35,9 @@ const laya = vi.hoisted(() => ({
   closed: 0,
   forecastOn: true,
   failOn: null as null | string,
+  /** The worker dies on this photo: the answer is rejected and every later one fails too. */
+  dieOn: null as null | string,
+  broken: false,
   startError: null as null | Error,
   cancelAfter: null as null | (() => void),
 }));
@@ -48,9 +51,16 @@ vi.mock('../src/laya/runtime.js', async (importOriginal) => {
     get scoreForecastOn() {
       return laya.forecastOn;
     },
-    broken: false,
+    get broken() {
+      return laya.broken;
+    },
     async answer(file: string, want?: LayaAnswerWant) {
       laya.calls.push({ file, want });
+      if (laya.broken) throw new Error('Laya worker exited (code 1)');
+      if (laya.dieOn && file.endsWith(`/${laya.dieOn}.jpg`)) {
+        laya.broken = true;
+        throw new Error('Laya worker exited (code 1)');
+      }
       if (laya.failOn && file.endsWith(`/${laya.failOn}.jpg`)) throw new Error('decode failed');
       const s = [...laya.scripts.entries()].find(([k]) => file.endsWith(`/${k}.jpg`))?.[1] ?? { levels: [5, 5, 5, 5], p8: 0.5 };
       const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
@@ -146,7 +156,16 @@ beforeEach(() => {
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');
   fx = new LibraryFixture().activate();
-  Object.assign(laya, { calls: [], closed: 0, forecastOn: true, failOn: null, startError: null, cancelAfter: null });
+  Object.assign(laya, {
+    calls: [],
+    closed: 0,
+    forecastOn: true,
+    failOn: null,
+    dieOn: null,
+    broken: false,
+    startError: null,
+    cancelAfter: null,
+  });
   laya.scripts.clear();
   process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n`);
@@ -381,8 +400,10 @@ describe('batch_cull_photos_before_scoring', () => {
       total_at_start: 2,
     };
     laya.calls = [];
-    await runCull({ checkpoint });
+    const resumed = await runCull({ checkpoint });
     expect(laya.calls).toEqual([]);
+    // The photo skipped through the checkpoint is still in the counts, from its stored summary.
+    expect(result(resumed)).toMatchObject({ failed: 1, pending: 1, culled: 0 });
 
     const lib = openLibraryDb(fx.dbPath);
     createPipelineSettingVersion(lib, getCurrentPipelineSetting(lib).config, 'changed');
@@ -408,5 +429,25 @@ describe('batch_cull_photos_before_scoring', () => {
     ]);
     expect(result(job)).toMatchObject({ culled: 1, redecided: 0 });
   });
-});
 
+  it('the worker dies: the job fails, the photo is pending as such, and the next job asks it last', async () => {
+    await addPhoto('a', PASS);
+    await addPhoto('b', PASS);
+    await addPhoto('c', PASS);
+    laya.dieOn = 'c';
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toContain('Laya worker exited');
+    const [run] = fx.query<{ detail_json: string }>('SELECT detail_json FROM cull_runs');
+    expect(JSON.parse(run!.detail_json)).toMatchObject({ status: 'failed' });
+    expect(verdicts().find((v) => v.image_key === 'c')).toMatchObject({ verdict: 'pending', pending_reason: 'laya_worker_died' });
+    expect(job.metadata.checkpoint).toMatchObject({ failed_keys: ['c'] });
+    expect(laya.closed).toBe(1);
+
+    // Selection is newest first, by key descending: c would come first. Now it comes last.
+    await addPhoto('d', PASS);
+    Object.assign(laya, { dieOn: null, broken: false, calls: [] });
+    await runCull();
+    expect(laya.calls.map((x) => x.file.split('/').at(-1))).toEqual(['d.jpg', 'b.jpg', 'a.jpg', 'c.jpg']);
+  });
+});

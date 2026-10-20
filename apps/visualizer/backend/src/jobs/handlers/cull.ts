@@ -6,33 +6,27 @@
  * the end whatever happens. The main thread only awaits it, reads one photo's stored answers, decides,
  * and writes one short transaction per photo, yielding between photos (ADR-0018).
  *
- * `runCullPass` is the pass the jobs that send photos to kimi run before describing (slice 3).
+ * This module only orchestrates: which photos (`cull/select.ts`), one photo (`cull/answer-photo.ts`),
+ * checkpoint, counts and the run row. `runCullPass` is the pass the jobs that send photos to kimi run
+ * before describing (#339).
  */
-import { statSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { config, loadLibraryConfig } from '../../config.js';
-import { requiredStages } from '../../cull/decide.js';
-import { decideAndStorePhoto, stageVersionIds, type CullContext } from '../../cull/persist.js';
-import {
-  layaQuestionSet,
-  layaWant,
-  resolveCurrentStages,
-  stageAnswersFromLaya,
-} from '../../cull/stages.js';
-import type { PhotoDecision, PipelineSettingConfig, ResolvedStage, StageAnswers } from '../../cull/types.js';
+import { cullPhoto } from '../../cull/answer-photo.js';
+import type { CullContext } from '../../cull/persist.js';
+import { selectPhotosToCull } from '../../cull/select.js';
+import { layaQuestionSet, resolveCurrentStages } from '../../cull/stages.js';
+import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-recipes.js';
-import { loadAnsweredStageKeys, loadCurrentStageAnswers } from '../../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
-import { finishCullRun, insertCullRun, loadCullVerdictStamps } from '../../db/library/cull-verdicts.js';
+import { finishCullRun, getCullVerdict, insertCullRun } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { resolveLayaModelFiles } from '../../laya/files.js';
 import { readLayaModelIds } from '../../laya/model-id.js';
-import { startLayaWithCheck, type LayaRuntime } from '../../laya/runtime.js';
-import { resolveFilepath } from '../../utils/path-resolve.js';
+import { startLayaWithCheck } from '../../laya/runtime.js';
 import { createEventLoopYieldState, pollCancelAndYield } from '../../utils/yield.js';
-import { resolveVisionImage } from '../../vision/vision-cache.js';
 import {
   buildBatchCullCheckpointBody,
   fingerprintBatchCull,
@@ -107,42 +101,6 @@ function readImageKeys(raw: unknown): string[] | null {
 
 const seconds = (from: number): number => Math.round((performance.now() - from) / 10) / 100;
 
-/** The stage's group for `run_after_cut`: its recipe, or the Score forecast. */
-function runsAfterCut(cfg: PipelineSettingConfig, stage: ResolvedStage): boolean {
-  if (stage.kind === 'score_forecast') return cfg.score_forecast.run_after_cut;
-  return cfg.culling_recipes.find((r) => r.recipe_slug === stage.recipeSlug)?.run_after_cut ?? true;
-}
-
-/**
- * The missing stages to ask in one worker call. A stage switched off for cut photos waits until
- * the stages before it are answered: whether it runs depends on what they say.
- */
-function askNow(cfg: PipelineSettingConfig, missing: readonly ResolvedStage[]): ResolvedStage[] {
-  const out: ResolvedStage[] = [];
-  for (const s of missing) {
-    const group = s.recipeSlug ?? s.stageKey;
-    if (out.length > 0 && !runsAfterCut(cfg, s) && out.some((o) => (o.recipeSlug ?? o.stageKey) !== group)) break;
-    out.push(s);
-  }
-  return out;
-}
-
-function imageSignature(path: string): string | null {
-  try {
-    const st = statSync(path);
-    return `${st.size}:${Math.trunc(st.mtimeMs)}`;
-  } catch {
-    return null;
-  }
-}
-
-/** The image describe and score read: the vision cache, built from the original when it is reachable. */
-async function resolveCullImage(db: Db, key: string): Promise<string | null> {
-  const row = db.prepare('SELECT filepath FROM images WHERE key = ?').get(key) as { filepath: string | null } | undefined;
-  const { path } = await resolveVisionImage(db, key, resolveFilepath(row?.filepath ?? ''));
-  return path;
-}
-
 /**
  * Cull the photos in scope with no current verdict. Returns the summary as a stage of a composite
  * job, `null` when the job was settled here (completed or cancelled). A `LayaSetupError` from the
@@ -159,7 +117,7 @@ export async function runCullPass(
   const t0 = performance.now();
   const prefix = ctx.logPrefix;
   const log = (message: string, level: 'info' | 'warning' = 'info'): void =>
-    runner.log(jobId, level, `${prefix}${message}`);
+    runner.log(jobId, level, `${prefix}[cull] ${message}`);
   const progress = (pct: number, message: string): void =>
     runner.updateProgress(jobId, mapPassProgress(ctx, pct), `${prefix}${message}`);
 
@@ -184,7 +142,7 @@ export async function runCullPass(
     const activeStages = stages.filter((s) => s.kind !== 'score_forecast' || scoreForecast);
     const stageVersions = Object.fromEntries(stages.map((s) => [s.stageKey, s.versionId]));
     log(
-      `cull: stages=${activeStages.map((s) => `${s.stageKey}@v${s.versionId}`).join(',')} ` +
+      `stages=${activeStages.map((s) => `${s.stageKey}@v${s.versionId}`).join(',')} ` +
         `pipeline_setting=v${pipeline.version} score_forecast=${scoreForecast ? 'on' : 'off'} ` +
         `models_loaded_s=${check.loadSeconds.toFixed(1)}`,
     );
@@ -200,19 +158,7 @@ export async function runCullPass(
       const scope = new Set(scopeKeys);
       keys = keys.filter((k) => scope.has(k));
     }
-    const answered = loadAnsweredStageKeys(db, activeStages);
-    const stamps = loadCullVerdictStamps(db);
-    const currentIds = JSON.stringify(stageVersionIds(cullCtx));
-    const candidates = keys.filter((k) => {
-      const has = answered.get(k);
-      const stamp = stamps.get(k);
-      return (
-        activeStages.some((s) => !has?.has(s.stageKey)) ||
-        stamp === undefined ||
-        stamp.pipelineSettingVersion !== pipeline.version ||
-        stamp.stageVersionIds !== currentIds
-      );
-    });
+    const candidates = selectPhotosToCull(db, cullCtx, keys);
 
     const fingerprint = await fingerprintBatchCull({
       stageVersions,
@@ -230,7 +176,7 @@ export async function runCullPass(
             mismatchMessage: BATCH_CULL_CHECKPOINT_MISMATCH,
             log: (m) => runner.log(jobId, 'info', m),
           })
-        : { processedByStage: new Map(), failed: new Set() };
+        : { doneByStage: {}, failed: new Set() };
     const work = candidates.filter((k) => !resume.failed.has(k));
     const selectS = seconds(tSelect);
     progress(3, `Found ${work.length} photos to cull of ${keys.length}`);
@@ -240,12 +186,7 @@ export async function runCullPass(
     );
     const persist = (): void => {
       if (ctx.checkpoint.mode !== 'flat') return;
-      runner.persistCheckpoint(jobId, buildBatchCullCheckpointBody({ fingerprint, state: resume, totalAtStart: work.length }));
-    };
-    const markDone = (stageKey: string, key: string): void => {
-      const set = resume.processedByStage.get(stageKey) ?? new Set<string>();
-      set.add(key);
-      resume.processedByStage.set(stageKey, set);
+      runner.persistCheckpoint(jobId, buildBatchCullCheckpointBody({ fingerprint, state: resume, totalAtStart: candidates.length }));
     };
 
     const sentByHand = listSentByHandKeys(db);
@@ -260,65 +201,20 @@ export async function runCullPass(
       sent: 0,
       sent_by_hand_passed: 0,
     };
-    const tally = (d: PhotoDecision): void => {
-      if (d.verdict === 'pending') counts.pending += 1;
-      else if (d.verdict === 'sent') counts.sent += 1;
-      else if (d.cutBy === 'culling_recipe') counts.cut_by_culling_recipe += 1;
+    const tally = (verdict: CullSummaryVerdict, cutBy: StageKind | null, sentByHandOverride: boolean): void => {
+      if (verdict === 'pending') counts.pending += 1;
+      else if (verdict === 'sent') counts.sent += 1;
+      else if (cutBy === 'culling_recipe') counts.cut_by_culling_recipe += 1;
       else counts.cut_by_score_forecast += 1;
-      if (d.sentByHandOverride) counts.sent_by_hand_passed += 1;
+      if (sentByHandOverride) counts.sent_by_hand_passed += 1;
     };
-
-    const answerPhoto = async (
-      runtime: LayaRuntime,
-      key: string,
-      stored: Record<string, StageAnswers>,
-      missing: ResolvedStage[],
-      byHand: boolean,
-    ): Promise<PhotoDecision> => {
-      const image = await resolveCullImage(db, key);
-      if (image === null) {
-        counts.failed += 1;
-        resume.failed.add(key);
-        return decideAndStorePhoto(db, cullCtx, { imageKey: key, stored, sentByHand: byHand, runId, pendingReason: 'no_image' });
-      }
-      const fresh: Record<string, StageAnswers> = {};
-      const decideOpts = { sentByHand: byHand, scoreForecastAvailable: cullCtx.scoreForecastAvailable };
-      try {
-        for (let round = 0; missing.length > 0 && round < stages.length; round += 1) {
-          const ask = askNow(pipeline.config, missing);
-          const r = await runtime.answer(image, layaWant(ask));
-          laya.prep += r.seconds.prep;
-          laya.vision += r.seconds.vision;
-          laya.base += r.seconds.base;
-          laya.new += r.seconds.new;
-          Object.assign(fresh, stageAnswersFromLaya(ask, r.answers));
-          const all = { ...stored, ...fresh };
-          missing = requiredStages(pipeline.config, stages, all, decideOpts).filter((s) => !all[s.stageKey]);
-        }
-      } catch (e) {
-        if (runtime.broken) throw e;
-        const message = e instanceof Error ? e.message : String(e);
-        log(`cull: ${key} left pending, Laya failed on it: ${message}`, 'warning');
-        counts.failed += 1;
-        resume.failed.add(key);
-        return decideAndStorePhoto(db, cullCtx, {
-          imageKey: key,
-          stored,
-          sentByHand: byHand,
-          runId,
-          pendingReason: `laya_failed: ${message}`,
-        });
-      }
-      counts.culled += 1;
-      for (const stageKey of Object.keys(fresh)) markDone(stageKey, key);
-      return decideAndStorePhoto(db, cullCtx, {
-        imageKey: key,
-        stored,
-        fresh: { answers: fresh, source: 'job', producedBy: 'onnx-cpu', imagePath: image, imageSignature: imageSignature(image) },
-        sentByHand: byHand,
-        runId,
-      });
-    };
+    // Photos an earlier attempt of this run already failed on: skipped, but still in the counts.
+    for (const key of candidates) {
+      if (!resume.failed.has(key)) continue;
+      counts.failed += 1;
+      const v = getCullVerdict(db, key);
+      if (v) tally(v.verdict, v.cut_by, false);
+    }
 
     const tCull = performance.now();
     const yieldState = createEventLoopYieldState();
@@ -330,20 +226,18 @@ export async function runCullPass(
           runner.finalizeCancelled(jobId);
           return null;
         }
-        const byHand = sentByHand.has(key);
-        const stored = loadCurrentStageAnswers(db, stages, [key]).get(key) ?? {};
-        const missing = requiredStages(pipeline.config, stages, stored, {
-          sentByHand: byHand,
-          scoreForecastAvailable: cullCtx.scoreForecastAvailable,
-        }).filter((s) => !stored[s.stageKey]);
-        let decision: PhotoDecision;
-        if (missing.length === 0) {
-          counts.redecided += 1;
-          decision = decideAndStorePhoto(db, cullCtx, { imageKey: key, stored, sentByHand: byHand, runId });
-        } else {
-          decision = await answerPhoto(runtime, key, stored, missing, byHand);
+        const r = await cullPhoto(db, cullCtx, runtime, { imageKey: key, sentByHand: sentByHand.has(key), runId });
+        for (const k of Object.keys(laya) as (keyof typeof laya)[]) laya[k] += r.seconds[k];
+        for (const stage of r.answeredStages) resume.doneByStage[stage] = (resume.doneByStage[stage] ?? 0) + 1;
+        if (r.outcome === 'culled') counts.culled += 1;
+        else if (r.outcome === 'redecided') counts.redecided += 1;
+        else {
+          counts.failed += 1;
+          resume.failed.add(key);
+          if (r.outcome === 'laya_failed') log(`${key} left pending, Laya failed on it: ${r.error!.message}`, 'warning');
         }
-        tally(decision);
+        tally(r.decision.verdict, r.decision.cutBy, r.decision.sentByHandOverride);
+        if (r.outcome === 'worker_died') throw r.error!;
         if ((i + 1) % CHECKPOINT_EVERY === 0) persist();
         progress(3 + Math.trunc(((i + 1) / work.length) * 97), `Culled ${i + 1}/${work.length}`);
       }
@@ -373,7 +267,7 @@ export async function runCullPass(
     };
     libraryWrite(db, () => finishCullRun(db, runId, { status: 'complete', ...result }));
     log(
-      `[cull] status=complete photos=${work.length} culled=${counts.culled} redecided=${counts.redecided} ` +
+      `status=complete photos=${work.length} culled=${counts.culled} redecided=${counts.redecided} ` +
         `failed=${counts.failed} cut_recipe=${counts.cut_by_culling_recipe} ` +
         `cut_score_forecast=${counts.cut_by_score_forecast} pending=${counts.pending} sent=${counts.sent} ` +
         `sent_by_hand_passed=${counts.sent_by_hand_passed} score_forecast=${result.score_forecast} ` +
