@@ -5403,6 +5403,10 @@ export interface components {
             write_reject: boolean;
             stars_recipe_slug: string | null;
             active_recipe_slugs: string[];
+            active_recipes: {
+                slug: string;
+                name: string;
+            }[];
             catalog_write_available: boolean;
             catalog_write_unavailable_reason: string | null;
             counts: {

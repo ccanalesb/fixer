@@ -3,28 +3,21 @@
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { config, loadLibraryConfig } from '../config.js';
-import { countStrongDimensions, ratingFromStrongCount } from '../lightroom/writeback-stars.js';
-import { markEligiblePending, reconcileLrWriteback, undoWritebackKind } from '../lightroom/writeback.js';
+import {
+  buildWritebackPhotoDetail,
+  markEligiblePending,
+  reconcileLrWriteback,
+  undoWritebackKind,
+} from '../lightroom/writeback.js';
 import type { WritebackKind } from '../lightroom/writeback-types.js';
-import { resolveCurrentStages } from '../cull/stages.js';
-import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
-import { getCullRecipe } from '../db/library/cull-recipes.js';
-import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
-import { countWritebackByStatus, getWritebackState } from '../db/library/lr-writeback-state.js';
+import { countWritebackByStatus } from '../db/library/lr-writeback-state.js';
 import {
   activePipelineRecipeSlugs,
+  activePipelineRecipes,
   getLrWritebackSettings,
   patchLrWritebackSettings,
-  resolveStarsRecipeSlug,
 } from '../db/library/lr-writeback-settings.js';
 import { describeLrCatalogWriteStatus } from '../utils/lr-catalog-write.js';
-import {
-  AUTO_REJECT_KEYWORD,
-  AUTO_STARS_KEYWORD,
-  connectCatalog,
-  imageHasKeywordByKey,
-  readPickRating,
-} from '../lightroom/writer.js';
 import { HttpError } from '../utils/responses.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
 import { createOpenApiApp } from './openapi.js';
@@ -50,6 +43,7 @@ function settingsPayload(db: import('../db/connection.js').Db) {
     write_reject: settings.write_reject,
     stars_recipe_slug: settings.stars_recipe_slug,
     active_recipe_slugs: activePipelineRecipeSlugs(db),
+    active_recipes: activePipelineRecipes(db),
     catalog_write_available: status.available,
     catalog_write_unavailable_reason: status.reason,
     counts: {
@@ -142,75 +136,11 @@ lrWritebackRoutes.openapi(photoDetailRoute, (c) => {
   const db = c.get('libraryDb');
   const imageKey = c.req.valid('param').image_key;
   const settings = getLrWritebackSettings(db);
-  const starsSlug = resolveStarsRecipeSlug(db, settings);
-  const starsRow = getWritebackState(db, imageKey, 'stars');
-  const rejectRow = getWritebackState(db, imageKey, 'reject');
-
   const status = describeLrCatalogWriteStatus();
-  let live: ReturnType<typeof readPickRating> = null;
-  const keywords: string[] = [];
-  if (status.available && status.path) {
-    const conn = connectCatalog(status.path);
-    try {
-      live = readPickRating(conn, imageKey);
-      if (imageHasKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD)) keywords.push(AUTO_STARS_KEYWORD);
-      if (imageHasKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD)) keywords.push(AUTO_REJECT_KEYWORD);
-    } finally {
-      conn.close();
-    }
+  if (!status.available || !status.path) {
+    throw new HttpError(400, status.reason ?? 'Lightroom catalog unavailable.');
   }
-
-  let strongLine: string | null = null;
-  if (starsSlug) {
-    const recipe = getCullRecipe(db, starsSlug);
-    if (recipe) {
-      const modelIds = readStoredLayaModelIds(db);
-      const pipe = getCurrentPipelineSetting(db);
-      const stages = modelIds
-        ? resolveCurrentStages(db, pipe.config, modelIds).filter(
-            (s) => s.recipeSlug === starsSlug && s.kind === 'culling_recipe',
-          )
-        : [];
-      const answers = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
-      const count = countStrongDimensions(recipe.definition, recipe.rule, answers, starsSlug);
-      const rating = ratingFromStrongCount(count);
-      strongLine =
-        rating === null
-          ? `Strong dimensions (${recipe.name}): none`
-          : `Strong dimensions (${recipe.name}): ${count} strong → ${'★'.repeat(rating)}`;
-    }
-  }
-
-  const ratingUserChanged =
-    starsRow?.status === 'written' && live !== null && live.rating !== starsRow.written_rating;
-  const flagUserChanged = rejectRow?.status === 'written' && live !== null && live.pick !== rejectRow.written_pick;
-
-  return c.json(
-    {
-      image_key: imageKey,
-      rating: {
-        live: live?.rating ?? null,
-        app_wrote: starsRow?.status === 'written',
-        before_label: starsRow?.before_rating === null ? 'before: no rating' : null,
-        undo_available:
-          starsRow?.status === 'written' &&
-          live !== null &&
-          live.rating === starsRow.written_rating &&
-          !ratingUserChanged,
-        user_changed: Boolean(ratingUserChanged),
-      },
-      flag: {
-        live_pick: live?.pick ?? null,
-        app_wrote_reject: rejectRow?.status === 'written',
-        undo_available:
-          rejectRow?.status === 'written' && live !== null && live.pick === rejectRow.written_pick && !flagUserChanged,
-        user_changed: Boolean(flagUserChanged),
-      },
-      keywords,
-      strong_dimensions_line: strongLine,
-    },
-    200,
-  );
+  return c.json(buildWritebackPhotoDetail(db, status.path, imageKey, settings), 200);
 });
 
 const undoRoute = createRoute({

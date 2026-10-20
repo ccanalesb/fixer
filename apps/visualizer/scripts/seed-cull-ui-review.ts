@@ -2,7 +2,9 @@
  * Seeds a temp library.db for dev-cull-ui.sh — rich cull review + catalog fixtures.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { catalogBaseNameFromImageKey } from '../backend/src/lightroom/writer.js';
 import { makeFakeCatalog } from '../backend/tests/helpers/fake-catalog.js';
+import { patchLrWritebackSettings } from '../backend/src/db/library/lr-writeback-settings.js';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { resolveCurrentStages } from '../backend/src/cull/stages.js';
@@ -72,8 +74,12 @@ function forecastAnswers(stage: ResolvedStage, high: boolean): Record<string, nu
   return out;
 }
 
-function imageKeyFromFile(name: string): string {
-  return basename(name, '.jpg');
+/** Product-shaped library key and matching `AgLibraryFile.baseName` for the temp `.lrcat`. */
+function prototypeKeyAndBaseName(file: string): { key: string; catalogBaseName: string } {
+  const stem = basename(file, '.jpg');
+  const m = stem.match(/^(\d{4}-\d{2}-\d{2})__(.+)$/);
+  if (m) return { key: `${m[1]!}_${m[2]!}`, catalogBaseName: m[2]! };
+  return { key: stem, catalogBaseName: catalogBaseNameFromImageKey(stem) };
 }
 
 const db = initLibraryDb(libPath);
@@ -92,8 +98,10 @@ const cacheIns = db.prepare(
   "INSERT OR IGNORE INTO vision_cache (key, compressed_path, phash, compressed_at, original_mtime) VALUES (?, ?, NULL, datetime('now'), 1)",
 );
 
+const keyByFile = new Map<string, string>();
 for (const file of files) {
-  const key = imageKeyFromFile(file);
+  const { key } = prototypeKeyAndBaseName(file);
+  keyByFile.set(file, key);
   const dest = join(vision, file);
   copyFileSync(join(PROTOTYPE_IMG, file), dest);
   ins.run(key, file, dest);
@@ -182,10 +190,10 @@ function seedStageAnswers(
 }
 
 files.forEach((file, i) => {
-  const key = imageKeyFromFile(file);
+  const key = keyByFile.get(file)!;
   if (i < 3) {
     upsertCullVerdict(db, baseVerdict(key, { verdict: 'sent' }));
-    seedStageAnswers(key, { recipeLevel: 5, forecastHigh: true });
+    seedStageAnswers(key, { recipeLevel: 6, forecastHigh: true, recipe10: true });
     return;
   }
   if (i === 3) {
@@ -335,11 +343,12 @@ makeFakeCatalog(
   lrcatPath,
   imageRows.map((row, idx) => ({
     id: idx + 1,
-    baseName: row.filename.replace(/\.[^.]+$/, ''),
+    baseName: catalogBaseNameFromImageKey(row.key),
     pick: idx === 5 ? 1 : idx === 6 ? -1 : 0,
     rating: idx === 7 ? 4 : null,
   })),
 );
+patchLrWritebackSettings(db, { write_stars: true, write_reject: true });
 if (process.env.LT_CONFIG_YAML) {
   writeFileSync(
     process.env.LT_CONFIG_YAML,

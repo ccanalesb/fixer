@@ -756,3 +756,4 @@ export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom after th
 export const LR_WRITEBACK_SWITCH_ON_TOAST = (n: number, kind: string) =>
   `${n.toLocaleString('en-US')} photos pending — written when the next cull ends (${kind})`
 export const LR_WRITEBACK_WRITE_RESULT = (n: number) => `Wrote ${n.toLocaleString('en-US')} photos to Lightroom`
+export const LR_WRITEBACK_LOADING = 'Loading Lightroom write-back…'

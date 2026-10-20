@@ -51,6 +51,23 @@ export function raiseIfCatalogLocked(catalogPath: string): void {
   }
 }
 
+/** Whether Lightroom currently holds the catalog (lock file present). */
+export function isCatalogLocked(catalogPath: string): boolean {
+  for (const path of catalogLockCandidates(catalogPath)) {
+    if (existsSync(path)) return true;
+  }
+  return false;
+}
+
+/** Basename used in `AgLibraryFile.baseName` for a library `image_key`. */
+export function catalogBaseNameFromImageKey(imageKey: string): string {
+  let filename = imageKey;
+  if (filename.includes('_')) filename = filename.slice(filename.indexOf('_') + 1);
+  const dot = filename.lastIndexOf('.');
+  if (dot > 0) filename = filename.slice(0, dot);
+  return filename;
+}
+
 /**
  * Copy the catalog aside before writing, at most once per interval.
  *
@@ -156,10 +173,7 @@ export function getOrCreateKeyword(conn: Db, keywordName: string): number {
  * keyword to whichever photo happened to share that number.
  */
 export function getImageLocalId(conn: Db, imageKey: string): number | null {
-  let filename = imageKey;
-  if (filename.includes('_')) filename = filename.slice(filename.indexOf('_') + 1);
-  const dot = filename.lastIndexOf('.');
-  if (dot > 0) filename = filename.slice(0, dot);
+  const filename = catalogBaseNameFromImageKey(imageKey);
 
   const row = conn
     .prepare(
@@ -292,4 +306,91 @@ export function clearRatingIfMatches(conn: Db, imageKey: string, writtenRating: 
     .prepare(`UPDATE Adobe_images SET rating = NULL WHERE id_local = ? AND rating = ?`)
     .run(imageId, writtenRating);
   return info.changes > 0 ? 'updated' : 'skipped';
+}
+
+export interface WritebackCatalogHooks {
+  afterPickBeforeKeyword?: () => void;
+  afterRatingBeforeKeyword?: () => void;
+}
+
+/** Atomic reject write: pick then keyword in one catalog transaction. */
+export function writeRejectToCatalog(
+  conn: Db,
+  imageKey: string,
+  hooks: WritebackCatalogHooks = {},
+): PickRatingWriteResult {
+  const imageId = getImageLocalId(conn, imageKey);
+  if (!imageId) return 'image_not_found';
+  return conn.transaction(() => {
+    const result = updatePickIfUnflagged(conn, imageKey, -1);
+    if (result !== 'updated') return result;
+    hooks.afterPickBeforeKeyword?.();
+    addKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+    return 'updated' as const;
+  })();
+}
+
+export function clearRejectFromCatalog(conn: Db, imageKey: string): PickRatingWriteResult {
+  const imageId = getImageLocalId(conn, imageKey);
+  if (!imageId) return 'image_not_found';
+  return conn.transaction(() => {
+    clearPickIfMatches(conn, imageKey, -1);
+    removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+    return 'updated' as const;
+  })();
+}
+
+export function undoRejectFromCatalog(
+  conn: Db,
+  imageKey: string,
+  beforePick: number | null,
+): PickRatingWriteResult {
+  const imageId = getImageLocalId(conn, imageKey);
+  if (!imageId) return 'image_not_found';
+  return conn.transaction(() => {
+    conn.prepare('UPDATE Adobe_images SET pick = ? WHERE id_local = ? AND pick = -1').run(beforePick ?? 0, imageId);
+    removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+    return 'updated' as const;
+  })();
+}
+
+export function writeStarsToCatalog(
+  conn: Db,
+  imageKey: string,
+  rating: number,
+  hooks: WritebackCatalogHooks = {},
+): PickRatingWriteResult {
+  const imageId = getImageLocalId(conn, imageKey);
+  if (!imageId) return 'image_not_found';
+  return conn.transaction(() => {
+    const result = updateRatingIfUnset(conn, imageKey, rating);
+    if (result !== 'updated') return result;
+    hooks.afterRatingBeforeKeyword?.();
+    addKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+    return 'updated' as const;
+  })();
+}
+
+export function clearStarsFromCatalog(conn: Db, imageKey: string, writtenRating: number): PickRatingWriteResult {
+  const imageId = getImageLocalId(conn, imageKey);
+  if (!imageId) return 'image_not_found';
+  return conn.transaction(() => {
+    clearRatingIfMatches(conn, imageKey, writtenRating);
+    removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+    return 'updated' as const;
+  })();
+}
+
+export function undoStarsFromCatalog(conn: Db, imageKey: string, beforeRating: number | null): PickRatingWriteResult {
+  const imageId = getImageLocalId(conn, imageKey);
+  if (!imageId) return 'image_not_found';
+  return conn.transaction(() => {
+    if (beforeRating === null) {
+      conn.prepare('UPDATE Adobe_images SET rating = NULL WHERE id_local = ?').run(imageId);
+    } else {
+      conn.prepare('UPDATE Adobe_images SET rating = ? WHERE id_local = ?').run(beforeRating, imageId);
+    }
+    removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+    return 'updated' as const;
+  })();
 }

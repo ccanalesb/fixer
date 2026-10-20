@@ -6,6 +6,7 @@ export const LrWritebackSettingsSchema = z
     write_reject: z.boolean(),
     stars_recipe_slug: z.string().nullable(),
     active_recipe_slugs: z.array(z.string()),
+    active_recipes: z.array(z.object({ slug: z.string(), name: z.string() }).strict()),
     catalog_write_available: z.boolean(),
     catalog_write_unavailable_reason: z.string().nullable(),
     counts: z.object({

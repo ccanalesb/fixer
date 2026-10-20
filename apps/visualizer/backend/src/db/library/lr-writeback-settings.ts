@@ -1,4 +1,5 @@
 import { getCurrentPipelineSetting } from './cull-pipeline.js';
+import { getCullRecipe } from './cull-recipes.js';
 import type { Db } from '../connection.js';
 import { libraryWrite } from './write.js';
 
@@ -25,6 +26,13 @@ export function getLrWritebackSettings(db: Db): LrWritebackSettings {
 export function activePipelineRecipeSlugs(db: Db): string[] {
   const pipe = getCurrentPipelineSetting(db);
   return pipe.config.culling_recipes.map((r) => r.recipe_slug);
+}
+
+export function activePipelineRecipes(db: Db): { slug: string; name: string }[] {
+  return activePipelineRecipeSlugs(db).map((slug) => {
+    const recipe = getCullRecipe(db, slug);
+    return { slug, name: recipe?.name ?? slug };
+  });
 }
 
 /** Slug used for star computation; null when stars are off or pipeline has no recipes. */

@@ -160,8 +160,14 @@ cullReviewRoutes.openapi(sendRoute, async (c) => {
     sent.push(key);
   }
   if (sent.length > 0) {
-    const { reconcileLrWriteback } = await import('../lightroom/writeback.js');
-    await reconcileLrWriteback(db, { trigger: 'sent_by_hand', imageKeys: sent });
+    try {
+      const { reconcileLrWriteback } = await import('../lightroom/writeback.js');
+      await reconcileLrWriteback(db, { trigger: 'sent_by_hand', imageKeys: sent });
+    } catch (e) {
+      console.error(
+        `lightroom write-back after send-by-hand: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
   const skippedComplete = keys.length - sent.length;
   const workKeys = [...sendWorkKeys];

@@ -17,6 +17,7 @@ import {
   LR_WRITEBACK_STATUS_HELP,
   LR_WRITEBACK_STATUS_TITLE,
   LR_WRITEBACK_SWITCH_ON_TOAST,
+  LR_WRITEBACK_LOADING,
   LR_WRITEBACK_WRITE_NOW,
   LR_WRITEBACK_WRITE_RESULT,
   LR_WRITEBACK_WRITTEN,
@@ -74,7 +75,7 @@ export function LightroomWritebackSection() {
   }
 
   if (loading && !data) {
-    return <p className="text-sm text-text-secondary">Loading Lightroom write-back…</p>
+    return <p className="text-sm text-text-secondary">{LR_WRITEBACK_LOADING}</p>
   }
   if (!data) {
     return <p className="text-sm text-error">{error ?? 'Could not load settings'}</p>
@@ -95,7 +96,7 @@ export function LightroomWritebackSection() {
         name={LR_WRITEBACK_STARS_SWITCH}
         description={LR_WRITEBACK_STARS_HELP}
         control={
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
               checked={data.write_stars}
@@ -112,11 +113,13 @@ export function LightroomWritebackSection() {
                 value={data.stars_recipe_slug ?? ''}
                 onChange={(e) => void patch({ stars_recipe_slug: e.target.value || null })}
               >
-                {data.active_recipe_slugs.map((slug) => (
-                  <option key={slug} value={slug}>
-                    {slug}
-                  </option>
-                ))}
+                {(data.active_recipes ?? data.active_recipe_slugs.map((slug) => ({ slug, name: slug }))).map(
+                  (r) => (
+                    <option key={r.slug} value={r.slug}>
+                      {r.name}
+                    </option>
+                  ),
+                )}
               </select>
             </label>
           ) : null
@@ -127,7 +130,7 @@ export function LightroomWritebackSection() {
         name={LR_WRITEBACK_REJECT_SWITCH}
         description={LR_WRITEBACK_REJECT_HELP}
         control={
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
               checked={data.write_reject}
