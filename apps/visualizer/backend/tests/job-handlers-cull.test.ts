@@ -20,6 +20,8 @@ import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
 import type { LayaAnswerWant } from '../src/laya/sessions.js';
+import { importResearchRuns } from '../src/cull/import-research.js';
+import { LAYA_BASE_RESEARCH_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
 
 /** Per photo file: the recipe levels (impact, structure, tension, connotation) and the highest P(≥ 8). */
 interface Script {
@@ -389,4 +391,22 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(logs(job)).toContain('checkpoint mismatch: batch_cull_photos_before_scoring stage or pipeline-setting version changed, starting fresh');
     expect(laya.calls.map((c) => c.file.endsWith('/bad.jpg'))).toEqual([true]);
   });
+
+  it('after the research import a job asks Laya only what the research left out', async () => {
+    for (const key of ['fx-001-pass', 'fx-002-recipe', 'fx-003-forecast', 'fx-004-no7']) await addPhoto(key);
+    const fixtures = join(import.meta.dirname, 'fixtures', 'cull');
+    const lib = openLibraryDb(fx.dbPath);
+    await importResearchRuns(lib, {
+      layaNewPath: join(fixtures, 'laya_new_catalog.sample.jsonl'),
+      recipePath: join(fixtures, 'laya_cull_catalog_all.sample.jsonl'),
+      modelIds: { base: LAYA_BASE_RESEARCH_MODEL_ID, new: await layaNewModelId(join(modelsDir, 'laya-new')) },
+    });
+    lib.close();
+    const job = await runCull();
+    expect(laya.calls.map((c) => [c.file.endsWith('/fx-004-no7.jpg'), c.want!.base!.length, c.want!.new])).toEqual([
+      [true, 4, false],
+    ]);
+    expect(result(job)).toMatchObject({ culled: 1, redecided: 0 });
+  });
 });
+

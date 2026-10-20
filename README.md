@@ -36,6 +36,24 @@ The script downloads Laya base from Hugging Face at a fixed revision. Without
 `--laya-new` the Score forecast stage stays off. Nothing is uploaded, and no model
 file belongs in git.
 
+The cull itself is the job `batch_cull_photos_before_scoring` (whole catalog, or
+`image_keys`); until it has a screen, start it through the jobs API:
+
+```bash
+curl -X POST localhost:5001/api/jobs/ -H 'Content-Type: application/json' \
+  -d '{"type": "batch_cull_photos_before_scoring"}'
+```
+
+The research runs can be loaded as the first stored answers, so the job only
+asks Laya what they left out. Back up `library.db` first; `--dry-run` writes
+nothing, and the import can be run again as the research files grow:
+
+```bash
+lightroom-tagger cull-import --dry-run \
+  --laya-new ~/lightroom-research/bench/distill/outputs/laya_new_catalog.jsonl \
+  --recipe ~/lightroom-research/bench/laya-gate/laya_cull_catalog_all.jsonl
+```
+
 ## Quick Start (CLI)
 
 ```bash

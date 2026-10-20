@@ -17,7 +17,7 @@ about `Context`, request parsing or response shaping.
 ## What belongs in each layer
 
 - **HTTP routes and job handlers** (`api/`, `jobs/`) — routing, request parsing, response shaping, progress callbacks into the job runner, and thin delegation to the services.
-- **Services** (`analyzer/`, `clip/`, `identity/`, `imaging/`, `laya/`, `lightroom/`, `providers/`, `vision/`) — domain logic: analysis, scoring, identity, embeddings, RAW decode, the cull's local models, catalog reading and the provider stack.
+- **Services** (`analyzer/`, `clip/`, `cull/`, `identity/`, `imaging/`, `laya/`, `lightroom/`, `providers/`, `vision/`) — domain logic: analysis, scoring, identity, embeddings, RAW decode, the cull's decisions and its local models, catalog reading and the provider stack. `cull/types.ts` and `cull/default-pipeline.ts` hold no imports of their own, so the `db/library/cull-*` modules may read them.
 - **Database layer** (`db/library/`, `db/jobs/`) — persistence: SQL, schema, and the catalog/library write paths (see [ADR-0002](adr/0002-split-database.md)). `db/library/bootstrap.ts` owns the `library.db` schema.
 - **Shared utilities** (`utils/`, `constants/`) — errors, datetime, path resolution and response helpers used across layers.
 
