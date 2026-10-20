@@ -1,4 +1,5 @@
 import { CatalogSettingRow } from './CatalogSettingRow';
+import { LightroomWritebackSection } from './LightroomWritebackSection';
 import { StackDetectionSettingRow } from './StackDetectionSettingRow';
 
 export function SettingsTab() {
@@ -15,6 +16,8 @@ export function SettingsTab() {
         <CatalogSettingRow />
         <StackDetectionSettingRow />
       </div>
+
+      <LightroomWritebackSection />
     </div>
   );
 }

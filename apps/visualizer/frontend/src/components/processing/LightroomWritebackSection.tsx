@@ -1,0 +1,198 @@
+import { useCallback, useEffect, useState } from 'react'
+import { LrWritebackAPI, type LrWritebackSettingsResponse } from '../../services/api'
+import { Button } from '../ui/Button/Button'
+import { SettingRow } from './SettingRow'
+import {
+  LR_WRITEBACK_CLOSE_LR,
+  LR_WRITEBACK_LR_CLOSED,
+  LR_WRITEBACK_LR_OPEN,
+  LR_WRITEBACK_PENDING,
+  LR_WRITEBACK_REJECT_HELP,
+  LR_WRITEBACK_REJECT_SWITCH,
+  LR_WRITEBACK_SECTION,
+  LR_WRITEBACK_SECTION_LEAD,
+  LR_WRITEBACK_STARS_HELP,
+  LR_WRITEBACK_STARS_RECIPE,
+  LR_WRITEBACK_STARS_SWITCH,
+  LR_WRITEBACK_STATUS_HELP,
+  LR_WRITEBACK_STATUS_TITLE,
+  LR_WRITEBACK_SWITCH_ON_TOAST,
+  LR_WRITEBACK_WRITE_NOW,
+  LR_WRITEBACK_WRITE_RESULT,
+  LR_WRITEBACK_WRITTEN,
+} from '../../constants/strings'
+
+export function LightroomWritebackSection() {
+  const [data, setData] = useState<LrWritebackSettingsResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [writing, setWriting] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const [writeResult, setWriteResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      setData(await LrWritebackAPI.getSettings())
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load write-back settings')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const patch = async (body: Parameters<typeof LrWritebackAPI.patchSettings>[0]) => {
+    const before = data
+    const next = await LrWritebackAPI.patchSettings(body)
+    setData(next)
+    if (before && !before.write_stars && next.write_stars) {
+      setToast(LR_WRITEBACK_SWITCH_ON_TOAST(next.counts.stars.pending, 'stars'))
+    }
+    if (before && !before.write_reject && next.write_reject) {
+      setToast(LR_WRITEBACK_SWITCH_ON_TOAST(next.counts.reject.pending, 'reject'))
+    }
+  }
+
+  const writePending = async () => {
+    setWriting(true)
+    setWriteResult(null)
+    try {
+      const res = await LrWritebackAPI.writePending()
+      const n = res.stars.catalog_updated + res.reject.catalog_updated
+      setWriteResult(LR_WRITEBACK_WRITE_RESULT(n))
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Write failed')
+    } finally {
+      setWriting(false)
+    }
+  }
+
+  if (loading && !data) {
+    return <p className="text-sm text-text-secondary">Loading Lightroom write-back…</p>
+  }
+  if (!data) {
+    return <p className="text-sm text-error">{error ?? 'Could not load settings'}</p>
+  }
+
+  const pendingTotal = data.counts.stars.pending + data.counts.reject.pending
+  const writtenTotal = data.counts.stars.written + data.counts.reject.written
+  const showRecipeSelect = data.active_recipe_slugs.length > 1
+
+  return (
+    <div className="space-y-0 divide-y divide-border rounded-base border border-border bg-bg">
+      <div className="p-4 border-b border-border">
+        <h4 className="text-sm font-semibold text-text">{LR_WRITEBACK_SECTION}</h4>
+        <p className="mt-1 text-sm text-text-secondary">{LR_WRITEBACK_SECTION_LEAD}</p>
+      </div>
+
+      <SettingRow
+        name={LR_WRITEBACK_STARS_SWITCH}
+        description={LR_WRITEBACK_STARS_HELP}
+        control={
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={data.write_stars}
+              onChange={(e) => void patch({ write_stars: e.target.checked })}
+            />
+          </label>
+        }
+        under={
+          showRecipeSelect && data.write_stars ? (
+            <label className="block text-sm max-w-md">
+              <span className="font-medium">{LR_WRITEBACK_STARS_RECIPE}</span>
+              <select
+                className="mt-1 w-full border border-border rounded-base px-2 py-1"
+                value={data.stars_recipe_slug ?? ''}
+                onChange={(e) => void patch({ stars_recipe_slug: e.target.value || null })}
+              >
+                {data.active_recipe_slugs.map((slug) => (
+                  <option key={slug} value={slug}>
+                    {slug}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null
+        }
+      />
+
+      <SettingRow
+        name={LR_WRITEBACK_REJECT_SWITCH}
+        description={LR_WRITEBACK_REJECT_HELP}
+        control={
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={data.write_reject}
+              onChange={(e) => void patch({ write_reject: e.target.checked })}
+            />
+          </label>
+        }
+        under={
+          <div className="text-xs text-text-secondary flex flex-wrap gap-4">
+            <span>
+              {LR_WRITEBACK_PENDING} (stars): <b>{data.counts.stars.pending}</b>
+            </span>
+            <span>
+              {LR_WRITEBACK_WRITTEN} (stars): <b>{data.counts.stars.written}</b>
+            </span>
+            <span>
+              {LR_WRITEBACK_PENDING} (reject): <b>{data.counts.reject.pending}</b>
+            </span>
+            <span>
+              {LR_WRITEBACK_WRITTEN} (reject): <b>{data.counts.reject.written}</b>
+            </span>
+          </div>
+        }
+      />
+
+      <SettingRow
+        name={LR_WRITEBACK_STATUS_TITLE}
+        description={LR_WRITEBACK_STATUS_HELP}
+        control={
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              disabled={pendingTotal === 0 || !data.catalog_write_available || writing}
+              onClick={() => void writePending()}
+            >
+              {writing ? 'Writing…' : LR_WRITEBACK_WRITE_NOW}
+            </Button>
+            {!data.catalog_write_available && pendingTotal > 0 ? (
+              <span className="text-xs text-text-secondary">{LR_WRITEBACK_CLOSE_LR}</span>
+            ) : null}
+          </div>
+        }
+        under={
+          <div className="text-xs text-text-secondary flex flex-wrap gap-3 items-center">
+            <span>
+              {LR_WRITEBACK_PENDING} <b>{pendingTotal}</b>
+            </span>
+            <span>
+              {LR_WRITEBACK_WRITTEN} <b>{writtenTotal}</b>
+            </span>
+            <span
+              className={
+                data.catalog_write_available ? 'text-success font-medium' : 'text-warning font-medium'
+              }
+            >
+              {data.catalog_write_available ? LR_WRITEBACK_LR_CLOSED : LR_WRITEBACK_LR_OPEN}
+            </span>
+            {writeResult ? <span>{writeResult}</span> : null}
+            {toast ? <span>{toast}</span> : null}
+            {error ? <span className="text-error">{error}</span> : null}
+          </div>
+        }
+      />
+    </div>
+  )
+}

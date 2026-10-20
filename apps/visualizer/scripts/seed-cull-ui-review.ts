@@ -1,7 +1,8 @@
 /**
  * Seeds a temp library.db for dev-cull-ui.sh — rich cull review + catalog fixtures.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { makeFakeCatalog } from '../backend/tests/helpers/fake-catalog.js';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { resolveCurrentStages } from '../backend/src/cull/stages.js';
@@ -326,5 +327,29 @@ files.forEach((file, i) => {
   seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false, recipe10: i % 2 === 0 });
 });
 
+const lrcatPath = join(tmpRoot, 'review.lrcat');
+const imageRows = db
+  .prepare('SELECT key, filename FROM images ORDER BY key LIMIT 80')
+  .all() as { key: string; filename: string }[];
+makeFakeCatalog(
+  lrcatPath,
+  imageRows.map((row, idx) => ({
+    id: idx + 1,
+    baseName: row.filename.replace(/\.[^.]+$/, ''),
+    pick: idx === 5 ? 1 : idx === 6 ? -1 : 0,
+    rating: idx === 7 ? 4 : null,
+  })),
+);
+if (process.env.LT_CONFIG_YAML) {
+  writeFileSync(
+    process.env.LT_CONFIG_YAML,
+    readFileSync(process.env.LT_CONFIG_YAML, 'utf8').replace(
+      /catalog_path: .*/,
+      `catalog_path: ${lrcatPath}`,
+    ),
+  );
+}
+
 db.close();
 console.log(`Seeded ${libPath} with ${files.length} photos from prototype`);
+console.log(`Temp catalog: ${lrcatPath}`);

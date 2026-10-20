@@ -719,3 +719,40 @@ export const CULL_RECIPE_ACTIVE = 'Active'
 export const CULL_RECIPE_INACTIVE = 'Inactive'
 export const CULL_RECIPE_ACTIVATE = 'Activate'
 export const CULL_RECIPE_DEACTIVATE = 'Deactivate'
+
+// Lightroom write-back (#341)
+export const LR_WRITEBACK_SECTION = 'Lightroom write-back'
+export const LR_WRITEBACK_SECTION_LEAD =
+  'What the cull writes back to your Lightroom catalog. Off until you turn it on. Which level set gives stars is set in each culling recipe (Perspectives).'
+export const LR_WRITEBACK_STARS_SWITCH = 'Write stars to Lightroom'
+export const LR_WRITEBACK_STARS_HELP =
+  "Stars from the culling recipe's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos with no rating; photos you rated are never touched. Marked with the keyword lrt-auto-stars."
+export const LR_WRITEBACK_REJECT_SWITCH = 'Write the reject flag to Lightroom'
+export const LR_WRITEBACK_REJECT_HELP =
+  'Photos the culling recipe cut get the reject flag, only when they have no flag; flags you set are never touched. Photos held back by the score forecast are not flagged. Marked with the keyword lrt-auto-reject.'
+export const LR_WRITEBACK_STARS_RECIPE = 'Culling recipe for stars'
+export const LR_WRITEBACK_STATUS_TITLE = 'Lightroom write-back'
+export const LR_WRITEBACK_STATUS_HELP =
+  'Written automatically when a cull ends, if Lightroom is closed. Otherwise the photos wait until the next cull, or until you write them now.'
+export const LR_WRITEBACK_PENDING = 'photos pending'
+export const LR_WRITEBACK_WRITTEN = 'photos written'
+export const LR_WRITEBACK_LR_OPEN = 'Lightroom is open'
+export const LR_WRITEBACK_LR_CLOSED = 'Lightroom is closed'
+export const LR_WRITEBACK_WRITE_NOW = 'Write pending now'
+export const LR_WRITEBACK_CLOSE_LR = 'Close Lightroom to write'
+export const LR_WRITEBACK_STARS_STRONG_FROM = 'Count a dimension as strong when it is'
+export const LR_WRITEBACK_STARS_STRONG_FROM_HELP = 'Used for the stars written to Lightroom.'
+export const LR_WRITEBACK_STRONG_FROM_7 = '7-level set'
+export const LR_WRITEBACK_STRONG_FROM_10 = '10-level set'
+export const LR_WRITEBACK_STRONG_FROM_EVERY = 'Strong in every level set (7 and 10)'
+export const LR_WRITEBACK_STRONG_FROM_ANY = 'Strong in any level set (7 or 10)'
+export const LR_WRITEBACK_DETAIL_SECTION = 'Lightroom'
+export const LR_WRITEBACK_RATING = 'Rating'
+export const LR_WRITEBACK_FLAG = 'Flag'
+export const LR_WRITEBACK_KEYWORDS = 'Keywords'
+export const LR_WRITEBACK_UNDO = 'Undo'
+export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
+export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom after the app wrote it.'
+export const LR_WRITEBACK_SWITCH_ON_TOAST = (n: number, kind: string) =>
+  `${n.toLocaleString('en-US')} photos pending — written when the next cull ends (${kind})`
+export const LR_WRITEBACK_WRITE_RESULT = (n: number) => `Wrote ${n.toLocaleString('en-US')} photos to Lightroom`

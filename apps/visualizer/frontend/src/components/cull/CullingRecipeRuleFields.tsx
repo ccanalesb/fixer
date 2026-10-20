@@ -5,6 +5,12 @@ import {
   CULL_RECIPE_RULE_ALL_FAIL,
   CULL_RECIPE_RULE_MEAN,
   CULL_RECIPE_RULE_N_FAIL,
+  LR_WRITEBACK_STARS_STRONG_FROM,
+  LR_WRITEBACK_STARS_STRONG_FROM_HELP,
+  LR_WRITEBACK_STRONG_FROM_10,
+  LR_WRITEBACK_STRONG_FROM_7,
+  LR_WRITEBACK_STRONG_FROM_ANY,
+  LR_WRITEBACK_STRONG_FROM_EVERY,
 } from '../../constants/strings'
 
 type Draft = CullRecipeDetail
@@ -20,6 +26,25 @@ export function CullingRecipeRuleFields({
     <>
       <div className="space-y-2">
         <span className="font-medium">Level sets</span>
+        <label className="block text-sm max-w-md">
+          <span className="font-medium">{LR_WRITEBACK_STARS_STRONG_FROM}</span>
+          <p className="text-xs text-text-secondary mb-1">{LR_WRITEBACK_STARS_STRONG_FROM_HELP}</p>
+          <select
+            className="w-full border border-border rounded-base px-2 py-1"
+            value={draft.rule.stars_strong_from ?? 'every'}
+            onChange={(e) =>
+              setRule((r) => ({
+                ...r,
+                stars_strong_from: e.target.value as '7' | '10' | 'every' | 'any',
+              }))
+            }
+          >
+            <option value="7">{LR_WRITEBACK_STRONG_FROM_7}</option>
+            <option value="10">{LR_WRITEBACK_STRONG_FROM_10}</option>
+            <option value="every">{LR_WRITEBACK_STRONG_FROM_EVERY}</option>
+            <option value="any">{LR_WRITEBACK_STRONG_FROM_ANY}</option>
+          </select>
+        </label>
         <div className="inline-flex rounded-base border border-border p-0.5">
           <button
             type="button"

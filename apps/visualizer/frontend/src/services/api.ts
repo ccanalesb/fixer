@@ -936,3 +936,33 @@ export const CullingRecipesAPI = {
       { method: 'PUT', body: JSON.stringify({ threshold }) },
     ),
 }
+
+export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
+export type LrWritebackWritePendingResponse = components['schemas']['LrWritebackWritePendingResponse']
+export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackPhotoDetailResponse']
+
+export const LrWritebackAPI = {
+  getSettings: () => request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings'),
+  patchSettings: (body: {
+    write_stars?: boolean
+    write_reject?: boolean
+    stars_recipe_slug?: string | null
+  }) =>
+    request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  writePending: () =>
+    request<LrWritebackWritePendingResponse>('/cull/lightroom-writeback/write-pending', {
+      method: 'POST',
+    }),
+  getPhoto: (imageKey: string) =>
+    request<LrWritebackPhotoDetailResponse>(
+      `/cull/lightroom-writeback/photos/${encodeURIComponent(imageKey)}`,
+    ),
+  undo: (imageKey: string, kind: 'stars' | 'reject') =>
+    request<{ ok: boolean; reason?: string }>(
+      `/cull/lightroom-writeback/photos/${encodeURIComponent(imageKey)}/undo`,
+      { method: 'POST', body: JSON.stringify({ kind }) },
+    ),
+}
