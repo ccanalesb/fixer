@@ -47,8 +47,7 @@ import {
   type PassContext,
 } from './common.js';
 import { cullStageJobResultFields, runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
-import { filterPairsWithDescribeWork } from './work-keys.js';
-import { selectKeysWithDescribeWork } from './work-keys.js';
+import { filterPairsWithDescribeWork, selectKeysWithDescribeWork } from './work-keys.js';
 import type { BatchCullResult } from './cull-pass.js';
 import { performance } from 'node:perf_hooks';
 import { PathSkipDiagnostics, emptySkipReasonCounts } from './path-diagnostics.js';

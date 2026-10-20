@@ -359,7 +359,8 @@ export function listCatalogImagesForFrameSubstance(
       conditions.push(
         `(fs.image_key IS NULL OR vc.compressed_at > fs.judged_at OR (` +
           `fs.verdict = 'unknown' AND vc.compressed_path IS NOT NULL AND TRIM(vc.compressed_path) != '' ` +
-          `AND vc.compressed_path != ? AND fs.unknown_reason IN ('no_cache_row', 'cache_file_missing')))`,
+          `AND vc.compressed_path != ? AND vc.compressed_at IS NOT NULL AND ` +
+          `fs.unknown_reason IN ('no_cache_row', 'cache_file_missing')))`,
       );
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

@@ -20,7 +20,10 @@ import {
   type FrameSubstanceRunResult,
 } from '../src/jobs/handlers/frame-substance.js';
 import { detectorVersion } from '../src/imaging/frame-substance-detector.js';
-import { listCatalogImagesForFrameSubstance } from '../src/db/library/frame-substance.js';
+import {
+  isFrameSubstanceVerdictStale,
+  listCatalogImagesForFrameSubstance,
+} from '../src/db/library/frame-substance.js';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -247,6 +250,23 @@ describe('runFrameSubstanceDetection', () => {
     });
     lib.close();
     expect(rows.map((r) => r.image_key)).toEqual(['cached_later']);
+  });
+
+  it('does not treat unknown as stale when vision_cache has a path but no compressed_at', async () => {
+    fx.addImage({ key: 'no_ts', filepath: '/x/b.NEF' });
+    await detectOk({ imageKeys: ['no_ts'] });
+    const jpeg = await writeOkJpeg('no_ts.jpg');
+    fx.exec(
+      `INSERT INTO vision_cache (key, compressed_path, phash, compressed_at, original_mtime)
+       VALUES (?, ?, NULL, NULL, 1.0)`,
+      'no_ts',
+      jpeg,
+    );
+    const lib = openLibraryDb(fx.dbPath);
+    expect(isFrameSubstanceVerdictStale(lib, 'no_ts')).toBe(false);
+    const rows = listCatalogImagesForFrameSubstance(lib, { imageKeys: ['no_ts'], staleOnly: true });
+    lib.close();
+    expect(rows).toEqual([]);
   });
 
   it('stops without finishing the run when cancelled mid-scan', async () => {

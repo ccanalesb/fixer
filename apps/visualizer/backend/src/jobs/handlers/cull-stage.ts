@@ -11,12 +11,12 @@ import {
   type PassContext,
 } from './common.js';
 import { runCullPass, type BatchCullResult } from './cull-pass.js';
+import { runFrameSubstanceDetection, type FrameSubstanceRunResult } from './frame-substance.js';
 
 export type JobResultCullSummary = Omit<
   BatchCullResult,
   'total' | 'durations_s' | 'laya_seconds' | 'stage_versions'
 >;
-import { runFrameSubstanceDetection, type FrameSubstanceRunResult } from './frame-substance.js';
 
 export const CULL_STEP_LABEL = 'Culling';
 
