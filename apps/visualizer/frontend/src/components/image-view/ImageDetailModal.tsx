@@ -24,7 +24,7 @@ import { Button } from '../ui/Button/Button'
 import { ConfirmModalFrame, UndoToastBar, useUndoToast } from '../ui/ConfirmUndoAction'
 import { CatalogImageDetailSections } from './CatalogImageDetailSections'
 import { CullDetailSectionLoader } from '../cull/CullDetailSectionLoader'
-import { CULL_MODAL_NEXT, CULL_MODAL_PREV } from '../../constants/strings'
+import { CULL_DETAIL_SECTION, CULL_MODAL_NEXT, CULL_MODAL_PREV } from '../../constants/strings'
 import { ImageMetadataBadges, type PrimaryScoreSource } from './ImageMetadataBadges'
 import { ImageTile } from './ImageTile'
 import { fromCatalogListRow } from './adapters'
@@ -367,7 +367,15 @@ function ImageDetailModalBody({
             />
           ) : null}
           {showCullSection && image.image_type === 'catalog' ? (
-            <CullDetailSectionLoader imageKey={imageKey} onMutated={handleDataChanged} />
+            <Suspense
+              fallback={
+                <p className="mt-6 pt-6 border-t border-border text-sm text-text-secondary">
+                  {CULL_DETAIL_SECTION}
+                </p>
+              }
+            >
+              <CullDetailSectionLoader imageKey={imageKey} onMutated={handleDataChanged} />
+            </Suspense>
           ) : null}
         </div>
       </div>

@@ -10,7 +10,7 @@ import { createApp } from '../src/app.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { getCullVerdict, upsertCullVerdict, type CullVerdictInput } from '../src/db/library/cull-verdicts.js';
-import { listCullUserActions } from '../src/db/library/cull-user-actions.js';
+import { listCullUserActions, recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { computePromptVersion } from '../src/vision/scoring-service.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
@@ -94,6 +94,16 @@ function markDescribeScoreComplete(fx: LibraryFixture, imageKey: string): void {
 }
 
 describe('GET /api/cull/summary', () => {
+  it('counts sent-by-hand photos even after verdict becomes sent', async () => {
+    seedVerdict(fx, cutBase('hand-count', 0.1, 'culling_recipe'));
+    const db = new Database(fx.dbPath);
+    recordCullUserAction(db, 'hand-count', 'sent_by_hand');
+    db.close();
+    const res = await app.request('/api/cull/summary');
+    const body = await json<{ sent_manually_count: number }>(res);
+    expect(body.sent_manually_count).toBeGreaterThan(0);
+  });
+
   it('counts cut photos not sent by hand', async () => {
     const res = await app.request('/api/cull/summary');
     expect(res.status).toBe(200);

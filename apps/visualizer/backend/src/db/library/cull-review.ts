@@ -23,7 +23,7 @@ export function getCullReviewSummary(db: Db): CullReviewSummary {
     )
     .get() as { n: number };
   const sentManual = db
-    .prepare(`SELECT COUNT(*) AS n FROM cull_verdicts v WHERE v.verdict = 'cut' AND ${SENT_BY_HAND_SQL}`)
+    .prepare(`SELECT COUNT(*) AS n FROM cull_verdicts v WHERE ${SENT_BY_HAND_SQL}`)
     .get() as { n: number };
   const byRecipe = db
     .prepare(

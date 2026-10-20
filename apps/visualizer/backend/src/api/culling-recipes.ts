@@ -40,6 +40,9 @@ export const cullingRecipesRoutes = createOpenApiApp<LibraryEnv>();
 cullingRecipesRoutes.use('/culling-recipes/*', libraryDb({ write: true }));
 redirectToTrailingSlash(cullingRecipesRoutes, '/culling-recipes');
 
+/** Fixed path segments under `/culling-recipes/` — not recipe slugs. */
+export const RESERVED_CULL_RECIPE_SLUGS = new Set(['pipeline']);
+
 function withJobsDb<T>(fn: (db: import('../db/connection.js').Db) => T): T {
   const db = initJobsDb(config.VISUALIZER_DB);
   try {
@@ -90,6 +93,75 @@ cullingRecipesRoutes.openapi(listRoute, (c) => {
   return c.json({ recipes }, 200);
 });
 
+const pipelineGetRoute = createRoute({
+  method: 'get',
+  path: '/culling-recipes/pipeline',
+  tags: ['culling-recipes'],
+  responses: withValidationError({
+    200: { description: 'Pipeline setting', content: jsonBody(PipelineSettingResponse) },
+  }),
+});
+
+cullingRecipesRoutes.openapi(pipelineGetRoute, (c) => {
+  const db = c.get('libraryDb');
+  const pipe = getCurrentPipelineSetting(db);
+  return c.json(pipe, 200);
+});
+
+const scoreForecastRoute = createRoute({
+  method: 'put',
+  path: '/culling-recipes/pipeline/score-forecast',
+  tags: ['culling-recipes'],
+  request: {
+    body: {
+      content: jsonBody(
+        z
+          .object({
+            threshold: z.number(),
+            enabled: z.boolean().optional(),
+            high_from_level: z.number().int().optional(),
+            excused_at: z.number().optional(),
+            run_after_cut: z.boolean().optional(),
+          })
+          .strict(),
+      ),
+    },
+  },
+  responses: withValidationError({
+    200: {
+      description: 'Updated',
+      content: jsonBody(z.object({ version: z.number().int(), redecide_job_id: z.string().nullable() })),
+    },
+  }),
+});
+
+cullingRecipesRoutes.openapi(scoreForecastRoute, (c) => {
+  const db = c.get('libraryDb');
+  const body = c.req.valid('json');
+  const { config: pipeConfig, version: _v } = getCurrentPipelineSetting(db);
+  const next = {
+    ...pipeConfig,
+    score_forecast: {
+      ...pipeConfig.score_forecast,
+      threshold: body.threshold,
+      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+      ...(body.high_from_level !== undefined ? { high_from_level: body.high_from_level } : {}),
+      ...(body.excused_at !== undefined ? { excused_at: body.excused_at } : {}),
+      ...(body.run_after_cut !== undefined ? { run_after_cut: body.run_after_cut } : {}),
+    },
+  };
+  const version = createPipelineSettingVersion(db, next, 'score forecast threshold changed');
+  const redecideJobId = withJobsDb((jobsDb) => {
+    const id = enqueueRedecideCullVerdicts(jobsDb, 'score forecast threshold changed');
+    if (id) {
+      const job = getJob(jobsDb, id);
+      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
+    }
+    return id;
+  });
+  return c.json({ version, redecide_job_id: redecideJobId }, 200);
+});
+
 const detailRoute = createRoute({
   method: 'get',
   path: '/culling-recipes/{slug}',
@@ -102,8 +174,10 @@ const detailRoute = createRoute({
 });
 
 cullingRecipesRoutes.openapi(detailRoute, (c) => {
+  const slug = c.req.param('slug');
+  if (RESERVED_CULL_RECIPE_SLUGS.has(slug)) return errorNotFound(c, 'image');
   const db = c.get('libraryDb');
-  const detail = recipeDetail(db, c.req.param('slug'));
+  const detail = recipeDetail(db, slug);
   if (!detail) return errorNotFound(c, 'image');
   return c.json(detail, 200);
 });
@@ -139,6 +213,7 @@ cullingRecipesRoutes.openapi(createRouteDef, (c) => {
   const db = c.get('libraryDb');
   const body = c.req.valid('json');
   if (!isValidPerspectiveSlug(body.slug)) return c.json({ error: 'invalid slug' }, 400);
+  if (RESERVED_CULL_RECIPE_SLUGS.has(body.slug)) return c.json({ error: 'slug is reserved' }, 400);
   if (getCullRecipe(db, body.slug)) return c.json({ error: 'slug already exists' }, 409);
   const v = validateRecipeDefinitionForLaya(body.definition, body.model);
   if (!v.ok) return c.json({ error: v.errors.map((e) => e.message).join('; ') }, 400);
@@ -324,75 +399,6 @@ cullingRecipesRoutes.openapi(patchRoute, (c) => {
     }
   }
   return c.json(recipeDetail(db, slug)!, 200);
-});
-
-const pipelineGetRoute = createRoute({
-  method: 'get',
-  path: '/culling-recipes/pipeline',
-  tags: ['culling-recipes'],
-  responses: withValidationError({
-    200: { description: 'Pipeline setting', content: jsonBody(PipelineSettingResponse) },
-  }),
-});
-
-cullingRecipesRoutes.openapi(pipelineGetRoute, (c) => {
-  const db = c.get('libraryDb');
-  const pipe = getCurrentPipelineSetting(db);
-  return c.json(pipe, 200);
-});
-
-const scoreForecastRoute = createRoute({
-  method: 'put',
-  path: '/culling-recipes/pipeline/score-forecast',
-  tags: ['culling-recipes'],
-  request: {
-    body: {
-      content: jsonBody(
-        z
-          .object({
-            threshold: z.number(),
-            enabled: z.boolean().optional(),
-            high_from_level: z.number().int().optional(),
-            excused_at: z.number().optional(),
-            run_after_cut: z.boolean().optional(),
-          })
-          .strict(),
-      ),
-    },
-  },
-  responses: withValidationError({
-    200: {
-      description: 'Updated',
-      content: jsonBody(z.object({ version: z.number().int(), redecide_job_id: z.string().nullable() })),
-    },
-  }),
-});
-
-cullingRecipesRoutes.openapi(scoreForecastRoute, (c) => {
-  const db = c.get('libraryDb');
-  const body = c.req.valid('json');
-  const { config: pipeConfig, version: _v } = getCurrentPipelineSetting(db);
-  const next = {
-    ...pipeConfig,
-    score_forecast: {
-      ...pipeConfig.score_forecast,
-      threshold: body.threshold,
-      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
-      ...(body.high_from_level !== undefined ? { high_from_level: body.high_from_level } : {}),
-      ...(body.excused_at !== undefined ? { excused_at: body.excused_at } : {}),
-      ...(body.run_after_cut !== undefined ? { run_after_cut: body.run_after_cut } : {}),
-    },
-  };
-  const version = createPipelineSettingVersion(db, next, 'score forecast threshold changed');
-  const redecideJobId = withJobsDb((jobsDb) => {
-    const id = enqueueRedecideCullVerdicts(jobsDb, 'score forecast threshold changed');
-    if (id) {
-      const job = getJob(jobsDb, id);
-      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
-    }
-    return id;
-  });
-  return c.json({ version, redecide_job_id: redecideJobId }, 200);
 });
 
 /** Default body for POST when client sends minimal create (F19). */

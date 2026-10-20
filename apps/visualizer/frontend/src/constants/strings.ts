@@ -311,7 +311,7 @@ export const FRAME_SUBSTANCE_OVERRIDE_RESTORE = 'Restore to ranking'
 export const FRAME_SUBSTANCE_OVERRIDE_RESCORE_WARN =
   'Restoring this void frame will return it to ranking after the next scoring run.'
 export const FRAME_SUBSTANCE_RESTORED = 'Restored to ranking via your override.'
-export const FRAME_SUBSTANCE_CULL_MARK = 'Mark for cull (lrt-cull)'
+export const FRAME_SUBSTANCE_CULL_MARK = 'Mark for cull'
 export const FRAME_SUBSTANCE_CULL_UNMARK = 'Remove cull mark'
 export const FRAME_SUBSTANCE_CATALOG_UNAVAILABLE = 'Lightroom catalog unavailable'
 
@@ -668,7 +668,8 @@ export const ANALYZE_SCORE_JOB_STARTED =
 export const ANALYZE_JOB_FAILED_PREFIX = 'Failed to start job:'
 
 // Cull UI (#340)
-export const CULL_HEADING = (n: number) => `${n} photos did not pass the cull`
+export const CULL_HEADING = (n: number) =>
+  n === 1 ? '1 photo did not pass the cull' : `${n} photos did not pass the cull`
 export const CULL_SUB_MANUAL = (m: number) => `${m} already sent manually.`
 export const CULL_SUB_AUTO =
   'They are not described or scored automatically.'

@@ -2969,6 +2969,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/culling-recipes/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Pipeline setting */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PipelineSettingResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-recipes/pipeline/score-forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        threshold: number;
+                        enabled?: boolean;
+                        high_from_level?: number;
+                        excused_at?: number;
+                        run_after_cut?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                            redecide_job_id: string | null;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/culling-recipes/{slug}": {
         parameters: {
             query?: never;
@@ -3301,107 +3402,6 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ErrorBody"];
-                    };
-                };
-                /** @description Unprocessable Content */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ValidationError"];
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/culling-recipes/pipeline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Pipeline setting */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["PipelineSettingResponse"];
-                    };
-                };
-                /** @description Unprocessable Content */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ValidationError"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/culling-recipes/pipeline/score-forecast": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": {
-                        threshold: number;
-                        enabled?: boolean;
-                        high_from_level?: number;
-                        excused_at?: number;
-                        run_after_cut?: boolean;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            version: number;
-                            redecide_job_id: string | null;
-                        };
                     };
                 };
                 /** @description Unprocessable Content */
@@ -5055,6 +5055,44 @@ export interface components {
             in_pipeline: boolean;
             pipeline_order: number | null;
         };
+        PipelineSettingResponse: {
+            version: number;
+            config: {
+                culling_recipes: {
+                    recipe_slug: string;
+                    rule: {
+                        level_sets: {
+                            [key: string]: {
+                                fails_at_most: number;
+                                strong_at_least: number;
+                            };
+                        };
+                        /** @enum {string} */
+                        combine: "every" | "any";
+                        cut_rule: {
+                            /** @enum {string} */
+                            type: "all_fail";
+                            dimensions: string[];
+                        } | {
+                            /** @enum {string} */
+                            type: "n_fail_unless_strong";
+                            n: number;
+                        } | {
+                            /** @enum {string} */
+                            type: "mean_fail";
+                        };
+                    };
+                    run_after_cut: boolean;
+                }[];
+                score_forecast: {
+                    enabled: boolean;
+                    threshold: number;
+                    high_from_level: number;
+                    excused_at: number;
+                    run_after_cut: boolean;
+                };
+            };
+        };
         CullRecipeDetail: {
             slug: string;
             name: string;
@@ -5097,44 +5135,6 @@ export interface components {
                 } | {
                     /** @enum {string} */
                     type: "mean_fail";
-                };
-            };
-        };
-        PipelineSettingResponse: {
-            version: number;
-            config: {
-                culling_recipes: {
-                    recipe_slug: string;
-                    rule: {
-                        level_sets: {
-                            [key: string]: {
-                                fails_at_most: number;
-                                strong_at_least: number;
-                            };
-                        };
-                        /** @enum {string} */
-                        combine: "every" | "any";
-                        cut_rule: {
-                            /** @enum {string} */
-                            type: "all_fail";
-                            dimensions: string[];
-                        } | {
-                            /** @enum {string} */
-                            type: "n_fail_unless_strong";
-                            n: number;
-                        } | {
-                            /** @enum {string} */
-                            type: "mean_fail";
-                        };
-                    };
-                    run_after_cut: boolean;
-                }[];
-                score_forecast: {
-                    enabled: boolean;
-                    threshold: number;
-                    high_from_level: number;
-                    excused_at: number;
-                    run_after_cut: boolean;
                 };
             };
         };

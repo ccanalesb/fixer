@@ -63,17 +63,19 @@ export function CullDetailSection({
               ))}
             </tbody>
           </table>
-          <div>
-            <h4 className="text-sm font-medium mb-2">{CULL_SCORE_FORECAST}</h4>
-            <div className="space-y-1 text-sm">
-              {detail.score_forecast.map((f) => (
-                <div key={f.name} className="flex justify-between gap-4">
-                  <span>{f.name}</span>
-                  <span>{(f.p8 * 100).toFixed(1)}%</span>
-                </div>
-              ))}
+          {detail.score_forecast.length > 0 ? (
+            <div>
+              <h4 className="text-sm font-medium mb-2">{CULL_SCORE_FORECAST}</h4>
+              <div className="space-y-1 text-sm">
+                {detail.score_forecast.map((f) => (
+                  <div key={f.name} className="flex justify-between gap-4">
+                    <span>{f.name}</span>
+                    <span>{(f.p8 * 100).toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {sendLabel && (
               <Button type="button" size="sm" variant="primary" onClick={onSend}>

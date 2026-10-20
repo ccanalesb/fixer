@@ -59,6 +59,16 @@ afterEach(() => {
   rmSync(jobsDir, { recursive: true, force: true });
 });
 
+describe('GET /api/culling-recipes/pipeline', () => {
+  it('returns pipeline setting without matching a recipe slug', async () => {
+    const res = await app.request('/api/culling-recipes/pipeline');
+    expect(res.status).toBe(200);
+    const body = await json<{ version: number; config: { score_forecast: { threshold: number } } }>(res);
+    expect(body.version).toBeGreaterThan(0);
+    expect(body.config.score_forecast.threshold).toBeDefined();
+  });
+});
+
 describe('GET /api/culling-recipes/', () => {
   it('lists seeded recipe 7H47', async () => {
     const res = await app.request('/api/culling-recipes/');
