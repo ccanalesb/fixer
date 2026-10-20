@@ -2575,6 +2575,859 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cull/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cull review header stats */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullReviewSummaryResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/photos/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    tab?: "all" | "culling_recipe" | "score_forecast";
+                    limit?: string;
+                    offset?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cut photos for review */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullReviewListResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/photos/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        image_keys: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Send by hand */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            sent_by_hand: string[];
+                            job_id: string | null;
+                            skipped_complete: number;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/photos/{image_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    image_key: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One cut photo */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullReviewDetail"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/photos/{image_key}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    image_key: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                    };
+                };
+            };
+            responses: {
+                /** @description Recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {boolean} */
+                            ok: true;
+                            verdict: string;
+                            /** @enum {string} */
+                            user_action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-recipes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All culling recipes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullRecipeListResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        model: string;
+                        definition: {
+                            dimensions: {
+                                slug: string;
+                                name: string;
+                                question: string;
+                            }[];
+                            level_sets: {
+                                id: string;
+                                levels: {
+                                    [key: string]: string[];
+                                };
+                            }[];
+                        };
+                        rule: {
+                            level_sets: {
+                                [key: string]: {
+                                    fails_at_most: number;
+                                    strong_at_least: number;
+                                };
+                            };
+                            /** @enum {string} */
+                            combine: "every" | "any";
+                            cut_rule: {
+                                /** @enum {string} */
+                                type: "all_fail";
+                                dimensions: string[];
+                            } | {
+                                /** @enum {string} */
+                                type: "n_fail_unless_strong";
+                                n: number;
+                            } | {
+                                /** @enum {string} */
+                                type: "mean_fail";
+                            };
+                        };
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullRecipeDetail"];
+                    };
+                };
+                /** @description Validation failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Duplicate slug */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-recipes/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Pipeline setting */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PipelineSettingResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-recipes/pipeline/score-forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        threshold: number;
+                        enabled?: boolean;
+                        high_from_level?: number;
+                        excused_at?: number;
+                        run_after_cut?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                            redecide_job_id: string | null;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-recipes/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One recipe */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullRecipeDetail"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        model?: string;
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullRecipeDetail"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/culling-recipes/{slug}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        new_slug: string;
+                        new_name?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Duplicated */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullRecipeDetail"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Duplicate slug */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-recipes/{slug}/definition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        definition: {
+                            dimensions: {
+                                slug: string;
+                                name: string;
+                                question: string;
+                            }[];
+                            level_sets: {
+                                id: string;
+                                levels: {
+                                    [key: string]: string[];
+                                };
+                            }[];
+                        };
+                        /** @enum {string} */
+                        mode: "save_only" | "save_and_queue_cull";
+                    };
+                };
+            };
+            responses: {
+                /** @description Saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            recipe: components["schemas"]["CullRecipeDetail"];
+                            version: number;
+                            created: boolean;
+                            impact: {
+                                photos: number;
+                                hours_estimate: number;
+                            };
+                            cull_job_id: string | null;
+                        };
+                    };
+                };
+                /** @description Validation failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: string;
+                            validation_errors: {
+                                field: string;
+                                message: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-recipes/{slug}/rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        rule: {
+                            level_sets: {
+                                [key: string]: {
+                                    fails_at_most: number;
+                                    strong_at_least: number;
+                                };
+                            };
+                            /** @enum {string} */
+                            combine: "every" | "any";
+                            cut_rule: {
+                                /** @enum {string} */
+                                type: "all_fail";
+                                dimensions: string[];
+                            } | {
+                                /** @enum {string} */
+                                type: "n_fail_unless_strong";
+                                n: number;
+                            } | {
+                                /** @enum {string} */
+                                type: "mean_fail";
+                            };
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Rule saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            recipe: components["schemas"]["CullRecipeDetail"];
+                            pipeline_setting_version: number | null;
+                            redecide_job_id: string | null;
+                        };
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/": {
         parameters: {
             query?: never;
@@ -3703,6 +4556,7 @@ export interface components {
             why_matched?: string | null;
             thumbnail_url?: string | null;
             score?: number | null;
+            cull_manually_sent?: boolean | null;
         };
         CatalogSimilarResponse: {
             images: components["schemas"]["CatalogImage"][];
@@ -4114,6 +4968,183 @@ export interface components {
             updated_at?: string | null;
             prompt_markdown: string;
             created_at?: string | null;
+        };
+        CullReviewSummaryResponse: {
+            not_passed_count: number;
+            sent_manually_count: number;
+            tab_counts: {
+                all: number;
+                culling_recipe: number;
+                score_forecast: number;
+            };
+            last_checked_at: string | null;
+        };
+        CullReviewListResponse: {
+            data: components["schemas"]["CullReviewRow"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        CullReviewRow: {
+            image_key: string;
+            filename: string;
+            date_taken: string | null;
+            /** @enum {string} */
+            cut_by: "culling_recipe" | "score_forecast";
+            score_forecast_p8: number | null;
+            recipe: {
+                slug: string;
+                name: string;
+                level_sets: {
+                    id: string;
+                    dimensions: {
+                        slug: string;
+                        name: string;
+                        levels: {
+                            level: number;
+                            fails: boolean;
+                            strong: boolean;
+                        }[];
+                    }[];
+                }[];
+            };
+            /** @enum {string} */
+            completion: "none" | "some" | "all";
+            needs_send_work: boolean;
+            thumbnail_url: string;
+        };
+        CullReviewDetail: {
+            image_key: string;
+            filename: string;
+            /** @enum {string|null} */
+            cut_by: "culling_recipe" | "score_forecast" | null;
+            score_forecast_p8: number | null;
+            recipe: {
+                slug: string;
+                name: string;
+                level_sets: {
+                    id: string;
+                    dimensions: {
+                        slug: string;
+                        name: string;
+                        levels: {
+                            level: number;
+                            fails: boolean;
+                            strong: boolean;
+                        }[];
+                    }[];
+                }[];
+            };
+            score_forecast: {
+                name: string;
+                p8: number;
+            }[];
+            user_actions: {
+                /** @enum {string} */
+                action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                acted_at: string;
+            }[];
+            /** @enum {string} */
+            completion: "none" | "some" | "all";
+            needs_send_work: boolean;
+            sent_by_hand: boolean;
+            verdict: string;
+        };
+        CullRecipeListResponse: {
+            recipes: components["schemas"]["CullRecipeSummary"][];
+        };
+        CullRecipeSummary: {
+            slug: string;
+            name: string;
+            model: string;
+            active: boolean;
+            measured: boolean;
+            version: number;
+            in_pipeline: boolean;
+            pipeline_order: number | null;
+        };
+        PipelineSettingResponse: {
+            version: number;
+            config: {
+                culling_recipes: {
+                    recipe_slug: string;
+                    rule: {
+                        level_sets: {
+                            [key: string]: {
+                                fails_at_most: number;
+                                strong_at_least: number;
+                            };
+                        };
+                        /** @enum {string} */
+                        combine: "every" | "any";
+                        cut_rule: {
+                            /** @enum {string} */
+                            type: "all_fail";
+                            dimensions: string[];
+                        } | {
+                            /** @enum {string} */
+                            type: "n_fail_unless_strong";
+                            n: number;
+                        } | {
+                            /** @enum {string} */
+                            type: "mean_fail";
+                        };
+                    };
+                    run_after_cut: boolean;
+                }[];
+                score_forecast: {
+                    enabled: boolean;
+                    threshold: number;
+                    high_from_level: number;
+                    excused_at: number;
+                    run_after_cut: boolean;
+                };
+            };
+        };
+        CullRecipeDetail: {
+            slug: string;
+            name: string;
+            model: string;
+            active: boolean;
+            measured: boolean;
+            version: number;
+            in_pipeline: boolean;
+            pipeline_order: number | null;
+            definition: {
+                dimensions: {
+                    slug: string;
+                    name: string;
+                    question: string;
+                }[];
+                level_sets: {
+                    id: string;
+                    levels: {
+                        [key: string]: string[];
+                    };
+                }[];
+            };
+            rule: {
+                level_sets: {
+                    [key: string]: {
+                        fails_at_most: number;
+                        strong_at_least: number;
+                    };
+                };
+                /** @enum {string} */
+                combine: "every" | "any";
+                cut_rule: {
+                    /** @enum {string} */
+                    type: "all_fail";
+                    dimensions: string[];
+                } | {
+                    /** @enum {string} */
+                    type: "n_fail_unless_strong";
+                    n: number;
+                } | {
+                    /** @enum {string} */
+                    type: "mean_fail";
+                };
+            };
         };
         ProviderListResponse: components["schemas"]["Provider"][];
         Provider: {

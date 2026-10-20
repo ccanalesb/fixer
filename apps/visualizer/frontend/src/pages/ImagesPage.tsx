@@ -5,7 +5,8 @@ import { SkeletonGrid } from '../components/ui/page-states';
 import { ErrorBoundary, ErrorState, invalidateAll } from '../data';
 import { usePageTab } from '../hooks/usePageTab';
 import { IMAGES_TAB_IDS, usePageUiStore } from '../stores/pageUiStore';
-import { TAB_CATALOG } from '../constants/strings';
+import { TAB_CATALOG, TAB_CULL_CATALOG } from '../constants/strings';
+import { CullCatalogTab } from '../components/cull/CullCatalogTab';
 
 const tabSuspenseFallback = <SkeletonGrid count={12} />;
 
@@ -39,6 +40,27 @@ export function ImagesPage() {
         >
           <Suspense fallback={tabSuspenseFallback}>
             <CatalogTab />
+          </Suspense>
+        </ErrorBoundary>
+      ),
+    },
+    {
+      id: 'cull-catalog',
+      label: TAB_CULL_CATALOG,
+      content: (
+        <ErrorBoundary
+          fallback={({ error, reset }) => (
+            <ErrorState
+              error={error}
+              reset={() => {
+                invalidateAll(['images.catalog']);
+                reset();
+              }}
+            />
+          )}
+        >
+          <Suspense fallback={tabSuspenseFallback}>
+            <CullCatalogTab />
           </Suspense>
         </ErrorBoundary>
       ),

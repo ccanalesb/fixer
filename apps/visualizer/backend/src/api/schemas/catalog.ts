@@ -67,6 +67,7 @@ export const CatalogImage = z
     why_matched: z.string().nullish(),
     thumbnail_url: z.string().nullish(),
     score: z.number().nullish(),
+    cull_manually_sent: z.boolean().nullish(),
   })
   .strict()
   .openapi('CatalogImage');

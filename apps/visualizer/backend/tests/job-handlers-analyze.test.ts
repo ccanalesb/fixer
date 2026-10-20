@@ -220,6 +220,21 @@ afterEach(async () => {
 });
 
 describe('the batch_analyze handler', () => {
+  it('honors metadata.image_keys and only describes listed catalog keys', async () => {
+    await seedPhotos('only-a', 'skip-b');
+    addRubric();
+
+    const job = await runAnalyze({
+      image_keys: ['only-a'],
+      image_type: 'catalog',
+      max_workers: 1,
+    });
+
+    expect(job.status).toBe('completed');
+    expect(analyzeResult(job).describe_total).toBe(1);
+    expect(describedKeys()).toEqual(['only-a']);
+  });
+
   it('describes then scores the same images and reports both sets of totals', async () => {
     await seedPhotos('a', 'b');
     addRubric();

@@ -141,6 +141,7 @@ export function parseCatalogListParams(q: QuerySource): Parsed<CatalogListParams
     value: {
       filters: {
         ...filters,
+        cullCatalog: boolTriState(q.query('cull_catalog')),
         minScore: minScore.value,
         minScoreOnActive: minScoreOnActive.value,
         burstStack: boolTriState(q.query('burst_stack')),

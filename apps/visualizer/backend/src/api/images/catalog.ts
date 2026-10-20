@@ -27,6 +27,7 @@ import {
   getCatalogSimilarityGroupsPaginated,
   getSimilarityCandidatesForGroup,
 } from '../../db/library/similarity.js';
+import { batchCullManuallySent } from '../../db/library/cull-review.js';
 import { catalogImageStackRowFields } from '../../db/library/stacks.js';
 import { getVisionCachedImage } from '../../db/library/vision-cache.js';
 import { libraryDb, type LibraryEnv } from '../library-db.js';
@@ -171,7 +172,15 @@ function listCatalogImages(c: Parameters<Parameters<typeof catalogRoutes.openapi
       limit,
       offset,
     });
-    return c.json({ total, images: rowsToCatalogApiImages(rows) }, 200);
+    const manualKeys = batchCullManuallySent(
+      db,
+      rows.map((r) => String(r.key)),
+    );
+    const images = rowsToCatalogApiImages(rows).map((img) => ({
+      ...img,
+      cull_manually_sent: manualKeys.has(img.key),
+    }));
+    return c.json({ total, images }, 200);
   } catch (e) {
     // Only the caller-error case is caught; anything else reaches the app's 500
     // handler with its message intact.
