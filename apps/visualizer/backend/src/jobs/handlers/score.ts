@@ -10,7 +10,6 @@
  */
 import type { JobLogLevel } from '../../db/jobs/jobs.js';
 import { getPerspectiveBySlug, listPerspectives } from '../../db/library/scores.js';
-import { staleScoreLabels } from '../../db/library/vision-stale.js';
 import type { CancelCheck } from '../../providers/retry.js';
 import { computePromptVersion, scoreImageForPerspective } from '../../vision/scoring-service.js';
 import { VisionOpOutcome } from '../../vision/vision-op.js';
@@ -40,9 +39,9 @@ import {
   withLibraryDb,
   type PassContext,
 } from './common.js';
-import { runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
+import { cullStageJobResultFields, runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
 import type { BatchCullResult } from './cull-pass.js';
-import { selectKeysWithScoreWork } from './work-keys.js';
+import { filterTriplesWithScoreWork, selectKeysWithScoreWork } from './work-keys.js';
 import { PathSkipDiagnostics, emptySkipReasonCounts } from './path-diagnostics.js';
 
 /** Score one image for one perspective, turning a thrown error into an outcome. */
@@ -237,58 +236,12 @@ export async function handleBatchScore(
       runner.clearCheckpoint(jobId);
       runner.completeJob(jobId, {
         ...summary,
-        cull: {
-          culled: stage.cullStep.culled,
-          redecided: stage.cullStep.redecided,
-          failed: stage.cullStep.failed,
-          cut_by_culling_recipe: stage.cullStep.cut_by_culling_recipe,
-          cut_by_score_forecast: stage.cullStep.cut_by_score_forecast,
-          pending: stage.cullStep.pending,
-          sent: stage.cullStep.sent,
-          sent_by_hand_passed: stage.cullStep.sent_by_hand_passed,
-          score_forecast: stage.cullStep.score_forecast,
-          pipeline_setting_version: stage.cullStep.pipeline_setting_version,
-          seconds_per_photo: stage.cullStep.seconds_per_photo,
-          laya_started: stage.cullStep.laya_started,
-        },
-        held_back: stage.heldBack,
-        durations_s: {
-          frame_substance: stage.durations.frame_substance,
-          cull: stage.durations.cull,
-          describe: 0,
-          score: scoreS,
-          total: Math.round((performance.now() - tJob) / 10) / 100,
-        },
+        ...cullStageJobResultFields(stage, { describe: 0, score: scoreS }, tJob),
       });
     });
   } catch (e) {
     runner.failJob(jobId, e instanceof Error ? e.message : String(e), failureSeverityFromError(e));
   }
-}
-
-/**
- * `key|itype|slug` for every current score standing at its slug's live rubric.
- *
- * Matching on `prompt_version` is what makes an edited perspective re-score: the
- * old rows stay current under the old hash and simply stop matching.
- */
-function currentScoreLabels(
-  db: Db,
-  promptVersions: ReadonlyMap<string, string>,
-  modelUsed: string | null,
-): Set<string> {
-  const stmt = db.prepare(
-    'SELECT image_key, image_type FROM image_scores ' +
-      'WHERE perspective_slug = ? AND prompt_version = ? AND is_current = 1' +
-      (modelUsed === null ? '' : ' AND model_used = ?'),
-  );
-  const labels = new Set<string>();
-  for (const [slug, version] of promptVersions) {
-    const params = modelUsed === null ? [slug, version] : [slug, version, modelUsed];
-    const rows = stmt.all(...(params as never[])) as { image_key: string; image_type: string }[];
-    for (const r of rows) labels.add(`${r.image_key}|${r.image_type}|${slug}`);
-  }
-  return labels;
 }
 
 /** Logged when a `batch_analyze` resumes onto a score selection that moved. */
@@ -351,37 +304,16 @@ export async function runScorePass(
     `${key}|${itype}|${slug}`;
   let pending = workTriples.filter(([k, t, s]) => !processedTriplets.has(tripletLabel(k, t, s)));
 
-  const promptVersions = new Map<string, string>();
-  for (const slug of slugs) {
-    const row = getPerspectiveBySlug(db, slug);
-    if (row) promptVersions.set(slug, computePromptVersion(row));
+  const beforeFilter = pending.length;
+  pending = filterTriplesWithScoreWork(db, metadata, pending);
+  const skippedByDb = beforeFilter - pending.length;
+  if (skippedByDb && !force) {
+    log('info', `Skipped ${skippedByDb} already-scored triplets (DB pre-filter)`);
   }
-
-  // Made from a since-turned cache image: not done, whatever `image_scores` says.
-  const stale = staleScoreLabels(db);
-  const isDone = (done: Set<string>, [k, t, s]: [string, string, string]): boolean =>
-    done.has(tripletLabel(k, t, s)) && !stale.has(`${k}|${s}`);
-
-  // A pre-filter in SQL rather than a skip per triple: on a catalog that is mostly
-  // scored this turns tens of thousands of provider round-trips into none.
-  if (!force && pending.length > 0 && promptVersions.size > 0) {
-    const done = currentScoreLabels(db, promptVersions, null);
-    const before = pending.length;
-    pending = pending.filter((triple) => !isDone(done, triple));
-    const skippedByDb = before - pending.length;
-    if (skippedByDb) {
-      log('info', `Skipped ${skippedByDb} already-scored triplets (DB pre-filter)`);
-    }
-  }
-
-  if (redoUnlessModel !== null && pending.length > 0 && promptVersions.size > 0) {
-    const done = currentScoreLabels(db, promptVersions, redoUnlessModel);
-    const before = pending.length;
-    pending = pending.filter((triple) => !isDone(done, triple));
+  if (skippedByDb && redoUnlessModel !== null) {
     log(
       'info',
-      `model-scoped re-do (redo_unless_model=${redoUnlessModel}): skipped ` +
-        `${before - pending.length} triples already scored by this model; ` +
+      `model-scoped re-do (redo_unless_model=${redoUnlessModel}): skipped ${skippedByDb} triples already scored by this model; ` +
         'force-rescoring the rest',
     );
   }

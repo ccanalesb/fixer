@@ -1,23 +1,26 @@
 /**
  * Which catalog keys would actually be sent to kimi in a describe or score job — the
- * in-job cull step and the autopilot's scoped cull job use the same pre-filters.
+ * in-job cull step and the autopilot's scoped cull job use the same pre-filters as
+ * `runDescribePass` / `runScorePass`.
  */
 import type { Db } from '../../db/connection.js';
 import { getPerspectiveBySlug } from '../../db/library/scores.js';
-import { isDescriptionStale, staleDescriptionKeys, staleScoreLabels } from '../../db/library/vision-stale.js';
+import { staleDescriptionKeys, staleScoreLabels } from '../../db/library/vision-stale.js';
 import { computePromptVersion } from '../../vision/scoring-service.js';
 import { resolveScoreSlugs } from './score.js';
 
-/** Keys from `selection` that `runDescribePass` would still describe. */
-export function selectKeysWithDescribeWork(
+const pairLabel = (key: string, itype: string): string => `${key}|${itype}`;
+const tripletLabel = (key: string, itype: string, slug: string): string => `${key}|${itype}|${slug}`;
+
+/** Pairs from `selection` that `runDescribePass` would still describe. */
+export function filterPairsWithDescribeWork(
   db: Db,
   metadata: Record<string, unknown>,
   selection: readonly (readonly [string, string])[],
-): string[] {
+): (readonly [string, string])[] {
   const force = Boolean(metadata['force']);
   const redoUnlessModel = String(metadata['redo_unless_model'] ?? '').trim() || null;
   const backfillVisualTags = Boolean(metadata['backfill_visual_tags']);
-  const pairLabel = (key: string, itype: string): string => `${key}|${itype}`;
 
   let pending = [...selection];
   const stale = staleDescriptionKeys(db);
@@ -39,10 +42,20 @@ export function selectKeysWithDescribeWork(
     pending = pending.filter(([k, t]) => !doneByTarget.has(pairLabel(k, t)) || stale.has(k));
   }
 
-  return [...new Set(pending.map(([k]) => k))];
+  return pending;
 }
 
-function currentScoreLabels(
+/** Keys from `selection` that `runDescribePass` would still describe. */
+export function selectKeysWithDescribeWork(
+  db: Db,
+  metadata: Record<string, unknown>,
+  selection: readonly (readonly [string, string])[],
+): string[] {
+  return [...new Set(filterPairsWithDescribeWork(db, metadata, selection).map(([k]) => k))];
+}
+
+/** Every `key|itype|slug` with a current score at the live rubric (optional model filter). */
+export function currentScoreLabels(
   db: Db,
   promptVersions: ReadonlyMap<string, string>,
   modelUsed: string | null,
@@ -56,34 +69,35 @@ function currentScoreLabels(
   for (const [slug, version] of promptVersions) {
     const params = modelUsed === null ? [slug, version] : [slug, version, modelUsed];
     const rows = stmt.all(...(params as never[])) as { image_key: string; image_type: string }[];
-    for (const r of rows) labels.add(`${r.image_key}|${r.image_type}|${slug}`);
+    for (const r of rows) labels.add(tripletLabel(r.image_key, r.image_type, slug));
   }
   return labels;
 }
 
-/** Keys from `selection` that `runScorePass` would still score (any perspective). */
-export function selectKeysWithScoreWork(
-  db: Db,
-  metadata: Record<string, unknown>,
-  selection: readonly (readonly [string, string])[],
-): string[] {
-  const redoUnlessModel = String(metadata['redo_unless_model'] ?? '').trim() || null;
-  const force = Boolean(metadata['force']) || redoUnlessModel !== null;
-  const slugs = resolveScoreSlugs(db, metadata);
-  const workTriples: [string, string, string][] = selection.flatMap(([key, itype]) =>
-    slugs.map((slug): [string, string, string] => [key, itype, slug]),
-  );
-  const tripletLabel = (key: string, itype: string, slug: string): string => `${key}|${itype}|${slug}`;
-  let pending = workTriples;
-
+function scorePromptVersions(db: Db, slugs: readonly string[]): Map<string, string> {
   const promptVersions = new Map<string, string>();
   for (const slug of slugs) {
     const row = getPerspectiveBySlug(db, slug);
     if (row) promptVersions.set(slug, computePromptVersion(row));
   }
+  return promptVersions;
+}
+
+/** Triples from `workTriples` that `runScorePass` would still score. */
+export function filterTriplesWithScoreWork(
+  db: Db,
+  metadata: Record<string, unknown>,
+  workTriples: readonly (readonly [string, string, string])[],
+): [string, string, string][] {
+  const redoUnlessModel = String(metadata['redo_unless_model'] ?? '').trim() || null;
+  const force = Boolean(metadata['force']) || redoUnlessModel !== null;
+  const slugs = resolveScoreSlugs(db, metadata);
+  let pending = [...workTriples];
+
+  const promptVersions = scorePromptVersions(db, slugs);
   const stale = staleScoreLabels(db);
-  const isDone = (done: Set<string>, [k, t, s]: [string, string, string]): boolean =>
-    done.has(tripletLabel(k, t, s)) && !stale.has(`${k}|${s}`);
+  const isDone = (done: Set<string>, triple: readonly [string, string, string]): boolean =>
+    done.has(tripletLabel(triple[0], triple[1], triple[2])) && !stale.has(`${triple[0]}|${triple[2]}`);
 
   if (!force && pending.length > 0 && promptVersions.size > 0) {
     const done = currentScoreLabels(db, promptVersions, null);
@@ -94,5 +108,18 @@ export function selectKeysWithScoreWork(
     pending = pending.filter((triple) => !isDone(done, triple));
   }
 
-  return [...new Set(pending.map(([k]) => k))];
+  return pending.map((t): [string, string, string] => [t[0], t[1], t[2]]);
+}
+
+/** Keys from `selection` that `runScorePass` would still score (any perspective). */
+export function selectKeysWithScoreWork(
+  db: Db,
+  metadata: Record<string, unknown>,
+  selection: readonly (readonly [string, string])[],
+): string[] {
+  const slugs = resolveScoreSlugs(db, metadata);
+  const workTriples: [string, string, string][] = selection.flatMap(([key, itype]) =>
+    slugs.map((slug): [string, string, string] => [key, itype, slug]),
+  );
+  return [...new Set(filterTriplesWithScoreWork(db, metadata, workTriples).map(([k]) => k))];
 }

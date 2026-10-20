@@ -11,6 +11,11 @@ import {
   type PassContext,
 } from './common.js';
 import { runCullPass, type BatchCullResult } from './cull-pass.js';
+
+export type JobResultCullSummary = Omit<
+  BatchCullResult,
+  'total' | 'durations_s' | 'laya_seconds' | 'stage_versions'
+>;
 import { runFrameSubstanceDetection, type FrameSubstanceRunResult } from './frame-substance.js';
 
 export const CULL_STEP_LABEL = 'Culling';
@@ -91,7 +96,8 @@ export async function runCullStageBeforeDescribeAndScore(
   }
   frameSubstanceS = seconds(tFs);
 
-  const workPairs = selection.filter(([k]) => workKeys.includes(k));
+  const workKeySetForPairs = new Set(workKeys);
+  const workPairs = selection.filter(([k]) => workKeySetForPairs.has(k));
   const workKeySet = new Set(workPairs.map(([k]) => k));
   let candidates = filterVoidSubstanceFromScoringSelection(db, workPairs);
   const voidBeforeCull = workKeySet.size - new Set(candidates.map(([k]) => k)).size;
@@ -125,24 +131,6 @@ export async function runCullStageBeforeDescribeAndScore(
   }
   frameSubstanceS += seconds(tRecheck);
 
-  const unknownKeys = candidateKeys.filter((k) => {
-    const row = db
-      .prepare('SELECT verdict FROM image_frame_substance WHERE image_key = ?')
-      .get(k) as { verdict: string } | undefined;
-    return row === undefined || row.verdict === 'unknown';
-  });
-  if (unknownKeys.length > 0) {
-    try {
-      await runFrameSubstanceDetection(db, {
-        imageKeys: unknownKeys,
-        staleOnly: false,
-        isCancelled: () => runner.isCancelled(jobId),
-      });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      runner.log(jobId, 'warning', `${prefix}[frame_substance] unknown recheck status=failed ${message}`);
-    }
-  }
   const afterVoidFinal = filterVoidSubstanceFromScoringSelection(db, candidates);
   const voidHeldFinal =
     voidBeforeCull +
@@ -173,5 +161,42 @@ export async function runCullStageBeforeDescribeAndScore(
     heldBack,
     cullStep,
     durations: { frame_substance: frameSubstanceS, cull: cullStep.durations_s.cull },
+  };
+}
+
+/** `cull`, `held_back`, and `durations_s` for describe/score/analyze job results. */
+export function cullStageJobResultFields(
+  stage: CullStageOutcome,
+  passSeconds: { describe: number; score: number },
+  tJobStart: number,
+): {
+  cull: JobResultCullSummary;
+  held_back: CullHeldBackCounts;
+  durations_s: { frame_substance: number; cull: number; describe: number; score: number; total: number };
+} {
+  const step = stage.cullStep;
+  return {
+    cull: {
+      culled: step.culled,
+      redecided: step.redecided,
+      failed: step.failed,
+      cut_by_culling_recipe: step.cut_by_culling_recipe,
+      cut_by_score_forecast: step.cut_by_score_forecast,
+      pending: step.pending,
+      sent: step.sent,
+      sent_by_hand_passed: step.sent_by_hand_passed,
+      score_forecast: step.score_forecast,
+      pipeline_setting_version: step.pipeline_setting_version,
+      seconds_per_photo: step.seconds_per_photo,
+      laya_started: step.laya_started,
+    },
+    held_back: stage.heldBack,
+    durations_s: {
+      frame_substance: stage.durations.frame_substance,
+      cull: stage.durations.cull,
+      describe: passSeconds.describe,
+      score: passSeconds.score,
+      total: Math.round((performance.now() - tJobStart) / 10) / 100,
+    },
   };
 }

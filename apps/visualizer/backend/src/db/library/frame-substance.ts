@@ -9,7 +9,7 @@
 import type { Db } from '../connection.js';
 import { prepareCached } from '../prepare-cached.js';
 import { FLAGGED_VERDICTS } from './frame-substance-sql.js';
-import { getVisionCachedImage } from './vision-cache.js';
+import { getVisionCachedImage, VISION_CACHE_OVERSIZED_SENTINEL } from './vision-cache.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 
 export type FrameSubstanceVerdict = 'void' | 'illegible' | 'ok' | 'unknown';
@@ -181,9 +181,20 @@ export function isFrameSubstanceVerdictStale(
   const verdict =
     opts.verdictRow !== undefined ? opts.verdictRow : getFrameSubstanceVerdict(db, imageKey);
   if (verdict === null || verdict === undefined) return false;
+  const cache = getVisionCachedImage(db, imageKey);
+  if (verdict.verdict === 'unknown') {
+    const cp = (cache?.compressed_path ?? '').trim();
+    const hasUsableCache =
+      cp !== '' && cp !== VISION_CACHE_OVERSIZED_SENTINEL && cache?.compressed_at != null;
+    if (
+      hasUsableCache &&
+      (verdict.unknown_reason === 'no_cache_row' || verdict.unknown_reason === 'cache_file_missing')
+    ) {
+      return true;
+    }
+  }
   const judgedAt = verdict.judged_at;
   if (!judgedAt) return false;
-  const cache = getVisionCachedImage(db, imageKey);
   if (!cache || !cache.compressed_at) return false;
   return String(cache.compressed_at) > String(judgedAt);
 }
@@ -345,7 +356,11 @@ export function listCatalogImagesForFrameSubstance(
     const conditions: string[] = [];
     if (keys !== null) conditions.push(`i.key IN (${keys.map(() => '?').join(',')})`);
     if (opts.staleOnly) {
-      conditions.push('(fs.image_key IS NULL OR vc.compressed_at > fs.judged_at)');
+      conditions.push(
+        `(fs.image_key IS NULL OR vc.compressed_at > fs.judged_at OR (` +
+          `fs.verdict = 'unknown' AND vc.compressed_path IS NOT NULL AND TRIM(vc.compressed_path) != '' ` +
+          `AND vc.compressed_path != ? AND fs.unknown_reason IN ('no_cache_row', 'cache_file_missing')))`,
+      );
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     return db
@@ -359,7 +374,10 @@ export function listCatalogImagesForFrameSubstance(
         ORDER BY i.key ASC
         `,
       )
-      .all(...(keys ?? [])) as { image_key: string; compressed_path: string | null }[];
+      .all(...(keys ?? []), ...(opts.staleOnly ? [VISION_CACHE_OVERSIZED_SENTINEL] : [])) as {
+        image_key: string;
+        compressed_path: string | null;
+      }[];
   };
 
   if (opts.imageKeys === null || opts.imageKeys === undefined) return select(null);

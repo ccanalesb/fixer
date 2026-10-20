@@ -73,7 +73,7 @@ Paths are relative to `apps/visualizer/backend/src/`.
 | `utils/responses.ts` | Shared JSON response helpers |
 | `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check`, `cull-import` |
 | `laya/` | Laya base and Laya new (the cull's local models) through ONNX in a worker thread; files from `scripts/laya/export_onnx.py` in the git-ignored `models/`. See ADR-0020 |
-| `cull/` | The cull's decisions (`decide.ts`, pure), stages and their versions (`stages.ts`), one photo stored and decided (`persist.ts`), the research-run import. Storage in `db/library/cull-*.ts`; the job in `jobs/handlers/cull.ts` |
+| `cull/` | The cull's decisions (`decide.ts`, pure), stages and their versions (`stages.ts`), one photo stored and decided (`persist.ts`), the research-run import. Storage in `db/library/cull-*.ts`; jobs in `jobs/handlers/cull.ts` (standalone cull), `cull-pass.ts` (shared pass), `cull-stage.ts` (in-job step before kimi), `redecide.ts` (stored-answer re-decide), `work-keys.ts` (describe/score work selection) |
 | `lightroom/` | `.lrcat` reader, keyword writer and the catalog sync driver |
 | `imaging/`, `vision/`, `providers/`, `analyzer/`, `identity/`, `clip/` | The library layer: RAW decode, CLIP, phash, vision calls, scoring, identity |
 

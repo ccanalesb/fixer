@@ -5,24 +5,31 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vi } from 'vitest';
-import type { LayaAnswerWant } from '../../src/laya/sessions.js';
 import { openLibraryDb } from '../../src/db/connection.js';
 import { seedCullingDefaults } from '../../src/db/library/cull-recipes.js';
-import { fakeLayaRuntimeModule, writeFakeLayaModels } from './fake-laya.js';
+import {
+  fakeLayaRuntimeModule,
+  fakeLayaState,
+  writeFakeLayaModels,
+  type FakeLayaState,
+} from './fake-laya.js';
 
-const kimiJobLaya = vi.hoisted(() => ({
-  scripts: new Map<string, { levels: [number, number, number, number]; p8: number }>(),
-  calls: [] as { file: string; want: LayaAnswerWant | undefined }[],
-  starts: 0,
-  closed: 0,
-  forecastOn: true,
-  failOn: null as null | string,
-  dieOn: null as null | string,
-  broken: false,
-  startError: null as null | Error,
-  cancelAfter: null as null | (() => void),
-  sequence: [] as string[],
-}));
+/** Vitest hoisted init cannot call `fakeLayaState()`; shape must match — reset uses `fakeLayaState()`. */
+const kimiJobLaya = vi.hoisted(
+  (): FakeLayaState => ({
+    scripts: new Map(),
+    calls: [],
+    starts: 0,
+    closed: 0,
+    forecastOn: true,
+    failOn: null,
+    dieOn: null,
+    broken: false,
+    startError: null,
+    cancelAfter: null,
+    sequence: [],
+  }),
+);
 
 vi.mock('../../src/laya/runtime.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/laya/runtime.js')>();
@@ -30,17 +37,7 @@ vi.mock('../../src/laya/runtime.js', async (importOriginal) => {
 });
 
 export function resetKimiJobLaya(): void {
-  kimiJobLaya.scripts.clear();
-  kimiJobLaya.calls.length = 0;
-  kimiJobLaya.sequence.length = 0;
-  kimiJobLaya.starts = 0;
-  kimiJobLaya.closed = 0;
-  kimiJobLaya.forecastOn = true;
-  kimiJobLaya.failOn = null;
-  kimiJobLaya.dieOn = null;
-  kimiJobLaya.broken = false;
-  kimiJobLaya.startError = null;
-  kimiJobLaya.cancelAfter = null;
+  Object.assign(kimiJobLaya, fakeLayaState());
 }
 
 export function prepareKimiJobCull(libraryDbPath: string, tempDir: string): string {

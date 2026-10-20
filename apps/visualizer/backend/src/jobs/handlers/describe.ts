@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import type { Db } from '../../db/connection.js';
 import { getImage } from '../../db/library/catalog.js';
 import { getImageDescription } from '../../db/library/descriptions.js';
-import { isDescriptionStale, staleDescriptionKeys } from '../../db/library/vision-stale.js';
+import { isDescriptionStale } from '../../db/library/vision-stale.js';
 import { VIDEO_EXTENSIONS } from '../../imaging/raw-decode.js';
 import type { CancelCheck } from '../../providers/retry.js';
 import { resolveFilepath } from '../../utils/path-resolve.js';
@@ -46,7 +46,8 @@ import {
   withLibraryDb,
   type PassContext,
 } from './common.js';
-import { runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
+import { cullStageJobResultFields, runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
+import { filterPairsWithDescribeWork } from './work-keys.js';
 import { selectKeysWithDescribeWork } from './work-keys.js';
 import type { BatchCullResult } from './cull-pass.js';
 import { performance } from 'node:perf_hooks';
@@ -263,28 +264,7 @@ export async function handleBatchDescribe(
       runner.clearCheckpoint(jobId);
       runner.completeJob(jobId, {
         ...summary,
-        cull: {
-          culled: stage.cullStep.culled,
-          redecided: stage.cullStep.redecided,
-          failed: stage.cullStep.failed,
-          cut_by_culling_recipe: stage.cullStep.cut_by_culling_recipe,
-          cut_by_score_forecast: stage.cullStep.cut_by_score_forecast,
-          pending: stage.cullStep.pending,
-          sent: stage.cullStep.sent,
-          sent_by_hand_passed: stage.cullStep.sent_by_hand_passed,
-          score_forecast: stage.cullStep.score_forecast,
-          pipeline_setting_version: stage.cullStep.pipeline_setting_version,
-          seconds_per_photo: stage.cullStep.seconds_per_photo,
-          laya_started: stage.cullStep.laya_started,
-        },
-        held_back: stage.heldBack,
-        durations_s: {
-          frame_substance: stage.durations.frame_substance,
-          cull: stage.durations.cull,
-          describe: describeS,
-          score: 0,
-          total: Math.round((performance.now() - tJob) / 10) / 100,
-        },
+        ...cullStageJobResultFields(stage, { describe: describeS, score: 0 }, tJob),
       });
     });
   } catch (e) {
@@ -399,36 +379,16 @@ export async function runDescribePass(
   const pairLabel = (key: string, itype: string): string => `${key}|${itype}`;
   let pending = selection.filter(([k, t]) => !processedPairs.has(pairLabel(k, t)));
 
-  // Made from a since-turned cache image: not done, whatever `image_descriptions` says.
-  const stale = staleDescriptionKeys(db);
-
-  // A pre-filter in SQL rather than a skip per image: on a catalog that is mostly
-  // described this turns 40,000 provider round-trips into none.
-  if (!backfillVisualTags && !force && redoUnlessModel === null && pending.length > 0) {
-    const described = new Set(
-      (db.prepare('SELECT image_key FROM image_descriptions').all() as { image_key: string }[]).map(
-        (r) => r.image_key,
-      ),
-    );
-    const before = pending.length;
-    pending = pending.filter(([k]) => !described.has(k) || stale.has(k));
-    const skippedByDb = before - pending.length;
-    if (skippedByDb) {
-      log('info', `Skipped ${skippedByDb} already-described images (DB pre-filter)`);
-    }
+  const beforeFilter = pending.length;
+  pending = filterPairsWithDescribeWork(db, metadata, pending);
+  const skippedByDb = beforeFilter - pending.length;
+  if (skippedByDb && !backfillVisualTags && !force && redoUnlessModel === null) {
+    log('info', `Skipped ${skippedByDb} already-described images (DB pre-filter)`);
   }
-
-  if (redoUnlessModel !== null && pending.length > 0) {
-    const rows = db
-      .prepare('SELECT image_key, image_type FROM image_descriptions WHERE model_used = ?')
-      .all(redoUnlessModel) as { image_key: string; image_type: string }[];
-    const doneByTarget = new Set(rows.map((r) => pairLabel(r.image_key, r.image_type)));
-    const before = pending.length;
-    pending = pending.filter(([k, t]) => !doneByTarget.has(pairLabel(k, t)) || stale.has(k));
+  if (skippedByDb && redoUnlessModel !== null) {
     log(
       'info',
-      `model-scoped re-do (redo_unless_model=${redoUnlessModel}): skipped ` +
-        `${before - pending.length} images already described by this model; ` +
+      `model-scoped re-do (redo_unless_model=${redoUnlessModel}): skipped ${skippedByDb} images already described by this model; ` +
         'force-regenerating the rest',
     );
   }

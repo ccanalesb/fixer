@@ -12,7 +12,7 @@ import {
   resolveLibraryDbOrFail,
   withLibraryDb,
 } from './common.js';
-import { runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
+import { cullStageJobResultFields, runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
 import type { BatchCullResult } from './cull-pass.js';
 import { runDescribePass, selectDescribeCandidates } from './describe.js';
 import { mergeSkipReasonCounts } from './path-diagnostics.js';
@@ -114,28 +114,7 @@ export async function handleBatchAnalyze(
           describe.skipReasonCounts,
           scoreSummary.skip_reason_counts,
         ),
-        cull: {
-          culled: stage.cullStep.culled,
-          redecided: stage.cullStep.redecided,
-          failed: stage.cullStep.failed,
-          cut_by_culling_recipe: stage.cullStep.cut_by_culling_recipe,
-          cut_by_score_forecast: stage.cullStep.cut_by_score_forecast,
-          pending: stage.cullStep.pending,
-          sent: stage.cullStep.sent,
-          sent_by_hand_passed: stage.cullStep.sent_by_hand_passed,
-          score_forecast: stage.cullStep.score_forecast,
-          pipeline_setting_version: stage.cullStep.pipeline_setting_version,
-          seconds_per_photo: stage.cullStep.seconds_per_photo,
-          laya_started: stage.cullStep.laya_started,
-        },
-        held_back: stage.heldBack,
-        durations_s: {
-          frame_substance: stage.durations.frame_substance,
-          cull: stage.durations.cull,
-          describe: describeS,
-          score: scoreS,
-          total: Math.round((performance.now() - tJob) / 10) / 100,
-        },
+        ...cullStageJobResultFields(stage, { describe: describeS, score: scoreS }, tJob),
       };
       runner.clearCheckpoint(jobId);
       runner.completeJob(jobId, result);

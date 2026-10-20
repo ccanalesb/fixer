@@ -394,6 +394,20 @@ describe('G3 void without cache', () => {
     expect((job.result as JobCullResult).held_back?.void).toBe(1);
     expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
   });
+
+  it('unknown with no image is not re-detected on a second describe job', async () => {
+    fx.addImage({ key: 'noghost', filepath: '/missing/noghost.NEF', date_taken: '2024-01-01' });
+    await runJob('batch_describe', { max_workers: 1 });
+    const runAfterFirst = fx.query<{ run_id: number }>(
+      'SELECT run_id FROM image_frame_substance WHERE image_key = ?',
+      'noghost',
+    )[0]?.run_id;
+    expect(runAfterFirst).toBeTruthy();
+    await runJob('batch_describe', { max_workers: 1 });
+    expect(fx.query('SELECT run_id FROM image_frame_substance WHERE image_key = ?', 'noghost')[0]?.run_id).toBe(
+      runAfterFirst,
+    );
+  });
 });
 
 describe('job result shape', () => {
