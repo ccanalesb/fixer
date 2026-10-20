@@ -366,10 +366,19 @@ export function writeStarsToCatalog(
   if (!imageId) return 'image_not_found';
   return conn.transaction(() => {
     const result = updateRatingIfUnset(conn, imageKey, rating);
-    if (result !== 'updated') return result;
-    hooks.afterRatingBeforeKeyword?.();
-    addKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
-    return 'updated' as const;
+    if (result === 'updated') {
+      hooks.afterRatingBeforeKeyword?.();
+      addKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+      return 'updated' as const;
+    }
+    if (result === 'skipped') {
+      const live = readPickRating(conn, imageKey);
+      if (live?.rating === rating) {
+        addKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+        return 'updated' as const;
+      }
+    }
+    return result;
   })();
 }
 

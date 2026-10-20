@@ -59,7 +59,17 @@ export function planStarsPhoto(
   }
 
   if (live && conn && rating !== null) {
-    const synced = syncWrittenFromLiveCatalog(conn, 'stars', imageKey, rating, false, live, starsVersionId);
+    const synced = syncWrittenFromLiveCatalog(
+      conn,
+      'stars',
+      imageKey,
+      rating,
+      false,
+      live,
+      starsVersionId,
+      null,
+      row?.before_rating ?? null,
+    );
     if (synced && row?.status !== 'written') return synced;
   }
 
@@ -77,22 +87,27 @@ export function planStarsPhoto(
     };
   }
 
-  if (live.rating !== null) {
-    return {
-      image_key: imageKey,
-      kind: 'stars',
-      status: 'skipped',
-      before_pick: null,
-      before_rating: live.rating,
-      written_pick: null,
-      written_rating: row?.written_rating ?? null,
-      stars_recipe_version_id: row?.stars_recipe_version_id ?? starsVersionId,
-      written_at: row?.written_at ?? null,
-    };
-  }
-
   if (row?.status === 'written' && liveMatchesWritten('stars', live, row) && row.written_rating === rating) {
     return null;
+  }
+
+  if (live.rating !== null) {
+    if (conn && rating !== null && catalogHasAppStars(conn, imageKey, rating)) {
+      return adoptWrittenStarsState(imageKey, rating, starsVersionId, row);
+    }
+    if (rating !== null && live.rating !== rating) {
+      return {
+        image_key: imageKey,
+        kind: 'stars',
+        status: 'skipped',
+        before_pick: null,
+        before_rating: live.rating,
+        written_pick: null,
+        written_rating: row?.written_rating ?? null,
+        stars_recipe_version_id: row?.stars_recipe_version_id ?? starsVersionId,
+        written_at: row?.written_at ?? null,
+      };
+    }
   }
 
   if (!canWrite || !conn || trigger === 'switch_on') {
@@ -109,6 +124,7 @@ export function planStarsPhoto(
     };
   }
 
+  const beforeRating = live.rating;
   const result = writeStarsToCatalog(conn, imageKey, rating);
   if (result === 'image_not_found') return notFoundState(imageKey, 'stars', row, tally);
   if (result !== 'updated') {
@@ -133,7 +149,7 @@ export function planStarsPhoto(
     kind: 'stars',
     status: 'written',
     before_pick: null,
-    before_rating: null,
+    before_rating: beforeRating,
     written_pick: null,
     written_rating: rating,
     stars_recipe_version_id: starsVersionId,

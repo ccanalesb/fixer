@@ -122,6 +122,7 @@ export function syncWrittenFromLiveCatalog(
   live: LivePickRating,
   starsRecipeVersionId: number | null = null,
   beforePick: number | null = null,
+  beforeRating: number | null = null,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
   if (kind === 'stars' && desiredRating !== null && live.rating === desiredRating) {
     if (!imageHasKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD)) return null;
@@ -130,7 +131,7 @@ export function syncWrittenFromLiveCatalog(
       kind: 'stars',
       status: 'written',
       before_pick: null,
-      before_rating: null,
+      before_rating: beforeRating,
       written_pick: null,
       written_rating: desiredRating,
       stars_recipe_version_id: starsRecipeVersionId,

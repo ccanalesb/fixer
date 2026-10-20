@@ -11,12 +11,19 @@ import { createApp } from '../src/app.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
+import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
+import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
+import { resolveCurrentStages } from '../src/cull/stages.js';
+import { markEligiblePending } from '../src/lightroom/writeback.js';
 import {
   AUTO_REJECT_KEYWORD,
+  AUTO_STARS_KEYWORD,
   connectCatalog,
+  imageHasKeywordByKey,
   writeRejectToCatalog,
+  writeStarsToCatalog,
 } from '../src/lightroom/writer.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
@@ -28,6 +35,50 @@ let dir: string;
 let cfgPath: string;
 let lrcatPath: string;
 const imageKey = '2024-06-01_cut-photo';
+const starsKey = '2024-06-01_star-photo';
+const MODEL_IDS = { base: 'test-laya-base', new: 'test-laya-new' };
+const STAR_DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
+
+function levelPick(levelSet: '7' | '10', dim: string, levelIndex: number): Record<string, number[]> {
+  const n = levelSet === '7' ? 7 : 10;
+  const v = Array<number>(n).fill(0);
+  v[Math.min(levelIndex, n - 1)] = 1;
+  return { [`${levelSet}|${dim}`]: v };
+}
+
+function seedStarsEligible(db: ReturnType<typeof openLibraryDb>, imageKey: string, strongDimCount: number): void {
+  const pipe = getCurrentPipelineSetting(db);
+  const stages = resolveCurrentStages(db, pipe.config, MODEL_IDS);
+  const recipe7 = stages.find((s) => s.stageKey === 'culling_recipe:recipe-7h47:7');
+  const recipe10 = stages.find((s) => s.stageKey === 'culling_recipe:recipe-7h47:10');
+  if (!recipe7 || !recipe10) throw new Error('recipe stages missing');
+  const seven: Record<string, number[]> = {};
+  const ten: Record<string, number[]> = {};
+  STAR_DIMS.forEach((dim, di) => {
+    Object.assign(seven, levelPick('7', dim, di < strongDimCount ? 5 : 0));
+    Object.assign(ten, levelPick('10', dim, di < strongDimCount ? 7 : 0));
+  });
+  upsertStageAnswer(db, {
+    imageKey,
+    stageVersionId: recipe7.versionId,
+    answers: seven,
+    verdict: 'cut',
+    decision: {},
+    pipelineSettingVersion: pipe.version,
+    source: 'job',
+    runId: 1,
+  });
+  upsertStageAnswer(db, {
+    imageKey,
+    stageVersionId: recipe10.versionId,
+    answers: ten,
+    verdict: 'cut',
+    decision: {},
+    pipelineSettingVersion: pipe.version,
+    source: 'job',
+    runId: 1,
+  });
+}
 
 beforeEach(() => {
   fx = new LibraryFixture().activate();
@@ -131,5 +182,100 @@ describe('POST write-pending state', () => {
       .get() as { pick: number };
     cat.close();
     expect(Number(live.pick)).toBe(0);
+  });
+});
+
+describe('POST write-pending stars state', () => {
+  beforeEach(() => {
+    try {
+      unlinkSync(lrcatPath);
+    } catch {
+      /* fresh */
+    }
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'star-photo', pick: 0, rating: null }]);
+    const db = openLibraryDb(fx.dbPath);
+    seedCullingDefaults(db);
+    patchLrWritebackSettings(db, { write_stars: true });
+    upsertCullVerdict(db, {
+      imageKey: starsKey,
+      verdict: 'sent',
+      cutBy: null,
+      cutByStageKey: null,
+      sentByHand: false,
+      pendingStages: [],
+      pendingReason: '',
+      scoreForecastOff: false,
+      scoreForecastP8: null,
+      pipelineSettingVersion: getCurrentPipelineSetting(db).version,
+      stageVersionIds: [],
+      runId: null,
+    });
+    seedStarsEligible(db, starsKey, 1);
+    markEligiblePending(db, 'stars');
+    db.close();
+  });
+
+  it('sets written when catalog already has stars with skipped state', async () => {
+    const conn = connectCatalog(lrcatPath);
+    writeStarsToCatalog(conn, starsKey, 1);
+    conn.close();
+    const db = openLibraryDb(fx.dbPath);
+    upsertWritebackState(db, {
+      image_key: starsKey,
+      kind: 'stars',
+      status: 'skipped',
+      before_pick: null,
+      before_rating: null,
+      written_pick: null,
+      written_rating: null,
+      stars_recipe_version_id: null,
+      written_at: null,
+    });
+    db.close();
+
+    const res = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    const state = fx.query<{ status: string }>(
+      "SELECT status FROM lr_writeback_state WHERE image_key = ? AND kind = 'stars'",
+      starsKey,
+    )[0];
+    expect(state?.status).toBe('written');
+
+    const detail = await app.request(`/api/cull/lightroom-writeback/photos/${starsKey}`);
+    const body = (await detail.json()) as { rating: { app_wrote: boolean } };
+    expect(body.rating.app_wrote).toBe(true);
+  });
+
+  it('undo restores null rating and removes keyword', async () => {
+    const res = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    const undo = await app.request(`/api/cull/lightroom-writeback/photos/${starsKey}/undo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'stars' }),
+    });
+    expect(undo.status).toBe(200);
+
+    const conn = connectCatalog(lrcatPath);
+    const live = conn
+      .prepare(
+        `SELECT ai.rating FROM Adobe_images ai JOIN AgLibraryFile f ON f.id_local = ai.rootFile WHERE f.baseName = 'star-photo'`,
+      )
+      .get() as { rating: number | null };
+    expect(live.rating).toBeNull();
+    expect(imageHasKeywordByKey(conn, starsKey, AUTO_STARS_KEYWORD)).toBe(false);
+    conn.close();
+  });
+
+  it('second write-pending does not update catalog again (ruling 9)', async () => {
+    const first = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
+    const firstBody = (await first.json()) as { stars: { catalog_updated?: number } };
+    expect(firstBody.stars.catalog_updated).toBeGreaterThan(0);
+
+    const second = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
+    const secondBody = (await second.json()) as { stars: { catalog_updated?: number } };
+    expect(secondBody.stars.catalog_updated ?? 0).toBe(0);
   });
 });
