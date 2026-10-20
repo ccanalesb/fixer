@@ -92,6 +92,7 @@ describe('run', () => {
 
   it('has a handler for every declared command', () => {
     expect(COMMANDS.map((c) => c.name).sort()).toEqual([
+      'cull-check',
       'enrich-catalog',
       'export',
       'init',

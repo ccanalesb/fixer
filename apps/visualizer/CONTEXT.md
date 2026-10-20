@@ -64,7 +64,8 @@ Paths are relative to `apps/visualizer/backend/src/`.
 | `api/schemas/` | zod request/response models, one module per group |
 | `websocket/` | SocketIO event handlers |
 | `utils/responses.ts` | Shared JSON response helpers |
-| `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog` |
+| `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check` |
+| `laya/` | Laya base and Laya new (the cull's local models) through ONNX in a worker thread; files from `scripts/laya/export_onnx.py` in the git-ignored `models/`. See ADR-0020 |
 | `lightroom/` | `.lrcat` reader, keyword writer and the catalog sync driver |
 | `imaging/`, `vision/`, `providers/`, `analyzer/`, `identity/`, `clip/` | The library layer: RAW decode, CLIP, phash, vision calls, scoring, identity |
 

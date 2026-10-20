@@ -10,7 +10,7 @@ Index a Lightroom catalog into a local SQLite database, generate AI descriptions
 
 ## Installation
 
-Node 24 or newer. There is no Python step; the backend and CLI are TypeScript.
+Node 24 or newer. The backend and CLI are TypeScript; nothing runs Python at run time.
 
 ```bash
 cd apps/visualizer/backend && npm install && npm link && cd ../../..
@@ -19,6 +19,22 @@ cd apps/visualizer/frontend && npm install --legacy-peer-deps && cd ../../..
 
 `npm link` puts `lightroom-tagger` on your PATH. Without it, run any of the
 commands below as `npm run cli -- <command>` from `apps/visualizer/backend`.
+
+### Cull models (Laya)
+
+The cull before scoring runs Laya base and Laya new locally through ONNX
+([ADR-0020](docs/adr/0020-laya-in-node-through-onnx.md)). Their files are
+converted on your machine once, with [uv](https://docs.astral.sh/uv/), into the
+git-ignored `models/` (about 1.25 GB):
+
+```bash
+uv run scripts/laya/export_onnx.py --laya-new /path/to/laya-new-checkpoint
+lightroom-tagger cull-check
+```
+
+The script downloads Laya base from Hugging Face at a fixed revision. Without
+`--laya-new` the Score forecast stage stays off. Nothing is uploaded, and no model
+file belongs in git.
 
 ## Quick Start (CLI)
 
@@ -89,6 +105,7 @@ vision_model: "gemma3:27b"
 ollama_host: "http://localhost:11434"
 stack_burst_delta_ms: 2000
 vision_cache_enabled: true
+laya_models_dir: "./models"
 ```
 
 All keys above are fields on `LibraryConfig` in `apps/visualizer/backend/src/config.ts`. Unknown keys in an existing `config.yaml` are ignored with a warning.

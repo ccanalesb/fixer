@@ -6,6 +6,7 @@
 import type { LibraryConfig } from '../config.js';
 import type { FlagSpec, ParsedArgs } from './parse.js';
 import { cmdScan, cmdSync } from './commands/catalog.js';
+import { cmdCullCheck } from './commands/cull.js';
 import { cmdEnrichCatalog } from './commands/enrich.js';
 import { cmdInit } from './commands/init.js';
 import { cmdExport, cmdSearch, cmdStats } from './commands/query.js';
@@ -126,5 +127,11 @@ export const COMMANDS: readonly CliCommand[] = [
       { name: 'cache-only', kind: 'boolean', help: 'Warm vision cache only (always on)' },
     ],
     handler: cmdEnrichCatalog,
+  },
+  {
+    name: 'cull-check',
+    help: 'Check that Laya is set up for the cull: files, load, one test photo',
+    flags: [{ name: 'photo', kind: 'string', help: 'Also answer this photo and print the probabilities' }],
+    handler: cmdCullCheck,
   },
 ];

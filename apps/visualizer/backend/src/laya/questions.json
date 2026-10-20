@@ -1,0 +1,190 @@
+{
+ "base": {
+  "7|immediate-impact": {
+   "type": "score",
+   "instructions": "Evaluates whether the photograph arrests attention instantly—through color, gesture, framing, or tension—so the viewer stops instead of scrolling past.",
+   "criteria": [
+    "empty or accidental frame; nothing to look at",
+    "ordinary snapshot; no color, gesture, or light worth a glance",
+    "something interesting, but buried or competing with clutter",
+    "a visible hook that catches the eye after a beat",
+    "catches the eye quickly with a bold color, gesture, light, or framing",
+    "stops the scroll; the hook lands in the first second",
+    "unforgettable at a glance; a strong hook plus a second element that holds the eye"
+   ]
+  },
+  "7|visual-structure": {
+   "type": "score",
+   "instructions": "Evaluates whether lighting, focus, composition, and intentional construction give the frame order, purposeful chaos, or clarity of hierarchy.",
+   "criteria": [
+    "chaotic and unreadable; out of focus, bad light",
+    "snapshot; subject centered by default, clutter everywhere",
+    "a main subject, but light, focus, or edges fight it",
+    "competent but plain; nothing out of place, nothing designed",
+    "deliberate composition; lines, light, and focus guide the eye",
+    "strong hierarchy across planes; clean edges, light shapes the scene",
+    "flawless construction; a complex scene held in tight order, every element in its place"
+   ]
+  },
+  "7|point-of-tension": {
+   "type": "score",
+   "instructions": "Evaluates whether the image contains visual conflict, a gaze, irony, or an unresolved element that supplies narrative force and resonance.",
+   "criteria": [
+    "empty scene; no people, no conflict, nothing happening",
+    "people or objects present, but nothing between them",
+    "a glance or odd detail hinting at something",
+    "a clear gaze, gesture, or contrast creates mild conflict",
+    "a visible clash or irony between subject and surroundings",
+    "strong tension; a look, gesture, or juxtaposition that demands a second look",
+    "decisive tension; an unresolved moment where conflict, irony, and gaze lock together"
+   ]
+  },
+  "7|connotation": {
+   "type": "score",
+   "instructions": "Evaluates what the image suggests beyond its literal content—whether it evokes feelings such as loneliness, chaos, silence, or rhythm.",
+   "criteria": [
+    "pure record; a document with no feeling",
+    "a trace of mood, generic or easily missed",
+    "some atmosphere, but it does not go anywhere",
+    "a clear mood (quiet, busy, lonely) that colors the scene",
+    "suggests a feeling or idea beyond the literal subject",
+    "strong mood; the feeling is the point of the picture",
+    "profound; layered meaning, a feeling or idea that stays long after looking"
+   ]
+  },
+  "10|immediate-impact": {
+   "type": "score",
+   "instructions": "Evaluates whether the photograph arrests attention instantly—through color, gesture, framing, or tension—so the viewer stops instead of scrolling past.",
+   "criteria": [
+    "empty or accidental frame; nothing to look at",
+    "ordinary snapshot; no color, gesture, or light worth a glance",
+    "a faint point of interest, buried or too small to notice",
+    "something interesting, but you have to search for it",
+    "a visible hook, but muted or competing with clutter",
+    "a clear hook that catches the eye after a beat",
+    "catches the eye quickly with a bold color, gesture, or framing",
+    "stops the scroll; the hook lands in the first second",
+    "striking; a strong hook plus a second element that holds the eye",
+    "unforgettable at a glance; the image grabs and does not let go"
+   ]
+  },
+  "10|visual-structure": {
+   "type": "score",
+   "instructions": "Evaluates whether lighting, focus, composition, and intentional construction give the frame order, purposeful chaos, or clarity of hierarchy.",
+   "criteria": [
+    "chaotic and unreadable; out of focus, bad light",
+    "snapshot; subject centered by default, clutter everywhere",
+    "a subject exists, but light and focus fight it",
+    "a main subject with distracting edges or background",
+    "competent but plain; nothing out of place, nothing designed",
+    "clear subject and decent light; some deliberate placement",
+    "deliberate composition; lines, light, and focus guide the eye",
+    "strong hierarchy across planes; clean edges, light shapes the scene",
+    "a complex scene held in tight order; layers and light all aligned",
+    "flawless construction; order within chaos, every element in its place"
+   ]
+  },
+  "10|point-of-tension": {
+   "type": "score",
+   "instructions": "Evaluates whether the image contains visual conflict, a gaze, irony, or an unresolved element that supplies narrative force and resonance.",
+   "criteria": [
+    "empty scene; no people, no conflict, nothing happening",
+    "people or objects present, but nothing between them",
+    "a minor contrast, barely noticeable",
+    "a glance or odd detail hinting at something",
+    "some tension, but weak or off to the side",
+    "a clear gaze, gesture, or contrast creates mild conflict",
+    "a visible clash or irony between subject and surroundings",
+    "strong tension; a look, gesture, or juxtaposition that demands a second look",
+    "an unresolved moment that leaves you asking what happens next",
+    "decisive tension; conflict, irony, and gaze lock into one unforgettable moment"
+   ]
+  },
+  "10|connotation": {
+   "type": "score",
+   "instructions": "Evaluates what the image suggests beyond its literal content—whether it evokes feelings such as loneliness, chaos, silence, or rhythm.",
+   "criteria": [
+    "pure record; a document with no feeling",
+    "literal scene; reads only as what it shows",
+    "a trace of mood, easily missed",
+    "a generic mood, like any pleasant photo",
+    "some atmosphere, but it does not go anywhere",
+    "a clear mood (quiet, busy, lonely) that colors the scene",
+    "suggests a feeling or idea beyond the literal subject",
+    "strong mood; the feeling is the point of the picture",
+    "layered meaning; mood plus metaphor or social comment",
+    "profound; a feeling or idea that stays long after looking"
+   ]
+  }
+ },
+ "new": {
+  "framing-excusal": {
+   "type": "noul",
+   "instructions": "Does this photo use a natural framing device — foreground elements or structural features such as doorways, windows, arches, branches, railings, or shadows — arranged to encircle or enclose the primary subject?"
+  },
+  "framing": {
+   "type": "score",
+   "instructions": "How well does a natural framing device — doorway, window, arch, branches, railings or shadows — enclose the primary subject and direct focus to it?",
+   "criteria": [
+    "1 of 10 — weak: No framing device, or an attempted one that fails: the surrounding elements do not enclose or point to the subject, form an awkward or incomplete shape, or compete with the subject for attention rather than guiding the eye toward it.",
+    "2 of 10 — weak: No framing device, or an attempted one that fails: the surrounding elements do not enclose or point to the subject, form an awkward or incomplete shape, or compete with the subject for attention rather than guiding the eye toward it.",
+    "3 of 10 — weak: No framing device, or an attempted one that fails: the surrounding elements do not enclose or point to the subject, form an awkward or incomplete shape, or compete with the subject for attention rather than guiding the eye toward it.",
+    "4 of 10 — adequate: A framing device is present and partially works—it loosely encloses or leads toward the subject—but the shape is imperfect, surrounds the subject only partially, feels somewhat arbitrary, or is mildly distracting or poorly integrated with the rest of the scene.",
+    "5 of 10 — adequate: A framing device is present and partially works—it loosely encloses or leads toward the subject—but the shape is imperfect, surrounds the subject only partially, feels somewhat arbitrary, or is mildly distracting or poorly integrated with the rest of the scene.",
+    "6 of 10 — adequate: A framing device is present and partially works—it loosely encloses or leads toward the subject—but the shape is imperfect, surrounds the subject only partially, feels somewhat arbitrary, or is mildly distracting or poorly integrated with the rest of the scene.",
+    "7 of 10 — strong: A clear, well-formed framing device encircles or encloses the subject, creates an appealing shape, integrates naturally into the environment, and unmistakably directs focus to the subject without drawing attention to itself. Cite the concrete framing element (e.g. a doorway, arch, or foreground silhouette) and how it isolates and elevates the subject.",
+    "8 of 10 — strong: A clear, well-formed framing device encircles or encloses the subject, creates an appealing shape, integrates naturally into the environment, and unmistakably directs focus to the subject without drawing attention to itself. Cite the concrete framing element (e.g. a doorway, arch, or foreground silhouette) and how it isolates and elevates the subject.",
+    "9 of 10 — strong: A clear, well-formed framing device encircles or encloses the subject, creates an appealing shape, integrates naturally into the environment, and unmistakably directs focus to the subject without drawing attention to itself. Cite the concrete framing element (e.g. a doorway, arch, or foreground silhouette) and how it isolates and elevates the subject.",
+    "10 of 10 — strong: A clear, well-formed framing device encircles or encloses the subject, creates an appealing shape, integrates naturally into the environment, and unmistakably directs focus to the subject without drawing attention to itself. Cite the concrete framing element (e.g. a doorway, arch, or foreground silhouette) and how it isolates and elevates the subject."
+   ]
+  },
+  "compositional-cleanliness": {
+   "type": "score",
+   "instructions": "How clean is the composition — free of distracting elements, with controlled negative space and edges, and a primary subject that reads clearly?",
+   "criteria": [
+    "1 of 10 — weak: Cluttered or distracting composition: the frame is busy or chaotic, the primary subject competes with unmanaged background/foreground elements, negative space and edges are messy, and the eye is not clearly guided.",
+    "2 of 10 — weak: Cluttered or distracting composition: the frame is busy or chaotic, the primary subject competes with unmanaged background/foreground elements, negative space and edges are messy, and the eye is not clearly guided.",
+    "3 of 10 — weak: Cluttered or distracting composition: the frame is busy or chaotic, the primary subject competes with unmanaged background/foreground elements, negative space and edges are messy, and the eye is not clearly guided.",
+    "4 of 10 — adequate: Reasonably clean composition with some distracting elements or minor clutter that slightly dilute the subject or the reading of the frame.",
+    "5 of 10 — adequate: Reasonably clean composition with some distracting elements or minor clutter that slightly dilute the subject or the reading of the frame.",
+    "6 of 10 — adequate: Reasonably clean composition with some distracting elements or minor clutter that slightly dilute the subject or the reading of the frame.",
+    "7 of 10 — strong: Clean, intentional composition: the frame is free of distractions, negative space and edges are controlled, and the primary subject reads clearly and immediately.",
+    "8 of 10 — strong: Clean, intentional composition: the frame is free of distractions, negative space and edges are controlled, and the primary subject reads clearly and immediately.",
+    "9 of 10 — strong: Clean, intentional composition: the frame is free of distractions, negative space and edges are controlled, and the primary subject reads clearly and immediately.",
+    "10 of 10 — strong: Clean, intentional composition: the frame is free of distractions, negative space and edges are controlled, and the primary subject reads clearly and immediately."
+   ]
+  },
+  "environmental-context-legibility": {
+   "type": "score",
+   "instructions": "How legible are spatial depth and environmental context — foreground, middleground, and background planes that show place and spatial relationships?",
+   "criteria": [
+    "1 of 10 — weak: Flat or collapsed—the subject sits on a single plane, or is isolated by shallow depth of field while background and midground collapse into color fields or unrecognizable shapes. The viewer cannot identify the type of place (shopfront, crossing, market aisle), count secondary figures, or see how the planes relate. The image could almost be a studio portrait dropped onto a generic blur.",
+    "2 of 10 — weak: Flat or collapsed—the subject sits on a single plane, or is isolated by shallow depth of field while background and midground collapse into color fields or unrecognizable shapes. The viewer cannot identify the type of place (shopfront, crossing, market aisle), count secondary figures, or see how the planes relate. The image could almost be a studio portrait dropped onto a generic blur.",
+    "3 of 10 — weak: Flat or collapsed—the subject sits on a single plane, or is isolated by shallow depth of field while background and midground collapse into color fields or unrecognizable shapes. The viewer cannot identify the type of place (shopfront, crossing, market aisle), count secondary figures, or see how the planes relate. The image could almost be a studio portrait dropped onto a generic blur.",
+    "4 of 10 — adequate: Some depth or context is visible—a general sense of place and one or two readable planes—but important midground or background detail is soft, cropped away, or too dark to parse. Place is identifiable in broad terms (e.g. \"a city sidewalk\") and planes coexist, but specific relationships, parallel events, or architectural cues that connect subject to environment are only partially legible and the planes do not clearly enhance one another.",
+    "5 of 10 — adequate: Some depth or context is visible—a general sense of place and one or two readable planes—but important midground or background detail is soft, cropped away, or too dark to parse. Place is identifiable in broad terms (e.g. \"a city sidewalk\") and planes coexist, but specific relationships, parallel events, or architectural cues that connect subject to environment are only partially legible and the planes do not clearly enhance one another.",
+    "6 of 10 — adequate: Some depth or context is visible—a general sense of place and one or two readable planes—but important midground or background detail is soft, cropped away, or too dark to parse. Place is identifiable in broad terms (e.g. \"a city sidewalk\") and planes coexist, but specific relationships, parallel events, or architectural cues that connect subject to environment are only partially legible and the planes do not clearly enhance one another.",
+    "7 of 10 — strong: Foreground, middleground, and background are each legible and interact: signage, architecture, other pedestrians, vehicles, or spatial depth remain sharp enough to show *interaction*—what else is happening near the subject and where they sit in the scene—and the planes reinforce one another to build depth and narrative context. Even selective focus keeps enough of the scene that the photograph shows the place, not just a figure cut out from it.",
+    "8 of 10 — strong: Foreground, middleground, and background are each legible and interact: signage, architecture, other pedestrians, vehicles, or spatial depth remain sharp enough to show *interaction*—what else is happening near the subject and where they sit in the scene—and the planes reinforce one another to build depth and narrative context. Even selective focus keeps enough of the scene that the photograph shows the place, not just a figure cut out from it.",
+    "9 of 10 — strong: Foreground, middleground, and background are each legible and interact: signage, architecture, other pedestrians, vehicles, or spatial depth remain sharp enough to show *interaction*—what else is happening near the subject and where they sit in the scene—and the planes reinforce one another to build depth and narrative context. Even selective focus keeps enough of the scene that the photograph shows the place, not just a figure cut out from it.",
+    "10 of 10 — strong: Foreground, middleground, and background are each legible and interact: signage, architecture, other pedestrians, vehicles, or spatial depth remain sharp enough to show *interaction*—what else is happening near the subject and where they sit in the scene—and the planes reinforce one another to build depth and narrative context. Even selective focus keeps enough of the scene that the photograph shows the place, not just a figure cut out from it."
+   ]
+  },
+  "intensity-suggestion": {
+   "type": "score",
+   "instructions": "How much interpretive or human charge does the photo carry — suggestion, feeling, or open questions beyond a literal caption?",
+   "criteria": [
+    "1 of 10 — weak: Pure description—the image reports what is in front of the camera with one obvious reading, no ambiguity, metaphor, or emotional charge; where people or human traces appear they are inert (backs turned, anonymous filler, static poses with no gesture or relationship). Nothing lingers. Could be replaced by a one-sentence caption with no loss (\"a man walks past a wall\").",
+    "2 of 10 — weak: Pure description—the image reports what is in front of the camera with one obvious reading, no ambiguity, metaphor, or emotional charge; where people or human traces appear they are inert (backs turned, anonymous filler, static poses with no gesture or relationship). Nothing lingers. Could be replaced by a one-sentence caption with no loss (\"a man walks past a wall\").",
+    "3 of 10 — weak: Pure description—the image reports what is in front of the camera with one obvious reading, no ambiguity, metaphor, or emotional charge; where people or human traces appear they are inert (backs turned, anonymous filler, static poses with no gesture or relationship). Nothing lingers. Could be replaced by a one-sentence caption with no loss (\"a man walks past a wall\").",
+    "4 of 10 — adequate: Some mood, irony, or interest beyond the literal, or human presence that anchors the frame, but the suggested reading stays close to the surface—pleasant atmosphere, mild curiosity, or routine activity (walking, waiting, shopping) without a decisive gesture or unresolved situation. The viewer understands the scene but is not prompted to rethink it or feel a strong pull.",
+    "5 of 10 — adequate: Some mood, irony, or interest beyond the literal, or human presence that anchors the frame, but the suggested reading stays close to the surface—pleasant atmosphere, mild curiosity, or routine activity (walking, waiting, shopping) without a decisive gesture or unresolved situation. The viewer understands the scene but is not prompted to rethink it or feel a strong pull.",
+    "6 of 10 — adequate: Some mood, irony, or interest beyond the literal, or human presence that anchors the frame, but the suggested reading stays close to the surface—pleasant atmosphere, mild curiosity, or routine activity (walking, waiting, shopping) without a decisive gesture or unresolved situation. The viewer understands the scene but is not prompted to rethink it or feel a strong pull.",
+    "7 of 10 — strong: The image generates suggestion: visual metaphor, timing, juxtaposition, omission, or ambiguity that opens multiple readings or a strong feeling (expectation, unease, tenderness, absurdity, doubt); OR clear human-mediated tension—a decisive gesture or expression, charged interaction between figures, ironic juxtaposition of person and environment, a figure caught mid-action at a narrative peak, or human traces that raise an unanswered question about who was here and what occurred. Cite the concrete visible evidence—two elements in ironic relation, a gesture at peak tension, an unexplained detail—that makes the photograph exceed description and reward interpretation.",
+    "8 of 10 — strong: The image generates suggestion: visual metaphor, timing, juxtaposition, omission, or ambiguity that opens multiple readings or a strong feeling (expectation, unease, tenderness, absurdity, doubt); OR clear human-mediated tension—a decisive gesture or expression, charged interaction between figures, ironic juxtaposition of person and environment, a figure caught mid-action at a narrative peak, or human traces that raise an unanswered question about who was here and what occurred. Cite the concrete visible evidence—two elements in ironic relation, a gesture at peak tension, an unexplained detail—that makes the photograph exceed description and reward interpretation.",
+    "9 of 10 — strong: The image generates suggestion: visual metaphor, timing, juxtaposition, omission, or ambiguity that opens multiple readings or a strong feeling (expectation, unease, tenderness, absurdity, doubt); OR clear human-mediated tension—a decisive gesture or expression, charged interaction between figures, ironic juxtaposition of person and environment, a figure caught mid-action at a narrative peak, or human traces that raise an unanswered question about who was here and what occurred. Cite the concrete visible evidence—two elements in ironic relation, a gesture at peak tension, an unexplained detail—that makes the photograph exceed description and reward interpretation.",
+    "10 of 10 — strong: The image generates suggestion: visual metaphor, timing, juxtaposition, omission, or ambiguity that opens multiple readings or a strong feeling (expectation, unease, tenderness, absurdity, doubt); OR clear human-mediated tension—a decisive gesture or expression, charged interaction between figures, ironic juxtaposition of person and environment, a figure caught mid-action at a narrative peak, or human traces that raise an unanswered question about who was here and what occurred. Cite the concrete visible evidence—two elements in ironic relation, a gesture at peak tension, an unexplained detail—that makes the photograph exceed description and reward interpretation."
+   ]
+  }
+ }
+}
