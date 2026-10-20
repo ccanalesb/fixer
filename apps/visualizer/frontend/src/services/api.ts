@@ -891,6 +891,11 @@ export const CullAPI = {
       method: 'POST',
       body: JSON.stringify({ action }),
     }),
+  withdrawShouldHaveBeenCut: (imageKey: string) =>
+    request<{ ok: boolean; removed: number }>(
+      `/cull/photos/${encodeURIComponent(imageKey)}/actions/should_have_been_cut`,
+      { method: 'DELETE' },
+    ),
   sendPhotos: (imageKeys: string[]) =>
     request<{ sent_by_hand: string[]; job_id: string | null; skipped_complete: number }>(
       '/cull/photos/send',

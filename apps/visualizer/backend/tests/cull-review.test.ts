@@ -238,6 +238,30 @@ describe('POST /api/cull/photos/{image_key}/actions', () => {
   });
 });
 
+describe('DELETE /api/cull/photos/{image_key}/actions/{action}', () => {
+  it('withdraws should_have_been_cut and leaves other actions', async () => {
+    const db = new Database(fx.dbPath);
+    recordCullUserAction(db, 'sent-b', 'should_have_been_cut');
+    recordCullUserAction(db, 'sent-b', 'should_have_been_cut');
+    recordCullUserAction(db, 'cut-a', 'should_have_been_cut');
+    db.close();
+
+    const res = await app.request('/api/cull/photos/sent-b/actions/should_have_been_cut', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, removed: 2 });
+
+    const after = new Database(fx.dbPath);
+    expect(listCullUserActions(after, 'sent-b').filter((a) => a.action === 'should_have_been_cut')).toEqual([]);
+    expect(listCullUserActions(after, 'cut-a').map((a) => a.action)).toContain('should_have_been_cut');
+    after.close();
+  });
+
+  it('refuses to withdraw other actions', async () => {
+    const res = await app.request('/api/cull/photos/sent-b/actions/sent_by_hand', { method: 'DELETE' });
+    expect(res.status).toBe(422);
+  });
+});
+
 describe('GET /api/cull/photos/{image_key}', () => {
   it('returns detail for sent photos on the cull catalog', async () => {
     const res = await app.request('/api/cull/photos/sent-b');

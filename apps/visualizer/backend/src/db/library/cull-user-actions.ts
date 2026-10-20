@@ -1,6 +1,7 @@
 /**
  * What the user said about a cull verdict: sent by hand, agrees with the cut, should have been cut.
- * Append-only, each with the summary it answered — the labels a future retraining reads.
+ * Append-only except for withdrawing "should have been cut", each with the summary it answered — the
+ * labels a future retraining reads.
  *
  * Sent by hand sticks across stage and pipeline versions: the history, not the summary, is the
  * record, so no re-decide or new version can cut the photo automatically again.
@@ -55,6 +56,20 @@ export function recordCullUserAction(db: Db, imageKey: string, action: CullUserA
       ).run(imageKey, current?.version ?? 0, nowIsoUtc());
     }
   });
+}
+
+/**
+ * Withdraw "should have been cut" on a photo. The one action that is deleted rather than appended to:
+ * on a passed photo, no row is the user's "yes, it passed rightly".
+ */
+export function withdrawShouldHaveBeenCut(db: Db, imageKey: string): number {
+  return libraryWrite(
+    db,
+    () =>
+      db
+        .prepare("DELETE FROM cull_user_actions WHERE image_key = ? AND action = 'should_have_been_cut'")
+        .run(imageKey).changes,
+  );
 }
 
 export function listCullUserActions(db: Db, imageKey: string): CullUserActionRow[] {

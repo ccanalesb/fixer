@@ -15,7 +15,11 @@ import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
 import { getCullReviewSummary, listCullReviewPhotos } from '../db/library/cull-review.js';
 import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
-import { listCullUserActions, recordCullUserAction } from '../db/library/cull-user-actions.js';
+import {
+  listCullUserActions,
+  recordCullUserAction,
+  withdrawShouldHaveBeenCut,
+} from '../db/library/cull-user-actions.js';
 import { initJobsDb, createJob, getJob } from '../db/jobs/jobs.js';
 import { batchKeysWithSendWork } from '../jobs/handlers/work-keys.js';
 import { emitJobEvent } from '../websocket/events.js';
@@ -263,4 +267,26 @@ cullReviewRoutes.openapi(actionRoute, async (c) => {
   recordCullUserAction(db, imageKey, action);
   const v = getCullVerdict(db, imageKey);
   return c.json({ ok: true as const, verdict: v?.verdict ?? 'none', user_action: action }, 200);
+});
+
+const withdrawActionRoute = createRoute({
+  method: 'delete',
+  path: '/cull/photos/{image_key}/actions/{action}',
+  tags: ['cull'],
+  request: {
+    params: z.object({ image_key: z.string(), action: z.enum(['should_have_been_cut']) }),
+  },
+  responses: withValidationError({
+    200: {
+      description: 'Withdrawn',
+      content: jsonBody(z.object({ ok: z.literal(true), removed: z.number().int() })),
+    },
+  }),
+});
+
+cullReviewRoutes.openapi(withdrawActionRoute, async (c) => {
+  const db = c.get('libraryDb');
+  const { image_key: imageKey } = c.req.valid('param');
+  const removed = withdrawShouldHaveBeenCut(db, imageKey);
+  return c.json({ ok: true as const, removed }, 200);
 });
