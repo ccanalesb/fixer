@@ -115,6 +115,31 @@ describe('cullPhoto', () => {
     expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent', sent_by_hand: true });
   });
 
+  it('forced, asks Laya again though every stage is answered, and stores the new answers', async () => {
+    const ctx = context();
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'a', sentByHand: false, runId, resolveImage: image });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent' });
+    const laya = fakeLaya([5, 5, 2, 3]);
+    const r = await cullPhoto(db, ctx, laya, { imageKey: 'a', sentByHand: false, runId, force: true, resolveImage: image });
+    expect(r.outcome).toBe('culled');
+    expect(laya.calls).toHaveLength(1);
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'cut', cut_by: 'culling_recipe' });
+  });
+
+  it('forced with no image: decided from what is stored', async () => {
+    const ctx = context();
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'a', sentByHand: false, runId, resolveImage: image });
+    const r = await cullPhoto(db, ctx, fakeLaya([5, 5, 2, 3]), {
+      imageKey: 'a',
+      sentByHand: false,
+      runId,
+      force: true,
+      resolveImage: noImage,
+    });
+    expect(r.outcome).toBe('no_image');
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent' });
+  });
+
   it('no image: pending', async () => {
     const r = await cullPhoto(db, context(), fakeLaya([5, 5, 5, 5]), { imageKey: 'a', sentByHand: false, runId, resolveImage: noImage });
     expect(r.outcome).toBe('no_image');
@@ -175,5 +200,23 @@ describe('selectPhotosToCull', () => {
     const ctx = context();
     await cullPhoto(db, ctx, fakeLaya([5, 5, 5, 5], { fail: 'worker' }), { imageKey: 'died', sentByHand: false, runId, resolveImage: image });
     expect(selectPhotosToCull(db, ctx, ['died', 'b', 'c']).keys).toEqual(['b', 'c', 'died']);
+  });
+
+  it('forced, takes photos already decided, all of them for Laya', async () => {
+    const ctx = context();
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'done', sentByHand: false, runId, resolveImage: image });
+    const r = selectPhotosToCull(db, ctx, ['new', 'done'], { force: { doneByRuns: new Set() } });
+    expect(r.keys).toEqual(['new', 'done']);
+    expect([...r.needsAnswers]).toEqual(['new', 'done']);
+  });
+
+  it('forced, skips what the same job decided already but takes again what it left pending', async () => {
+    const ctx = context();
+    const earlier = insertCullRun(db, { kind: 'job', jobId: 'j', pipelineSettingVersion: 1 });
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'redone', sentByHand: false, runId: earlier, resolveImage: image });
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'nofile', sentByHand: false, runId: earlier, resolveImage: noImage });
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'older', sentByHand: false, runId, resolveImage: image });
+    const r = selectPhotosToCull(db, ctx, ['redone', 'nofile', 'older'], { force: { doneByRuns: new Set([earlier]) } });
+    expect(r.keys).toEqual(['nofile', 'older']);
   });
 });

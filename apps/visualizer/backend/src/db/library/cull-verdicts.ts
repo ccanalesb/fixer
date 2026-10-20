@@ -98,13 +98,20 @@ export interface CullVerdictStamp {
   pipelineSettingVersion: number;
   stageVersionIds: number[];
   pendingReason: string;
+  runId: number | null;
 }
 
 /** What each summary row was decided under, to tell a current one from one a version change left behind. */
 export function loadCullVerdictStamps(db: Db): Map<string, CullVerdictStamp> {
   const rows = db
-    .prepare('SELECT image_key, pipeline_setting_version, stage_version_ids, pending_reason FROM cull_verdicts')
-    .all() as { image_key: string; pipeline_setting_version: number; stage_version_ids: string; pending_reason: string }[];
+    .prepare('SELECT image_key, pipeline_setting_version, stage_version_ids, pending_reason, run_id FROM cull_verdicts')
+    .all() as {
+    image_key: string;
+    pipeline_setting_version: number;
+    stage_version_ids: string;
+    pending_reason: string;
+    run_id: number | null;
+  }[];
   return new Map(
     rows.map((r) => [
       r.image_key,
@@ -112,9 +119,16 @@ export function loadCullVerdictStamps(db: Db): Map<string, CullVerdictStamp> {
         pipelineSettingVersion: r.pipeline_setting_version,
         stageVersionIds: JSON.parse(r.stage_version_ids) as number[],
         pendingReason: r.pending_reason,
+        runId: r.run_id,
       },
     ]),
   );
+}
+
+/** The cull runs a job has started, one per attempt (a resumed job starts another). */
+export function listCullRunIdsForJob(db: Db, jobId: string): Set<number> {
+  const rows = db.prepare('SELECT run_id FROM cull_runs WHERE job_id = ?').all(jobId) as { run_id: number }[];
+  return new Set(rows.map((r) => r.run_id));
 }
 
 export function insertCullRun(

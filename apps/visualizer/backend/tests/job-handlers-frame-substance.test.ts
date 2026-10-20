@@ -20,6 +20,7 @@ import {
   type FrameSubstanceRunResult,
 } from '../src/jobs/handlers/frame-substance.js';
 import { detectorVersion } from '../src/imaging/frame-substance-detector.js';
+import { nowIsoLocal, storedInstantMs } from '../src/utils/datetime.js';
 import {
   isFrameSubstanceVerdictStale,
   listCatalogImagesForFrameSubstance,
@@ -212,7 +213,6 @@ describe('runFrameSubstanceDetection', () => {
     ).toHaveLength(1);
   });
 
-  /** staleOnly compares compressed_at to judged_at as text; use an unambiguous future date. */
   it('judges only the scoped stale images in chain mode', async () => {
     seedImage('in_run', await writeOkJpeg('in_run.jpg'));
     seedImage('outside', await writeOkJpeg('outside.jpg'));
@@ -225,6 +225,35 @@ describe('runFrameSubstanceDetection', () => {
     expect(result.total).toBe(1);
     expect(verdictFor('outside')!.run_id).toBe(judgedBefore);
     expect(verdictFor('in_run')!.run_id).toBeGreaterThan(judgedBefore);
+  });
+
+  it('sees a preview rebuilt after the verdict though its local time sorts before the UTC verdict', async () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      seedImage('rebuilt', await writeOkJpeg('rebuilt.jpg'));
+      seedImage('older', await writeOkJpeg('older.jpg'));
+      await detect();
+      const judgedMs = storedInstantMs(
+        fx.query<{ judged_at: string }>('SELECT judged_at FROM image_frame_substance WHERE image_key = ?', 'rebuilt')[0]!
+          .judged_at,
+      );
+      setCompressedAt('rebuilt', nowIsoLocal(new Date(judgedMs + 60 * 60_000)));
+      setCompressedAt('older', nowIsoLocal(new Date(judgedMs - 60 * 60_000)));
+
+      const lib = openLibraryDb(fx.dbPath);
+      try {
+        expect(isFrameSubstanceVerdictStale(lib, 'rebuilt')).toBe(true);
+        expect(isFrameSubstanceVerdictStale(lib, 'older')).toBe(false);
+        const rows = listCatalogImagesForFrameSubstance(lib, { staleOnly: true });
+        expect(rows.map((r) => r.image_key)).toEqual(['rebuilt']);
+      } finally {
+        lib.close();
+      }
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
   });
 
   it('skips a scoped image whose verdict is already newer than its preview', async () => {
@@ -355,7 +384,7 @@ describe('the batch_frame_substance handler', () => {
     expect(job.status).toBe('completed');
     expect(job.progress).toBe(100);
     expect(job.result).toMatchObject({ total: 2, count_void: 1, count_ok: 1 });
-    expect(job.logs.map((l) => l.message)).toContain('Judged 2/2 images');
+    expect(job.logs.map((l) => l.message)).toContain('Frame substance: checked 2/2 images');
   });
 
   it('completes with zeros when the catalog is empty', async () => {
@@ -374,5 +403,28 @@ describe('the batch_frame_substance handler', () => {
     expect(job.status).toBe('failed');
     expect(job.error_severity).toBe('warning');
     delete process.env.LT_CONFIG_YAML;
+  });
+});
+
+describe('storedInstantMs', () => {
+  it('reads an offset and Z; without one, SQLite datetime() as UTC and a T as local wall-clock', () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const utc = Date.UTC(2026, 9, 20, 21, 14, 52, 219);
+      expect(storedInstantMs('2026-10-20T21:14:52.219000+00:00')).toBe(utc);
+      expect(storedInstantMs('2026-10-20T21:14:52.219Z')).toBe(utc);
+      expect(storedInstantMs('2026-10-20T17:14:52.219000-04:00')).toBe(utc);
+      expect(storedInstantMs('2026-10-20T17:14:52.219000')).toBe(utc);
+      expect(storedInstantMs('2026-10-20 21:14:52')).toBe(utc - 219);
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
+  });
+
+  it('is NaN for anything else', () => {
+    expect(storedInstantMs('')).toBeNaN();
+    expect(storedInstantMs('yesterday')).toBeNaN();
   });
 });

@@ -56,6 +56,7 @@ export async function runCullStageBeforeDescribeAndScore(
   workKeys: readonly string[],
   selection: readonly (readonly [string, string])[],
   ctx: PassContext,
+  opts: { forceCull?: boolean } = {},
 ): Promise<CullStageOutcome | null> {
   const prefix = ctx.logPrefix;
   let frameSubstanceS = 0;
@@ -107,8 +108,10 @@ export async function runCullStageBeforeDescribeAndScore(
   const sentByHand = listSentByHandKeys(db);
   const cullStep =
     (await runCullPass(runner, jobId, metadata, db, ctx, {
-      imageKeys: candidateKeys,
+      // Forced, the whole window is culled again, not only the photos this job will describe or score.
+      imageKeys: opts.forceCull ? undefined : candidateKeys,
       skipLayaFor: sentByHand,
+      force: opts.forceCull,
     })) ?? null;
   if (cullStep === null) return null;
 

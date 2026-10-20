@@ -89,6 +89,7 @@ export async function handleBatchAnalyze(
         workKeys,
         selection,
         CULL_STAGE,
+        { forceCull: Boolean(metadata['force_cull']) },
       );
       if (stage === null) return;
 

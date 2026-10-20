@@ -4,7 +4,14 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 import { deleteMatching } from '../../../data/cache';
 import { AnalyzeTab } from '../AnalyzeTab';
-import { ANALYZE_BACKFILL_FORCE_EXCLUSIVE_HINT, ANALYZE_BACKFILL_VISUAL_TAGS_LABEL, ANALYZE_FORCE_DESCRIBE_LABEL, ANALYZE_FORCE_SCORE_LABEL } from '../../../constants/strings';
+import {
+  ANALYZE_BACKFILL_FORCE_EXCLUSIVE_HINT,
+  ANALYZE_BACKFILL_VISUAL_TAGS_LABEL,
+  ANALYZE_FORCE_CULL_HINT,
+  ANALYZE_FORCE_CULL_LABEL,
+  ANALYZE_FORCE_DESCRIBE_LABEL,
+  ANALYZE_FORCE_SCORE_LABEL,
+} from '../../../constants/strings';
 
 // Minimal AnalyzeOptions provider the component expects. We stub it directly
 // rather than mounting the real provider so the test stays focused on the
@@ -164,6 +171,23 @@ describe('AnalyzeTab submit UX (fix #1)', () => {
     expect(batchMeta.force).not.toBe(true);
     expect(batchMeta.force_describe).toBeUndefined();
     expect(batchMeta.force_score).toBeUndefined();
+  });
+
+  it('sends force_cull with the analyze job and warns what it does', async () => {
+    mockCreate.mockResolvedValue({ id: 'recull-job', type: 'batch_analyze' });
+
+    renderAnalyzeTab();
+    await screen.findByText(/Street/);
+
+    expect(screen.queryByText(ANALYZE_FORCE_CULL_HINT)).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: ANALYZE_FORCE_CULL_LABEL }));
+    expect(screen.getByText(ANALYZE_FORCE_CULL_HINT)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Analyze/i }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled());
+    const [type, meta] = mockCreate.mock.calls[0] as [string, Record<string, unknown>];
+    expect(type).toBe('batch_analyze');
+    expect(meta).toMatchObject({ force_cull: true, force_describe: false, force_score: false });
   });
 });
 

@@ -653,6 +653,9 @@ export const ANALYZE_PRIMARY_BUTTON_STARTING = 'Starting…'
 export const ANALYZE_ADVANCED_RUN_SEPARATELY_TITLE = 'Run stages separately'
 export const ANALYZE_ADVANCED_DESCRIBE_ONLY = 'Generate Descriptions only'
 export const ANALYZE_ADVANCED_SCORE_ONLY = 'Run scoring only'
+export const ANALYZE_FORCE_CULL_LABEL = 'Force re-cull'
+export const ANALYZE_FORCE_CULL_HINT =
+  'Re-runs Laya on every photo in the date range, even ones it already answered. Your own decisions ("Yes, keep it", sent by hand) are kept.'
 export const ANALYZE_FORCE_DESCRIBE_LABEL = 'Force regenerate descriptions'
 export const ANALYZE_FORCE_SCORE_LABEL = 'Force regenerate scores'
 export const ANALYZE_BACKFILL_VISUAL_TAGS_LABEL =

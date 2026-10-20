@@ -204,9 +204,12 @@ export function fingerprintBatchCull(args: {
   resolvedMonths: number | null;
   resolvedYear: string | null;
   minRating: number | null;
+  force?: boolean;
 }): Promise<string> {
   return sha256Hex(
     canonicalJson({
+      // Only when set, so checkpoints written before the flag existed still match.
+      ...(args.force ? { force: true } : {}),
       image_keys: args.imageKeys ? [...args.imageKeys].sort() : null,
       min_rating: args.minRating,
       pipeline_setting_version: args.pipelineSettingVersion,

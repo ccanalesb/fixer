@@ -247,7 +247,7 @@ export async function runFrameSubstanceDetection(
     const done = i + 1;
     if (batch.length >= PROGRESS_EVERY) flush();
     if (opts.progress && (done % PROGRESS_EVERY === 0 || done === total)) {
-      opts.progress(5 + Math.trunc((95 * done) / total), `Judged ${done}/${total} images`);
+      opts.progress(5 + Math.trunc((95 * done) / total), `Frame substance: checked ${done}/${total} images`);
     }
   }
   flush();

@@ -10,7 +10,7 @@ import type { Db } from '../connection.js';
 import { prepareCached } from '../prepare-cached.js';
 import { FLAGGED_VERDICTS } from './frame-substance-sql.js';
 import { getVisionCachedImage, VISION_CACHE_OVERSIZED_SENTINEL } from './vision-cache.js';
-import { nowIsoUtc } from '../../utils/datetime.js';
+import { nowIsoUtc, storedInstantMs } from '../../utils/datetime.js';
 
 export type FrameSubstanceVerdict = 'void' | 'illegible' | 'ok' | 'unknown';
 
@@ -167,12 +167,33 @@ export function isFrameSubstanceFlagged(db: Db, imageKey: string): boolean {
   return !hasFrameSubstanceOverride(db, imageKey);
 }
 
+type StalenessVerdict = Pick<FrameSubstanceRow, 'verdict' | 'unknown_reason' | 'judged_at'>;
+type StalenessCache = { compressed_path: string | null; compressed_at: string | null };
+
 /**
- * Whether the preview the detector judged has since been rebuilt.
+ * Whether a verdict no longer describes the image's preview: the preview was rebuilt
+ * after it, or the detector found no preview and one exists now.
  *
- * Compared as strings, not parsed dates — both columns hold ISO-8601 timestamps
- * that sort correctly as text, including varying fractional-second widths.
+ * `compressed_at` is local wall-clock and `judged_at` UTC, so they are compared as
+ * instants, never as text.
  */
+function verdictOutlivedPreview(verdict: StalenessVerdict, cache: StalenessCache | null): boolean {
+  if (!cache?.compressed_at) return false;
+  if (verdict.verdict === 'unknown') {
+    const cp = (cache.compressed_path ?? '').trim();
+    if (
+      cp !== '' &&
+      cp !== VISION_CACHE_OVERSIZED_SENTINEL &&
+      (verdict.unknown_reason === 'no_cache_row' || verdict.unknown_reason === 'cache_file_missing')
+    ) {
+      return true;
+    }
+  }
+  if (!verdict.judged_at) return false;
+  return storedInstantMs(cache.compressed_at) > storedInstantMs(verdict.judged_at);
+}
+
+/** Whether the preview the detector judged has since been rebuilt. */
 export function isFrameSubstanceVerdictStale(
   db: Db,
   imageKey: string,
@@ -181,22 +202,7 @@ export function isFrameSubstanceVerdictStale(
   const verdict =
     opts.verdictRow !== undefined ? opts.verdictRow : getFrameSubstanceVerdict(db, imageKey);
   if (verdict === null || verdict === undefined) return false;
-  const cache = getVisionCachedImage(db, imageKey);
-  if (verdict.verdict === 'unknown') {
-    const cp = (cache?.compressed_path ?? '').trim();
-    const hasUsableCache =
-      cp !== '' && cp !== VISION_CACHE_OVERSIZED_SENTINEL && cache?.compressed_at != null;
-    if (
-      hasUsableCache &&
-      (verdict.unknown_reason === 'no_cache_row' || verdict.unknown_reason === 'cache_file_missing')
-    ) {
-      return true;
-    }
-  }
-  const judgedAt = verdict.judged_at;
-  if (!judgedAt) return false;
-  if (!cache || !cache.compressed_at) return false;
-  return String(cache.compressed_at) > String(judgedAt);
+  return verdictOutlivedPreview(verdict, getVisionCachedImage(db, imageKey));
 }
 
 /**
@@ -353,21 +359,13 @@ export function listCatalogImagesForFrameSubstance(
   opts: { imageKeys?: readonly string[] | null; staleOnly?: boolean } = {},
 ): { image_key: string; compressed_path: string | null }[] {
   const select = (keys: readonly string[] | null) => {
-    const conditions: string[] = [];
-    if (keys !== null) conditions.push(`i.key IN (${keys.map(() => '?').join(',')})`);
-    if (opts.staleOnly) {
-      conditions.push(
-        `(fs.image_key IS NULL OR vc.compressed_at > fs.judged_at OR (` +
-          `fs.verdict = 'unknown' AND vc.compressed_path IS NOT NULL AND TRIM(vc.compressed_path) != '' ` +
-          `AND vc.compressed_path != ? AND vc.compressed_at IS NOT NULL AND ` +
-          `fs.unknown_reason IN ('no_cache_row', 'cache_file_missing')))`,
-      );
-    }
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    return db
+    const where = keys !== null ? `WHERE i.key IN (${keys.map(() => '?').join(',')})` : '';
+    const rows = db
       .prepare(
         `
-        SELECT i.key AS image_key, vc.compressed_path AS compressed_path
+        SELECT i.key AS image_key, vc.compressed_path AS compressed_path,
+               vc.compressed_at AS compressed_at, fs.image_key AS judged_key,
+               fs.verdict AS verdict, fs.unknown_reason AS unknown_reason, fs.judged_at AS judged_at
         FROM images i
         LEFT JOIN vision_cache vc ON vc.key = i.key
         LEFT JOIN image_frame_substance fs ON fs.image_key = i.key
@@ -375,10 +373,12 @@ export function listCatalogImagesForFrameSubstance(
         ORDER BY i.key ASC
         `,
       )
-      .all(...(keys ?? []), ...(opts.staleOnly ? [VISION_CACHE_OVERSIZED_SENTINEL] : [])) as {
-        image_key: string;
-        compressed_path: string | null;
-      }[];
+      .all(...(keys ?? [])) as (StalenessCache &
+      StalenessVerdict & { image_key: string; judged_key: string | null })[];
+    const wanted = opts.staleOnly
+      ? rows.filter((r) => r.judged_key === null || verdictOutlivedPreview(r, r))
+      : rows;
+    return wanted.map((r) => ({ image_key: r.image_key, compressed_path: r.compressed_path }));
   };
 
   if (opts.imageKeys === null || opts.imageKeys === undefined) return select(null);
