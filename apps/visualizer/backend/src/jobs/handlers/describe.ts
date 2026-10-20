@@ -19,6 +19,7 @@ import type { CancelCheck } from '../../providers/retry.js';
 import { resolveFilepath } from '../../utils/path-resolve.js';
 import {
   describeMatchedImage,
+  describeRefusal,
   type DescribeTelemetry,
 } from '../../vision/description-service.js';
 import {
@@ -62,6 +63,8 @@ export function diagnoseDescribeSkip(db: Db, key: string, force: boolean): strin
     }
     const image = getImage(db, key);
     if (!image) return 'Image key not found in catalog';
+    const refused = describeRefusal(db, key);
+    if (refused !== null) return refused;
     const filepath = typeof image['filepath'] === 'string' ? image['filepath'] : '';
     if (!filepath) return 'No filepath in catalog record';
 

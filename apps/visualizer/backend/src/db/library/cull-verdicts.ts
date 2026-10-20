@@ -127,3 +127,59 @@ export function finishCullRun(db: Db, runId: number, detail: Record<string, unkn
     runId,
   );
 }
+
+/** Photos per query: well under SQLite's bound-parameter limit. */
+const KEYS_PER_QUERY = 500;
+
+/** A sent-by-hand action, read inline: `cull-user-actions.ts` imports this module. */
+const SENT_BY_HAND_SQL =
+  "(v.sent_by_hand = 1 OR EXISTS (SELECT 1 FROM cull_user_actions u WHERE u.image_key = v.image_key AND u.action = 'sent_by_hand'))";
+
+/**
+ * Cut, and the user never sent it on: the last check before a photo is described or scored. Only a
+ * cut is refused — a pending or never-culled photo passes (the batch jobs hold those back themselves).
+ */
+export function isPhotoCutAndNotSentByHand(db: Db, imageKey: string): boolean {
+  return (
+    db
+      .prepare(`SELECT 1 FROM cull_verdicts v WHERE v.image_key = ? AND v.verdict = 'cut' AND NOT ${SENT_BY_HAND_SQL}`)
+      .get(imageKey) !== undefined
+  );
+}
+
+export interface CullVerdictBrief {
+  verdict: CullSummaryVerdict;
+  cutBy: StageKind | null;
+  /** On the summary or in the user-action history. */
+  sentByHand: boolean;
+}
+
+/** Each photo's verdict, for the photos that have one; one query per 500 photos. */
+export function loadCullVerdictsForKeys(db: Db, imageKeys: readonly string[]): Map<string, CullVerdictBrief> {
+  const out = new Map<string, CullVerdictBrief>();
+  for (let i = 0; i < imageKeys.length; i += KEYS_PER_QUERY) {
+    const chunk = imageKeys.slice(i, i + KEYS_PER_QUERY);
+    const rows = db
+      .prepare(
+        `SELECT v.image_key, v.verdict, v.cut_by, ${SENT_BY_HAND_SQL} AS by_hand FROM cull_verdicts v
+         WHERE v.image_key IN (${chunk.map(() => '?').join(',')})`,
+      )
+      .all(...chunk) as { image_key: string; verdict: CullSummaryVerdict; cut_by: StageKind | null; by_hand: number }[];
+    for (const r of rows) out.set(r.image_key, { verdict: r.verdict, cutBy: r.cut_by, sentByHand: r.by_hand === 1 });
+  }
+  return out;
+}
+
+/** Every photo the cull has touched: a summary row or an answer under a current stage version. */
+export function listCulledImageKeys(db: Db): string[] {
+  const rows = db
+    .prepare(
+      `SELECT image_key FROM cull_verdicts
+       UNION
+       SELECT a.image_key FROM cull_stage_answers a
+       JOIN cull_stage_versions s ON s.id = a.stage_version_id AND s.is_current = 1
+       ORDER BY image_key`,
+    )
+    .all() as { image_key: string }[];
+  return rows.map((r) => r.image_key);
+}

@@ -24,6 +24,8 @@ import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { computePromptVersion } from '../src/vision/scoring-service.js';
 import { fingerprintBatchScore } from '../src/jobs/checkpoint.js';
+import { openLibraryDb } from '../src/db/connection.js';
+import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -193,6 +195,54 @@ describe('computePromptVersion', () => {
     expect(computePromptVersion({ slug: 'street', prompt_markdown: '' })).toBe(
       'street:' + createHash('sha256').update('', 'utf8').digest('hex').slice(0, 16),
     );
+  });
+});
+
+/** A cull summary row, as the cull job would leave it. */
+function cullVerdict(key: string, verdict: 'cut' | 'sent' | 'pending'): void {
+  fx.exec(
+    `INSERT INTO cull_verdicts (image_key, verdict, cut_by, pipeline_setting_version, decided_at)
+     VALUES (?, ?, ?, 1, '2026-10-19T00:00:00+00:00')`,
+    key,
+    verdict,
+    verdict === 'cut' ? 'culling_recipe' : null,
+  );
+}
+
+describe('the last check: a photo the cull cut is not scored', () => {
+  it('skips a cut photo without calling the provider', async () => {
+    const filepath = await writePhoto();
+    fx.addImage({ key: 'a', filepath }).addPerspectives({ slug: 'street' });
+    cullVerdict('a', 'cut');
+
+    const job = await runJob({ image_key: 'a' });
+
+    expect(job.status).toBe('completed');
+    expect(job.result).toMatchObject({ scored: 0, skipped: 1 });
+    expect(requestBodies).toEqual([]);
+    expect(storedScores('a')).toEqual([]);
+  });
+
+  it('scores a cut photo the user sent by hand', async () => {
+    const filepath = await writePhoto();
+    fx.addImage({ key: 'a', filepath }).addPerspectives({ slug: 'street' });
+    cullVerdict('a', 'cut');
+    const db = openLibraryDb(fx.dbPath);
+    recordCullUserAction(db, 'a', 'sent_by_hand');
+    db.close();
+
+    const job = await runJob({ image_key: 'a' });
+
+    expect(job.result).toMatchObject({ scored: 1 });
+  });
+
+  it('refuses only a cut: a pending or never-culled photo is scored', async () => {
+    const filepath = await writePhoto();
+    fx.addImage({ key: 'p', filepath }).addImage({ key: 'n', filepath }).addPerspectives({ slug: 'street' });
+    cullVerdict('p', 'pending');
+
+    expect((await runJob({ image_key: 'p' })).result).toMatchObject({ scored: 1 });
+    expect((await runJob({ image_key: 'n' })).result).toMatchObject({ scored: 1 });
   });
 });
 

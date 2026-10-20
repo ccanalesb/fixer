@@ -333,27 +333,24 @@ export function upsertFrameSubstanceVerdicts(
   }
 }
 
-/** Catalog images for detection, optionally scoped and staleness-filtered. */
+/** Keys per query: well under SQLite's bound-parameter limit. */
+const KEYS_PER_QUERY = 500;
+
+/** Catalog images for detection, optionally scoped and staleness-filtered; in key order. */
 export function listCatalogImagesForFrameSubstance(
   db: Db,
   opts: { imageKeys?: readonly string[] | null; staleOnly?: boolean } = {},
 ): { image_key: string; compressed_path: string | null }[] {
-  const conditions: string[] = [];
-  const params: string[] = [];
-
-  if (opts.imageKeys !== null && opts.imageKeys !== undefined) {
-    if (opts.imageKeys.length === 0) return [];
-    conditions.push(`i.key IN (${opts.imageKeys.map(() => '?').join(',')})`);
-    params.push(...[...opts.imageKeys].sort());
-  }
-  if (opts.staleOnly) {
-    conditions.push('(fs.image_key IS NULL OR vc.compressed_at > fs.judged_at)');
-  }
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  return db
-    .prepare(
-      `
+  const select = (keys: readonly string[] | null) => {
+    const conditions: string[] = [];
+    if (keys !== null) conditions.push(`i.key IN (${keys.map(() => '?').join(',')})`);
+    if (opts.staleOnly) {
+      conditions.push('(fs.image_key IS NULL OR vc.compressed_at > fs.judged_at)');
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    return db
+      .prepare(
+        `
         SELECT i.key AS image_key, vc.compressed_path AS compressed_path
         FROM images i
         LEFT JOIN vision_cache vc ON vc.key = i.key
@@ -361,6 +358,15 @@ export function listCatalogImagesForFrameSubstance(
         ${where}
         ORDER BY i.key ASC
         `,
-    )
-    .all(...params) as { image_key: string; compressed_path: string | null }[];
+      )
+      .all(...(keys ?? [])) as { image_key: string; compressed_path: string | null }[];
+  };
+
+  if (opts.imageKeys === null || opts.imageKeys === undefined) return select(null);
+  // Chunks of the sorted keys, each in key order, concatenate in key order. A whole-catalog
+  // scope is past SQLite's bound-parameter cap in one `IN (...)`.
+  const sorted = [...new Set(opts.imageKeys)].sort();
+  const out: { image_key: string; compressed_path: string | null }[] = [];
+  for (let i = 0; i < sorted.length; i += KEYS_PER_QUERY) out.push(...select(sorted.slice(i, i + KEYS_PER_QUERY)));
+  return out;
 }

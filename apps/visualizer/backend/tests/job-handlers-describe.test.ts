@@ -15,6 +15,8 @@ import type { Db } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { fingerprintBatchDescribe } from '../src/jobs/checkpoint.js';
+import { openLibraryDb } from '../src/db/connection.js';
+import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -133,6 +135,53 @@ afterEach(async () => {
   fx.cleanup();
   rmSync(dir, { recursive: true, force: true });
   await new Promise((resolve) => server.close(resolve));
+});
+
+function cullVerdict(key: string, verdict: 'cut' | 'sent' | 'pending'): void {
+  fx.exec(
+    `INSERT INTO cull_verdicts (image_key, verdict, cut_by, pipeline_setting_version, decided_at)
+     VALUES (?, ?, ?, 1, '2026-10-19T00:00:00+00:00')`,
+    key,
+    verdict,
+    verdict === 'cut' ? 'culling_recipe' : null,
+  );
+}
+
+describe('the last check: cut photos and void frames are not described', () => {
+  let requests = 0;
+  beforeEach(() => {
+    requests = 0;
+    onRequest = () => (requests += 1);
+    reply = completion(JSON.stringify({ summary: 'A street scene', subjects: ['bicycle'] }));
+  });
+
+  it('skips a cut photo without calling the provider, and says why', async () => {
+    fx.addImage({ key: 'a', filepath: await writePhoto() });
+    cullVerdict('a', 'cut');
+    const job = await runJob({ image_key: 'a' });
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe('Cull verdict: cut (send it by hand to describe it)');
+    expect(requests).toBe(0);
+  });
+
+  it('skips a void frame, and says why', async () => {
+    fx.addImage({ key: 'v', filepath: await writePhoto() }).addFrameSubstance('v', 'void');
+    const job = await runJob({ image_key: 'v' });
+    expect(job.error).toBe('Frame substance verdict: void');
+    expect(requests).toBe(0);
+  });
+
+  it('describes a cut photo sent by hand, and a pending one', async () => {
+    const filepath = await writePhoto();
+    fx.addImage({ key: 'a', filepath }).addImage({ key: 'p', filepath });
+    cullVerdict('a', 'cut');
+    cullVerdict('p', 'pending');
+    const db = openLibraryDb(fx.dbPath);
+    recordCullUserAction(db, 'a', 'sent_by_hand');
+    db.close();
+    expect((await runJob({ image_key: 'a' })).status).toBe('completed');
+    expect((await runJob({ image_key: 'p' })).status).toBe('completed');
+  });
 });
 
 describe('the single_describe handler', () => {

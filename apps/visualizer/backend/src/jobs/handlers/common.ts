@@ -4,6 +4,7 @@
 import { openLibraryDb, type Db } from '../../db/connection.js';
 import type { JobLogLevel } from '../../db/jobs/jobs.js';
 import { upgradeLibrarySchema } from '../../db/library/bootstrap.js';
+import { loadCullVerdictsForKeys } from '../../db/library/cull-verdicts.js';
 import { LayaSetupError } from '../../laya/files.js';
 import { AuthenticationError, InvalidRequestError } from '../../providers/errors.js';
 import type { AnalyzeStage } from '../checkpoint.js';
@@ -135,31 +136,80 @@ const VOID_SUBSTANCE_SCORING_EXCLUDE_SQL = `
     )
 `;
 
+/** Keys per query: well under SQLite's bound-parameter limit. */
+const KEYS_PER_QUERY = 500;
+
 /**
  * Drop condemned frames from a selection that already exists.
  *
  * `selectCatalogKeys`'s `excludeVoidSubstance` does the same thing in SQL, and is
- * what a standalone `batch_score` uses. `batch_analyze` cannot: its one selection
- * feeds describe first, which has no reason to skip a lens cap, and the verdicts
- * scoring filters on are written by the stage in between.
+ * what a standalone `batch_score` uses. The cull step before describe and score
+ * cannot: the verdicts it filters on are written by its own frame-substance pass,
+ * after the selection was made. Void frames are neither described nor scored.
+ *
+ * One query per 500 keys: a whole-catalog selection is past SQLite's
+ * bound-parameter cap in a single `IN (...)`.
  */
 export function filterVoidSubstanceFromScoringSelection(
   db: Db,
   selection: readonly (readonly [string, string])[],
 ): (readonly [string, string])[] {
   if (selection.length === 0) return [...selection];
-  const keys = selection.map(([k]) => k);
-  const rows = db
-    .prepare(
-      'SELECT fs.image_key AS image_key FROM image_frame_substance fs ' +
-        `WHERE fs.image_key IN (${keys.map(() => '?').join(',')}) ` +
-        "AND fs.verdict = 'void' " +
-        'AND NOT EXISTS (SELECT 1 FROM frame_substance_overrides o WHERE o.image_key = fs.image_key)',
-    )
-    .all(...(keys as never[])) as { image_key: string }[];
-  if (rows.length === 0) return [...selection];
-  const condemned = new Set(rows.map((r) => r.image_key));
+  const keys = [...new Set(selection.map(([k]) => k))];
+  const condemned = new Set<string>();
+  for (let i = 0; i < keys.length; i += KEYS_PER_QUERY) {
+    const chunk = keys.slice(i, i + KEYS_PER_QUERY);
+    const rows = db
+      .prepare(
+        'SELECT fs.image_key AS image_key FROM image_frame_substance fs ' +
+          `WHERE fs.image_key IN (${chunk.map(() => '?').join(',')}) ` +
+          "AND fs.verdict = 'void' " +
+          'AND NOT EXISTS (SELECT 1 FROM frame_substance_overrides o WHERE o.image_key = fs.image_key)',
+      )
+      .all(...(chunk as never[])) as { image_key: string }[];
+    for (const r of rows) condemned.add(r.image_key);
+  }
+  if (condemned.size === 0) return [...selection];
   return selection.filter(([k]) => !condemned.has(k));
+}
+
+/** Photos of a selection not sent to kimi because of their cull verdict, by reason. */
+export interface CullHeldBack {
+  cut_by_culling_recipe: number;
+  cut_by_score_forecast: number;
+  /** A stage still unanswered (Laya failed on it, or no image to read): retried by the next job. */
+  pending: number;
+  /** Never culled: only when the cull step could not reach the photo. */
+  no_verdict: number;
+}
+
+/**
+ * Keep only the photos the cull sent on: verdict `sent`, or sent by hand whatever the verdict.
+ *
+ * Reads the summary rows as they are — the cull step before describe and score has just made them
+ * current for every photo in scope. `sentByHandKept` names the kept photos the user sent by hand, so
+ * the step can count the ones the stages alone would have cut.
+ */
+export function filterCutPhotosFromDescribeAndScoringSelection<T extends readonly [string, string]>(
+  db: Db,
+  selection: readonly T[],
+): { kept: T[]; heldBack: CullHeldBack; sentByHandKept: string[] } {
+  const verdicts = loadCullVerdictsForKeys(db, [...new Set(selection.map(([k]) => k))]);
+  const heldBack: CullHeldBack = { cut_by_culling_recipe: 0, cut_by_score_forecast: 0, pending: 0, no_verdict: 0 };
+  const kept: T[] = [];
+  const sentByHandKept: string[] = [];
+  for (const pair of selection) {
+    const v = verdicts.get(pair[0]);
+    if (v?.sentByHand) {
+      kept.push(pair);
+      sentByHandKept.push(pair[0]);
+    } else if (v?.verdict === 'sent') kept.push(pair);
+    else if (v === undefined) heldBack.no_verdict += 1;
+    else if (v.verdict === 'pending') heldBack.pending += 1;
+    else if (v.cutBy === 'score_forecast') heldBack.cut_by_score_forecast += 1;
+    else heldBack.cut_by_culling_recipe += 1;
+  }
+  return { kept, heldBack, sentByHandKept };
 }
 
 /**
