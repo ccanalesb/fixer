@@ -4,6 +4,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { config } from '../config.js';
 import {
+  batchDescribeScoreCompletion,
   buildRecipeRowReadout,
   describeScoreCompletion,
   resolveCuttingRecipe,
@@ -18,7 +19,7 @@ import { listCullUserActions, recordCullUserAction } from '../db/library/cull-us
 import { initJobsDb, createJob, getJob } from '../db/jobs/jobs.js';
 import { selectKeysWithDescribeWork, selectKeysWithScoreWork } from '../jobs/handlers/work-keys.js';
 import { emitJobEvent } from '../websocket/events.js';
-import { clampPagination } from '../utils/responses.js';
+import { clampPagination, errorNotFound } from '../utils/responses.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, redirectToTrailingSlash, withValidationError } from './route-helpers.js';
@@ -56,6 +57,7 @@ function shapeReviewRow(
     score_forecast_p8: number | null;
   },
   answersByStage: Record<string, Record<string, number[]>>,
+  completionByKey: Map<string, import('../db/library/cull-completion.js').DescribeScoreCompletion>,
 ) {
   const recipe = resolveCuttingRecipe(db, row.cut_by_stage_key, pipelineFallbackRecipe(db));
   const recipeBlock = recipe
@@ -68,7 +70,7 @@ function shapeReviewRow(
     cut_by: row.cut_by as 'culling_recipe' | 'score_forecast',
     score_forecast_p8: row.score_forecast_p8,
     recipe: recipeBlock,
-    completion: describeScoreCompletion(db, row.image_key),
+    completion: completionByKey.get(row.image_key) ?? 'none',
     thumbnail_url: thumbnailUrl(row.image_key),
   };
 }
@@ -113,7 +115,10 @@ cullReviewRoutes.openapi(listRoute, (c) => {
   const stages = modelIds ? resolveCurrentStages(db, pipe.config, modelIds) : [];
   const keys = rows.map((r) => r.image_key);
   const answers = loadCurrentStageAnswers(db, stages, keys);
-  const data = rows.map((r) => shapeReviewRow(db, r, answers.get(r.image_key) ?? {}));
+  const completionByKey = batchDescribeScoreCompletion(db, keys);
+  const data = rows.map((r) =>
+    shapeReviewRow(db, r, answers.get(r.image_key) ?? {}, completionByKey),
+  );
   return c.json({ data, total, limit, offset }, 200);
 });
 
@@ -133,7 +138,7 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
   const imageKey = c.req.param('image_key');
   const v = getCullVerdict(db, imageKey);
   if (!v || (v.verdict !== 'cut' && v.verdict !== 'sent')) {
-    return c.json({ error: 'resource not found' }, 404);
+    return errorNotFound(c, 'image');
   }
   const image = db.prepare('SELECT filename FROM images WHERE key = ?').get(imageKey) as { filename: string } | undefined;
   const modelIds = readStoredLayaModelIds(db);
@@ -213,11 +218,6 @@ const sendRoute = createRoute({
 cullReviewRoutes.openapi(sendRoute, (c) => {
   const db = c.get('libraryDb');
   const { image_keys: keys } = c.req.valid('json');
-  const sent: string[] = [];
-  for (const key of keys) {
-    recordCullUserAction(db, key, 'sent_by_hand');
-    sent.push(key);
-  }
   const selection = keys.map((k) => [k, 'catalog'] as const);
   const meta = { image_type: 'catalog', force: false, image_keys: keys };
   const workKeys = [
@@ -226,7 +226,14 @@ cullReviewRoutes.openapi(sendRoute, (c) => {
       ...selectKeysWithScoreWork(db, meta, selection),
     ]),
   ];
-  const skippedComplete = keys.length - workKeys.length;
+  const workSet = new Set(workKeys);
+  const sent: string[] = [];
+  for (const key of keys) {
+    if (!workSet.has(key)) continue;
+    recordCullUserAction(db, key, 'sent_by_hand');
+    sent.push(key);
+  }
+  const skippedComplete = keys.length - sent.length;
   let jobId: string | null = null;
   if (workKeys.length > 0) {
     const jobsDb = initJobsDb(config.VISUALIZER_DB);

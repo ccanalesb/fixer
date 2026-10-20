@@ -8,9 +8,10 @@ export function sendButtonLabel(completions: readonly SendCompletion[]): string 
   return anyScored ? 'Send to re-scoring' : 'Send to scoring'
 }
 
-export function bulkSendButtonLabel(count: number, completions: readonly SendCompletion[]): string | null {
-  const base = sendButtonLabel(completions)
+export function bulkSendButtonLabel(completions: readonly SendCompletion[]): string | null {
+  const sendable = completions.filter((c) => c !== 'all')
+  const base = sendButtonLabel(sendable)
   if (!base) return null
   const verb = base.replace('Send to ', '')
-  return `Send ${count} to ${verb}`
+  return `Send ${sendable.length} to ${verb}`
 }

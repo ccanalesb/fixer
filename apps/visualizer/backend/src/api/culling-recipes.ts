@@ -19,6 +19,7 @@ import { initJobsDb, createJob, getJob } from '../db/jobs/jobs.js';
 import { BATCH_CULL_JOB_TYPE } from '../jobs/handlers/cull.js';
 import { enqueueRedecideCullVerdicts } from '../jobs/handlers/redecide.js';
 import { isValidPerspectiveSlug } from '../utils/perspective-slug.js';
+import { errorNotFound } from '../utils/responses.js';
 import { emitJobEvent } from '../websocket/events.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
 import { createOpenApiApp } from './openapi.js';
@@ -103,7 +104,7 @@ const detailRoute = createRoute({
 cullingRecipesRoutes.openapi(detailRoute, (c) => {
   const db = c.get('libraryDb');
   const detail = recipeDetail(db, c.req.param('slug'));
-  if (!detail) return c.json({ error: 'resource not found' }, 404);
+  if (!detail) return errorNotFound(c, 'image');
   return c.json(detail, 200);
 });
 
@@ -166,7 +167,7 @@ cullingRecipesRoutes.openapi(duplicateRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
   const { new_slug, new_name } = c.req.valid('json');
-  if (!getCullRecipe(db, slug)) return c.json({ error: 'resource not found' }, 404);
+  if (!getCullRecipe(db, slug)) return errorNotFound(c, 'image');
   if (getCullRecipe(db, new_slug)) return c.json({ error: 'slug already exists' }, 409);
   duplicateCullRecipe(db, slug, new_slug, new_name);
   return c.json(recipeDetail(db, new_slug)!, 201);
@@ -198,6 +199,7 @@ const definitionRoute = createRoute({
           version: z.number().int(),
           created: z.boolean(),
           impact: z.object({ photos: z.number().int(), hours_estimate: z.number() }).optional(),
+          cull_job_id: z.string().nullable(),
         }),
       ),
     },
@@ -210,7 +212,7 @@ cullingRecipesRoutes.openapi(definitionRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
   const recipe = getCullRecipe(db, slug);
-  if (!recipe) return c.json({ error: 'resource not found' }, 404);
+  if (!recipe) return errorNotFound(c, 'image');
   const { definition, mode } = c.req.valid('json');
   const v = validateRecipeDefinitionForLaya(definition, recipe.model);
   if (!v.ok) return c.json({ error: v.errors.map((e) => e.message).join('; ') }, 400);
@@ -232,7 +234,7 @@ cullingRecipesRoutes.openapi(definitionRoute, (c) => {
       version: saved.version,
       created: saved.created,
       impact: { photos, hours_estimate },
-      ...(jobId ? {} : {}),
+      cull_job_id: jobId,
     },
     200,
   );
@@ -264,7 +266,7 @@ const ruleRoute = createRoute({
 cullingRecipesRoutes.openapi(ruleRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
-  if (!getCullRecipe(db, slug)) return c.json({ error: 'resource not found' }, 404);
+  if (!getCullRecipe(db, slug)) return errorNotFound(c, 'image');
   const { rule } = c.req.valid('json');
   const version = setRecipeRule(db, slug, rule);
   let redecideJobId: string | null = null;
@@ -305,17 +307,22 @@ const patchRoute = createRoute({
 cullingRecipesRoutes.openapi(patchRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
-  if (!getCullRecipe(db, slug)) return c.json({ error: 'resource not found' }, 404);
+  if (!getCullRecipe(db, slug)) return errorNotFound(c, 'image');
   const body = c.req.valid('json');
   updateCullRecipeMeta(db, slug, body);
-  let redecideJobId: string | null = null;
   if (body.active !== undefined) {
     const version = setCullRecipePipelineActive(db, slug, body.active);
     if (version !== null) {
-      redecideJobId = withJobsDb((jobsDb) => enqueueRedecideCullVerdicts(jobsDb, `${slug} active=${body.active}`));
+      withJobsDb((jobsDb) => {
+        const id = enqueueRedecideCullVerdicts(jobsDb, `${slug} active=${body.active}`);
+        if (id) {
+          const job = getJob(jobsDb, id);
+          if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
+        }
+        return id;
+      });
     }
   }
-  void redecideJobId;
   return c.json(recipeDetail(db, slug)!, 200);
 });
 
@@ -377,7 +384,14 @@ cullingRecipesRoutes.openapi(scoreForecastRoute, (c) => {
     },
   };
   const version = createPipelineSettingVersion(db, next, 'score forecast threshold changed');
-  const redecideJobId = withJobsDb((jobsDb) => enqueueRedecideCullVerdicts(jobsDb, 'score forecast threshold changed'));
+  const redecideJobId = withJobsDb((jobsDb) => {
+    const id = enqueueRedecideCullVerdicts(jobsDb, 'score forecast threshold changed');
+    if (id) {
+      const job = getJob(jobsDb, id);
+      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
+    }
+    return id;
+  });
   return c.json({ version, redecide_job_id: redecideJobId }, 200);
 });
 

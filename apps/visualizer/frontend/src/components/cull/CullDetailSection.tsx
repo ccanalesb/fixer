@@ -2,6 +2,7 @@ import { Button } from '../ui/Button'
 import {
   CULL_AGREE,
   CULL_AGREED,
+  CULL_DETAIL_SECTION,
   CULL_MANUALLY_CULL_NOTE,
   CULL_SCORE_FORECAST,
   CULL_SHOULD_HAVE_BEEN_CUT,
@@ -25,7 +26,7 @@ export function CullDetailSection({
 
   return (
     <section className="mt-6 pt-6 border-t border-border space-y-4">
-      <h3 className="font-semibold text-sm">Culling</h3>
+      <h3 className="font-semibold text-sm">{CULL_DETAIL_SECTION}</h3>
       {sentByHand ? (
         <p className="text-sm text-text-secondary">{CULL_MANUALLY_CULL_NOTE}</p>
       ) : detail.verdict === 'sent' ? (

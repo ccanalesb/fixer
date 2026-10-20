@@ -1,14 +1,17 @@
 /**
  * Culling recipes HTTP routes.
  */
+import Database from 'better-sqlite3';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
-import { getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
+import { getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
+import { BATCH_CULL_JOB_TYPE } from '../src/jobs/handlers/cull.js';
 import { BATCH_REDECIDE_JOB_TYPE } from '../src/jobs/handlers/redecide.js';
+import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
 let fx: LibraryFixture;
@@ -83,6 +86,57 @@ describe('PUT /api/culling-recipes/{slug}/rule', () => {
     const pending = getPendingJobs(jobsDb).filter((j) => j.type === BATCH_REDECIDE_JOB_TYPE);
     jobsDb.close();
     expect(pending.length + (body.redecide_job_id ? 1 : 0)).toBeGreaterThan(0);
+  });
+});
+
+describe('PUT /api/culling-recipes/{slug}/definition', () => {
+  it('save_and_queue_cull enqueues whole-catalog cull job', async () => {
+    const recipe = await json<{ definition: Record<string, unknown> }>(
+      await app.request('/api/culling-recipes/recipe-7h47'),
+    );
+    const res = await app.request('/api/culling-recipes/recipe-7h47/definition', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ definition: recipe.definition, mode: 'save_and_queue_cull' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json<{ cull_job_id: string | null }>(res);
+    expect(body.cull_job_id).toBeTruthy();
+    const jobsDb = initJobsDb(jobsDbPath);
+    const job = getJob(jobsDb, body.cull_job_id!);
+    jobsDb.close();
+    expect(job!.type).toBe(BATCH_CULL_JOB_TYPE);
+    expect(job!.metadata).toEqual({});
+  });
+});
+
+describe('PUT /api/culling-recipes/pipeline/score-forecast', () => {
+  it('bumps pipeline version and enqueues re-decide', async () => {
+    const before = getCurrentPipelineSetting(new Database(fx.dbPath)).version;
+    const res = await app.request('/api/culling-recipes/pipeline/score-forecast', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ threshold: 0.12 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json<{ version: number; redecide_job_id: string | null }>(res);
+    expect(body.version).toBeGreaterThan(before);
+    expect(body.redecide_job_id).toBeTruthy();
+  });
+});
+
+describe('PATCH /api/culling-recipes/{slug}', () => {
+  it('deactivate enqueues re-decide', async () => {
+    const res = await app.request('/api/culling-recipes/recipe-7h47', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ active: false }),
+    });
+    expect(res.status).toBe(200);
+    const jobsDb = initJobsDb(jobsDbPath);
+    const pending = getPendingJobs(jobsDb).filter((j) => j.type === BATCH_REDECIDE_JOB_TYPE);
+    jobsDb.close();
+    expect(pending.length).toBeGreaterThan(0);
   });
 });
 

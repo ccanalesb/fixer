@@ -3195,6 +3195,7 @@ export interface paths {
                                 photos: number;
                                 hours_estimate: number;
                             };
+                            cull_job_id: string | null;
                         };
                     };
                 };

@@ -860,7 +860,13 @@ export const CullingRecipesAPI = {
       body: JSON.stringify(body),
     }),
   saveDefinition: (slug: string, body: { definition: unknown; mode: 'save_only' | 'save_and_queue_cull' }) =>
-    request<{ recipe: CullRecipeDetail; version: number; created: boolean; impact?: { photos: number; hours_estimate: number } }>(
+    request<{
+      recipe: CullRecipeDetail
+      version: number
+      created: boolean
+      impact?: { photos: number; hours_estimate: number }
+      cull_job_id: string | null
+    }>(
       `/culling-recipes/${encodeURIComponent(slug)}/definition`,
       { method: 'PUT', body: JSON.stringify(body) },
     ),

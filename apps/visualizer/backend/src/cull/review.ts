@@ -10,11 +10,14 @@ import type { RecipeDefinition, RecipeRule } from './types.js';
 import type { CullRecipe } from '../db/library/cull-recipes.js';
 import type { Db } from '../db/connection.js';
 import { getCullRecipe } from '../db/library/cull-recipes.js';
-import { listPerspectives } from '../db/library/scores.js';
-import { computePromptVersion } from '../vision/scoring-service.js';
+import {
+  batchDescribeScoreCompletion,
+  type DescribeScoreCompletion,
+} from '../db/library/cull-completion.js';
 import type { StageKind } from './types.js';
 
-export type DescribeScoreCompletion = 'none' | 'some' | 'all';
+export type { DescribeScoreCompletion };
+export { batchDescribeScoreCompletion };
 
 export interface DimensionLevelHighlight {
   level: number;
@@ -83,28 +86,7 @@ export function tabMatchesCutBy(tab: 'all' | 'culling_recipe' | 'score_forecast'
 
 /** Description + current scores on every active perspective (F13/F14). */
 export function describeScoreCompletion(db: Db, imageKey: string): DescribeScoreCompletion {
-  const described =
-    db
-      .prepare(
-        "SELECT 1 FROM image_descriptions d WHERE d.image_key = ? AND d.image_type = 'catalog' " +
-          'AND NOT EXISTS (SELECT 1 FROM vision_stale vs WHERE vs.image_key = d.image_key AND vs.output = ?)',
-      )
-      .get(imageKey, 'description') !== undefined;
-  const active = listPerspectives(db, { activeOnly: true });
-  if (active.length === 0) return described ? 'all' : 'none';
-  let scored = 0;
-  for (const p of active) {
-    const version = computePromptVersion({ slug: p.slug, prompt_markdown: p.prompt_markdown });
-    const row = db
-      .prepare(
-        'SELECT 1 FROM image_scores WHERE image_key = ? AND image_type = ? AND perspective_slug = ? AND prompt_version = ? AND is_current = 1',
-      )
-      .get(imageKey, 'catalog', p.slug, version);
-    if (row) scored += 1;
-  }
-  if (!described && scored === 0) return 'none';
-  if (described && scored === active.length) return 'all';
-  return 'some';
+  return batchDescribeScoreCompletion(db, [imageKey]).get(imageKey) ?? 'none';
 }
 
 export function resolveCuttingRecipe(db: Db, cutByStageKey: string | null, fallbackSlug: string): CullRecipe | null {

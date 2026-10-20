@@ -17,7 +17,8 @@ describe('sendButtonLabel', () => {
 })
 
 describe('bulkSendButtonLabel', () => {
-  it('includes selection count', () => {
-    expect(bulkSendButtonLabel(3, ['none'])).toBe('Send 3 to scoring')
+  it('counts only photos that need work', () => {
+    expect(bulkSendButtonLabel(['none', 'none', 'none'])).toBe('Send 3 to scoring')
+    expect(bulkSendButtonLabel(['none', 'all'])).toBe('Send 1 to scoring')
   })
 })

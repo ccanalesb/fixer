@@ -114,11 +114,21 @@ export function isCullCatalogPhoto(db: Db, imageKey: string): boolean {
 }
 
 export function cullManuallySent(db: Db, imageKey: string): boolean {
-  return (
-    db
+  return batchCullManuallySent(db, [imageKey]).has(imageKey);
+}
+
+export function batchCullManuallySent(db: Db, keys: readonly string[]): Set<string> {
+  const out = new Set<string>();
+  if (keys.length === 0) return out;
+  for (let i = 0; i < keys.length; i += KEYS_PER_QUERY) {
+    const chunk = keys.slice(i, i + KEYS_PER_QUERY);
+    const rows = db
       .prepare(
-        `SELECT 1 FROM cull_verdicts v WHERE v.image_key = ? AND ${SENT_BY_HAND_SQL}`,
+        `SELECT v.image_key FROM cull_verdicts v
+         WHERE v.image_key IN (${chunk.map(() => '?').join(',')}) AND ${SENT_BY_HAND_SQL}`,
       )
-      .get(imageKey) !== undefined
-  );
+      .all(...chunk) as { image_key: string }[];
+    for (const r of rows) out.add(r.image_key);
+  }
+  return out;
 }

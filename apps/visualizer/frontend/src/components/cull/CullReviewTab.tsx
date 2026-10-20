@@ -43,10 +43,7 @@ export function CullReviewTab() {
     () => rows.filter((r) => selected.has(r.image_key)),
     [rows, selected],
   )
-  const sendLabel = bulkSendButtonLabel(
-    selected.size,
-    selectedRows.map((r) => r.completion),
-  )
+  const sendLabel = bulkSendButtonLabel(selectedRows.map((r) => r.completion))
   const completeCount = selectedRows.filter((r) => r.completion === 'all').length
 
   const toggleAll = () => {
@@ -55,15 +52,15 @@ export function CullReviewTab() {
   }
 
   const sendSelected = async () => {
-    await CullAPI.sendPhotos([...selected])
+    const keys = selectedRows.filter((r) => r.completion !== 'all').map((r) => r.image_key)
+    if (keys.length === 0) return
+    await CullAPI.sendPhotos(keys)
     setSelected(new Set())
     invalidateAll(['cull.summary', 'cull.photos'])
   }
 
   const agreeSelected = async () => {
-    for (const key of selected) {
-      await CullAPI.recordAction(key, 'agrees_with_cut')
-    }
+    await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_cut')))
     setSelected(new Set())
     invalidateAll(['cull.photos'])
   }
@@ -81,7 +78,7 @@ export function CullReviewTab() {
         <p className="text-sm text-text-secondary">
           {CULL_SUB_AUTO}
           {(summary.sent_manually_count ?? 0) > 0 && (
-            <> {(summary.sent_manually_count ?? 0) > 0 && CULL_SUB_MANUAL(summary.sent_manually_count ?? 0)}</>
+            <> {CULL_SUB_MANUAL(summary.sent_manually_count ?? 0)}</>
           )}
         </p>
         {summary.last_checked_at && (

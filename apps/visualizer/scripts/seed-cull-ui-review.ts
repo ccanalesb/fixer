@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { initLibraryDb } from '../backend/src/db/library/bootstrap.js';
 import { upsertCullVerdict } from '../backend/src/db/library/cull-verdicts.js';
+import { recordCullUserAction } from '../backend/src/db/library/cull-user-actions.js';
 import { writeFakeLayaModels } from '../backend/tests/helpers/fake-laya.js';
 
 const libPath = process.env.LIBRARY_DB;
@@ -59,5 +60,20 @@ upsertCullVerdict(db, {
   stageVersionIds: [],
   runId: null,
 });
+upsertCullVerdict(db, {
+  imageKey: 'photo-manual',
+  verdict: 'cut',
+  cutBy: 'culling_recipe',
+  cutByStageKey: 'culling_recipe:recipe-7h47:7',
+  sentByHand: false,
+  pendingStages: [],
+  pendingReason: '',
+  scoreForecastOff: false,
+  scoreForecastP8: 0.18,
+  pipelineSettingVersion: 1,
+  stageVersionIds: [],
+  runId: null,
+});
+recordCullUserAction(db, 'photo-manual', 'sent_by_hand');
 db.close();
 console.log(`Seeded ${libPath}`);

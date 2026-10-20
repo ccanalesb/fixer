@@ -679,6 +679,7 @@ export const CULL_AGREE = 'Agree with culling'
 export const CULL_AGREED = 'Agreed'
 export const CULL_CLEAR = 'Clear'
 export const CULL_ALREADY_SCORED = (d: number) => `· ${d} already described and scored`
+export const CULL_DETAIL_SECTION = 'Culling'
 export const CULL_MANUALLY_CULL = 'Manually cull'
 export const CULL_MANUALLY_CULL_NOTE =
   'Manually cull — never cut automatically again.'

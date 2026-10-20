@@ -20,7 +20,7 @@ export function CullingRecipesSection() {
   const pipeline = useQuery(['culling-recipes.pipeline'] as const, () => CullingRecipesAPI.getPipeline())
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [threshold, setThreshold] = useState('0.111')
+  const [threshold, setThreshold] = useState('')
 
   const detail = useQuery(['culling-recipes.detail', selectedSlug ?? ''] as const, () =>
     selectedSlug ? CullingRecipesAPI.get(selectedSlug) : Promise.resolve(null),
@@ -31,6 +31,11 @@ export function CullingRecipesSection() {
       setSelectedSlug(recipes.recipes[0]!.slug)
     }
   }, [recipes, selectedSlug])
+
+  useEffect(() => {
+    const t = pipeline?.config.score_forecast.threshold
+    if (t !== undefined && Number.isFinite(t)) setThreshold(String(t))
+  }, [pipeline?.config.score_forecast.threshold])
 
   const refresh = useCallback(() => {
     invalidateAll(['culling-recipes.list', 'culling-recipes.pipeline', 'culling-recipes.detail'])
@@ -90,7 +95,11 @@ export function CullingRecipesSection() {
           ))}
         </div>
         {detail && selectedSlug ? (
-          <CullingRecipeEditor recipe={detail} onRefresh={refresh} />
+          <CullingRecipeEditor
+            key={`${detail.slug}-${detail.version}`}
+            recipe={detail}
+            onRefresh={refresh}
+          />
         ) : null}
       </div>
       <div>
