@@ -16,6 +16,7 @@ import {
 } from '../../constants/strings'
 import { CullReviewRowView } from './CullReviewRow'
 import { bulkSendButtonLabel } from './sendLabel'
+import { ImageDetailModal } from '../image-view/ImageDetailModal'
 
 const LIMIT = 50
 type TabId = 'all' | 'culling_recipe' | 'score_forecast'
@@ -24,6 +25,7 @@ export function CullReviewTab() {
   const [tab, setTab] = useState<TabId>('all')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [modalIndex, setModalIndex] = useState<number | null>(null)
   const [, startTransition] = useTransition()
 
   const summary = useQuery(['cull.summary'] as const, () => CullAPI.summary())
@@ -111,7 +113,7 @@ export function CullReviewTab() {
       </button>
 
       <div className="border border-border rounded-base overflow-hidden">
-        {rows.map((row: CullReviewRow) => (
+        {rows.map((row: CullReviewRow, idx) => (
           <CullReviewRowView
             key={row.image_key}
             row={row}
@@ -124,7 +126,7 @@ export function CullReviewTab() {
                 return next
               })
             }}
-            onOpen={() => {}}
+            onOpen={() => setModalIndex(idx)}
           />
         ))}
       </div>
@@ -134,6 +136,21 @@ export function CullReviewTab() {
         totalPages={totalPages}
         onPageChange={(p) => startTransition(() => setPage(p))}
       />
+
+      {modalIndex !== null && rows[modalIndex] ? (
+        <ImageDetailModal
+          imageType="catalog"
+          imageKey={rows[modalIndex]!.image_key}
+          primaryScoreSource="catalog"
+          showCullSection
+          cullNav={{
+            keys: rows.map((r) => r.image_key),
+            index: modalIndex,
+            onIndexChange: setModalIndex,
+          }}
+          onClose={() => setModalIndex(null)}
+        />
+      ) : null}
 
       {selected.size > 0 && (
         <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-bg p-4 flex flex-wrap gap-2 items-center justify-center shadow-lg z-30">

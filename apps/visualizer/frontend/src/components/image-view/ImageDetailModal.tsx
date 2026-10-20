@@ -23,6 +23,8 @@ import {
 import { Button } from '../ui/Button/Button'
 import { ConfirmModalFrame, UndoToastBar, useUndoToast } from '../ui/ConfirmUndoAction'
 import { CatalogImageDetailSections } from './CatalogImageDetailSections'
+import { CullDetailSectionLoader } from '../cull/CullDetailSectionLoader'
+import { CULL_MODAL_NEXT, CULL_MODAL_PREV } from '../../constants/strings'
 import { ImageMetadataBadges, type PrimaryScoreSource } from './ImageMetadataBadges'
 import { ImageTile } from './ImageTile'
 import { fromCatalogListRow } from './adapters'
@@ -42,6 +44,14 @@ interface ImageDetailModalProps {
   scorePerspectiveSlug?: string
   /** Optional content rendered above the detail body (e.g. Mirror standout). */
   contextSlot?: ReactNode
+  /** When set, loads `/api/cull/photos/{key}` and renders the cull section. */
+  showCullSection?: boolean
+  /** Prev / next within a cull review or catalog list (ticket 17). */
+  cullNav?: {
+    keys: string[]
+    index: number
+    onIndexChange: (index: number) => void
+  }
   onClose: () => void
 }
 
@@ -283,7 +293,8 @@ function ImageDetailModalBody({
   primaryScoreSource,
   scorePerspectiveSlug,
   initialImage,
-}: Omit<ImageDetailModalProps, 'onClose'>) {
+  showCullSection,
+}: Omit<ImageDetailModalProps, 'onClose' | 'cullNav' | 'contextSlot'>) {
   const detailKey = useMemo(
     () =>
       [
@@ -355,6 +366,9 @@ function ImageDetailModalBody({
               onDataChanged={handleDataChanged}
             />
           ) : null}
+          {showCullSection && image.image_type === 'catalog' ? (
+            <CullDetailSectionLoader imageKey={imageKey} onMutated={handleDataChanged} />
+          ) : null}
         </div>
       </div>
     </>
@@ -384,6 +398,8 @@ export function ImageDetailModal({
   primaryScoreSource,
   scorePerspectiveSlug,
   contextSlot,
+  showCullSection = false,
+  cullNav,
   onClose,
 }: ImageDetailModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -424,7 +440,31 @@ export function ImageDetailModal({
             <h2 id={titleId} className="text-card-title text-text truncate">
               {IMAGE_DETAILS_TITLE}
             </h2>
-            <ModalCloseButton onClick={onClose} />
+            <div className="flex items-center gap-2 shrink-0">
+              {cullNav && cullNav.keys.length > 1 ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={cullNav.index <= 0}
+                    onClick={() => cullNav.onIndexChange(cullNav.index - 1)}
+                  >
+                    ‹ {CULL_MODAL_PREV}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={cullNav.index >= cullNav.keys.length - 1}
+                    onClick={() => cullNav.onIndexChange(cullNav.index + 1)}
+                  >
+                    {CULL_MODAL_NEXT} ›
+                  </Button>
+                </>
+              ) : null}
+              <ModalCloseButton onClick={onClose} />
+            </div>
           </div>
 
           {contextSlot ? <div className="border-b border-border px-6 py-4">{contextSlot}</div> : null}
@@ -459,6 +499,7 @@ export function ImageDetailModal({
                 initialImage={initialImage}
                 primaryScoreSource={primaryScoreSource}
                 scorePerspectiveSlug={scorePerspectiveSlug}
+                showCullSection={showCullSection}
               />
             </Suspense>
           </ErrorBoundary>

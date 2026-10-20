@@ -49,7 +49,9 @@ import {
   INSIGHTS_KPI_BURST_STACKS,
   CATALOG_FILTER_LABEL_FRAME_SUBSTANCE,
   CATALOG_FILTER_FRAME_SUBSTANCE_ONLY,
+  CULL_MANUALLY_CULL,
 } from '../../constants/strings';
+import { Badge } from '../ui/badges';
 import { formatMonth } from '../../utils/date';
 import { useFilters } from '../../hooks/useFilters';
 import { FilterBar } from '../filters/FilterBar';
@@ -80,6 +82,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const [page, setPage] = useState(1);
   const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<SelectedCatalogEntry | null>(null);
+  const [cullNavIndex, setCullNavIndex] = useState(0);
 
   const monthsPayload = useQuery(['images.catalog', 'months'] as const, () =>
     ImagesAPI.getCatalogMonths(),
@@ -410,13 +413,21 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
         <>
           <div className={`relative transition-opacity duration-150${isPending ? ' opacity-50 pointer-events-none' : ''}`}>
             <TileGrid>
-              {images.map((image) => (
+              {images.map((image, idx) => (
                 <ImageTile
                   key={image.id != null ? String(image.id) : image.key}
                   image={fromCatalogListRow(image)}
                   variant="grid"
                   primaryScoreSource="catalog"
-                  onClick={() => setSelected({ key: image.key, initial: image })}
+                  overlayBadges={
+                    cullCatalog && image.cull_manually_sent ? (
+                      <Badge variant="default">{CULL_MANUALLY_CULL}</Badge>
+                    ) : undefined
+                  }
+                  onClick={() => {
+                    setCullNavIndex(idx);
+                    setSelected({ key: image.key, initial: image });
+                  }}
                 />
               ))}
             </TileGrid>
@@ -435,12 +446,30 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
       {selected && (
         <ImageDetailModal
           imageType="catalog"
-          imageKey={selected.key}
-          initialImage={selected.initial ? fromCatalogListRow(selected.initial) : undefined}
+          imageKey={
+            cullCatalog ? (images[cullNavIndex]?.key ?? selected.key) : selected.key
+          }
+          initialImage={
+            cullCatalog
+              ? fromCatalogListRow(images[cullNavIndex] ?? selected.initial ?? { key: selected.key })
+              : selected.initial
+                ? fromCatalogListRow(selected.initial)
+                : undefined
+          }
           primaryScoreSource="catalog"
           scorePerspectiveSlug={
             typeof filterValues.scorePerspective === 'string' && filterValues.scorePerspective
               ? filterValues.scorePerspective
+              : undefined
+          }
+          showCullSection={cullCatalog}
+          cullNav={
+            cullCatalog
+              ? {
+                  keys: images.map((im) => im.key),
+                  index: cullNavIndex,
+                  onIndexChange: setCullNavIndex,
+                }
               : undefined
           }
           onClose={() => setSelected(null)}

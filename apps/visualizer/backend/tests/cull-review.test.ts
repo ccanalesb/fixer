@@ -108,6 +108,15 @@ describe('POST /api/cull/photos/send', () => {
   });
 });
 
+describe('GET /api/cull/photos/{image_key}', () => {
+  it('returns detail for sent photos on the cull catalog', async () => {
+    const res = await app.request('/api/cull/photos/sent-b');
+    expect(res.status).toBe(200);
+    const body = await json<{ verdict: string }>(res);
+    expect(body.verdict).toBe('sent');
+  });
+});
+
 describe('cull catalog filter', () => {
   it('includes sent verdict, excludes cut', async () => {
     const res = await app.request('/api/images/catalog/?cull_catalog=true');

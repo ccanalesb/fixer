@@ -697,3 +697,23 @@ export const CULL_SAVE_AND_QUEUE = 'Save and queue cull job'
 export const CULL_RULE_SAVE_NOTE =
   'Saving re-checks every photo from stored answers (no new model run).'
 export const CULL_SCORE_FORECAST = 'Score forecast'
+export const CULL_MODAL_PREV = 'Prev'
+export const CULL_MODAL_NEXT = 'Next'
+export const CULL_RECIPE_MODEL = 'Model'
+export const CULL_RECIPE_ADD_LEVEL = 'Add level'
+export const CULL_RECIPE_ADD_LEVEL_SET = 'Add level set'
+export const CULL_RECIPE_FAILS_AT = 'fails at'
+export const CULL_RECIPE_STRONG_AT = 'strong at'
+export const CULL_RECIPE_COMBINE_EVERY = 'Cut when every set cuts'
+export const CULL_RECIPE_COMBINE_ANY = 'Cut when any set cuts'
+export const CULL_RECIPE_RULE_ALL_FAIL = 'All of these fail'
+export const CULL_RECIPE_RULE_N_FAIL = 'N or more fail unless one is strong'
+export const CULL_RECIPE_RULE_MEAN = 'The average fails'
+export const CULL_RECIPE_UNMEASURED_HINT =
+  'Not measured against AI scores — check what it cuts in Processing → Cull.'
+export const CULL_RECIPE_TEXT_SAVE_IMPACT = (photos: number, hours: number) =>
+  `Saving text re-answers every catalog photo (~${hours.toFixed(2)} h, ${photos} photos × 2 s).`
+export const CULL_RECIPE_ACTIVE = 'Active'
+export const CULL_RECIPE_INACTIVE = 'Inactive'
+export const CULL_RECIPE_ACTIVATE = 'Activate'
+export const CULL_RECIPE_DEACTIVATE = 'Deactivate'

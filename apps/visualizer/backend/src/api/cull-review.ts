@@ -132,7 +132,9 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
   const db = c.get('libraryDb');
   const imageKey = c.req.param('image_key');
   const v = getCullVerdict(db, imageKey);
-  if (!v || v.verdict !== 'cut') return c.json({ error: 'resource not found' }, 404);
+  if (!v || (v.verdict !== 'cut' && v.verdict !== 'sent')) {
+    return c.json({ error: 'resource not found' }, 404);
+  }
   const image = db.prepare('SELECT filename FROM images WHERE key = ?').get(imageKey) as { filename: string } | undefined;
   const modelIds = readStoredLayaModelIds(db);
   const pipe = getCurrentPipelineSetting(db);
