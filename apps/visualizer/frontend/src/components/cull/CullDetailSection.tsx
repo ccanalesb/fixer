@@ -9,19 +9,11 @@ import {
   CULL_SHOULD_HAVE_BEEN_CUT,
   CULL_SHOULD_HAVE_BEEN_CUT_MARKED,
 } from '../../constants/strings'
-import { failingLevelClass, passedLevelClass } from './cullHighlight'
+import { levelHighlightClass } from './cullHighlight'
 import { rowSendButtonLabel } from './sendLabel'
 import type { CullReviewDetail } from '../../services/api'
 
-type Level = CullReviewDetail['recipe']['level_sets'][number]['dimensions'][number]['levels'][number]
-
-function RecipeTable({
-  recipe,
-  levelClass,
-}: {
-  recipe: CullReviewDetail['recipe']
-  levelClass: (level: Level | undefined) => string
-}) {
+function RecipeTable({ recipe }: { recipe: CullReviewDetail['recipe'] }) {
   return (
     <table className="w-full text-xs border-collapse">
       <thead>
@@ -41,7 +33,7 @@ function RecipeTable({
             {recipe.level_sets.map((set) => {
               const lv = set.dimensions.find((x) => x.slug === dim.slug)?.levels[0]
               return (
-                <td key={set.id} className={`p-1 text-right ${levelClass(lv)}`}>
+                <td key={set.id} className={`p-1 text-right ${levelHighlightClass(lv)}`}>
                   {lv?.level ?? '—'}
                 </td>
               )
@@ -105,7 +97,7 @@ export function CullDetailSection({
           {detail.recipe.level_sets.length > 0 ? (
             <div>
               <h4 className="text-sm font-medium mb-2">{detail.recipe.name}</h4>
-              <RecipeTable recipe={detail.recipe} levelClass={passedLevelClass} />
+              <RecipeTable recipe={detail.recipe} />
             </div>
           ) : null}
           <ScoreForecast forecast={detail.score_forecast} boldTop />
@@ -121,7 +113,7 @@ export function CullDetailSection({
         </>
       ) : (
         <>
-          <RecipeTable recipe={detail.recipe} levelClass={(lv) => failingLevelClass(lv?.fails ?? false)} />
+          <RecipeTable recipe={detail.recipe} />
           <ScoreForecast forecast={detail.score_forecast} boldTop={false} />
           <div className="flex flex-wrap gap-2">
             {sendLabel && (
