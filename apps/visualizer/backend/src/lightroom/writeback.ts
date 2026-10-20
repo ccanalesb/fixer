@@ -2,23 +2,15 @@
  * Reconcile cull verdicts → Lightroom pick/rating/keywords with guards and per-photo state.
  */
 import { config, loadLibraryConfig } from '../config.js';
-import type { WritebackKind, WritebackReconcileCounts } from './writeback-types.js';
+import type { WritebackReconcileCounts } from './writeback-types.js';
 import { WRITE_CHUNK_SIZE } from './writeback-types.js';
 import type { Db } from '../db/connection.js';
 import { getCullRecipe } from '../db/library/cull-recipes.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
-import {
-  countWritebackByStatus,
-  getWritebackState,
-  upsertWritebackState,
-} from '../db/library/lr-writeback-state.js';
-import {
-  getLrWritebackSettings,
-  resolveStarsRecipeSlug,
-  type LrWritebackSettings,
-} from '../db/library/lr-writeback-settings.js';
+import { countWritebackByStatus, upsertWritebackState } from '../db/library/lr-writeback-state.js';
+import { getLrWritebackSettings, resolveStarsRecipeSlug } from '../db/library/lr-writeback-settings.js';
 import { libraryWrite } from '../db/library/write.js';
-import { createEventLoopYieldState, pollCancelAndYield } from '../utils/yield.js';
+import { createEventLoopYieldState, EVENT_LOOP_YIELD_BUDGET_MS, pollCancelAndYield } from '../utils/yield.js';
 import { describeLrCatalogWriteStatus } from '../utils/lr-catalog-write.js';
 import {
   backupCatalogIfNeeded,
@@ -28,7 +20,6 @@ import {
   readPickRating,
 } from './writer.js';
 import {
-  desiredStarsRating,
   emptyRunTally,
   listVerdictImageKeys,
   type ReconcileRunTally,
@@ -66,43 +57,6 @@ function countsFromDb(db: Db, tally: ReconcileRunTally): Pick<WritebackReconcile
   };
 }
 
-/** Mark every eligible photo pending when a switch turns on (#341 F18). */
-export function markEligiblePending(db: Db, kind: WritebackKind): void {
-  const settings = getLrWritebackSettings(db);
-  const starsSlug = resolveStarsRecipeSlug(db, settings);
-  const keys = listVerdictImageKeys(db);
-  libraryWrite(db, () => {
-    for (const imageKey of keys) {
-      const verdict = getCullVerdict(db, imageKey);
-      if (kind === 'reject') {
-        if (!planRejectEligible(settings, verdict)) continue;
-      } else if (!desiredStarsRating(db, settings, imageKey, starsSlug)) {
-        continue;
-      }
-      const existing = getWritebackState(db, imageKey, kind);
-      if (existing?.status === 'written' || existing?.status === 'undone') continue;
-      upsertWritebackState(db, {
-        image_key: imageKey,
-        kind,
-        status: 'pending',
-        before_pick: existing?.before_pick ?? null,
-        before_rating: existing?.before_rating ?? null,
-        written_pick: existing?.written_pick ?? null,
-        written_rating: existing?.written_rating ?? null,
-        stars_recipe_version_id: existing?.stars_recipe_version_id ?? null,
-        written_at: existing?.written_at ?? null,
-      });
-    }
-  });
-}
-
-function planRejectEligible(settings: LrWritebackSettings, verdict: ReturnType<typeof getCullVerdict>): boolean {
-  if (!settings.write_reject || !verdict) return false;
-  if (verdict.sent_by_hand) return false;
-  if (verdict.verdict !== 'cut') return false;
-  return verdict.cut_by === 'culling_recipe';
-}
-
 export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Promise<WritebackReconcileCounts> {
   const settings = getLrWritebackSettings(db);
   const tally = emptyRunTally();
@@ -128,7 +82,7 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const isCancelled = opts.isCancelled ?? (() => false);
 
   let conn: ReturnType<typeof connectCatalog> | null = null;
-  if (canWrite && opts.trigger !== 'switch_on') {
+  if (canWrite) {
     raiseIfCatalogLocked(catalogPath);
     backupCatalogIfNeeded(catalogPath);
     conn = connectCatalog(catalogPath);
@@ -137,12 +91,23 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   let lockStopped = false;
 
   try {
-    for (let i = 0; i < keys.length; i += WRITE_CHUNK_SIZE) {
+    outer: for (let i = 0; i < keys.length; i += WRITE_CHUNK_SIZE) {
       if (await pollCancelAndYield(db, isCancelled, yieldState)) break;
       const chunk = keys.slice(i, i + WRITE_CHUNK_SIZE);
+      const done = Math.min(i + chunk.length, keys.length);
+      opts.onProgress?.(
+        keys.length ? Math.round((done / keys.length) * 100) : 100,
+        `Lightroom write-back (${done}/${keys.length})`,
+      );
       for (const imageKey of chunk) {
+        if (
+          Date.now() - yieldState.lastYieldAt >= EVENT_LOOP_YIELD_BUDGET_MS &&
+          (await pollCancelAndYield(db, isCancelled, yieldState))
+        ) {
+          break outer;
+        }
         if (canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
-        const writeNow = canWrite && !lockStopped && conn !== null && opts.trigger !== 'switch_on';
+        const writeNow = canWrite && !lockStopped && conn !== null;
         const live = conn ? readPickRating(conn, imageKey) : null;
         const verdict = getCullVerdict(db, imageKey);
 

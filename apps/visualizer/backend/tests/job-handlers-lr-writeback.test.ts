@@ -1,16 +1,16 @@
 /**
- * Job hooks invoke Lightroom write-back reconcile (#341).
+ * Job hooks enqueue Lightroom write-back (#341).
  * Hermetic: temp config, fake Laya models + mocked runtime, temp library.db — never repo models/.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as writeback from '../src/lightroom/writeback.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
-import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
+import { createJob, getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
+import { LR_WRITEBACK_JOB_TYPE } from '../src/jobs/handlers/lr-writeback.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import type { LayaAnswerWant } from '../src/laya/sessions.js';
@@ -90,33 +90,20 @@ afterEach(() => {
 });
 
 describe('standalone cull job writeback hook', () => {
-  it('invokes reconcile when LR closed', async () => {
-    const spy = vi.spyOn(writeback, 'reconcileLrWriteback').mockResolvedValue({
-      stars: { pending: 0, written: 0, skipped: 0, image_not_found: 0 },
-      reject: { pending: 0, written: 0, skipped: 0, image_not_found: 0 },
-      catalog_updated_stars: 0,
-      catalog_updated_reject: 0,
-      catalog_cleared_reject: 0,
-    });
+  it('enqueues lr_writeback when switches are on', async () => {
     const jobsDb = initJobsDb(jobsDbPath);
     const jobId = createJob(jobsDb, 'batch_cull_photos_before_scoring', { image_keys: [] });
     await tick(jobsDb, new JobRunner(jobsDb));
     const job = getJob(jobsDb, jobId)!;
     expect(job.status).toBe('completed');
-    expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ trigger: 'cull_job_complete' }));
+    const lrPending = getPendingJobs(jobsDb).filter((j) => j.type === LR_WRITEBACK_JOB_TYPE);
+    expect(lrPending).toHaveLength(1);
     jobsDb.close();
   });
 });
 
 describe('redecide hook', () => {
-  it('invokes reconcile after redecide completes', async () => {
-    const spy = vi.spyOn(writeback, 'reconcileLrWriteback').mockResolvedValue({
-      stars: { pending: 0, written: 0, skipped: 0, image_not_found: 0 },
-      reject: { pending: 0, written: 0, skipped: 0, image_not_found: 0 },
-      catalog_updated_stars: 0,
-      catalog_updated_reject: 0,
-      catalog_cleared_reject: 0,
-    });
+  it('enqueues lr_writeback after redecide completes', async () => {
     vi.spyOn(await import('../src/cull/redecide.js'), 'redecideAllPhotos').mockResolvedValue({
       total: 0,
       changed: 0,
@@ -133,7 +120,8 @@ describe('redecide hook', () => {
     const jobId = createJob(jobsDb, 'batch_redecide_cull_verdicts_from_stored_answers', {});
     await tick(jobsDb, new JobRunner(jobsDb));
     expect(getJob(jobsDb, jobId)!.status).toBe('completed');
-    expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ trigger: 'redecide_complete' }));
+    const lrPending = getPendingJobs(jobsDb).filter((j) => j.type === LR_WRITEBACK_JOB_TYPE);
+    expect(lrPending).toHaveLength(1);
     jobsDb.close();
   });
 });

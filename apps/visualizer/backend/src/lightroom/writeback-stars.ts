@@ -1,4 +1,5 @@
 import { levelSetReadout } from '../cull/decide.js';
+import { answersForLevelSetDimensions } from '../cull/review.js';
 import type { RecipeDefinition, RecipeRule, StageAnswers } from '../cull/types.js';
 import type { StarsStrongFrom } from './writeback-types.js';
 
@@ -21,11 +22,11 @@ function dimensionStrongAtLevelSet(
   dim: string,
   levelSet: string,
 ): boolean {
-  const qid = `${levelSet}|${dim}`;
-  const probs = answers[qid];
+  const normalized = answersForLevelSetDimensions(answers, levelSet, [dim]);
+  const probs = normalized[dim];
   if (!probs?.length) return false;
-  const readout = levelSetReadout({ [qid]: probs }, bands);
-  return readout[qid]?.strong === true;
+  const readout = levelSetReadout(normalized, bands);
+  return readout[dim]?.strong === true;
 }
 
 /**

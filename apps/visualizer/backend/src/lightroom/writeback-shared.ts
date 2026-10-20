@@ -22,13 +22,14 @@ export type WritebackTrigger =
   | 'redecide_complete'
   | 'sent_by_hand'
   | 'write_pending'
-  | 'switch_on';
+  | 'job';
 
 export interface ReconcileOptions {
   trigger: WritebackTrigger;
   imageKeys?: readonly string[];
   catalogPath?: string;
   isCancelled?: () => boolean | Promise<boolean>;
+  onProgress?: (pct: number, message: string) => void;
 }
 
 export interface ReconcileRunTally {

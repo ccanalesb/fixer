@@ -3563,7 +3563,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/api/cull/lightroom-writeback/write-pending": {
+    "/api/cull/lightroom-writeback/write": {
         parameters: {
             query?: never;
             header?: never;
@@ -3581,22 +3581,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Write pending result */
+                /** @description Write-back job enqueued */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["LrWritebackWritePendingResponse"];
-                    };
-                };
-                /** @description Catalog locked */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorBody"];
+                        "application/json": components["schemas"]["LrWritebackWriteResponse"];
                     };
                 };
                 /** @description Unprocessable Content */
@@ -5471,17 +5462,8 @@ export interface components {
                 };
             };
         };
-        LrWritebackWritePendingResponse: {
-            stars: {
-                pending: number;
-                written: number;
-                catalog_updated: number;
-            };
-            reject: {
-                pending: number;
-                written: number;
-                catalog_updated: number;
-            };
+        LrWritebackWriteResponse: {
+            job_id: string;
         };
         LrWritebackPhotoDetailResponse: {
             image_key: string;

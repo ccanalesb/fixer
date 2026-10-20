@@ -23,6 +23,13 @@ export const LrWritebackSettingsSchema = z
   .strict()
   .openapi('LrWritebackSettingsResponse');
 
+export const LrWritebackWriteResponse = z
+  .object({
+    job_id: z.string(),
+  })
+  .strict()
+  .openapi('LrWritebackWriteResponse');
+
 export const LrWritebackSettingsPatchSchema = z
   .object({
     write_stars: z.boolean().optional(),
@@ -30,22 +37,6 @@ export const LrWritebackSettingsPatchSchema = z
     stars_recipe_slug: z.string().nullable().optional(),
   })
   .strict();
-
-export const LrWritebackWritePendingResponse = z
-  .object({
-    stars: z.object({
-      pending: z.number().int(),
-      written: z.number().int(),
-      catalog_updated: z.number().int(),
-    }),
-    reject: z.object({
-      pending: z.number().int(),
-      written: z.number().int(),
-      catalog_updated: z.number().int(),
-    }),
-  })
-  .strict()
-  .openapi('LrWritebackWritePendingResponse');
 
 export const LrWritebackPhotoDetailSchema = z
   .object({

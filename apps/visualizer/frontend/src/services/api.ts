@@ -943,7 +943,6 @@ export const CullingRecipesAPI = {
 }
 
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
-export type LrWritebackWritePendingResponse = components['schemas']['LrWritebackWritePendingResponse']
 export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackPhotoDetailResponse']
 
 export const LrWritebackAPI = {
@@ -957,8 +956,8 @@ export const LrWritebackAPI = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
-  writePending: () =>
-    request<LrWritebackWritePendingResponse>('/cull/lightroom-writeback/write-pending', {
+  write: () =>
+    request<{ job_id: string }>('/cull/lightroom-writeback/write', {
       method: 'POST',
     }),
   getPhoto: (imageKey: string) =>

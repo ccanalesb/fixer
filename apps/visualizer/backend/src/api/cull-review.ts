@@ -165,8 +165,8 @@ cullReviewRoutes.openapi(sendRoute, async (c) => {
   }
   if (sent.length > 0) {
     try {
-      const { reconcileLrWriteback } = await import('../lightroom/writeback.js');
-      await reconcileLrWriteback(db, { trigger: 'sent_by_hand', imageKeys: sent });
+      const { enqueueLrWritebackIfEnabled } = await import('../jobs/handlers/lr-writeback.js');
+      enqueueLrWritebackIfEnabled(db, { imageKeys: sent });
     } catch (e) {
       process.stderr.write(
         `lightroom write-back after send-by-hand: ${e instanceof Error ? e.message : String(e)}\n`,

@@ -737,13 +737,22 @@ export const LR_WRITEBACK_REJECT_HELP =
 export const LR_WRITEBACK_STARS_RECIPE = 'Culling recipe for stars'
 export const LR_WRITEBACK_STATUS_TITLE = 'Lightroom write-back'
 export const LR_WRITEBACK_STATUS_HELP =
-  'Written automatically when a cull ends, if Lightroom is closed. Otherwise the photos wait until the next cull, or until you write them now.'
+  'Written automatically when a cull ends, if Lightroom is closed. Turning a switch on writes nothing until then, or until you press Write to Lightroom.'
 export const LR_WRITEBACK_PENDING = 'photos pending'
 export const LR_WRITEBACK_WRITTEN = 'photos written'
 export const LR_WRITEBACK_LR_OPEN = 'Lightroom is open'
 export const LR_WRITEBACK_LR_CLOSED = 'Lightroom is closed'
-export const LR_WRITEBACK_WRITE_NOW = 'Write pending now'
+export const LR_WRITEBACK_WRITE_TO_LR = 'Write to Lightroom'
 export const LR_WRITEBACK_CLOSE_LR = 'Close Lightroom to write'
+export const LR_WRITEBACK_WRITE_RESULT = (n: number) =>
+  `Wrote ${n.toLocaleString('en-US')} photos to Lightroom`
+export const LR_WRITEBACK_WRITING_PROGRESS = 'Writing to Lightroom… ·'
+export const LR_WRITEBACK_WRITING_JOB_LINK = 'Job Queue'
+export const LR_WRITEBACK_STOP_WRITING_TITLE = 'Stop writing to Lightroom?'
+export const LR_WRITEBACK_STOP_WRITING_BODY =
+  'The running write-back job is cancelled. Photos already written keep their stars or reject flag; you can undo them from each photo.'
+export const LR_WRITEBACK_STOP_WRITING_CANCEL = 'Keep writing'
+export const LR_WRITEBACK_STOP_WRITING_CONFIRM = 'Stop and turn off'
 export const LR_WRITEBACK_STARS_STRONG_FROM = 'Count a dimension as strong when it is'
 export const LR_WRITEBACK_STARS_STRONG_FROM_HELP = 'Used for the stars written to Lightroom.'
 export const LR_WRITEBACK_STRONG_FROM_7 = '7-level set'
@@ -757,7 +766,4 @@ export const LR_WRITEBACK_KEYWORDS = 'Keywords'
 export const LR_WRITEBACK_UNDO = 'Undo'
 export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
 export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom after the app wrote it.'
-export const LR_WRITEBACK_SWITCH_ON_TOAST = (n: number, kind: string) =>
-  `${n.toLocaleString('en-US')} photos pending — written when the next cull ends (${kind})`
-export const LR_WRITEBACK_WRITE_RESULT = (n: number) => `Wrote ${n.toLocaleString('en-US')} photos to Lightroom`
 export const LR_WRITEBACK_LOADING = 'Loading Lightroom write-back…'

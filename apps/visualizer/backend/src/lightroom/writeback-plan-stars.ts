@@ -110,7 +110,7 @@ export function planStarsPhoto(
     }
   }
 
-  if (!canWrite || !conn || trigger === 'switch_on') {
+  if (!canWrite || !conn) {
     return {
       image_key: imageKey,
       kind: 'stars',
