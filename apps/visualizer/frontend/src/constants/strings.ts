@@ -311,7 +311,7 @@ export const FRAME_SUBSTANCE_OVERRIDE_RESTORE = 'Restore to ranking'
 export const FRAME_SUBSTANCE_OVERRIDE_RESCORE_WARN =
   'Restoring this void frame will return it to ranking after the next scoring run.'
 export const FRAME_SUBSTANCE_RESTORED = 'Restored to ranking via your override.'
-export const FRAME_SUBSTANCE_CULL_MARK = 'Mark for cull'
+export const FRAME_SUBSTANCE_CULL_MARK = 'Mark for cull (lrt-cull)'
 export const FRAME_SUBSTANCE_CULL_UNMARK = 'Remove cull mark'
 export const FRAME_SUBSTANCE_CATALOG_UNAVAILABLE = 'Lightroom catalog unavailable'
 

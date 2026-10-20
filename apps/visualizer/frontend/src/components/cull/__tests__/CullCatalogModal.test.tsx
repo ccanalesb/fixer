@@ -36,7 +36,7 @@ describe('Cull catalog modal cull section', () => {
     vi.spyOn(CullAPI, 'photoDetail')
     vi.spyOn(ProvidersAPI, 'getDefaults').mockResolvedValue({
       description: { provider: null, model: null },
-    } as Awaited<ReturnType<typeof ProvidersAPI.getDefaults>>)
+    } as unknown as Awaited<ReturnType<typeof ProvidersAPI.getDefaults>>)
     vi.spyOn(PerspectivesAPI, 'list').mockResolvedValue([])
     vi.spyOn(ScoresAPI, 'getCurrent').mockResolvedValue({
       current: [],
