@@ -8,6 +8,8 @@ import {
 } from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 import {
+  adoptWrittenStarsState,
+  catalogHasAppStars,
   desiredStarsRating,
   liveMatchesWritten,
   notFoundState,
@@ -56,9 +58,9 @@ export function planStarsPhoto(
     return null;
   }
 
-  if (live && conn) {
-    const synced = syncWrittenFromLiveCatalog(conn, 'stars', imageKey, rating, false, live);
-    if (synced && row?.status !== 'written') return { ...synced, stars_recipe_version_id: starsVersionId };
+  if (live && conn && rating !== null) {
+    const synced = syncWrittenFromLiveCatalog(conn, 'stars', imageKey, rating, false, live, starsVersionId);
+    if (synced && row?.status !== 'written') return synced;
   }
 
   if (!live) {
@@ -110,6 +112,9 @@ export function planStarsPhoto(
   const result = writeStarsToCatalog(conn, imageKey, rating);
   if (result === 'image_not_found') return notFoundState(imageKey, 'stars', row, tally);
   if (result !== 'updated') {
+    if (conn && catalogHasAppStars(conn, imageKey, rating)) {
+      return adoptWrittenStarsState(imageKey, rating, starsVersionId, row);
+    }
     return {
       image_key: imageKey,
       kind: 'stars',

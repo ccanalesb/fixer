@@ -19,6 +19,9 @@ import {
   catalogBaseNameFromImageKey,
   connectCatalog,
   readPickRating,
+  AUTO_REJECT_KEYWORD,
+  clearRejectFromCatalog,
+  imageHasKeywordByKey,
   writeRejectToCatalog,
   writeStarsToCatalog,
   type WritebackCatalogHooks,
@@ -44,6 +47,18 @@ afterEach(() => {
   fx.cleanup();
   delete process.env.LT_CONFIG_YAML;
   rmSync(dir, { recursive: true, force: true });
+});
+
+describe('clearRejectFromCatalog keyword guard', () => {
+  it('keeps keyword when pick no longer matches app reject', () => {
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'p', pick: 0, rating: null }]);
+    const conn = connectCatalog(lrcatPath);
+    writeRejectToCatalog(conn, '2024-06-01_p');
+    conn.prepare('UPDATE Adobe_images SET pick = 0 WHERE id_local = 900001').run();
+    clearRejectFromCatalog(conn, '2024-06-01_p');
+    expect(imageHasKeywordByKey(conn, '2024-06-01_p', AUTO_REJECT_KEYWORD)).toBe(true);
+    conn.close();
+  });
 });
 
 describe('catalogBaseNameFromImageKey', () => {

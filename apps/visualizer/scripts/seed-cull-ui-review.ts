@@ -5,6 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { catalogBaseNameFromImageKey } from '../backend/src/lightroom/writer.js';
 import { makeFakeCatalog } from '../backend/tests/helpers/fake-catalog.js';
 import { patchLrWritebackSettings } from '../backend/src/db/library/lr-writeback-settings.js';
+import { markEligiblePending } from '../backend/src/lightroom/writeback.js';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { resolveCurrentStages } from '../backend/src/cull/stages.js';
@@ -54,6 +55,17 @@ function recipeAnswers(levelSet: '7' | '10', levelIndex: number): Record<string,
     Object.assign(out, levelPick(levelSet, dim, levelIndex));
   }
   return out;
+}
+
+/** Strong on `strongDimCount` dimensions (recipe-7h47 bands: level 6+ on 7-set, 8+ on 10-set). */
+function recipeAnswersStrongDims(strongDimCount: number): { seven: Record<string, number[]>; ten: Record<string, number[]> } {
+  const seven: Record<string, number[]> = {};
+  const ten: Record<string, number[]> = {};
+  DIMS.forEach((dim, di) => {
+    Object.assign(seven, levelPick('7', dim, di < strongDimCount ? 5 : 0));
+    Object.assign(ten, levelPick('10', dim, di < strongDimCount ? 7 : 0));
+  });
+  return { seven, ten };
 }
 
 function forecastAnswers(stage: ResolvedStage, high: boolean): Record<string, number[]> {
@@ -149,8 +161,36 @@ function baseVerdict(
 
 function seedStageAnswers(
   imageKey: string,
-  opts: { recipeLevel?: number; forecastHigh?: boolean; recipe10?: boolean },
+  opts: {
+    recipeLevel?: number;
+    forecastHigh?: boolean;
+    recipe10?: boolean;
+    strongDimCount?: number;
+  },
 ): void {
+  if (opts.strongDimCount !== undefined) {
+    const { seven, ten } = recipeAnswersStrongDims(opts.strongDimCount);
+    upsertStageAnswer(db, {
+      imageKey,
+      stageVersionId: recipe7.versionId,
+      answers: seven,
+      verdict: 'cut',
+      decision: {},
+      pipelineSettingVersion: pipe.version,
+      source: 'job',
+      runId,
+    });
+    upsertStageAnswer(db, {
+      imageKey,
+      stageVersionId: recipe10.versionId,
+      answers: ten,
+      verdict: 'cut',
+      decision: {},
+      pipelineSettingVersion: pipe.version,
+      source: 'job',
+      runId,
+    });
+  }
   if (opts.recipeLevel !== undefined) {
     upsertStageAnswer(db, {
       imageKey,
@@ -193,7 +233,7 @@ files.forEach((file, i) => {
   const key = keyByFile.get(file)!;
   if (i < 3) {
     upsertCullVerdict(db, baseVerdict(key, { verdict: 'sent' }));
-    seedStageAnswers(key, { recipeLevel: 6, forecastHigh: true, recipe10: true });
+    seedStageAnswers(key, { strongDimCount: i + 1, forecastHigh: true });
     return;
   }
   if (i === 3) {
@@ -237,6 +277,19 @@ files.forEach((file, i) => {
     );
     seedStageAnswers(key, { recipeLevel: 2, forecastHigh: false, recipe10: true });
     recordCullUserAction(db, key, 'agrees_with_cut');
+    return;
+  }
+  if (i === 11) {
+    upsertCullVerdict(
+      db,
+      baseVerdict(key, {
+        verdict: 'cut',
+        cutBy: 'culling_recipe',
+        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        scoreForecastP8: 0.1,
+      }),
+    );
+    seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false, recipe10: true });
     return;
   }
   if (i >= 6 && i < 28) {
@@ -349,6 +402,8 @@ makeFakeCatalog(
   })),
 );
 patchLrWritebackSettings(db, { write_stars: true, write_reject: true });
+markEligiblePending(db, 'reject');
+markEligiblePending(db, 'stars');
 if (process.env.LT_CONFIG_YAML) {
   writeFileSync(
     process.env.LT_CONFIG_YAML,

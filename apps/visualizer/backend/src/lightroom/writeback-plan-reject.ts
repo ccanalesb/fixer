@@ -5,6 +5,8 @@ import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js
 import { clearRejectFromCatalog, writeRejectToCatalog, type LivePickRating } from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 import {
+  adoptWrittenRejectState,
+  catalogHasAppReject,
   desiredReject,
   liveMatchesWritten,
   notFoundState,
@@ -37,6 +39,12 @@ export function planRejectPhoto(
   }
 
   if (!want) {
+    if (conn && canWrite && catalogHasAppReject(conn, imageKey)) {
+      clearRejectFromCatalog(conn, imageKey);
+      tally.catalog_cleared_reject += 1;
+      if (row) return { ...row, status: 'pending', written_pick: null, written_at: null };
+      return null;
+    }
     if (row?.status === 'written' && live && liveMatchesWritten('reject', live, row) && conn && canWrite) {
       clearRejectFromCatalog(conn, imageKey);
       tally.catalog_cleared_reject += 1;
@@ -51,7 +59,16 @@ export function planRejectPhoto(
   if (row?.status === 'undone') return null;
 
   if (live && conn) {
-    const synced = syncWrittenFromLiveCatalog(conn, 'reject', imageKey, null, true, live);
+    const synced = syncWrittenFromLiveCatalog(
+      conn,
+      'reject',
+      imageKey,
+      null,
+      true,
+      live,
+      null,
+      row?.before_pick ?? live.pick ?? 0,
+    );
     if (synced && row?.status !== 'written') return synced;
   }
 
@@ -70,6 +87,9 @@ export function planRejectPhoto(
   }
 
   if (live.pick !== null && live.pick !== 0) {
+    if (live.pick === -1 && conn && catalogHasAppReject(conn, imageKey) && want) {
+      return adoptWrittenRejectState(imageKey, row, row?.before_pick ?? 0);
+    }
     return {
       image_key: imageKey,
       kind: 'reject',
@@ -103,6 +123,9 @@ export function planRejectPhoto(
   const result = writeRejectToCatalog(conn, imageKey);
   if (result === 'image_not_found') return notFoundState(imageKey, 'reject', row, tally);
   if (result !== 'updated') {
+    if (conn && catalogHasAppReject(conn, imageKey)) {
+      return adoptWrittenRejectState(imageKey, row, beforePick);
+    }
     return {
       image_key: imageKey,
       kind: 'reject',

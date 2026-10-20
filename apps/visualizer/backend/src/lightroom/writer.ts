@@ -334,9 +334,11 @@ export function clearRejectFromCatalog(conn: Db, imageKey: string): PickRatingWr
   const imageId = getImageLocalId(conn, imageKey);
   if (!imageId) return 'image_not_found';
   return conn.transaction(() => {
-    clearPickIfMatches(conn, imageKey, -1);
-    removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
-    return 'updated' as const;
+    const pickResult = clearPickIfMatches(conn, imageKey, -1);
+    if (pickResult === 'updated') {
+      removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+    }
+    return pickResult;
   })();
 }
 
@@ -375,9 +377,11 @@ export function clearStarsFromCatalog(conn: Db, imageKey: string, writtenRating:
   const imageId = getImageLocalId(conn, imageKey);
   if (!imageId) return 'image_not_found';
   return conn.transaction(() => {
-    clearRatingIfMatches(conn, imageKey, writtenRating);
-    removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
-    return 'updated' as const;
+    const ratingResult = clearRatingIfMatches(conn, imageKey, writtenRating);
+    if (ratingResult === 'updated') {
+      removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+    }
+    return ratingResult;
   })();
 }
 

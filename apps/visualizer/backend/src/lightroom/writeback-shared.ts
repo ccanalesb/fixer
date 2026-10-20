@@ -12,6 +12,7 @@ import {
   AUTO_REJECT_KEYWORD,
   AUTO_STARS_KEYWORD,
   imageHasKeywordByKey,
+  readPickRating,
   type LivePickRating,
 } from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
@@ -96,6 +97,22 @@ export function desiredStarsRating(
   return ratingFromStrongCount(count);
 }
 
+export function catalogHasAppReject(conn: import('../db/connection.js').Db, imageKey: string): boolean {
+  const live = readPickRating(conn, imageKey);
+  if (!live || live.pick !== -1) return false;
+  return imageHasKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+}
+
+export function catalogHasAppStars(
+  conn: import('../db/connection.js').Db,
+  imageKey: string,
+  rating: number,
+): boolean {
+  const live = readPickRating(conn, imageKey);
+  if (!live || live.rating !== rating) return false;
+  return imageHasKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+}
+
 export function syncWrittenFromLiveCatalog(
   conn: import('../db/connection.js').Db,
   kind: WritebackKind,
@@ -103,6 +120,8 @@ export function syncWrittenFromLiveCatalog(
   desiredRating: number | null,
   desiredReject: boolean,
   live: LivePickRating,
+  starsRecipeVersionId: number | null = null,
+  beforePick: number | null = null,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
   if (kind === 'stars' && desiredRating !== null && live.rating === desiredRating) {
     if (!imageHasKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD)) return null;
@@ -114,7 +133,7 @@ export function syncWrittenFromLiveCatalog(
       before_rating: null,
       written_pick: null,
       written_rating: desiredRating,
-      stars_recipe_version_id: null,
+      stars_recipe_version_id: starsRecipeVersionId,
       written_at: nowIsoUtc(),
     };
   }
@@ -124,7 +143,7 @@ export function syncWrittenFromLiveCatalog(
       image_key: imageKey,
       kind: 'reject',
       status: 'written',
-      before_pick: 0,
+      before_pick: beforePick ?? 0,
       before_rating: null,
       written_pick: -1,
       written_rating: null,
@@ -133,6 +152,43 @@ export function syncWrittenFromLiveCatalog(
     };
   }
   return null;
+}
+
+export function adoptWrittenRejectState(
+  imageKey: string,
+  row: LrWritebackStateRow | null,
+  beforePick: number,
+): Omit<LrWritebackStateRow, 'updated_at'> {
+  return {
+    image_key: imageKey,
+    kind: 'reject',
+    status: 'written',
+    before_pick: row?.before_pick ?? beforePick,
+    before_rating: null,
+    written_pick: -1,
+    written_rating: null,
+    stars_recipe_version_id: null,
+    written_at: row?.written_at ?? nowIsoUtc(),
+  };
+}
+
+export function adoptWrittenStarsState(
+  imageKey: string,
+  rating: number,
+  starsRecipeVersionId: number | null,
+  row: LrWritebackStateRow | null,
+): Omit<LrWritebackStateRow, 'updated_at'> {
+  return {
+    image_key: imageKey,
+    kind: 'stars',
+    status: 'written',
+    before_pick: null,
+    before_rating: row?.before_rating ?? null,
+    written_pick: null,
+    written_rating: rating,
+    stars_recipe_version_id: starsRecipeVersionId,
+    written_at: row?.written_at ?? nowIsoUtc(),
+  };
 }
 
 export function notFoundState(
