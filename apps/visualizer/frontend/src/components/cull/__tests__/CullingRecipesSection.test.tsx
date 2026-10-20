@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { CullingRecipesSection } from '../CullingRecipesSection'
 import { CULL_ADD_RECIPE, CULL_RECIPES_SECTION } from '../../../constants/strings'
+
+const expand = () => fireEvent.click(screen.getByRole('button', { name: new RegExp(CULL_RECIPES_SECTION) }))
 import { deleteMatching } from '../../../data/cache'
 
 const apiMocks = vi.hoisted(() => ({
@@ -28,6 +30,7 @@ vi.mock('../../../services/api', async (importOriginal) => {
 
 describe('CullingRecipesSection', () => {
   beforeEach(() => {
+    localStorage.clear()
     deleteMatching(() => true)
     vi.clearAllMocks()
     apiMocks.list.mockResolvedValue({
@@ -144,7 +147,8 @@ describe('CullingRecipesSection', () => {
         </Suspense>,
       )
     })
-    await waitFor(() => expect(screen.getByText('Recipe 7H47')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Recipe 7H47 active/)).toBeInTheDocument())
+    expand()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_ADD_RECIPE }))
     })
@@ -161,17 +165,26 @@ describe('CullingRecipesSection', () => {
     })
   })
 
-  it('renders the recipe list when pipeline loads', async () => {
-    await act(async () => {
-      render(
-        <Suspense fallback={null}>
-          <CullingRecipesSection />
-        </Suspense>,
-      )
-    })
-    await waitFor(() => {
-      expect(screen.getByText(CULL_RECIPES_SECTION)).toBeInTheDocument()
-      expect(screen.getByText('Recipe 7H47')).toBeInTheDocument()
-    })
+  it('starts folded to its summary and remembers being opened', async () => {
+    const mount = async () => {
+      let view: ReturnType<typeof render> | undefined
+      await act(async () => {
+        view = render(
+          <Suspense fallback={null}>
+            <CullingRecipesSection />
+          </Suspense>,
+        )
+      })
+      return view!
+    }
+    const first = await mount()
+    await waitFor(() => expect(screen.getByText(/1 recipe · Recipe 7H47 active/)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: CULL_ADD_RECIPE })).not.toBeInTheDocument()
+    expand()
+    expect(screen.getByRole('button', { name: CULL_ADD_RECIPE })).toBeInTheDocument()
+    first.unmount()
+
+    await mount()
+    await waitFor(() => expect(screen.getByRole('button', { name: CULL_ADD_RECIPE })).toBeInTheDocument())
   })
 })

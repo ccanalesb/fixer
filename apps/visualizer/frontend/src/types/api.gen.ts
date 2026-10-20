@@ -3329,6 +3329,31 @@ export interface paths {
                                 };
                             }[];
                         };
+                        /** @description Saved with the definition; required when level sets or their bands change. */
+                        rule?: {
+                            level_sets: {
+                                [key: string]: {
+                                    fails_at_most: number;
+                                    strong_at_least: number;
+                                };
+                            };
+                            /** @enum {string} */
+                            combine: "every" | "any";
+                            cut_rule: {
+                                /** @enum {string} */
+                                type: "all_fail";
+                                dimensions: string[];
+                            } | {
+                                /** @enum {string} */
+                                type: "n_fail_unless_strong";
+                                n: number;
+                            } | {
+                                /** @enum {string} */
+                                type: "mean_fail";
+                            };
+                            /** @enum {string} */
+                            stars_strong_from?: "7" | "10" | "every" | "any";
+                        };
                         /** @enum {string} */
                         mode: "save_only" | "save_and_queue_cull";
                     };
@@ -3453,6 +3478,21 @@ export interface paths {
                             recipe: components["schemas"]["CullRecipeDetail"];
                             pipeline_setting_version: number | null;
                             redecide_job_id: string | null;
+                        };
+                    };
+                };
+                /** @description Bands do not fit the level sets */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: string;
+                            validation_errors: {
+                                field: string;
+                                message: string;
+                            }[];
                         };
                     };
                 };

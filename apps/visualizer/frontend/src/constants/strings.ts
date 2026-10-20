@@ -707,7 +707,6 @@ export const CULL_MODAL_PREV = 'Prev'
 export const CULL_MODAL_NEXT = 'Next'
 export const CULL_RECIPE_MODEL = 'Model'
 export const CULL_RECIPE_ADD_LEVEL = 'Add level'
-export const CULL_RECIPE_ADD_LEVEL_SET = 'Add level set'
 export const CULL_RECIPE_FAILS_AT = 'fails at'
 export const CULL_RECIPE_STRONG_AT = 'strong at'
 export const CULL_RECIPE_COMBINE_EVERY = 'Cut when every set cuts'
@@ -723,6 +722,63 @@ export const CULL_RECIPE_ACTIVE = 'Active'
 export const CULL_RECIPE_INACTIVE = 'Inactive'
 export const CULL_RECIPE_ACTIVATE = 'Activate'
 export const CULL_RECIPE_DEACTIVATE = 'Deactivate'
+export const CULL_RECIPES_HELP = 'How the cull decides which photos pass.'
+export const CULL_RECIPES_SUMMARY = (count: number, activeNames: string[]) =>
+  `${count} recipe${count === 1 ? '' : 's'} · ${activeNames.length ? `${activeNames.join(', ')} active` : 'none active'}`
+export const PERSPECTIVES_SUMMARY = (count: number, active: number) =>
+  `${count} perspective${count === 1 ? '' : 's'} · ${active} active`
+export const CULL_RECIPE_NAME = 'Name'
+export const CULL_RECIPE_TAB_DIMENSIONS = 'Dimensions'
+export const CULL_RECIPE_TAB_LEVELS = 'Levels'
+export const CULL_RECIPE_TAB_RULE = 'Rule'
+export const CULL_RECIPE_DIMENSION_NAME = 'Dimension name'
+export const CULL_RECIPE_QUESTION = 'Question'
+export const CULL_RECIPE_LEVEL_SET = 'Level set'
+export const CULL_RECIPE_LEVEL_COUNT = (n: number) => `${n} levels`
+export const CULL_RECIPE_LEVEL = (n: number) => `Level ${n}`
+export const CULL_RECIPE_EMPTY_COUNT = (n: number) => `${n} empty`
+export const CULL_RECIPE_BAND_FAILS = 'fails'
+export const CULL_RECIPE_BAND_STRONG = 'strong'
+export const CULL_RECIPE_BAND_RANGE = (from: number, to: number) => (from > to ? 'no level' : `levels ${from}–${to}`)
+export const CULL_RECIPE_ADD_LEVEL_TOP = '+ Add level at the top'
+export const CULL_RECIPE_INSERT_HINT = 'or hover between two levels to insert'
+export const CULL_RECIPE_INSERT_HERE = '+ insert level here'
+export const CULL_RECIPE_INSERT_ABOVE = (level: number) => `Insert a level above level ${level}`
+export const CULL_RECIPE_INSERT_BETWEEN = (below: number) => `Insert a level between ${below} and ${below + 1}`
+export const CULL_RECIPE_NEW_LEVEL_TITLE = (level: number, top: boolean) =>
+  `New level ${level} ${top ? '(top)' : `(between ${level - 1} and ${level})`}`
+export const CULL_RECIPE_NEW_LEVEL_PLACEHOLDER = (level: number) => `What level ${level} looks like`
+export const CULL_RECIPE_FILL_ALL = (n: number) => `fill all ${n} to add`
+export const CULL_RECIPE_REMOVE_LEVEL = (level: number) => `Remove level ${level} from all dimensions`
+export const CULL_RECIPE_MIN_LEVELS = 'A level set needs at least 2 levels.'
+export const CULL_RECIPE_EMPTY_PLACEHOLDER = (level: number, dim: string) => `Empty — describe level ${level} for ${dim}`
+export const CULL_RECIPE_ADDED_LEVEL = (level: number, dims: number) => `Added level ${level} to all ${dims} dimensions.`
+export const CULL_RECIPE_REMOVED_LEVEL = (level: number, dims: number, shifted: boolean) =>
+  `Removed level ${level} from all ${dims} dimensions${shifted ? '; levels above it moved down one.' : '.'}`
+export const CULL_RECIPE_EMPTY_LEVELS = (n: number) =>
+  `${n} empty level text${n === 1 ? '' : 's'} — fill ${n === 1 ? 'it' : 'them'} to save.`
+export const CULL_RECIPE_ADD_LEVEL_SET_BUTTON = '+ Add level set'
+export const CULL_RECIPE_NEW_SET = 'New level set'
+export const CULL_RECIPE_NEW_SET_LEVELS = 'Levels'
+export const CULL_RECIPE_NEW_SET_FROM = 'Start from'
+export const CULL_RECIPE_NEW_SET_EMPTY = 'empty levels'
+export const CULL_RECIPE_NEW_SET_COPY = (id: string) => `a copy of set ${id} (trimmed or padded)`
+export const CULL_RECIPE_NEW_SET_NAME = (id: string) => `It will be called “Level set ${id}”.`
+export const CULL_RECIPE_CREATE = 'Create'
+export const CULL_RECIPE_CANCEL = 'Cancel'
+export const CULL_RECIPE_CREATED_SET = (id: string, n: number, from: string | null) =>
+  `Created level set ${id} with ${n} levels${from ? ` copied from set ${from}` : ''}.`
+export const CULL_RECIPE_REMOVE_SET = (id: string) => `Remove set ${id}`
+export const CULL_RECIPE_LAST_SET = 'The last level set cannot be removed'
+export const CULL_RECIPE_REMOVE_SET_TITLE = (id: string) => `Remove level set ${id}?`
+export const CULL_RECIPE_REMOVE_SET_BODY = (dims: number) =>
+  `Its level texts for all ${dims} dimensions and its fails/strong bands are removed from the recipe.`
+export const CULL_RECIPE_REMOVE = 'Remove'
+export const CULL_RECIPE_REMOVED_SET = (id: string) => `Removed level set ${id}.`
+export const CULL_RECIPE_CUT_RULE = 'Cut rule'
+export const CULL_RECIPE_COMBINE = 'Combine level sets'
+export const CULL_RECIPE_DEFINITION_CHANGED =
+  'Text or levels changed: the model has to answer again, so only “Save only” / “Save and queue cull job” apply.'
 
 // Lightroom write-back (#341)
 export const LR_WRITEBACK_SECTION = 'Lightroom write-back'
