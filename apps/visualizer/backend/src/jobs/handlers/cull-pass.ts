@@ -281,6 +281,12 @@ export async function runCullPass(
       `s_per_photo=${result.seconds_per_photo ?? '-'} duration_s=${result.durations_s.total}`,
   );
   if (ctx.settle === 'stage') return result;
+  try {
+    const { reconcileLrWriteback } = await import('../../lightroom/writeback.js');
+    await reconcileLrWriteback(db, { trigger: 'cull_job_complete' });
+  } catch (e) {
+    log(`lightroom write-back after cull: ${e instanceof Error ? e.message : String(e)}`, 'warning');
+  }
   runner.clearCheckpoint(jobId);
   runner.completeJob(jobId, result);
   return null;

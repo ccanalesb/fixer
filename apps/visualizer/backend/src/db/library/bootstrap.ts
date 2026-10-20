@@ -17,7 +17,7 @@ import { seedCullingDefaults } from './cull-recipes.js';
 import { markdownMarksOptional } from './scores.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 11;
+export const LIBRARY_SCHEMA_VERSION = 12;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 8;
@@ -184,6 +184,35 @@ CREATE TABLE IF NOT EXISTS cull_pipeline_settings (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_cull_pipeline_settings_current
     ON cull_pipeline_settings(is_current) WHERE is_current = 1;
+`;
+
+/** Lightroom write-back switches and per-photo state (schema 12, #341). */
+const LR_WRITEBACK_SQL = `
+CREATE TABLE IF NOT EXISTS lr_writeback_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    write_stars INTEGER NOT NULL DEFAULT 0,
+    write_reject INTEGER NOT NULL DEFAULT 0,
+    stars_recipe_slug TEXT
+);
+
+INSERT OR IGNORE INTO lr_writeback_settings (id, write_stars, write_reject) VALUES (1, 0, 0);
+
+CREATE TABLE IF NOT EXISTS lr_writeback_state (
+    image_key TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('stars', 'reject')),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'written', 'skipped', 'undone')),
+    before_pick REAL,
+    before_rating REAL,
+    written_pick REAL,
+    written_rating REAL,
+    stars_recipe_version_id INTEGER,
+    updated_at TEXT NOT NULL,
+    written_at TEXT,
+    PRIMARY KEY (image_key, kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lr_writeback_state_status
+    ON lr_writeback_state(kind, status);
 `;
 
 const SCHEMA_SQL = `
@@ -401,6 +430,8 @@ CREATE TABLE IF NOT EXISTS library_meta (
 );
 
 ${CULL_SQL}
+
+${LR_WRITEBACK_SQL}
 `;
 
 /**
@@ -504,6 +535,9 @@ export function upgradeLibrarySchema(db: Db): void {
     if (version < 11) {
       db.exec(CULL_SQL);
       seedCullingDefaults(db);
+    }
+    if (version < 12) {
+      db.exec(LR_WRITEBACK_SQL);
     }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   })();

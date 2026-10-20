@@ -12,5 +12,6 @@ Keyword writeback uses a **separate** SQLite connection from the read-only reade
 
 ## Write paths
 
-- `apps/visualizer/backend/src/lightroom/writer.ts` (`connectCatalog`) — keyword writeback to the catalog.
-- `src/utils/lr-catalog-write.ts` — the single wrapper every write route goes through; it takes the catalog lock check and the once-a-day backup with it.
+- `apps/visualizer/backend/src/lightroom/writer.ts` (`connectCatalog`) — keyword writeback and cull write-back (pick, rating, `lrt-auto-*` keywords).
+- `src/lightroom/writeback.ts` — reconciles cull verdicts to stars/reject with guards and `lr_writeback_state` in `library.db`.
+- `src/utils/lr-catalog-write.ts` — availability wrapper for catalog writes (lock check, backup); frame-substance `lrt-cull` and write-back share the writer.

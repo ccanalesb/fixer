@@ -34,6 +34,8 @@ export interface RecipeRule {
   /** With several level sets: cut when every set cuts, or when any does. */
   combine: 'every' | 'any';
   cut_rule: CutRule;
+  /** Which level-set readout counts toward Lightroom stars (defaults to every). */
+  stars_strong_from?: '7' | '10' | 'every' | 'any';
 }
 
 export interface PipelineRecipe {
