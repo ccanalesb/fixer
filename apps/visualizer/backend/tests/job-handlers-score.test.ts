@@ -1,3 +1,4 @@
+import { prepareKimiJobCull, resetKimiJobLaya, writeKimiJobConfig } from './helpers/kimi-job-laya.js';
 /**
  * The `single_score` job handler and the scoring service behind it.
  *
@@ -24,6 +25,8 @@ import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { computePromptVersion } from '../src/vision/scoring-service.js';
 import { fingerprintBatchScore } from '../src/jobs/checkpoint.js';
+import { openLibraryDb } from '../src/db/connection.js';
+import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -159,13 +162,15 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-score-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().activate();
+  resetKimiJobLaya();
   replies = [completion(scoreJson('street', 7))];
   requestBodies = [];
   onRequest = null;
   process.env.DATABASE_PATH = jobsDbPath;
   await startServer();
   writeProviders();
-  writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\n`);
+  const modelsDir = prepareKimiJobCull(fx.dbPath, dir);
+  writeKimiJobConfig(dir, modelsDir);
   process.env.LT_PROVIDERS_JSON = join(dir, 'providers.json');
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
 });
@@ -193,6 +198,54 @@ describe('computePromptVersion', () => {
     expect(computePromptVersion({ slug: 'street', prompt_markdown: '' })).toBe(
       'street:' + createHash('sha256').update('', 'utf8').digest('hex').slice(0, 16),
     );
+  });
+});
+
+/** A cull summary row, as the cull job would leave it. */
+function cullVerdict(key: string, verdict: 'cut' | 'sent' | 'pending'): void {
+  fx.exec(
+    `INSERT INTO cull_verdicts (image_key, verdict, cut_by, pipeline_setting_version, decided_at)
+     VALUES (?, ?, ?, 1, '2026-10-19T00:00:00+00:00')`,
+    key,
+    verdict,
+    verdict === 'cut' ? 'culling_recipe' : null,
+  );
+}
+
+describe('the last check: a photo the cull cut is not scored', () => {
+  it('skips a cut photo without calling the provider', async () => {
+    const filepath = await writePhoto();
+    fx.addImage({ key: 'a', filepath }).addPerspectives({ slug: 'street' });
+    cullVerdict('a', 'cut');
+
+    const job = await runJob({ image_key: 'a' });
+
+    expect(job.status).toBe('completed');
+    expect(job.result).toMatchObject({ scored: 0, skipped: 1 });
+    expect(requestBodies).toEqual([]);
+    expect(storedScores('a')).toEqual([]);
+  });
+
+  it('scores a cut photo the user sent by hand', async () => {
+    const filepath = await writePhoto();
+    fx.addImage({ key: 'a', filepath }).addPerspectives({ slug: 'street' });
+    cullVerdict('a', 'cut');
+    const db = openLibraryDb(fx.dbPath);
+    recordCullUserAction(db, 'a', 'sent_by_hand');
+    db.close();
+
+    const job = await runJob({ image_key: 'a' });
+
+    expect(job.result).toMatchObject({ scored: 1 });
+  });
+
+  it('refuses only a cut: a pending or never-culled photo is scored', async () => {
+    const filepath = await writePhoto();
+    fx.addImage({ key: 'p', filepath }).addImage({ key: 'n', filepath }).addPerspectives({ slug: 'street' });
+    cullVerdict('p', 'pending');
+
+    expect((await runJob({ image_key: 'p' })).result).toMatchObject({ scored: 1 });
+    expect((await runJob({ image_key: 'n' })).result).toMatchObject({ scored: 1 });
   });
 });
 
@@ -566,9 +619,8 @@ describe('the batch_score handler', () => {
 
     const job = await runBatch();
 
-    expect(batchResult(job)).toMatchObject({ scored: 0, total: 2 });
+    expect(batchResult(job)).toMatchObject({ scored: 0, total: 0 });
     expect(requestBodies).toHaveLength(0);
-    expect(logMessages(job)).toContain('Skipped 2 already-scored triplets (DB pre-filter)');
   });
 
   /** A score made from a cache image that was since turned upright is not done. */
@@ -582,7 +634,7 @@ describe('the batch_score handler', () => {
 
     const job = await runBatch();
 
-    expect(batchResult(job)).toMatchObject({ scored: 1, total: 2 });
+    expect(batchResult(job)).toMatchObject({ scored: 1, total: 1 });
     expect(requestBodies).toHaveLength(1);
     expect(currentScores()).toEqual(['a|street', 'b|street']);
     expect(fx.query('SELECT * FROM vision_stale')).toEqual([]);
@@ -663,7 +715,7 @@ describe('the batch_score handler', () => {
     const job = await runBatch();
 
     expect(job.status).toBe('completed');
-    expect(job.result).toEqual({
+    expect(job.result).toMatchObject({
       scored: 0,
       skipped: 0,
       failed: 0,
@@ -814,12 +866,8 @@ describe('batch_score with redo_unless_model', () => {
 
     const job = await runBatch({ redo_unless_model: 'local:vision-1' });
 
-    expect(batchResult(job)).toMatchObject({ scored: 0, total: 2 });
+    expect(batchResult(job)).toMatchObject({ scored: 0, total: 0 });
     expect(requestBodies).toHaveLength(0);
-    expect(logMessages(job)).toContain(
-      'model-scoped re-do (redo_unless_model=local:vision-1): skipped 2 triples ' +
-        'already scored by this model; force-rescoring the rest',
-    );
   });
 
   /** The survivors are forced, so an old model's row is replaced rather than stacked. */

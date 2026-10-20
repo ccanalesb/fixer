@@ -177,3 +177,20 @@ export function loadAnsweredStageKeys(db: Db, stages: readonly ResolvedStage[]):
   }
   return out;
 }
+
+/**
+ * The model ids the current stage versions were made with: Laya base from a recipe stage, Laya new
+ * from the Score forecast. What re-decide resolves stages with, so it never reads a model file. Null
+ * when nothing was ever culled. (The shape of `laya/model-id.ts`'s `LayaModelIds`.)
+ */
+export function readStoredLayaModelIds(db: Db): { base: string; new: string | null } | null {
+  const modelOf = (kind: StageKind) =>
+    (
+      db
+        .prepare('SELECT model_id FROM cull_stage_versions WHERE kind = ? AND is_current = 1 ORDER BY id DESC LIMIT 1')
+        .get(kind) as { model_id: string } | undefined
+    )?.model_id ?? null;
+  const base = modelOf('culling_recipe');
+  if (base === null) return null;
+  return { base, new: modelOf('score_forecast') };
+}

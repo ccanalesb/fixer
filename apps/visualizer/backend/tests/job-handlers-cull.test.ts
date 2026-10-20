@@ -15,13 +15,16 @@ import { openLibraryDb } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { JOB_TYPES_BY_NAME } from '../src/jobs/registry.js';
-import { LAYA_SETUP_COMMAND } from '../src/laya/files.js';
+import { LazyLaya } from '../src/cull/lazy-laya.js';
+import { LAYA_SETUP_COMMAND, LayaSetupError } from '../src/laya/files.js';
 import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
 import type { LayaAnswerWant } from '../src/laya/sessions.js';
 import { importResearchRuns } from '../src/cull/import-research.js';
 import { LAYA_BASE_RESEARCH_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
+import { computePromptVersion } from '../src/vision/scoring-service.js';
+import { getPerspectiveBySlug } from '../src/db/library/scores.js';
 
 /** Per photo file: the recipe levels (impact, structure, tension, connotation) and the highest P(≥ 8). */
 interface Script {
@@ -32,6 +35,7 @@ interface Script {
 const laya = vi.hoisted(() => ({
   scripts: new Map<string, Script>(),
   calls: [] as { file: string; want: LayaAnswerWant | undefined }[],
+  starts: 0,
   closed: 0,
   forecastOn: true,
   failOn: null as null | string,
@@ -88,6 +92,7 @@ vi.mock('../src/laya/runtime.js', async (importOriginal) => {
   return {
     ...actual,
     startLayaWithCheck: async () => {
+      laya.starts += 1;
       if (laya.startError) throw laya.startError;
       return { runtime, loadSeconds: 0.5, testPhoto: { answers: { base: {}, new: null }, seconds: {} } };
     },
@@ -158,6 +163,7 @@ beforeEach(() => {
   fx = new LibraryFixture().activate();
   Object.assign(laya, {
     calls: [],
+    starts: 0,
     closed: 0,
     forecastOn: true,
     failOn: null,
@@ -297,9 +303,45 @@ describe('batch_cull_photos_before_scoring', () => {
 
   it('a photo with no image to read stays pending', async () => {
     fx.addImage({ key: 'gone', filepath: '/missing/gone.NEF' });
+    laya.starts = 0;
     const job = await runCull();
     expect(result(job)).toMatchObject({ failed: 1, pending: 1 });
     expect(verdicts()[0]).toMatchObject({ verdict: 'pending', pending_reason: 'no_image' });
+    expect(laya.starts).toBe(0);
+  });
+
+  it('scope_job_type batch_describe culls only undescribed photos', async () => {
+    await addPhoto('done', PASS);
+    await addPhoto('todo', PASS);
+    fx.exec(
+      `INSERT INTO image_descriptions (image_key, image_type, summary, model_used, described_at)
+       VALUES ('done', 'catalog', 'x', 'local:vision-1', datetime('now'))`,
+    );
+    laya.calls = [];
+    await runCull({ scope_job_type: 'batch_describe' });
+    expect(laya.calls.map((c) => (c.file.match(/\/(\w+)\.jpg$/) ?? [])[1])).toEqual(['todo']);
+  });
+
+  it('scope_job_type batch_score culls only photos with unscored work', async () => {
+    await addPhoto('done', PASS);
+    await addPhoto('todo', PASS);
+    fx.addPerspectives({ slug: 'street' });
+    const lib = openLibraryDb(fx.dbPath);
+    const promptVersion = computePromptVersion(getPerspectiveBySlug(lib, 'street')!);
+    lib.close();
+    fx.exec(
+      `INSERT INTO image_descriptions (image_key, image_type, summary, model_used, described_at)
+       VALUES ('done', 'catalog', 'x', 'local:vision-1', datetime('now')),
+              ('todo', 'catalog', 'x', 'local:vision-1', datetime('now'))`,
+    );
+    fx.exec(
+      `INSERT INTO image_scores (image_key, image_type, perspective_slug, score, prompt_version, model_used, is_current, scored_at)
+       VALUES ('done', 'catalog', 'street', 7, ?, 'local:vision-1', 1, datetime('now'))`,
+      promptVersion,
+    );
+    laya.calls = [];
+    await runCull({ scope_job_type: 'batch_score', perspective_slugs: ['street'] });
+    expect(laya.calls.map((c) => (c.file.match(/\/(\w+)\.jpg$/) ?? [])[1])).toEqual(['todo']);
   });
 
   it('missing models fail the job at the start, naming the missing piece and the setup step', async () => {
@@ -497,6 +539,27 @@ describe('batch_cull_photos_before_scoring', () => {
     const job = await runCull({ checkpoint: await cullCheckpoint(['b'], 1, 2) });
     expect(laya.calls).toEqual([]);
     expect(result(job)).toMatchObject({ failed: 1, sent: 1, sent_by_hand_passed: 1 });
+  });
+});
+
+describe('LazyLaya', () => {
+  it('does not start until the first answer()', async () => {
+    const lazy = new LazyLaya(modelsDir);
+    expect(lazy.started).toBe(false);
+    await lazy.close();
+    expect(laya.starts).toBe(0);
+  });
+
+  it('starts once on first answer and surfaces start errors', async () => {
+    laya.startError = new LayaSetupError('missing');
+    const bad = new LazyLaya(modelsDir);
+    await expect(bad.answer('/x/a.jpg')).rejects.toBeInstanceOf(LayaSetupError);
+    laya.startError = null;
+    laya.starts = 0;
+    const lazy = new LazyLaya(modelsDir);
+    await lazy.answer('/x/a.jpg');
+    await lazy.answer('/x/b.jpg');
+    expect(laya.starts).toBe(1);
   });
 });
 

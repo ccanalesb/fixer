@@ -18,9 +18,26 @@ import {
   seedCullingDefaults,
   setRecipeRule,
 } from '../src/db/library/cull-recipes.js';
-import { getOrCreateStageVersion, loadCurrentStageAnswers, upsertStageAnswer } from '../src/db/library/cull-stages.js';
+import {
+  getOrCreateStageVersion,
+  loadCurrentStageAnswers,
+  readStoredLayaModelIds,
+  upsertStageAnswer,
+} from '../src/db/library/cull-stages.js';
 import { isSentByHand, listCullUserActions, recordCullUserAction } from '../src/db/library/cull-user-actions.js';
-import { getCullVerdict, insertCullRun, upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
+import {
+  getCullVerdict,
+  insertCullRun,
+  isPhotoCutAndNotSentByHand,
+  listCulledImageKeys,
+  loadCullVerdictsForKeys,
+  upsertCullVerdict,
+} from '../src/db/library/cull-verdicts.js';
+import { listCatalogImagesForFrameSubstance } from '../src/db/library/frame-substance.js';
+import {
+  filterCutPhotosFromDescribeAndScoringSelection,
+  filterVoidSubstanceFromScoringSelection,
+} from '../src/jobs/handlers/common.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import type { RecipeDefinition } from '../src/cull/types.js';
@@ -272,5 +289,125 @@ describe('stage answers, summaries and user actions', () => {
     recordCullUserAction(db, 'z', 'sent_by_hand');
     expect(getCullVerdict(db, 'z')).toMatchObject({ verdict: 'sent', sent_by_hand: true });
     expect(listCullUserActions(db, 'z')[0]).toMatchObject({ answered_verdict: 'none' });
+  });
+});
+
+const summary = (imageKey: string, verdict: 'cut' | 'sent' | 'pending', cutBy: 'culling_recipe' | 'score_forecast' | null = null) =>
+  upsertCullVerdict(db, {
+    imageKey,
+    verdict,
+    cutBy,
+    cutByStageKey: null,
+    sentByHand: false,
+    pendingStages: [],
+    pendingReason: '',
+    scoreForecastOff: false,
+    scoreForecastP8: null,
+    pipelineSettingVersion: 1,
+    stageVersionIds: [],
+    runId: null,
+  });
+
+describe('what the jobs that send photos to kimi read', () => {
+  it('isPhotoCutAndNotSentByHand: only a cut nobody sent on', () => {
+    summary('cut', 'cut', 'culling_recipe');
+    summary('sent', 'sent');
+    summary('pending', 'pending');
+    summary('hand', 'cut', 'score_forecast');
+    recordCullUserAction(db, 'hand', 'sent_by_hand');
+    expect(isPhotoCutAndNotSentByHand(db, 'cut')).toBe(true);
+    for (const key of ['sent', 'pending', 'hand', 'never-culled']) expect(isPhotoCutAndNotSentByHand(db, key)).toBe(false);
+  });
+
+  it('a sent-by-hand action wins even over a summary that still says cut', () => {
+    recordCullUserAction(db, 'a', 'sent_by_hand');
+    summary('a', 'cut', 'culling_recipe');
+    expect(isPhotoCutAndNotSentByHand(db, 'a')).toBe(false);
+    expect(loadCullVerdictsForKeys(db, ['a']).get('a')).toMatchObject({ verdict: 'cut', sentByHand: true });
+  });
+
+  it('readStoredLayaModelIds: the model ids of the current stage versions, never the files', () => {
+    expect(readStoredLayaModelIds(db)).toBeNull();
+    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
+    expect(readStoredLayaModelIds(db)).toEqual(MODEL_IDS);
+    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { base: 'other-base', new: null });
+    // Laya new left out of a later run keeps its current version: the forecast is still on (G8).
+    expect(readStoredLayaModelIds(db)).toEqual({ base: 'other-base', new: MODEL_IDS.new });
+  });
+
+  it('readStoredLayaModelIds: no Laya new without a Score forecast version', () => {
+    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { base: MODEL_IDS.base, new: null });
+    expect(readStoredLayaModelIds(db)).toEqual({ base: MODEL_IDS.base, new: null });
+  });
+
+  it('listCulledImageKeys: photos with a summary or a current answer', () => {
+    summary('a', 'sent');
+    const [stage] = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
+    const run = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
+    upsertStageAnswer(db, {
+      imageKey: 'b',
+      stageVersionId: stage!.versionId,
+      answers: {},
+      verdict: 'sent',
+      decision: {},
+      pipelineSettingVersion: 1,
+      source: 'job',
+      runId: run,
+    });
+    expect(listCulledImageKeys(db)).toEqual(['a', 'b']);
+  });
+});
+
+describe('large selections stay under the SQLite parameter cap', () => {
+  const N = 40_000;
+  const keys = Array.from({ length: N }, (_, i) => `k${String(i).padStart(5, '0')}`);
+  const pairs = keys.map((k) => [k, 'catalog'] as const);
+
+  beforeEach(() => {
+    const img = db.prepare('INSERT INTO images (key, filename, filepath) VALUES (?, ?, ?)');
+    const fs = db.prepare(
+      "INSERT INTO image_frame_substance (image_key, verdict, detector_version, run_id) VALUES (?, ?, 'test', 1)",
+    );
+    db.transaction(() => {
+      for (const k of keys) img.run(k, `${k}.jpg`, `/p/${k}.jpg`);
+      fs.run(keys[N - 1], 'void');
+    })();
+    summary(keys[N - 1]!, 'cut', 'culling_recipe');
+  });
+
+  it('filterVoidSubstanceFromScoringSelection', () => {
+    expect(filterVoidSubstanceFromScoringSelection(db, pairs)).toHaveLength(N - 1);
+  });
+
+  it('listCatalogImagesForFrameSubstance, still in key order', () => {
+    const rows = listCatalogImagesForFrameSubstance(db, { imageKeys: [...keys].reverse() });
+    expect(rows).toHaveLength(N);
+    expect(rows[0]!.image_key).toBe(keys[0]);
+    expect(rows.at(-1)!.image_key).toBe(keys[N - 1]);
+  });
+
+  it('filterCutPhotosFromDescribeAndScoringSelection', () => {
+    const { kept, heldBack } = filterCutPhotosFromDescribeAndScoringSelection(db, pairs);
+    expect(kept).toHaveLength(0);
+    expect(heldBack).toMatchObject({ cut_by_culling_recipe: 1, no_verdict: N - 1 });
+  });
+});
+
+describe('filterCutPhotosFromDescribeAndScoringSelection', () => {
+  it('keeps sent photos and photos sent by hand, in order; holds back the rest by reason', () => {
+    summary('recipe', 'cut', 'culling_recipe');
+    summary('forecast', 'cut', 'score_forecast');
+    summary('sent', 'sent');
+    summary('pending', 'pending');
+    summary('hand', 'cut', 'culling_recipe');
+    recordCullUserAction(db, 'hand', 'sent_by_hand');
+    const selection = ['sent', 'recipe', 'none', 'hand', 'forecast', 'pending'].map((k) => [k, 'catalog'] as const);
+    const { kept, heldBack, sentByHandKept } = filterCutPhotosFromDescribeAndScoringSelection(db, selection);
+    expect(kept).toEqual([
+      ['sent', 'catalog'],
+      ['hand', 'catalog'],
+    ]);
+    expect(heldBack).toEqual({ cut_by_culling_recipe: 1, cut_by_score_forecast: 1, pending: 1, no_verdict: 1 });
+    expect(sentByHandKept).toEqual(['hand']);
   });
 });

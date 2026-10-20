@@ -25,9 +25,13 @@
  * what a restart skips.
  *
  * `batch_analyze` — the composite, and the one that is not flat: `stage` names the
- * pass that is running, and `describe` / `score` each hold a body of the shape
- * above. Two fingerprints rather than one because the stages are resumable
- * independently — a run interrupted during scoring must not re-describe.
+ * pass that is running, and `cull` / `describe` / `score` each hold a body of the
+ * shape above (cull uses the cull job's checkpoint fields). Two fingerprints rather
+ * than one because the stages are resumable independently — a run interrupted during
+ * scoring must not re-describe.
+ *
+ * `batch_describe` / `batch_score` — may carry an optional `cull` sub-object with
+ * the in-job cull step's resume state, preserved across describe/score progress writes.
  */
 import { CLIP_EMBED_DIM, CLIP_EMBED_MODEL_ID } from '../imaging/clip-embed.js';
 import { canonicalJson } from '../utils/canonical-json.js';
@@ -245,9 +249,22 @@ export function loadCullResumeState(args: {
   fingerprint: string;
   mismatchMessage: string;
   log: (message: string) => void;
+  /** Read from this `batch_analyze` sub-object instead of the standalone cull job. */
+  analyzeStage?: AnalyzeStage;
+  /** Read from the `cull` sub-object of a describe/score flat checkpoint. */
+  stepHost?: 'batch_describe' | 'batch_score';
 }): CullResumeState {
   const empty: CullResumeState = { doneByStage: {}, failed: new Set(), totalAtStart: null };
-  const body = checkpointBody(args.metadata, 'batch_cull_photos_before_scoring');
+  let body: Record<string, unknown> | null = null;
+  if (args.analyzeStage === 'cull') {
+    body = readAnalyzeCheckpoint(args.metadata).cull;
+    if (Object.keys(body).length === 0) body = null;
+  } else if (args.stepHost) {
+    const flat = checkpointBody(args.metadata, args.stepHost);
+    body = flat && flat['cull'] !== undefined ? asBody(flat['cull']) : null;
+  } else {
+    body = checkpointBody(args.metadata, 'batch_cull_photos_before_scoring');
+  }
   if (body === null) return empty;
   if (body['fingerprint'] !== args.fingerprint) {
     if (body['fingerprint']) args.log(args.mismatchMessage);
@@ -268,12 +285,14 @@ export function buildBatchDescribeCheckpointBody(args: {
   fingerprint: string;
   processed: ReadonlySet<string>;
   totalAtStart: number;
+  cull?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     job_type: 'batch_describe',
     fingerprint: args.fingerprint,
     processed_pairs: [...args.processed].sort(),
     total_at_start: args.totalAtStart,
+    ...(args.cull !== undefined ? { cull: args.cull } : {}),
   };
 }
 
@@ -281,13 +300,45 @@ export function buildBatchScoreCheckpointBody(args: {
   fingerprint: string;
   processed: ReadonlySet<string>;
   totalAtStart: number;
+  cull?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     job_type: 'batch_score',
     fingerprint: args.fingerprint,
     processed_triplets: [...args.processed].sort(),
     total_at_start: args.totalAtStart,
+    ...(args.cull !== undefined ? { cull: args.cull } : {}),
   };
+}
+
+/** Optional `cull` sub-object from a describe/score checkpoint, if any. */
+export function readDescribeScoreCullSubObject(
+  metadata: Record<string, unknown>,
+  jobType: 'batch_describe' | 'batch_score',
+): Record<string, unknown> | undefined {
+  const flat = checkpointBody(metadata, jobType);
+  if (flat === null || flat['cull'] === undefined) return undefined;
+  return asBody(flat['cull']);
+}
+
+/** Write the cull sub-object into a describe/score flat checkpoint without dropping describe/score progress. */
+export function mergeDescribeScoreCullCheckpoint(
+  runner: CheckpointWriter,
+  jobId: string,
+  jobType: 'batch_describe' | 'batch_score',
+  cullBody: Record<string, unknown>,
+): void {
+  const flat = checkpointBody(runner.readMetadata(jobId), jobType);
+  runner.persistCheckpoint(jobId, {
+    ...(flat ?? {
+      job_type: jobType,
+      fingerprint: '',
+      ...(jobType === 'batch_describe'
+        ? { processed_pairs: [], total_at_start: 0 }
+        : { processed_triplets: [], total_at_start: 0 }),
+    }),
+    cull: cullBody,
+  });
 }
 
 export function buildBatchEmbedImageCheckpointBody(args: {
@@ -316,17 +367,23 @@ export function buildBatchStackDetectCheckpointBody(args: {
   };
 }
 
-/** The two passes `batch_analyze` composes, and the two checkpoint sub-objects. */
-export type AnalyzeStage = 'describe' | 'score';
+/** The three passes `batch_analyze` composes, and their checkpoint sub-objects. */
+export type AnalyzeStage = 'cull' | 'describe' | 'score';
 
 export interface AnalyzeCheckpoint {
   /** The pass that was running when the checkpoint was written, if any. */
   stage: AnalyzeStage | null;
+  cull: Record<string, unknown>;
   describe: Record<string, unknown>;
   score: Record<string, unknown>;
 }
 
-const EMPTY_ANALYZE_CHECKPOINT: AnalyzeCheckpoint = { stage: null, describe: {}, score: {} };
+const EMPTY_ANALYZE_CHECKPOINT: AnalyzeCheckpoint = {
+  stage: null,
+  cull: {},
+  describe: {},
+  score: {},
+};
 
 /** The `batch_analyze` checkpoint, or empty sub-objects when there is none. */
 export function readAnalyzeCheckpoint(metadata: Record<string, unknown>): AnalyzeCheckpoint {
@@ -334,7 +391,8 @@ export function readAnalyzeCheckpoint(metadata: Record<string, unknown>): Analyz
   if (body === null) return EMPTY_ANALYZE_CHECKPOINT;
   const stage = body['stage'];
   return {
-    stage: stage === 'describe' || stage === 'score' ? stage : null,
+    stage: stage === 'cull' || stage === 'describe' || stage === 'score' ? stage : null,
+    cull: asBody(body['cull']),
     describe: asBody(body['describe']),
     score: asBody(body['score']),
   };
@@ -367,6 +425,7 @@ export function persistAnalyzeStageCheckpoint(
   runner.persistCheckpoint(jobId, {
     job_type: 'batch_analyze',
     stage,
+    cull: stage === 'cull' ? payload : existing.cull,
     describe: stage === 'describe' ? payload : existing.describe,
     score: stage === 'score' ? payload : existing.score,
   });

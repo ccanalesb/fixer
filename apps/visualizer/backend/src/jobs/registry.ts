@@ -23,6 +23,10 @@ import {
 import { BATCH_EMBED_IMAGE_CHECKPOINT_MISMATCH, handleBatchEmbedImage } from './handlers/embed.js';
 import { handleBatchFrameSubstance } from './handlers/frame-substance.js';
 import {
+  BATCH_REDECIDE_JOB_TYPE,
+  handleBatchRedecideCullVerdicts,
+} from './handlers/redecide.js';
+import {
   BATCH_SCORE_CHECKPOINT_MISMATCH,
   handleBatchScore,
   handleSingleScore,
@@ -120,6 +124,12 @@ export const JOB_TYPES: readonly JobType[] = [
     handler: handleBatchCullPhotosBeforeScoring,
     requiresCatalog: true,
     checkpointMismatchMessage: BATCH_CULL_CHECKPOINT_MISMATCH,
+  },
+  {
+    name: BATCH_REDECIDE_JOB_TYPE,
+    handler: handleBatchRedecideCullVerdicts,
+    requiresCatalog: true,
+    checkpointMismatchMessage: null,
   },
   {
     name: 'catalog_sync',

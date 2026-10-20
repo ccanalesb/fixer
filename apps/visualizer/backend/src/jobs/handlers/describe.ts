@@ -13,12 +13,13 @@ import { existsSync } from 'node:fs';
 import type { Db } from '../../db/connection.js';
 import { getImage } from '../../db/library/catalog.js';
 import { getImageDescription } from '../../db/library/descriptions.js';
-import { isDescriptionStale, staleDescriptionKeys } from '../../db/library/vision-stale.js';
+import { isDescriptionStale } from '../../db/library/vision-stale.js';
 import { VIDEO_EXTENSIONS } from '../../imaging/raw-decode.js';
 import type { CancelCheck } from '../../providers/retry.js';
 import { resolveFilepath } from '../../utils/path-resolve.js';
 import {
   describeMatchedImage,
+  describeRefusal,
   type DescribeTelemetry,
 } from '../../vision/description-service.js';
 import {
@@ -28,10 +29,12 @@ import {
   fingerprintBatchDescribe,
   loadResumeState,
   persistAnalyzeStageCheckpoint,
+  readDescribeScoreCullSubObject,
 } from '../checkpoint.js';
 import type { JobRunner } from '../runner.js';
 import {
   asMetadata,
+  cullStep,
   failureSeverityFromError,
   mapPassProgress,
   OWN_JOB,
@@ -43,6 +46,10 @@ import {
   withLibraryDb,
   type PassContext,
 } from './common.js';
+import { cullStageJobResultFields, runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
+import { filterPairsWithDescribeWork, selectKeysWithDescribeWork } from './work-keys.js';
+import type { BatchCullResult } from './cull-pass.js';
+import { performance } from 'node:perf_hooks';
 import { PathSkipDiagnostics, emptySkipReasonCounts } from './path-diagnostics.js';
 
 /** What a describe attempt did, in the vocabulary the job result reports. */
@@ -62,6 +69,8 @@ export function diagnoseDescribeSkip(db: Db, key: string, force: boolean): strin
     }
     const image = getImage(db, key);
     if (!image) return 'Image key not found in catalog';
+    const refused = describeRefusal(db, key);
+    if (refused !== null) return refused;
     const filepath = typeof image['filepath'] === 'string' ? image['filepath'] : '';
     if (!filepath) return 'No filepath in catalog record';
 
@@ -203,6 +212,9 @@ export interface BatchDescribeResult {
   date_filter: string;
   force: boolean;
   skip_reason_counts: Record<string, number>;
+  cull?: Omit<BatchCullResult, 'total' | 'durations_s' | 'laya_seconds' | 'stage_versions'>;
+  held_back?: CullHeldBackCounts;
+  durations_s?: { frame_substance: number; cull: number; describe: number; score: number; total: number };
 }
 
 /** Generate AI descriptions for catalog images in bulk. */
@@ -230,7 +242,29 @@ export async function handleBatchDescribe(
         metadata,
         Boolean(metadata['force']),
       );
-      await runDescribePass(runner, jobId, metadata, db, selection, OWN_JOB);
+      const tJob = performance.now();
+      const workKeys = selectKeysWithDescribeWork(db, metadata, selection);
+      const stage = await runCullStageBeforeDescribeAndScore(
+        runner,
+        jobId,
+        metadata,
+        db,
+        workKeys,
+        selection,
+        cullStep([0, 30], '', 'batch_describe'),
+      );
+      if (stage === null) return;
+      const passCtx: PassContext = { ...OWN_JOB, progressRange: [30, 100], settle: 'stage' };
+      const tDescribe = performance.now();
+      const summary =
+        (await runDescribePass(runner, jobId, metadata, db, stage.keptPairs, passCtx)) ?? null;
+      if (summary === null) return;
+      const describeS = Math.round((performance.now() - tDescribe) / 10) / 100;
+      runner.clearCheckpoint(jobId);
+      runner.completeJob(jobId, {
+        ...summary,
+        ...cullStageJobResultFields(stage, { describe: describeS, score: 0 }, tJob),
+      });
     });
   } catch (e) {
     runner.failJob(
@@ -344,36 +378,16 @@ export async function runDescribePass(
   const pairLabel = (key: string, itype: string): string => `${key}|${itype}`;
   let pending = selection.filter(([k, t]) => !processedPairs.has(pairLabel(k, t)));
 
-  // Made from a since-turned cache image: not done, whatever `image_descriptions` says.
-  const stale = staleDescriptionKeys(db);
-
-  // A pre-filter in SQL rather than a skip per image: on a catalog that is mostly
-  // described this turns 40,000 provider round-trips into none.
-  if (!backfillVisualTags && !force && redoUnlessModel === null && pending.length > 0) {
-    const described = new Set(
-      (db.prepare('SELECT image_key FROM image_descriptions').all() as { image_key: string }[]).map(
-        (r) => r.image_key,
-      ),
-    );
-    const before = pending.length;
-    pending = pending.filter(([k]) => !described.has(k) || stale.has(k));
-    const skippedByDb = before - pending.length;
-    if (skippedByDb) {
-      log('info', `Skipped ${skippedByDb} already-described images (DB pre-filter)`);
-    }
+  const beforeFilter = pending.length;
+  pending = filterPairsWithDescribeWork(db, metadata, pending);
+  const skippedByDb = beforeFilter - pending.length;
+  if (skippedByDb && !backfillVisualTags && !force && redoUnlessModel === null) {
+    log('info', `Skipped ${skippedByDb} already-described images (DB pre-filter)`);
   }
-
-  if (redoUnlessModel !== null && pending.length > 0) {
-    const rows = db
-      .prepare('SELECT image_key, image_type FROM image_descriptions WHERE model_used = ?')
-      .all(redoUnlessModel) as { image_key: string; image_type: string }[];
-    const doneByTarget = new Set(rows.map((r) => pairLabel(r.image_key, r.image_type)));
-    const before = pending.length;
-    pending = pending.filter(([k, t]) => !doneByTarget.has(pairLabel(k, t)) || stale.has(k));
+  if (skippedByDb && redoUnlessModel !== null) {
     log(
       'info',
-      `model-scoped re-do (redo_unless_model=${redoUnlessModel}): skipped ` +
-        `${before - pending.length} images already described by this model; ` +
+      `model-scoped re-do (redo_unless_model=${redoUnlessModel}): skipped ${skippedByDb} images already described by this model; ` +
         'force-regenerating the rest',
     );
   }
@@ -439,7 +453,12 @@ export async function runDescribePass(
     if (checkpoint.mode === 'flat') {
       runner.persistCheckpoint(
         jobId,
-        buildBatchDescribeCheckpointBody({ fingerprint, processed: processedPairs, totalAtStart }),
+        buildBatchDescribeCheckpointBody({
+          fingerprint,
+          processed: processedPairs,
+          totalAtStart,
+          cull: readDescribeScoreCullSubObject(runner.readMetadata(jobId), 'batch_describe'),
+        }),
       );
     } else if (checkpoint.mode === 'nested') {
       persistAnalyzeStageCheckpoint(

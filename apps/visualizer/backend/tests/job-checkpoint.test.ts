@@ -18,8 +18,10 @@ import {
   fingerprintBatchStackDetect,
   fingerprintCatalogCacheBuild,
   loadResumeState,
+  mergeDescribeScoreCullCheckpoint,
   persistAnalyzeStageCheckpoint,
   readAnalyzeCheckpoint,
+  readDescribeScoreCullSubObject,
 } from '../src/jobs/checkpoint.js';
 import { canonicalJson } from '../src/utils/canonical-json.js';
 import { CHECKPOINT_MAX_ENTRIES, buildBatchCullCheckpointBody } from '../src/jobs/checkpoint.js';
@@ -310,6 +312,7 @@ describe('the nested batch_analyze checkpoint', () => {
   it('reads both stages out of one checkpoint', () => {
     expect(readAnalyzeCheckpoint(nested())).toEqual({
       stage: 'score',
+      cull: {},
       describe: { fingerprint: 'dfp', processed_pairs: ['a|catalog'], total_at_start: 1 },
       score: { fingerprint: 'sfp', processed_triplets: ['a|catalog|street'], total_at_start: 1 },
     });
@@ -325,8 +328,8 @@ describe('the nested batch_analyze checkpoint', () => {
         processed_pairs: ['a|catalog'],
       },
     };
-    expect(readAnalyzeCheckpoint(flat)).toEqual({ stage: null, describe: {}, score: {} });
-    expect(readAnalyzeCheckpoint({})).toEqual({ stage: null, describe: {}, score: {} });
+    expect(readAnalyzeCheckpoint(flat)).toEqual({ stage: null, cull: {}, describe: {}, score: {} });
+    expect(readAnalyzeCheckpoint({})).toEqual({ stage: null, cull: {}, describe: {}, score: {} });
   });
 
   it('resumes a stage from its own sub-object', () => {
@@ -383,12 +386,61 @@ describe('the nested batch_analyze checkpoint', () => {
 
     expect(readAnalyzeCheckpoint(metadata)).toEqual({
       stage: 'score',
+      cull: {},
       describe: { fingerprint: 'dfp', processed_pairs: ['a|catalog'], total_at_start: 1 },
       score: {
         fingerprint: 'sfp',
         processed_triplets: ['a|catalog|street', 'b|catalog|street'],
         total_at_start: 2,
       },
+    });
+  });
+});
+
+describe('describe/score cull sub-checkpoint', () => {
+  it('keeps the cull sub-object across describe progress writes', () => {
+    let metadata: Record<string, unknown> = {};
+    const runner = {
+      readMetadata: () => metadata,
+      persistCheckpoint: (_id: string, body: Record<string, unknown>) => {
+        metadata = { checkpoint: { checkpoint_version: CHECKPOINT_VERSION, ...body } };
+      },
+    };
+    mergeDescribeScoreCullCheckpoint(runner, 'j1', 'batch_describe', {
+      fingerprint: 'cfp',
+      failed_keys: ['x'],
+      total_at_start: 1,
+    });
+    runner.persistCheckpoint('j1', {
+      job_type: 'batch_describe',
+      fingerprint: 'dfp',
+      processed_pairs: ['a|catalog'],
+      total_at_start: 1,
+      cull: readDescribeScoreCullSubObject(metadata, 'batch_describe'),
+    });
+    expect(readDescribeScoreCullSubObject(metadata, 'batch_describe')).toMatchObject({
+      fingerprint: 'cfp',
+      failed_keys: ['x'],
+    });
+  });
+
+  it('analyze nested checkpoint records the cull stage', () => {
+    let metadata: Record<string, unknown> = {};
+    const runner = {
+      readMetadata: () => metadata,
+      persistCheckpoint: (_id: string, body: Record<string, unknown>) => {
+        metadata = { checkpoint: { checkpoint_version: CHECKPOINT_VERSION, ...body } };
+      },
+    };
+    persistAnalyzeStageCheckpoint(runner, 'j1', 'cull', {
+      fingerprint: 'cfp',
+      failed_keys: ['a'],
+      total_at_start: 2,
+      done_by_stage: {},
+    });
+    expect(readAnalyzeCheckpoint(metadata)).toMatchObject({
+      stage: 'cull',
+      cull: { fingerprint: 'cfp', failed_keys: ['a'], total_at_start: 2 },
     });
   });
 });

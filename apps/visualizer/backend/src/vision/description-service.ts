@@ -9,6 +9,8 @@ import type { ProviderRegistry } from '../providers/registry.js';
 import type { CancelCheck, LogCallback } from '../providers/retry.js';
 import { buildDescriptionUserPrompt } from '../analyzer/prompt-builder.js';
 import { getImage } from '../db/library/catalog.js';
+import { isPhotoCutAndNotSentByHand } from '../db/library/cull-verdicts.js';
+import { getFrameSubstanceVerdict, hasFrameSubstanceOverride } from '../db/library/frame-substance.js';
 import { getImageDescription, storeImageDescription } from '../db/library/descriptions.js';
 import { clearStaleDescription, isDescriptionStale } from '../db/library/vision-stale.js';
 import { libraryWrite } from '../db/library/write.js';
@@ -122,6 +124,16 @@ export interface DescribeOptions {
   telemetry?: DescribeTelemetry | null;
 }
 
+/** Why a photo is not described whatever `force` says: a void frame, or a cut nobody sent on. */
+export function describeRefusal(db: Db, catalogKey: string): string | null {
+  const substance = getFrameSubstanceVerdict(db, catalogKey);
+  if (substance?.verdict === 'void' && !hasFrameSubstanceOverride(db, catalogKey)) {
+    return 'Frame substance verdict: void';
+  }
+  if (isPhotoCutAndNotSentByHand(db, catalogKey)) return 'Cull verdict: cut (send it by hand to describe it)';
+  return null;
+}
+
 /**
  * Generate and store a description for one catalog image.
  *
@@ -147,6 +159,11 @@ export async function describeMatchedImage(
   if (isNonDescribablePath(filepath)) {
     return new VisionOpOutcome('skipped', 'non-describable file type');
   }
+
+  // The same two checks scoring makes (#339): a void frame has nothing to describe, and a photo the
+  // cull cut is described only once the user sends it on.
+  const refused = describeRefusal(db, catalogKey);
+  if (refused !== null) return new VisionOpOutcome('skipped', refused);
 
   // Prefer the local vision cache: the original may be unreachable — an unmounted
   // NAS is the normal case — and describe can still run off the cached JPEG.
