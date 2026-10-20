@@ -73,6 +73,15 @@ interface RawVerdictRow extends Omit<CullVerdictRow, 'sent_by_hand' | 'pending_s
   stage_version_ids: string;
 }
 
+/** Image keys with a decided cull verdict (cut or sent). */
+export function listDecidedCullImageKeys(db: Db): string[] {
+  return (
+    db.prepare(`SELECT image_key FROM cull_verdicts WHERE verdict IN ('cut', 'sent')`).all() as {
+      image_key: string;
+    }[]
+  ).map((r) => r.image_key);
+}
+
 export function getCullVerdict(db: Db, imageKey: string): CullVerdictRow | null {
   const r = db.prepare('SELECT * FROM cull_verdicts WHERE image_key = ?').get(imageKey) as RawVerdictRow | undefined;
   if (!r) return null;

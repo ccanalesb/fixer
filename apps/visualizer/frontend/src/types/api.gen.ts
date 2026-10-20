@@ -2919,6 +2919,8 @@ export interface paths {
                                 /** @enum {string} */
                                 type: "mean_fail";
                             };
+                            /** @enum {string} */
+                            stars_strong_from?: "7" | "10" | "every" | "any";
                         };
                         active?: boolean;
                     };
@@ -3383,6 +3385,8 @@ export interface paths {
                                 /** @enum {string} */
                                 type: "mean_fail";
                             };
+                            /** @enum {string} */
+                            stars_strong_from?: "7" | "10" | "every" | "any";
                         };
                     };
                 };
@@ -3422,6 +3426,250 @@ export interface paths {
             };
         };
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/lightroom-writeback/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Write-back settings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LrWritebackSettingsResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        write_stars?: boolean;
+                        write_reject?: boolean;
+                        stars_recipe_slug?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated settings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LrWritebackSettingsResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/cull/lightroom-writeback/write-pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Write pending result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LrWritebackWritePendingResponse"];
+                    };
+                };
+                /** @description Catalog locked */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/lightroom-writeback/photos/{image_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    image_key: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Per-photo write-back readout */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LrWritebackPhotoDetailResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/lightroom-writeback/photos/{image_key}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    image_key: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "stars" | "reject";
+                    };
+                };
+            };
+            responses: {
+                /** @description Undo result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            reason?: string;
+                        };
+                    };
+                };
+                /** @description Cannot undo */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -5089,6 +5337,8 @@ export interface components {
                             /** @enum {string} */
                             type: "mean_fail";
                         };
+                        /** @enum {string} */
+                        stars_strong_from?: "7" | "10" | "every" | "any";
                     };
                     run_after_cut: boolean;
                 }[];
@@ -5144,7 +5394,61 @@ export interface components {
                     /** @enum {string} */
                     type: "mean_fail";
                 };
+                /** @enum {string} */
+                stars_strong_from?: "7" | "10" | "every" | "any";
             };
+        };
+        LrWritebackSettingsResponse: {
+            write_stars: boolean;
+            write_reject: boolean;
+            stars_recipe_slug: string | null;
+            active_recipe_slugs: string[];
+            active_recipes: {
+                slug: string;
+                name: string;
+            }[];
+            catalog_write_available: boolean;
+            catalog_write_unavailable_reason: string | null;
+            counts: {
+                stars: {
+                    pending: number;
+                    written: number;
+                };
+                reject: {
+                    pending: number;
+                    written: number;
+                };
+            };
+        };
+        LrWritebackWritePendingResponse: {
+            stars: {
+                pending: number;
+                written: number;
+                catalog_updated: number;
+            };
+            reject: {
+                pending: number;
+                written: number;
+                catalog_updated: number;
+            };
+        };
+        LrWritebackPhotoDetailResponse: {
+            image_key: string;
+            rating: {
+                live: number | null;
+                app_wrote: boolean;
+                before_label: string | null;
+                undo_available: boolean;
+                user_changed: boolean;
+            };
+            flag: {
+                live_pick: number | null;
+                app_wrote_reject: boolean;
+                undo_available: boolean;
+                user_changed: boolean;
+            };
+            keywords: string[];
+            strong_dimensions_line: string | null;
         };
         ProviderListResponse: components["schemas"]["Provider"][];
         Provider: {

@@ -17,6 +17,7 @@ import { ltConfigRoutes } from './api/lt-config.js';
 import { perspectivesRoutes } from './api/perspectives.js';
 import { cullReviewRoutes } from './api/cull-review.js';
 import { cullingRecipesRoutes } from './api/culling-recipes.js';
+import { lrWritebackRoutes } from './api/lr-writeback.js';
 import { providersRoutes } from './api/providers.js';
 import { scoresRoutes } from './api/scores.js';
 import { systemRoutes } from './api/system.js';
@@ -47,6 +48,7 @@ export function createApp() {
   app.route('/api', perspectivesRoutes);
   app.route('/api', cullReviewRoutes);
   app.route('/api', cullingRecipesRoutes);
+  app.route('/api', lrWritebackRoutes);
   app.route('/api', providersRoutes);
   app.route('/api', identityRoutes);
   app.route('/api/scores', scoresRoutes);

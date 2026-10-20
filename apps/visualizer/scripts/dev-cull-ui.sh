@@ -36,7 +36,7 @@ library_db: $LIBRARY_DB
 vision_cache_dir: $TMP/vision
 vision_cache_enabled: false
 laya_models_dir: $TMP/models
-catalog_path: $TMP/stub.lrcat
+catalog_path: $TMP/review.lrcat
 EOF
 
   cat > "$LT_PROVIDERS_JSON" <<'EOF'

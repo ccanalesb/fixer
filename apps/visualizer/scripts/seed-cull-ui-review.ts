@@ -1,7 +1,11 @@
 /**
  * Seeds a temp library.db for dev-cull-ui.sh — rich cull review + catalog fixtures.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { catalogBaseNameFromImageKey } from '../backend/src/lightroom/writer.js';
+import { makeFakeCatalog } from '../backend/tests/helpers/fake-catalog.js';
+import { patchLrWritebackSettings } from '../backend/src/db/library/lr-writeback-settings.js';
+import { markEligiblePending } from '../backend/src/lightroom/writeback.js';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { resolveCurrentStages } from '../backend/src/cull/stages.js';
@@ -53,6 +57,17 @@ function recipeAnswers(levelSet: '7' | '10', levelIndex: number): Record<string,
   return out;
 }
 
+/** Strong on `strongDimCount` dimensions (recipe-7h47 bands: level 6+ on 7-set, 8+ on 10-set). */
+function recipeAnswersStrongDims(strongDimCount: number): { seven: Record<string, number[]>; ten: Record<string, number[]> } {
+  const seven: Record<string, number[]> = {};
+  const ten: Record<string, number[]> = {};
+  DIMS.forEach((dim, di) => {
+    Object.assign(seven, levelPick('7', dim, di < strongDimCount ? 5 : 0));
+    Object.assign(ten, levelPick('10', dim, di < strongDimCount ? 7 : 0));
+  });
+  return { seven, ten };
+}
+
 function forecastAnswers(stage: ResolvedStage, high: boolean): Record<string, number[]> {
   const out: Record<string, number[]> = {};
   for (const [qid, q] of Object.entries(stage.questions)) {
@@ -71,8 +86,12 @@ function forecastAnswers(stage: ResolvedStage, high: boolean): Record<string, nu
   return out;
 }
 
-function imageKeyFromFile(name: string): string {
-  return basename(name, '.jpg');
+/** Product-shaped library key and matching `AgLibraryFile.baseName` for the temp `.lrcat`. */
+function prototypeKeyAndBaseName(file: string): { key: string; catalogBaseName: string } {
+  const stem = basename(file, '.jpg');
+  const m = stem.match(/^(\d{4}-\d{2}-\d{2})__(.+)$/);
+  if (m) return { key: `${m[1]!}_${m[2]!}`, catalogBaseName: m[2]! };
+  return { key: stem, catalogBaseName: catalogBaseNameFromImageKey(stem) };
 }
 
 const db = initLibraryDb(libPath);
@@ -91,8 +110,10 @@ const cacheIns = db.prepare(
   "INSERT OR IGNORE INTO vision_cache (key, compressed_path, phash, compressed_at, original_mtime) VALUES (?, ?, NULL, datetime('now'), 1)",
 );
 
+const keyByFile = new Map<string, string>();
 for (const file of files) {
-  const key = imageKeyFromFile(file);
+  const { key } = prototypeKeyAndBaseName(file);
+  keyByFile.set(file, key);
   const dest = join(vision, file);
   copyFileSync(join(PROTOTYPE_IMG, file), dest);
   ins.run(key, file, dest);
@@ -140,8 +161,36 @@ function baseVerdict(
 
 function seedStageAnswers(
   imageKey: string,
-  opts: { recipeLevel?: number; forecastHigh?: boolean; recipe10?: boolean },
+  opts: {
+    recipeLevel?: number;
+    forecastHigh?: boolean;
+    recipe10?: boolean;
+    strongDimCount?: number;
+  },
 ): void {
+  if (opts.strongDimCount !== undefined) {
+    const { seven, ten } = recipeAnswersStrongDims(opts.strongDimCount);
+    upsertStageAnswer(db, {
+      imageKey,
+      stageVersionId: recipe7.versionId,
+      answers: seven,
+      verdict: 'cut',
+      decision: {},
+      pipelineSettingVersion: pipe.version,
+      source: 'job',
+      runId,
+    });
+    upsertStageAnswer(db, {
+      imageKey,
+      stageVersionId: recipe10.versionId,
+      answers: ten,
+      verdict: 'cut',
+      decision: {},
+      pipelineSettingVersion: pipe.version,
+      source: 'job',
+      runId,
+    });
+  }
   if (opts.recipeLevel !== undefined) {
     upsertStageAnswer(db, {
       imageKey,
@@ -181,10 +230,10 @@ function seedStageAnswers(
 }
 
 files.forEach((file, i) => {
-  const key = imageKeyFromFile(file);
+  const key = keyByFile.get(file)!;
   if (i < 3) {
     upsertCullVerdict(db, baseVerdict(key, { verdict: 'sent' }));
-    seedStageAnswers(key, { recipeLevel: 5, forecastHigh: true });
+    seedStageAnswers(key, { strongDimCount: i + 1, forecastHigh: true });
     return;
   }
   if (i === 3) {
@@ -228,6 +277,19 @@ files.forEach((file, i) => {
     );
     seedStageAnswers(key, { recipeLevel: 2, forecastHigh: false, recipe10: true });
     recordCullUserAction(db, key, 'agrees_with_cut');
+    return;
+  }
+  if (i === 11) {
+    upsertCullVerdict(
+      db,
+      baseVerdict(key, {
+        verdict: 'cut',
+        cutBy: 'culling_recipe',
+        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        scoreForecastP8: 0.1,
+      }),
+    );
+    seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false, recipe10: true });
     return;
   }
   if (i >= 6 && i < 28) {
@@ -326,5 +388,32 @@ files.forEach((file, i) => {
   seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false, recipe10: i % 2 === 0 });
 });
 
+const lrcatPath = join(tmpRoot, 'review.lrcat');
+const imageRows = db
+  .prepare('SELECT key, filename FROM images ORDER BY key LIMIT 80')
+  .all() as { key: string; filename: string }[];
+makeFakeCatalog(
+  lrcatPath,
+  imageRows.map((row, idx) => ({
+    id: idx + 1,
+    baseName: catalogBaseNameFromImageKey(row.key),
+    pick: idx === 5 ? 1 : idx === 6 ? -1 : 0,
+    rating: idx === 7 ? 4 : null,
+  })),
+);
+patchLrWritebackSettings(db, { write_stars: true, write_reject: true });
+markEligiblePending(db, 'reject');
+markEligiblePending(db, 'stars');
+if (process.env.LT_CONFIG_YAML) {
+  writeFileSync(
+    process.env.LT_CONFIG_YAML,
+    readFileSync(process.env.LT_CONFIG_YAML, 'utf8').replace(
+      /catalog_path: .*/,
+      `catalog_path: ${lrcatPath}`,
+    ),
+  );
+}
+
 db.close();
 console.log(`Seeded ${libPath} with ${files.length} photos from prototype`);
+console.log(`Temp catalog: ${lrcatPath}`);

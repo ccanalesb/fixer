@@ -62,7 +62,10 @@ export function makeFakeCatalog(
       isoSpeedRating REAL, gpsLatitude REAL, gpsLongitude REAL
     );
     CREATE TABLE AgLibraryIPTC (image INTEGER, caption TEXT, copyright TEXT);
-    CREATE TABLE AgLibraryKeyword (id_local INTEGER PRIMARY KEY, name TEXT);
+    CREATE TABLE AgLibraryKeyword (
+      id_local INTEGER PRIMARY KEY, id_global TEXT, name TEXT, lc_name TEXT,
+      dateCreated TEXT, keywordType INTEGER
+    );
     CREATE TABLE AgLibraryKeywordImage (image INTEGER, tag INTEGER);
     INSERT INTO AgLibraryFolder (id_local, rootFolder, pathFromRoot) VALUES (1, 1, '2024/');
   `);

@@ -4,6 +4,7 @@ import { invalidateAll } from '../../data'
 import { AIDescriptionSection } from '../DescriptionPanel'
 import { AIPerspectiveSection } from '../catalog/AIPerspectiveSection'
 import { FrameSubstanceSection } from '../catalog/FrameSubstanceSection'
+import { LightroomWritebackDetailSection } from '../catalog/LightroomWritebackDetailSection'
 import { Badge } from '../ui/badges'
 import { MetadataRow } from '../ui/MetadataRow'
 import {
@@ -124,6 +125,8 @@ export function CatalogImageDetailSections({
           </div>
         </div>
       ) : null}
+
+      <LightroomWritebackDetailSection imageKey={image.key} />
 
       <FrameSubstanceSection imageKey={image.key} onDataChanged={onDataChanged} />
 

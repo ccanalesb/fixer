@@ -75,7 +75,7 @@ const tables = (d: Db) =>
 describe('migration and seed', () => {
   it('a fresh library has every cull table, recipe 7H47 and the default pipeline setting', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
-    expect(LIBRARY_SCHEMA_VERSION).toBe(11);
+    expect(LIBRARY_SCHEMA_VERSION).toBe(12);
     expect(tables(db)).toEqual(CULL_TABLES);
     const recipe = getCullRecipe(db, 'recipe-7h47')!;
     expect(recipe).toMatchObject({ name: 'Recipe 7H47', model: 'laya-base', active: true, measured: true });
@@ -107,7 +107,7 @@ describe('migration and seed', () => {
 
     db = openLibraryDb(join(dir, 'library.db'));
     upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(11);
+    expect(db.pragma('user_version', { simple: true })).toBe(12);
     expect(tables(db)).toEqual(CULL_TABLES);
     expect(listCullRecipes(db).map((r) => r.slug)).toEqual(['recipe-7h47']);
 

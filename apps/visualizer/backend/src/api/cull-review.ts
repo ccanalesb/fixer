@@ -149,7 +149,7 @@ const sendRoute = createRoute({
   }),
 });
 
-cullReviewRoutes.openapi(sendRoute, (c) => {
+cullReviewRoutes.openapi(sendRoute, async (c) => {
   const db = c.get('libraryDb');
   const { image_keys: keys } = c.req.valid('json');
   const sendWorkKeys = batchKeysWithSendWork(db, keys);
@@ -158,6 +158,16 @@ cullReviewRoutes.openapi(sendRoute, (c) => {
     if (!sendWorkKeys.has(key)) continue;
     recordCullUserAction(db, key, 'sent_by_hand');
     sent.push(key);
+  }
+  if (sent.length > 0) {
+    try {
+      const { reconcileLrWriteback } = await import('../lightroom/writeback.js');
+      await reconcileLrWriteback(db, { trigger: 'sent_by_hand', imageKeys: sent });
+    } catch (e) {
+      process.stderr.write(
+        `lightroom write-back after send-by-hand: ${e instanceof Error ? e.message : String(e)}\n`,
+      );
+    }
   }
   const skippedComplete = keys.length - sent.length;
   const workKeys = [...sendWorkKeys];

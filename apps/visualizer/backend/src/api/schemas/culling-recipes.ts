@@ -11,6 +11,7 @@ export const RecipeRuleSchema = z
     level_sets: z.record(z.string(), z.object({ fails_at_most: z.number().int(), strong_at_least: z.number().int() })),
     combine: z.enum(['every', 'any']),
     cut_rule: CutRuleSchema,
+    stars_strong_from: z.enum(['7', '10', 'every', 'any']).optional(),
   })
   .strict();
 

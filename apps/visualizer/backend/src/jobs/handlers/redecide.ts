@@ -32,6 +32,16 @@ export async function handleBatchRedecideCullVerdicts(
             `pending=${result.pending} sent=${result.sent} sent_by_hand_passed=${result.sent_by_hand_passed} ` +
             `duration_s=${result.durations_s.redecide}`,
         );
+        try {
+          const { reconcileLrWriteback } = await import('../../lightroom/writeback.js');
+          await reconcileLrWriteback(db, { trigger: 'redecide_complete' });
+        } catch (e) {
+          runner.log(
+            jobId,
+            'warning',
+            `lightroom write-back after re-decide: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
         runner.completeJob(jobId, result);
       } catch (e) {
         if (e instanceof RedecideCancelled) {
