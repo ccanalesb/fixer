@@ -3,7 +3,7 @@
  *
  * Resolution order, first hit wins:
  *   1. the `LIBRARY_DB` environment variable
- *   2. `db_path` from the repo-level `config.yaml`
+ *   2. `db_path` from `config.LT_CONFIG_YAML` (the repo-level `config.yaml` unless overridden)
  *   3. `library.db` relative to the working directory (legacy default)
  *
  * `describeLibraryDb()` never throws: it returns a structured status including *why*
@@ -12,8 +12,7 @@
  * accepted and failed later, so the reason has to be presentable.
  */
 import { statSync } from 'node:fs';
-import { join } from 'node:path';
-import { loadLibraryConfig, REPO_ROOT } from '../config.js';
+import { config, loadLibraryConfig } from '../config.js';
 
 export type LibraryDbSource = 'env' | 'config' | 'default' | 'none';
 
@@ -24,13 +23,6 @@ export interface LibraryDbStatus {
   /** Human-readable explanation when unavailable. */
   reason: string | null;
 }
-
-/**
- * The repo-level `config.yaml`, resolved from the repo root rather than the working
- * directory. The backend's cwd is its own package directory, where no `config.yaml`
- * exists.
- */
-const REPO_CONFIG_YAML = join(REPO_ROOT, 'config.yaml');
 
 function isFile(path: string): boolean {
   try {
@@ -55,8 +47,9 @@ export function describeLibraryDb(): LibraryDbStatus {
     };
   }
 
+  const configPath = config.LT_CONFIG_YAML;
   try {
-    const cfg = loadLibraryConfig(REPO_CONFIG_YAML);
+    const cfg = loadLibraryConfig(configPath);
     if (cfg.dbPath) {
       const exists = isFile(cfg.dbPath);
       return {
@@ -74,7 +67,7 @@ export function describeLibraryDb(): LibraryDbStatus {
       path: null,
       source: 'none',
       exists: false,
-      reason: `Failed to load ${REPO_CONFIG_YAML}: ${e instanceof Error ? e.message : String(e)}`,
+      reason: `Failed to load ${configPath}: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
 
