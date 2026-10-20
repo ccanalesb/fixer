@@ -94,7 +94,11 @@ export function decideAndStorePhoto(db: Db, ctx: CullContext, args: StorePhotoAr
       sentByHand: args.sentByHand,
       pendingStages: decision.pendingStages,
       pendingReason:
-        decision.verdict === 'pending' || args.pendingReason === WORKER_DIED_REASON ? (args.pendingReason ?? '') : '',
+        decision.verdict === 'pending'
+          ? (args.pendingReason ?? '')
+          : args.pendingReason === WORKER_DIED_REASON
+            ? args.pendingReason
+            : '',
       scoreForecastOff: !ctx.scoreForecastAvailable || !ctx.pipeline.config.score_forecast.enabled,
       scoreForecastP8: decision.scoreForecastP8,
       pipelineSettingVersion: ctx.pipeline.version,

@@ -149,31 +149,31 @@ describe('selectPhotosToCull', () => {
   it('skips photos whose required stages are answered and whose summary is current', async () => {
     const ctx = context();
     await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'done', sentByHand: false, runId, resolveImage: image });
-    expect(selectPhotosToCull(db, ctx, ['new', 'done'])).toEqual(['new']);
+    expect(selectPhotosToCull(db, ctx, ['new', 'done']).keys).toEqual(['new']);
   });
 
   it('a photo the recipe cut is not selected again for a stage switched off for cut photos', async () => {
     const ctx = context(forecastOffForCut);
     await cullPhoto(db, ctx, fakeLaya([5, 5, 2, 3]), { imageKey: 'cut', sentByHand: false, runId, resolveImage: image });
     expect(getCullVerdict(db, 'cut')).toMatchObject({ verdict: 'cut' });
-    expect(selectPhotosToCull(db, ctx, ['cut'])).toEqual([]);
+    expect(selectPhotosToCull(db, ctx, ['cut']).keys).toEqual([]);
   });
 
   it('a summary decided under another pipeline setting is selected, to be re-decided', async () => {
     await cullPhoto(db, context(), fakeLaya([5, 5, 6, 6]), { imageKey: 'a', sentByHand: false, runId, resolveImage: image });
-    expect(selectPhotosToCull(db, context((c) => c), ['a'])).toEqual(['a']);
+    expect(selectPhotosToCull(db, context((c) => c), ['a']).keys).toEqual(['a']);
   });
 
   it('puts a sent-by-hand photo the worker died on last too', async () => {
     const ctx = context();
     await cullPhoto(db, ctx, fakeLaya([5, 5, 5, 5], { fail: 'worker' }), { imageKey: 'died', sentByHand: true, runId, resolveImage: image });
     expect(getCullVerdict(db, 'died')).toMatchObject({ verdict: 'sent', pending_reason: 'laya_worker_died' });
-    expect(selectPhotosToCull(db, ctx, ['died', 'b'])).toEqual(['b', 'died']);
+    expect(selectPhotosToCull(db, ctx, ['died', 'b']).keys).toEqual(['b', 'died']);
   });
 
   it('puts photos the worker died on last', async () => {
     const ctx = context();
     await cullPhoto(db, ctx, fakeLaya([5, 5, 5, 5], { fail: 'worker' }), { imageKey: 'died', sentByHand: false, runId, resolveImage: image });
-    expect(selectPhotosToCull(db, ctx, ['died', 'b', 'c'])).toEqual(['b', 'c', 'died']);
+    expect(selectPhotosToCull(db, ctx, ['died', 'b', 'c']).keys).toEqual(['b', 'c', 'died']);
   });
 });

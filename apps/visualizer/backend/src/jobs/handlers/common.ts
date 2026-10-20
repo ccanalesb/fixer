@@ -225,7 +225,8 @@ export function filterCutPhotosFromDescribeAndScoringSelection<T extends readonl
 export type PassCheckpoint =
   | { mode: 'flat' }
   | { mode: 'nested'; key: AnalyzeStage }
-  | { mode: 'none' };
+  | { mode: 'none' }
+  | { mode: 'step'; host: 'batch_describe' | 'batch_score' };
 
 /**
  * Everything a pass needs to know about the job it is running inside.
@@ -267,6 +268,15 @@ export function analyzeStage(
   key: AnalyzeStage,
 ): PassContext {
   return { progressRange, logPrefix, settle: 'stage', checkpoint: { mode: 'nested', key } };
+}
+
+/** The in-job cull step inside `batch_describe` / `batch_score` (checkpoint sub-object). */
+export function cullStep(
+  progressRange: readonly [number, number],
+  logPrefix: string,
+  host: 'batch_describe' | 'batch_score',
+): PassContext {
+  return { progressRange, logPrefix, settle: 'stage', checkpoint: { mode: 'step', host } };
 }
 
 /** Map a pass's own 0–100 onto the slice of the bar it was given. */

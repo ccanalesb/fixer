@@ -29,10 +29,12 @@ import {
   fingerprintBatchDescribe,
   loadResumeState,
   persistAnalyzeStageCheckpoint,
+  readDescribeScoreCullSubObject,
 } from '../checkpoint.js';
 import type { JobRunner } from '../runner.js';
 import {
   asMetadata,
+  cullStep,
   failureSeverityFromError,
   mapPassProgress,
   OWN_JOB,
@@ -44,6 +46,10 @@ import {
   withLibraryDb,
   type PassContext,
 } from './common.js';
+import { runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
+import { selectKeysWithDescribeWork } from './work-keys.js';
+import type { BatchCullResult } from './cull-pass.js';
+import { performance } from 'node:perf_hooks';
 import { PathSkipDiagnostics, emptySkipReasonCounts } from './path-diagnostics.js';
 
 /** What a describe attempt did, in the vocabulary the job result reports. */
@@ -206,6 +212,9 @@ export interface BatchDescribeResult {
   date_filter: string;
   force: boolean;
   skip_reason_counts: Record<string, number>;
+  cull?: Omit<BatchCullResult, 'total' | 'durations_s' | 'laya_seconds' | 'stage_versions'>;
+  held_back?: CullHeldBackCounts;
+  durations_s?: { frame_substance: number; cull: number; describe: number; score: number; total: number };
 }
 
 /** Generate AI descriptions for catalog images in bulk. */
@@ -233,7 +242,50 @@ export async function handleBatchDescribe(
         metadata,
         Boolean(metadata['force']),
       );
-      await runDescribePass(runner, jobId, metadata, db, selection, OWN_JOB);
+      const tJob = performance.now();
+      const workKeys = selectKeysWithDescribeWork(db, metadata, selection);
+      const stage = await runCullStageBeforeDescribeAndScore(
+        runner,
+        jobId,
+        metadata,
+        db,
+        workKeys,
+        selection,
+        cullStep([0, 30], '', 'batch_describe'),
+      );
+      if (stage === null) return;
+      const passCtx: PassContext = { ...OWN_JOB, progressRange: [30, 100], settle: 'stage' };
+      const tDescribe = performance.now();
+      const summary =
+        (await runDescribePass(runner, jobId, metadata, db, stage.keptPairs, passCtx)) ?? null;
+      if (summary === null) return;
+      const describeS = Math.round((performance.now() - tDescribe) / 10) / 100;
+      runner.clearCheckpoint(jobId);
+      runner.completeJob(jobId, {
+        ...summary,
+        cull: {
+          culled: stage.cullStep.culled,
+          redecided: stage.cullStep.redecided,
+          failed: stage.cullStep.failed,
+          cut_by_culling_recipe: stage.cullStep.cut_by_culling_recipe,
+          cut_by_score_forecast: stage.cullStep.cut_by_score_forecast,
+          pending: stage.cullStep.pending,
+          sent: stage.cullStep.sent,
+          sent_by_hand_passed: stage.cullStep.sent_by_hand_passed,
+          score_forecast: stage.cullStep.score_forecast,
+          pipeline_setting_version: stage.cullStep.pipeline_setting_version,
+          seconds_per_photo: stage.cullStep.seconds_per_photo,
+          laya_started: stage.cullStep.laya_started,
+        },
+        held_back: stage.heldBack,
+        durations_s: {
+          frame_substance: stage.durations.frame_substance,
+          cull: stage.durations.cull,
+          describe: describeS,
+          score: 0,
+          total: Math.round((performance.now() - tJob) / 10) / 100,
+        },
+      });
     });
   } catch (e) {
     runner.failJob(
@@ -442,7 +494,12 @@ export async function runDescribePass(
     if (checkpoint.mode === 'flat') {
       runner.persistCheckpoint(
         jobId,
-        buildBatchDescribeCheckpointBody({ fingerprint, processed: processedPairs, totalAtStart }),
+        buildBatchDescribeCheckpointBody({
+          fingerprint,
+          processed: processedPairs,
+          totalAtStart,
+          cull: readDescribeScoreCullSubObject(runner.readMetadata(jobId), 'batch_describe'),
+        }),
       );
     } else if (checkpoint.mode === 'nested') {
       persistAnalyzeStageCheckpoint(

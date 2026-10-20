@@ -14,7 +14,13 @@ const sameIds = (a: readonly number[], b: readonly number[]) => a.length === b.l
  * `keys` in order, minus photos with nothing to do. Photos the Laya worker died on go last, so one
  * bad photo cannot stop every run before it does any work.
  */
-export function selectPhotosToCull(db: Db, ctx: CullContext, keys: readonly string[]): string[] {
+export interface SelectPhotosToCullResult {
+  keys: string[];
+  /** Photos that would call Laya (not re-decide-only). */
+  needsAnswers: Set<string>;
+}
+
+export function selectPhotosToCull(db: Db, ctx: CullContext, keys: readonly string[]): SelectPhotosToCullResult {
   const cfg = ctx.pipeline.config;
   const forecastOn = ctx.scoreForecastAvailable && cfg.score_forecast.enabled;
   const active = ctx.stages.filter((s) => s.kind !== 'score_forecast' || forecastOn);
@@ -40,6 +46,7 @@ export function selectPhotosToCull(db: Db, ctx: CullContext, keys: readonly stri
 
   const work: string[] = [];
   const diedOn: string[] = [];
+  const needsLaya = new Set<string>();
   for (const key of keys) {
     const stamp = stamps.get(key);
     const stale =
@@ -47,7 +54,8 @@ export function selectPhotosToCull(db: Db, ctx: CullContext, keys: readonly stri
       stamp.pipelineSettingVersion !== ctx.pipeline.version ||
       !sameIds(stamp.stageVersionIds, currentIds);
     if (!stale && !needsAnswers(key)) continue;
+    if (needsAnswers(key)) needsLaya.add(key);
     (stamp?.pendingReason === WORKER_DIED_REASON ? diedOn : work).push(key);
   }
-  return [...work, ...diedOn];
+  return { keys: [...work, ...diedOn], needsAnswers: needsLaya };
 }

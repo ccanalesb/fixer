@@ -310,6 +310,7 @@ describe('the nested batch_analyze checkpoint', () => {
   it('reads both stages out of one checkpoint', () => {
     expect(readAnalyzeCheckpoint(nested())).toEqual({
       stage: 'score',
+      cull: {},
       describe: { fingerprint: 'dfp', processed_pairs: ['a|catalog'], total_at_start: 1 },
       score: { fingerprint: 'sfp', processed_triplets: ['a|catalog|street'], total_at_start: 1 },
     });
@@ -325,8 +326,8 @@ describe('the nested batch_analyze checkpoint', () => {
         processed_pairs: ['a|catalog'],
       },
     };
-    expect(readAnalyzeCheckpoint(flat)).toEqual({ stage: null, describe: {}, score: {} });
-    expect(readAnalyzeCheckpoint({})).toEqual({ stage: null, describe: {}, score: {} });
+    expect(readAnalyzeCheckpoint(flat)).toEqual({ stage: null, cull: {}, describe: {}, score: {} });
+    expect(readAnalyzeCheckpoint({})).toEqual({ stage: null, cull: {}, describe: {}, score: {} });
   });
 
   it('resumes a stage from its own sub-object', () => {
@@ -383,6 +384,7 @@ describe('the nested batch_analyze checkpoint', () => {
 
     expect(readAnalyzeCheckpoint(metadata)).toEqual({
       stage: 'score',
+      cull: {},
       describe: { fingerprint: 'dfp', processed_pairs: ['a|catalog'], total_at_start: 1 },
       score: {
         fingerprint: 'sfp',

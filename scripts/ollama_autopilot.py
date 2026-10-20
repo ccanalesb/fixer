@@ -67,9 +67,11 @@ WINDOW_7D_S = 7 * 24 * 60 * 60
 # The pipeline jobs this observer triggers. The pipeline owns their selection,
 # preflight, and idempotency — we just fire them.
 JOB_TYPES = ("batch_describe", "batch_score")
-# Any of these being active means a describe/score pass is in flight — don't
-# stack another (the processor runs one job at a time anyway).
-ACTIVE_TYPES = ("batch_describe", "batch_score", "batch_analyze")
+KIMI_TYPES = ("batch_describe", "batch_score", "batch_analyze")
+CULL_TYPE = "batch_cull_photos_before_scoring"
+REDECIDE_TYPE = "batch_redecide_cull_verdicts_from_stored_answers"
+# Counted as in flight — do not stack another job (processor runs one at a time).
+ACTIVE_TYPES = KIMI_TYPES + (CULL_TYPE, REDECIDE_TYPE)
 
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 RATE_LIMIT_MARKERS = ("rate limit", "ratelimit", "quota", "429", "too many requests")
@@ -221,14 +223,23 @@ def save_ledger(path: Path, ledger: dict) -> None:
 
 
 def rolling_seconds(ledger: dict, window_s: float, now: float) -> float:
-    """Sum of each tracked job's active-interval overlap with [now-window, now]."""
+    """Wall-clock meter: kimi work only (cull / re-decide add 0)."""
     window_start = now - window_s
     used = 0.0
     for job in ledger["jobs"].values():
-        start = job.get("started_ts") or job.get("created_ts")
-        if start is None:
+        jtype = job.get("type")
+        if jtype in (CULL_TYPE, REDECIDE_TYPE):
             continue
-        end = job.get("completed_ts") or now
+        completed = job.get("completed_ts")
+        kimi_s = job.get("kimi_s")
+        if jtype in KIMI_TYPES and completed is not None and kimi_s is not None and kimi_s > 0:
+            start = completed - kimi_s
+            end = completed
+        else:
+            start = job.get("started_ts") or job.get("created_ts")
+            if start is None:
+                continue
+            end = completed or now
         overlap = min(end, now) - max(start, window_start)
         if overlap > 0:
             used += overlap
@@ -281,8 +292,24 @@ def refresh_tracked_jobs(api: VisualizerApi, ledger: dict, args, now: float, log
                     f"{jtype} {job_id[:8]} {entry['status']}: {(job.get('error') or '')[:80]}"
                     f" — backing off {args.fail_backoff_min:.0f}min"
                 )
-            else:  # completed: eligible again immediately
-                ledger["backoff"].pop(jtype, None)
+            else:  # completed
+                if jtype == CULL_TYPE:
+                    ledger["cull_done_for"] = entry.get("for")
+                    ledger["backoff"].pop(jtype, None)
+                elif jtype in KIMI_TYPES:
+                    ledger["backoff"].pop(jtype, None)
+                    result = job.get("result") or {}
+                    if isinstance(result, dict):
+                        durations = result.get("durations_s") or {}
+                        if isinstance(durations, dict):
+                            kimi_s = float(durations.get("describe") or 0) + float(
+                                durations.get("score") or 0
+                            )
+                            if kimi_s > 0:
+                                entry["kimi_s"] = kimi_s
+                    ledger["cull_done_for"] = None
+                else:
+                    ledger["backoff"].pop(jtype, None)
                 log(f"{jtype} {job_id[:8]} completed.")
     return hit_rate_limit
 
@@ -294,17 +321,60 @@ def active_pipeline_job(api: VisualizerApi) -> dict | None:
     return None
 
 
-def pick_job_type(ledger: dict, now: float) -> str | None:
-    """Round-robin over JOB_TYPES, skipping types currently backed off."""
+def peek_job_type(ledger: dict, now: float) -> tuple[str | None, int | None]:
+    """Next describe/score type in round-robin without advancing ``rr``."""
     n = len(JOB_TYPES)
     start = ledger.get("rr", 0) % n
     for i in range(n):
         idx = (start + i) % n
         jtype = JOB_TYPES[idx]
         if now >= ledger["backoff"].get(jtype, 0):
-            ledger["rr"] = (idx + 1) % n
-            return jtype
-    return None
+            return jtype, idx
+    return None, None
+
+
+def pick_job_type(ledger: dict, now: float) -> str | None:
+    """Round-robin over JOB_TYPES, skipping types currently backed off (advances ``rr``)."""
+    jtype, idx = peek_job_type(ledger, now)
+    if jtype is not None and idx is not None:
+        ledger["rr"] = (idx + 1) % len(JOB_TYPES)
+    return jtype
+
+
+def decide_launch(
+    ledger: dict,
+    now: float,
+    over_budget: bool,
+    running: dict | None,
+) -> dict | None:
+    """Pure decision for one cycle: what job to create, if any (tests + ``cycle``)."""
+    if over_budget:
+        if running and running.get("type") in KIMI_TYPES:
+            return {"action": "cancel", "job_id": running["id"], "job_type": running["type"]}
+        return {"action": "hold", "reason": "over_budget"}
+    if running:
+        return {"action": "hold", "reason": "in_flight"}
+    if now < ledger.get("cooldown_until", 0):
+        return {"action": "hold", "reason": "cooldown"}
+    job_type, idx = peek_job_type(ledger, now)
+    if job_type is None:
+        return {"action": "hold", "reason": "all_backoff"}
+    if now < ledger.get("backoff", {}).get(CULL_TYPE, 0):
+        return {"action": "hold", "reason": "cull_backoff"}
+    if ledger.get("cull_done_for") != job_type:
+        return {
+            "action": "create",
+            "job_type": CULL_TYPE,
+            "metadata": {"scope_job_type": job_type},
+            "ledger_entry": {"type": CULL_TYPE, "for": job_type},
+        }
+    return {
+        "action": "create",
+        "job_type": job_type,
+        "metadata": {},
+        "advance_rr_from": idx,
+        "clear_cull_done_for": True,
+    }
 
 
 def cycle(api: VisualizerApi, args, log) -> None:
@@ -346,36 +416,53 @@ def cycle(api: VisualizerApi, args, log) -> None:
         return
 
     running = active_pipeline_job(api)
+    decision = decide_launch(ledger, now, over_budget, running)
 
-    # Over budget: cancel a running pipeline job to hold the line, then wait.
-    if over_budget:
-        if running and args.live:
-            log(f"over budget — cancelling running {running['type']} {running['id'][:8]} (checkpoint preserved).")
+    if decision["action"] == "hold":
+        reason = decision["reason"]
+        if reason == "over_budget":
+            if running and running.get("type") in KIMI_TYPES:
+                if args.live:
+                    log(
+                        f"over budget — cancelling running {running['type']} "
+                        f"{running['id'][:8]} (checkpoint preserved)."
+                    )
+                    try:
+                        api.cancel_job(running["id"])
+                    except Exception as e:  # noqa: BLE001
+                        log(f"cancel failed (will retry): {e}")
+                else:
+                    log(
+                        f"[dry-run] over budget — would cancel running "
+                        f"{running['type']} {running['id'][:8]}."
+                    )
+            elif running:
+                log(f"over budget — holding ({running['type']} in flight, not cancelled).")
+            else:
+                log("over budget — holding for headroom (no job running).")
+        elif reason == "in_flight":
+            log(
+                f"in flight: {running['type']} {running['id'][:8]} "
+                f"at {running.get('progress', 0)}% — waiting."
+            )
+        elif reason == "cull_backoff":
+            log("cull backing off — holding describe/score")
+        elif reason == "all_backoff":
+            log("all job types backing off (recent failures/aborts) — idle. Retries automatically.")
+        return
+
+    if decision["action"] == "cancel":
+        if args.live:
             try:
-                api.cancel_job(running["id"])
+                api.cancel_job(decision["job_id"])
             except Exception as e:  # noqa: BLE001
                 log(f"cancel failed (will retry): {e}")
-        elif running:
-            log(f"[dry-run] over budget — would cancel running {running['type']} {running['id'][:8]}.")
         else:
-            log("over budget — holding for headroom (no job running).")
+            log(f"[dry-run] over budget — would cancel running {decision['job_type']}.")
         return
 
-    # Under budget. If a describe/score pass is already in flight, let it run.
-    if running:
-        log(f"in flight: {running['type']} {running['id'][:8]} at {running.get('progress', 0)}% — waiting.")
-        return
-
-    # Trigger the next pipeline job. The pipeline decides what work exists.
-    job_type = pick_job_type(ledger, now)
-    if job_type is None:
-        log("all job types backing off (recent failures/aborts) — idle. Retries automatically.")
-        return
-
-    metadata: dict = {"image_type": "catalog", "max_workers": args.max_workers}
-    # Model swap: pin the provider/model so the pipeline scores with the new model,
-    # and enable model-scoped re-do so old-model rows are regenerated while the new
-    # model's already-finished work is preserved (see apps/visualizer/CONTEXT.md).
+    job_type = decision["job_type"]
+    metadata: dict = {"image_type": "catalog", "max_workers": args.max_workers, **decision.get("metadata", {})}
     if args.provider_id:
         metadata["provider_id"] = args.provider_id
     if args.provider_model:
@@ -388,7 +475,7 @@ def cycle(api: VisualizerApi, args, log) -> None:
         return
 
     job = api.create_job(job_type, metadata)
-    ledger["jobs"][job["id"]] = {
+    entry = {
         "type": job_type,
         "status": job.get("status", "pending"),
         "created_ts": _parse_ts(job.get("created_at")) or now,
@@ -396,6 +483,13 @@ def cycle(api: VisualizerApi, args, log) -> None:
         "completed_ts": None,
         "error": None,
     }
+    if decision.get("ledger_entry"):
+        entry.update(decision["ledger_entry"])
+    ledger["jobs"][job["id"]] = entry
+    if decision.get("advance_rr_from") is not None:
+        ledger["rr"] = (decision["advance_rr_from"] + 1) % len(JOB_TYPES)
+    if decision.get("clear_cull_done_for"):
+        ledger.pop("cull_done_for", None)
     save_ledger(args.ledger, ledger)
     log(f"triggered {job_type} {job['id'][:8]} metadata={json.dumps(metadata)}")
 

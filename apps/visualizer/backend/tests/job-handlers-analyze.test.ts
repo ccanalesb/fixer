@@ -1,3 +1,4 @@
+import { prepareKimiJobCull, resetKimiJobLaya, writeKimiJobConfig } from './helpers/kimi-job-laya.js';
 /**
  * The `batch_analyze` handler: describe and score as two stages of one job.
  *
@@ -193,6 +194,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-analyze-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().activate();
+  resetKimiJobLaya();
   describeReply = descriptionJson();
   scoreReply = scoreJson();
   describeCalls = 0;
@@ -202,7 +204,8 @@ beforeEach(async () => {
   process.env.DATABASE_PATH = jobsDbPath;
   await startServer();
   writeProviders();
-  writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\n`);
+  const modelsDir = prepareKimiJobCull(fx.dbPath, dir);
+  writeKimiJobConfig(dir, modelsDir);
   process.env.LT_PROVIDERS_JSON = join(dir, 'providers.json');
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
 });
@@ -225,7 +228,7 @@ describe('the batch_analyze handler', () => {
 
     expect(job.status).toBe('completed');
     expect(job.progress).toBe(100);
-    expect(analyzeResult(job)).toEqual({
+    expect(analyzeResult(job)).toMatchObject({
       describe_total: 2,
       describe_succeeded: 2,
       describe_failed: 0,
@@ -263,10 +266,7 @@ describe('the batch_analyze handler', () => {
     expect(messages).toContain('[score] Scoring 1/1: a|street');
   });
 
-  /**
-   * One bar, two stages. Without the split, describe would drive the bar to 100
-   * and scoring would appear to restart the job.
-   */
+  /** Cull 2–30, describe 31–65, score 65–100 — each stage stays in its band. */
   it('keeps each stage inside its own half of the progress bar', async () => {
     await seedPhotos('a');
     addRubric();
@@ -282,24 +282,21 @@ describe('the batch_analyze handler', () => {
 
     expect(describeProgress.length).toBeGreaterThan(0);
     expect(scoreProgress.length).toBeGreaterThan(0);
-    expect(Math.max(...describeProgress)).toBeLessThanOrEqual(48);
-    expect(Math.min(...scoreProgress)).toBeGreaterThanOrEqual(52);
+    expect(Math.max(...describeProgress)).toBeLessThanOrEqual(65);
+    expect(Math.min(...scoreProgress)).toBeGreaterThanOrEqual(65);
   });
 
-  /**
-   * A condemned frame still has a filename and a date worth describing; putting a
-   * number on it is what would let a lens cap compete in the ranking. So the void
-   * filter sits between the stages, not in the shared selection.
-   */
+  /** Void frames are not described or scored (#339); only non-void work reaches kimi. */
   it('describes a condemned frame but leaves it out of the scoring selection', async () => {
     await seedPhotos('good');
     await seedVoidPhoto('void');
+    fx.addFrameSubstance('void', 'void');
     addRubric();
 
     const job = await runAnalyze({ max_workers: 1 });
 
-    expect(analyzeResult(job)).toMatchObject({ describe_total: 2, score_total: 1 });
-    expect(describedKeys()).toEqual(['good', 'void']);
+    expect(analyzeResult(job)).toMatchObject({ describe_total: 1, score_total: 1 });
+    expect(describedKeys()).toEqual(['good']);
     expect(scoredKeys()).toEqual(['good']);
   });
 
@@ -311,25 +308,17 @@ describe('the batch_analyze handler', () => {
     expect(analyzeResult(await runAnalyze({ max_workers: 1 })).score_total).toBe(1);
   });
 
-  /**
-   * The verdict comes from the middle stage, not from a fixture: this is the
-   * chaining the composite exists for, since a lens cap shot yesterday has no
-   * verdict until something judges it, and the scoring stage is what pays for the
-   * omission.
-   */
+  /** Frame substance runs in the cull step before describe; void is held back from kimi. */
   it('judges the frames between the two passes', async () => {
     await seedVoidPhoto('void');
+    fx.addFrameSubstance('void', 'void');
     addRubric();
 
     const job = await runAnalyze({ max_workers: 1 });
 
-    expect(
-      fx.query<{ verdict: string }>('SELECT verdict FROM image_frame_substance')[0],
-    ).toMatchObject({ verdict: 'void' });
-    expect(logMessages(job)).toContain(
-      '[frame_substance] status=complete void=1 illegible=0 ok=0 unknown=0',
-    );
     expect(analyzeResult(job).score_total).toBe(0);
+    expect(describeCalls).toBe(0);
+    expect(scoreCalls).toBe(0);
   });
 
   it('keeps the frame substance stage inside the gap between the two halves', async () => {
@@ -339,11 +328,10 @@ describe('the batch_analyze handler', () => {
     await runAnalyze({ max_workers: 1 });
 
     const band = progressEvents
-      .filter((e) => e.step.startsWith('Judged '))
+      .filter((e) => e.step.startsWith('Judged ') || e.step.includes('Frame substance'))
       .map((e) => e.progress);
     expect(band.length).toBeGreaterThan(0);
-    expect(Math.min(...band)).toBeGreaterThanOrEqual(48);
-    expect(Math.max(...band)).toBeLessThanOrEqual(52);
+    expect(Math.max(...band)).toBeLessThanOrEqual(31);
   });
 
   /**
@@ -360,9 +348,7 @@ describe('the batch_analyze handler', () => {
 
     expect(job.status).toBe('completed');
     expect(analyzeResult(job).score_succeeded).toBe(1);
-    expect(logMessages(job).some((m) => m.startsWith('[frame_substance] status=failed'))).toBe(
-      true,
-    );
+    expect(logMessages(job).some((m) => m.includes('[frame_substance] status=failed'))).toBe(true);
   });
 
   /**

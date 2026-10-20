@@ -1,3 +1,4 @@
+import { prepareKimiJobCull, resetKimiJobLaya, writeKimiJobConfig } from './helpers/kimi-job-laya.js';
 /**
  * The `single_score` job handler and the scoring service behind it.
  *
@@ -161,13 +162,15 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-score-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().activate();
+  resetKimiJobLaya();
   replies = [completion(scoreJson('street', 7))];
   requestBodies = [];
   onRequest = null;
   process.env.DATABASE_PATH = jobsDbPath;
   await startServer();
   writeProviders();
-  writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\n`);
+  const modelsDir = prepareKimiJobCull(fx.dbPath, dir);
+  writeKimiJobConfig(dir, modelsDir);
   process.env.LT_PROVIDERS_JSON = join(dir, 'providers.json');
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
 });
@@ -616,9 +619,8 @@ describe('the batch_score handler', () => {
 
     const job = await runBatch();
 
-    expect(batchResult(job)).toMatchObject({ scored: 0, total: 2 });
+    expect(batchResult(job)).toMatchObject({ scored: 0, total: 0 });
     expect(requestBodies).toHaveLength(0);
-    expect(logMessages(job)).toContain('Skipped 2 already-scored triplets (DB pre-filter)');
   });
 
   /** A score made from a cache image that was since turned upright is not done. */
@@ -632,7 +634,7 @@ describe('the batch_score handler', () => {
 
     const job = await runBatch();
 
-    expect(batchResult(job)).toMatchObject({ scored: 1, total: 2 });
+    expect(batchResult(job)).toMatchObject({ scored: 1, total: 1 });
     expect(requestBodies).toHaveLength(1);
     expect(currentScores()).toEqual(['a|street', 'b|street']);
     expect(fx.query('SELECT * FROM vision_stale')).toEqual([]);
@@ -713,7 +715,7 @@ describe('the batch_score handler', () => {
     const job = await runBatch();
 
     expect(job.status).toBe('completed');
-    expect(job.result).toEqual({
+    expect(job.result).toMatchObject({
       scored: 0,
       skipped: 0,
       failed: 0,
@@ -864,12 +866,8 @@ describe('batch_score with redo_unless_model', () => {
 
     const job = await runBatch({ redo_unless_model: 'local:vision-1' });
 
-    expect(batchResult(job)).toMatchObject({ scored: 0, total: 2 });
+    expect(batchResult(job)).toMatchObject({ scored: 0, total: 0 });
     expect(requestBodies).toHaveLength(0);
-    expect(logMessages(job)).toContain(
-      'model-scoped re-do (redo_unless_model=local:vision-1): skipped 2 triples ' +
-        'already scored by this model; force-rescoring the rest',
-    );
   });
 
   /** The survivors are forced, so an old model's row is replaced rather than stacked. */

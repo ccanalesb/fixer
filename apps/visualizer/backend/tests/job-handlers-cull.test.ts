@@ -15,7 +15,8 @@ import { openLibraryDb } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { JOB_TYPES_BY_NAME } from '../src/jobs/registry.js';
-import { LAYA_SETUP_COMMAND } from '../src/laya/files.js';
+import { LazyLaya } from '../src/cull/lazy-laya.js';
+import { LAYA_SETUP_COMMAND, LayaSetupError } from '../src/laya/files.js';
 import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
@@ -32,6 +33,7 @@ interface Script {
 const laya = vi.hoisted(() => ({
   scripts: new Map<string, Script>(),
   calls: [] as { file: string; want: LayaAnswerWant | undefined }[],
+  starts: 0,
   closed: 0,
   forecastOn: true,
   failOn: null as null | string,
@@ -88,6 +90,7 @@ vi.mock('../src/laya/runtime.js', async (importOriginal) => {
   return {
     ...actual,
     startLayaWithCheck: async () => {
+      laya.starts += 1;
       if (laya.startError) throw laya.startError;
       return { runtime, loadSeconds: 0.5, testPhoto: { answers: { base: {}, new: null }, seconds: {} } };
     },
@@ -158,6 +161,7 @@ beforeEach(() => {
   fx = new LibraryFixture().activate();
   Object.assign(laya, {
     calls: [],
+    starts: 0,
     closed: 0,
     forecastOn: true,
     failOn: null,
@@ -497,6 +501,27 @@ describe('batch_cull_photos_before_scoring', () => {
     const job = await runCull({ checkpoint: await cullCheckpoint(['b'], 1, 2) });
     expect(laya.calls).toEqual([]);
     expect(result(job)).toMatchObject({ failed: 1, sent: 1, sent_by_hand_passed: 1 });
+  });
+});
+
+describe('LazyLaya', () => {
+  it('does not start until the first answer()', async () => {
+    const lazy = new LazyLaya(modelsDir);
+    expect(lazy.started).toBe(false);
+    await lazy.close();
+    expect(laya.starts).toBe(0);
+  });
+
+  it('starts once on first answer and surfaces start errors', async () => {
+    laya.startError = new LayaSetupError('missing');
+    const bad = new LazyLaya(modelsDir);
+    await expect(bad.answer('/x/a.jpg')).rejects.toBeInstanceOf(LayaSetupError);
+    laya.startError = null;
+    laya.starts = 0;
+    const lazy = new LazyLaya(modelsDir);
+    await lazy.answer('/x/a.jpg');
+    await lazy.answer('/x/b.jpg');
+    expect(laya.starts).toBe(1);
   });
 });
 

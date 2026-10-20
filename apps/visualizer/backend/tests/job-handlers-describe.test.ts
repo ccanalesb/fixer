@@ -1,3 +1,4 @@
+import { prepareKimiJobCull, resetKimiJobLaya, writeKimiJobConfig } from './helpers/kimi-job-laya.js';
 /**
  * single_describe and batch_describe handlers via tick() and real job rows.
  * Provider is a real HTTP server; env overrides isolate config paths.
@@ -119,11 +120,13 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-desc-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().activate();
+  resetKimiJobLaya();
   onRequest = null;
   process.env.DATABASE_PATH = jobsDbPath;
   await startServer();
   writeProviders();
-  writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\n`);
+  const modelsDir = prepareKimiJobCull(fx.dbPath, dir);
+  writeKimiJobConfig(dir, modelsDir);
   process.env.LT_PROVIDERS_JSON = join(dir, 'providers.json');
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
 });
@@ -397,7 +400,7 @@ describe('the batch_describe handler', () => {
     const job = await runBatch();
 
     expect(job.status).toBe('completed');
-    expect(job.result).toEqual({
+    expect(job.result).toMatchObject({
       described: 0,
       skipped: 0,
       failed: 0,
