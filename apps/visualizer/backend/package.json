@@ -19,6 +19,8 @@
     "test:watch": "vitest",
     "//test:parity": "Needs the real library.db, passed via LIBRARY_DB. Reads only, so it cannot modify the catalog.",
     "test:parity": "LT_CLIP_PARITY=1 vitest run",
+    "//test:laya-parity": "Needs the Laya export in models/ (scripts/laya/export_onnx.py at the repo root).",
+    "test:laya-parity": "LT_LAYA_PARITY=1 vitest run tests/laya-parity.test.ts",
     "export:openapi": "tsx scripts/export-openapi.ts"
   },
   "dependencies": {
@@ -28,12 +30,14 @@
     "better-sqlite3": "^13.0.3",
     "hono": "^4.13.5",
     "libraw-wasm": "^1.6.0",
+    "onnxruntime-node": "1.24.3",
     "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "sqlite-vec": "^0.1.9",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"
   },
+  "//dependencies": "onnxruntime-node is pinned to the exact version @huggingface/transformers pins, so npm dedupes it to ONE native binding. Bump both together.",
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.4.1",

@@ -101,6 +101,8 @@ export interface LibraryConfig {
   visionCacheEnabled: boolean;
   ollamaHost: string;
   stackBurstDeltaMs: number;
+  /** Where `scripts/laya/export_onnx.py` writes `laya-base/` and `laya-new/`. */
+  layaModelsDir: string;
 }
 
 const CONFIG_DEFAULTS = {
@@ -111,6 +113,7 @@ const CONFIG_DEFAULTS = {
   visionCacheDir: join(homedir(), '.cache', 'lightroom_tagger', 'vision'),
   visionCacheEnabled: true,
   ollamaHost: 'http://localhost:11434',
+  layaModelsDir: 'models',
 } as const;
 
 /**
@@ -154,6 +157,7 @@ export function loadLibraryConfig(configPath = join(REPO_ROOT, 'config.yaml')): 
       typeof raw.stack_burst_delta_ms === 'number'
         ? Math.trunc(raw.stack_burst_delta_ms)
         : CONFIG_DEFAULTS.stackBurstDeltaMs,
+    layaModelsDir: pathField('laya_models_dir') ?? resolvePath(CONFIG_DEFAULTS.layaModelsDir),
   };
 }
 
