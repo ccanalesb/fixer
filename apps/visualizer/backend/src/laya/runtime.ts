@@ -12,11 +12,18 @@ import {
   setupErrorMessage,
   type LayaModelFiles,
 } from './files.js';
-import type { LayaAnswers, LayaSeconds } from './sessions.js';
+import type { LayaAnswers, LayaAnswerWant, LayaQuestionsByModel, LayaSeconds } from './sessions.js';
 
 export interface LayaRequest {
   id: number;
   file: string;
+  want?: LayaAnswerWant;
+}
+
+/** The worker's `workerData`: no `questions` means `questions.json`. */
+export interface LayaWorkerData {
+  files: LayaModelFiles;
+  questions?: LayaQuestionsByModel;
 }
 
 export interface LayaPhotoResult {
@@ -31,11 +38,11 @@ export type LayaWorkerMessage =
   | { type: 'answer'; id: number; ok: false; message: string };
 
 /** Under `tsx` (dev server, CLI, tests) the worker is the `.ts` source and needs the same loader. */
-function spawnWorker(files: LayaModelFiles): Worker {
+function spawnWorker(data: LayaWorkerData): Worker {
   const fromSource = import.meta.url.endsWith('.ts');
   const url = new URL(fromSource ? './worker.ts' : './worker.js', import.meta.url);
   return new Worker(url, {
-    workerData: files,
+    workerData: data,
     execArgv: fromSource ? ['--import', import.meta.resolve('tsx')] : [],
   });
 }
@@ -68,8 +75,8 @@ export class LayaRuntime {
   }
 
   /** Spawn the worker and wait until both sessions are loaded. */
-  static async start(files: LayaModelFiles): Promise<LayaRuntime> {
-    const worker = spawnWorker(files);
+  static async start(files: LayaModelFiles, questions?: LayaQuestionsByModel): Promise<LayaRuntime> {
+    const worker = spawnWorker({ files, questions });
     const ready = await new Promise<LayaWorkerMessage>((resolve, reject) => {
       worker.once('message', resolve);
       worker.once('error', reject);
@@ -82,12 +89,17 @@ export class LayaRuntime {
     return new LayaRuntime(worker, files, ready.scoreForecastOn);
   }
 
-  answer(file: string): Promise<LayaPhotoResult> {
+  /** The worker died: every later answer fails too, so a job stops rather than marking each photo pending. */
+  get broken(): boolean {
+    return this.failure !== null;
+  }
+
+  answer(file: string, want?: LayaAnswerWant): Promise<LayaPhotoResult> {
     if (this.failure) return Promise.reject(this.failure);
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, file } satisfies LayaRequest);
+      this.worker.postMessage({ id, file, want } satisfies LayaRequest);
     });
   }
 
@@ -105,13 +117,17 @@ export interface LayaStartCheck {
 }
 
 /**
- * The cull job's start check: files present, models load, the reference photo answered.
+ * The cull job's start check: files present, models load, the reference photo answered — with the
+ * questions the job will ask, so a recipe too long for Laya fails here rather than on every photo.
  * Anything else throws a `LayaSetupError` naming the missing piece and the setup step.
  */
-export async function startLayaWithCheck(modelsDir: string): Promise<LayaStartCheck> {
+export async function startLayaWithCheck(
+  modelsDir: string,
+  questions?: LayaQuestionsByModel,
+): Promise<LayaStartCheck> {
   const files = resolveLayaModelFiles(modelsDir);
   const t0 = performance.now();
-  const runtime = await LayaRuntime.start(files);
+  const runtime = await LayaRuntime.start(files, questions);
   const loadSeconds = (performance.now() - t0) / 1000;
   try {
     const testPhoto = await runtime.answer(referencePhotoPath(files));

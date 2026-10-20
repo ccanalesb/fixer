@@ -19,43 +19,24 @@
  * `batch_stack_detect` — bare catalog keys under `processed_image_keys`. Same
  * legacy field name.
  *
+ * `batch_cull_photos_before_scoring` — `fingerprint`, `processed_by_stage` (stage key → photo keys
+ * answered for it), `failed_keys` (photos Laya failed on, left pending; not retried until the next
+ * job), `total_at_start`.
+ *
  * `batch_analyze` — the composite, and the one that is not flat: `stage` names the
  * pass that is running, and `describe` / `score` each hold a body of the shape
  * above. Two fingerprints rather than one because the stages are resumable
  * independently — a run interrupted during scoring must not re-describe.
  */
 import { CLIP_EMBED_DIM, CLIP_EMBED_MODEL_ID } from '../imaging/clip-embed.js';
+import { canonicalJson } from '../utils/canonical-json.js';
 
 export const CHECKPOINT_VERSION = 1;
 
 /** Refuse to grow a checkpoint past this; `jobs.metadata` is one JSON column. */
 export const CHECKPOINT_MAX_ENTRIES = 100_000;
 
-/**
- * Canonical JSON for checkpoint fingerprints: sorted object keys, escaped non-ASCII.
- * Must match the byte sequence already stored in resumed checkpoints.
- */
-export function canonicalJson(value: unknown): string {
-  return escapeNonAscii(JSON.stringify(sortKeys(value)));
-}
-
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys);
-  if (value === null || typeof value !== 'object') return value;
-  const out: Record<string, unknown> = {};
-  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-    out[key] = sortKeys((value as Record<string, unknown>)[key]);
-  }
-  return out;
-}
-
-function escapeNonAscii(json: string): string {
-  // Only string contents can hold non-ASCII, and `JSON.stringify` has already
-  // escaped everything else, so a blind pass over the output is safe.
-  return json.replace(/[\u0080-\uffff]/g, (c) =>
-    `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
-  );
-}
+export { canonicalJson } from '../utils/canonical-json.js';
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -206,6 +187,79 @@ export function fingerprintCatalogCacheBuild(
       year: metadata['year'] ?? null,
     }),
   );
+}
+
+/**
+ * Identity of a cull run: the stage versions and the pipeline-setting version (a change starts over,
+ * ticket 16), plus the scope. Not the work list: it shrinks as answers are stored, and the stored
+ * answers are what make a restart skip finished photos.
+ */
+export function fingerprintBatchCull(args: {
+  stageVersions: Record<string, number>;
+  pipelineSettingVersion: number;
+  imageKeys: readonly string[] | null;
+  resolvedMonths: number | null;
+  resolvedYear: string | null;
+  minRating: number | null;
+}): Promise<string> {
+  return sha256Hex(
+    canonicalJson({
+      image_keys: args.imageKeys ? [...args.imageKeys].sort() : null,
+      min_rating: args.minRating,
+      pipeline_setting_version: args.pipelineSettingVersion,
+      resolved_months: args.resolvedMonths,
+      resolved_year: args.resolvedYear,
+      stage_versions: args.stageVersions,
+    }),
+  );
+}
+
+export interface CullResumeState {
+  processedByStage: Map<string, Set<string>>;
+  failed: Set<string>;
+}
+
+export function buildBatchCullCheckpointBody(args: {
+  fingerprint: string;
+  state: CullResumeState;
+  totalAtStart: number;
+}): Record<string, unknown> {
+  return {
+    job_type: 'batch_cull_photos_before_scoring',
+    fingerprint: args.fingerprint,
+    processed_by_stage: Object.fromEntries(
+      [...args.state.processedByStage].map(([stage, keys]) => [stage, [...keys].sort()]),
+    ),
+    failed_keys: [...args.state.failed].sort(),
+    total_at_start: args.totalAtStart,
+  };
+}
+
+/** The cull's resume state, or an empty one; logs the mismatch when the fingerprint changed. */
+export function loadCullResumeState(args: {
+  metadata: Record<string, unknown>;
+  fingerprint: string;
+  mismatchMessage: string;
+  log: (message: string) => void;
+}): CullResumeState {
+  const empty: CullResumeState = { processedByStage: new Map(), failed: new Set() };
+  const body = checkpointBody(args.metadata, 'batch_cull_photos_before_scoring');
+  if (body === null) return empty;
+  if (body['fingerprint'] !== args.fingerprint) {
+    if (body['fingerprint']) args.log(args.mismatchMessage);
+    return empty;
+  }
+  const byStage = asBody(body['processed_by_stage']);
+  const failed = body['failed_keys'];
+  return {
+    processedByStage: new Map(
+      Object.entries(byStage).map(([stage, keys]) => [
+        stage,
+        new Set(Array.isArray(keys) ? keys.map((k) => String(k)) : []),
+      ]),
+    ),
+    failed: new Set(Array.isArray(failed) ? failed.map((k) => String(k)) : []),
+  };
 }
 
 export function buildBatchDescribeCheckpointBody(args: {

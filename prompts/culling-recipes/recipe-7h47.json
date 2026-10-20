@@ -1,0 +1,146 @@
+{
+  "slug": "recipe-7h47",
+  "name": "Recipe 7H47",
+  "model": "laya-base",
+  "measured": true,
+  "definition": {
+    "dimensions": [
+      {
+        "slug": "immediate-impact",
+        "name": "Immediate impact",
+        "question": "Evaluates whether the photograph arrests attention instantly—through color, gesture, framing, or tension—so the viewer stops instead of scrolling past."
+      },
+      {
+        "slug": "visual-structure",
+        "name": "Visual structure",
+        "question": "Evaluates whether lighting, focus, composition, and intentional construction give the frame order, purposeful chaos, or clarity of hierarchy."
+      },
+      {
+        "slug": "point-of-tension",
+        "name": "Point of tension",
+        "question": "Evaluates whether the image contains visual conflict, a gaze, irony, or an unresolved element that supplies narrative force and resonance."
+      },
+      {
+        "slug": "connotation",
+        "name": "Connotation",
+        "question": "Evaluates what the image suggests beyond its literal content—whether it evokes feelings such as loneliness, chaos, silence, or rhythm."
+      }
+    ],
+    "level_sets": [
+      {
+        "id": "7",
+        "levels": {
+          "immediate-impact": [
+            "empty or accidental frame; nothing to look at",
+            "ordinary snapshot; no color, gesture, or light worth a glance",
+            "something interesting, but buried or competing with clutter",
+            "a visible hook that catches the eye after a beat",
+            "catches the eye quickly with a bold color, gesture, light, or framing",
+            "stops the scroll; the hook lands in the first second",
+            "unforgettable at a glance; a strong hook plus a second element that holds the eye"
+          ],
+          "visual-structure": [
+            "chaotic and unreadable; out of focus, bad light",
+            "snapshot; subject centered by default, clutter everywhere",
+            "a main subject, but light, focus, or edges fight it",
+            "competent but plain; nothing out of place, nothing designed",
+            "deliberate composition; lines, light, and focus guide the eye",
+            "strong hierarchy across planes; clean edges, light shapes the scene",
+            "flawless construction; a complex scene held in tight order, every element in its place"
+          ],
+          "point-of-tension": [
+            "empty scene; no people, no conflict, nothing happening",
+            "people or objects present, but nothing between them",
+            "a glance or odd detail hinting at something",
+            "a clear gaze, gesture, or contrast creates mild conflict",
+            "a visible clash or irony between subject and surroundings",
+            "strong tension; a look, gesture, or juxtaposition that demands a second look",
+            "decisive tension; an unresolved moment where conflict, irony, and gaze lock together"
+          ],
+          "connotation": [
+            "pure record; a document with no feeling",
+            "a trace of mood, generic or easily missed",
+            "some atmosphere, but it does not go anywhere",
+            "a clear mood (quiet, busy, lonely) that colors the scene",
+            "suggests a feeling or idea beyond the literal subject",
+            "strong mood; the feeling is the point of the picture",
+            "profound; layered meaning, a feeling or idea that stays long after looking"
+          ]
+        }
+      },
+      {
+        "id": "10",
+        "levels": {
+          "immediate-impact": [
+            "empty or accidental frame; nothing to look at",
+            "ordinary snapshot; no color, gesture, or light worth a glance",
+            "a faint point of interest, buried or too small to notice",
+            "something interesting, but you have to search for it",
+            "a visible hook, but muted or competing with clutter",
+            "a clear hook that catches the eye after a beat",
+            "catches the eye quickly with a bold color, gesture, or framing",
+            "stops the scroll; the hook lands in the first second",
+            "striking; a strong hook plus a second element that holds the eye",
+            "unforgettable at a glance; the image grabs and does not let go"
+          ],
+          "visual-structure": [
+            "chaotic and unreadable; out of focus, bad light",
+            "snapshot; subject centered by default, clutter everywhere",
+            "a subject exists, but light and focus fight it",
+            "a main subject with distracting edges or background",
+            "competent but plain; nothing out of place, nothing designed",
+            "clear subject and decent light; some deliberate placement",
+            "deliberate composition; lines, light, and focus guide the eye",
+            "strong hierarchy across planes; clean edges, light shapes the scene",
+            "a complex scene held in tight order; layers and light all aligned",
+            "flawless construction; order within chaos, every element in its place"
+          ],
+          "point-of-tension": [
+            "empty scene; no people, no conflict, nothing happening",
+            "people or objects present, but nothing between them",
+            "a minor contrast, barely noticeable",
+            "a glance or odd detail hinting at something",
+            "some tension, but weak or off to the side",
+            "a clear gaze, gesture, or contrast creates mild conflict",
+            "a visible clash or irony between subject and surroundings",
+            "strong tension; a look, gesture, or juxtaposition that demands a second look",
+            "an unresolved moment that leaves you asking what happens next",
+            "decisive tension; conflict, irony, and gaze lock into one unforgettable moment"
+          ],
+          "connotation": [
+            "pure record; a document with no feeling",
+            "literal scene; reads only as what it shows",
+            "a trace of mood, easily missed",
+            "a generic mood, like any pleasant photo",
+            "some atmosphere, but it does not go anywhere",
+            "a clear mood (quiet, busy, lonely) that colors the scene",
+            "suggests a feeling or idea beyond the literal subject",
+            "strong mood; the feeling is the point of the picture",
+            "layered meaning; mood plus metaphor or social comment",
+            "profound; a feeling or idea that stays long after looking"
+          ]
+        }
+      }
+    ]
+  },
+  "rule": {
+    "level_sets": {
+      "7": {
+        "fails_at_most": 3,
+        "strong_at_least": 6
+      },
+      "10": {
+        "fails_at_most": 4,
+        "strong_at_least": 8
+      }
+    },
+    "combine": "every",
+    "cut_rule": {
+      "type": "all_fail",
+      "dimensions": [
+        "point-of-tension",
+        "connotation"
+      ]
+    }
+  }
+}

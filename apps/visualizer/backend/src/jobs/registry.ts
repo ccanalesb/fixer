@@ -11,6 +11,11 @@ import { handleBatchAnalyze } from './handlers/analyze.js';
 import { handleCatalogSync } from './handlers/catalog.js';
 import { handleCatalogCacheBuild } from './handlers/catalog-cache.js';
 import {
+  BATCH_CULL_CHECKPOINT_MISMATCH,
+  BATCH_CULL_JOB_TYPE,
+  handleBatchCullPhotosBeforeScoring,
+} from './handlers/cull.js';
+import {
   BATCH_DESCRIBE_CHECKPOINT_MISMATCH,
   handleBatchDescribe,
   handleSingleDescribe,
@@ -109,6 +114,12 @@ export const JOB_TYPES: readonly JobType[] = [
     // The only type that does not need the catalog: it reads the vision cache.
     requiresCatalog: false,
     checkpointMismatchMessage: null,
+  },
+  {
+    name: BATCH_CULL_JOB_TYPE,
+    handler: handleBatchCullPhotosBeforeScoring,
+    requiresCatalog: true,
+    checkpointMismatchMessage: BATCH_CULL_CHECKPOINT_MISMATCH,
   },
   {
     name: 'catalog_sync',
