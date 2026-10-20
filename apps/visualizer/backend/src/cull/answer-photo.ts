@@ -9,6 +9,7 @@ import type { Db } from '../db/connection.js';
 import { getImage } from '../db/library/catalog.js';
 import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import type { LayaPhotoResult } from '../laya/runtime.js';
+import { LayaSetupError } from '../laya/files.js';
 import type { LayaAnswerWant } from '../laya/sessions.js';
 import { resolveFilepath } from '../utils/path-resolve.js';
 import { resolveVisionImage } from '../vision/vision-cache.js';
@@ -125,6 +126,7 @@ export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, ar
       missing = missingStages(ctx, { ...stored, ...fresh }, sentByHand);
     }
   } catch (e) {
+    if (e instanceof LayaSetupError) throw e;
     const error = e instanceof Error ? e : new Error(String(e));
     if (laya.broken) return pending('worker_died', WORKER_DIED_REASON, error);
     return pending('laya_failed', `laya_failed: ${error.message}`, error);

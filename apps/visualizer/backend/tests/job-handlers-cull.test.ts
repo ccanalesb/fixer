@@ -23,6 +23,8 @@ import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
 import type { LayaAnswerWant } from '../src/laya/sessions.js';
 import { importResearchRuns } from '../src/cull/import-research.js';
 import { LAYA_BASE_RESEARCH_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
+import { computePromptVersion } from '../src/vision/scoring-service.js';
+import { getPerspectiveBySlug } from '../src/db/library/scores.js';
 
 /** Per photo file: the recipe levels (impact, structure, tension, connotation) and the highest P(≥ 8). */
 interface Script {
@@ -301,9 +303,45 @@ describe('batch_cull_photos_before_scoring', () => {
 
   it('a photo with no image to read stays pending', async () => {
     fx.addImage({ key: 'gone', filepath: '/missing/gone.NEF' });
+    laya.starts = 0;
     const job = await runCull();
     expect(result(job)).toMatchObject({ failed: 1, pending: 1 });
     expect(verdicts()[0]).toMatchObject({ verdict: 'pending', pending_reason: 'no_image' });
+    expect(laya.starts).toBe(0);
+  });
+
+  it('scope_job_type batch_describe culls only undescribed photos', async () => {
+    await addPhoto('done', PASS);
+    await addPhoto('todo', PASS);
+    fx.exec(
+      `INSERT INTO image_descriptions (image_key, image_type, summary, model_used, described_at)
+       VALUES ('done', 'catalog', 'x', 'local:vision-1', datetime('now'))`,
+    );
+    laya.calls = [];
+    await runCull({ scope_job_type: 'batch_describe' });
+    expect(laya.calls.map((c) => (c.file.match(/\/(\w+)\.jpg$/) ?? [])[1])).toEqual(['todo']);
+  });
+
+  it('scope_job_type batch_score culls only photos with unscored work', async () => {
+    await addPhoto('done', PASS);
+    await addPhoto('todo', PASS);
+    fx.addPerspectives({ slug: 'street' });
+    const lib = openLibraryDb(fx.dbPath);
+    const promptVersion = computePromptVersion(getPerspectiveBySlug(lib, 'street')!);
+    lib.close();
+    fx.exec(
+      `INSERT INTO image_descriptions (image_key, image_type, summary, model_used, described_at)
+       VALUES ('done', 'catalog', 'x', 'local:vision-1', datetime('now')),
+              ('todo', 'catalog', 'x', 'local:vision-1', datetime('now'))`,
+    );
+    fx.exec(
+      `INSERT INTO image_scores (image_key, image_type, perspective_slug, score, prompt_version, model_used, is_current, scored_at)
+       VALUES ('done', 'catalog', 'street', 7, ?, 'local:vision-1', 1, datetime('now'))`,
+      promptVersion,
+    );
+    laya.calls = [];
+    await runCull({ scope_job_type: 'batch_score', perspective_slugs: ['street'] });
+    expect(laya.calls.map((c) => (c.file.match(/\/(\w+)\.jpg$/) ?? [])[1])).toEqual(['todo']);
   });
 
   it('missing models fail the job at the start, naming the missing piece and the setup step', async () => {

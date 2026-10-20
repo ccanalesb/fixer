@@ -10,12 +10,16 @@ just skips already-done work). This script does NOT reimplement any of that — 
 never reads ``library.db``, never selects images, never checks paths.
 
 Its only job is the one thing the pipeline does NOT do: watch your Ollama plan
-usage and fire the pipeline when there's headroom. The loop is:
+usage and fire the pipeline when there's headroom. Before each describe/score job
+it triggers ``batch_cull_photos_before_scoring`` (scoped to that job's work) so
+photos are culled first; cull/re-decide count as in-flight but are not metered as
+kimi time. The loop is:
 
-    read usage%  ->  if under ceiling and no describe/score job already running
-                     ->  POST the next pipeline job (batch_describe / batch_score)
+    read usage%  ->  if under ceiling and nothing in flight
+                     ->  POST cull (if needed) or batch_describe / batch_score
     read each job's result only to pace retries (back off a job type that just
-    failed or that the pipeline aborted, so we don't churn).
+    failed or that the pipeline aborted, so we don't churn). Over budget, only
+    running describe/score jobs are cancelled — never cull or re-decide.
 
 It reacts to already-synced images only (never runs catalog_sync). New images the
 pipeline picks up on the next trigger, because the job selects its own work.

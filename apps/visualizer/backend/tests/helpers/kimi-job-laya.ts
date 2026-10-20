@@ -58,3 +58,8 @@ export function writeKimiJobConfig(tempDir: string, modelsDir: string): void {
     `vision_cache_dir: ${join(tempDir, 'vision')}\nlaya_models_dir: ${modelsDir}\n`,
   );
 }
+
+/** Mutable fake-Laya state (same object the runtime mock uses). */
+export function getKimiJobLaya() {
+  return kimiJobLaya;
+}

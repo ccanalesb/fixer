@@ -92,7 +92,9 @@ export async function runCullStageBeforeDescribeAndScore(
   frameSubstanceS = seconds(tFs);
 
   const workPairs = selection.filter(([k]) => workKeys.includes(k));
+  const workKeySet = new Set(workPairs.map(([k]) => k));
   let candidates = filterVoidSubstanceFromScoringSelection(db, workPairs);
+  const voidBeforeCull = workKeySet.size - new Set(candidates.map(([k]) => k)).size;
   const candidateKeys = [...new Set(candidates.map(([k]) => k))];
 
   runner.setCurrentStep(jobId, CULL_STEP_LABEL);
@@ -123,14 +125,33 @@ export async function runCullStageBeforeDescribeAndScore(
   }
   frameSubstanceS += seconds(tRecheck);
 
-  const afterVoid = filterVoidSubstanceFromScoringSelection(db, candidates);
-  const voidHeld =
-    new Set(candidates.map(([k]) => k)).size - new Set(afterVoid.map(([k]) => k)).size;
-  const cut = filterCutPhotosFromDescribeAndScoringSelection(db, afterVoid);
+  const unknownKeys = candidateKeys.filter((k) => {
+    const row = db
+      .prepare('SELECT verdict FROM image_frame_substance WHERE image_key = ?')
+      .get(k) as { verdict: string } | undefined;
+    return row === undefined || row.verdict === 'unknown';
+  });
+  if (unknownKeys.length > 0) {
+    try {
+      await runFrameSubstanceDetection(db, {
+        imageKeys: unknownKeys,
+        staleOnly: false,
+        isCancelled: () => runner.isCancelled(jobId),
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      runner.log(jobId, 'warning', `${prefix}[frame_substance] unknown recheck status=failed ${message}`);
+    }
+  }
+  const afterVoidFinal = filterVoidSubstanceFromScoringSelection(db, candidates);
+  const voidHeldFinal =
+    voidBeforeCull +
+    (new Set(candidates.map(([k]) => k)).size - new Set(afterVoidFinal.map(([k]) => k)).size);
+  const cut = filterCutPhotosFromDescribeAndScoringSelection(db, afterVoidFinal);
   const keep = new Set(cut.kept.map(([k]) => k));
 
   const heldBack: CullHeldBackCounts = {
-    void: voidHeld,
+    void: voidHeldFinal,
     cut_by_culling_recipe: cut.heldBack.cut_by_culling_recipe,
     cut_by_score_forecast: cut.heldBack.cut_by_score_forecast,
     pending: cut.heldBack.pending,
