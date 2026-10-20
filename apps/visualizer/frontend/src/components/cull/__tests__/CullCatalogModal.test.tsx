@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import {
   CullAPI,
   DescriptionsAPI,
@@ -105,7 +105,7 @@ describe('Cull catalog modal cull section', () => {
     )
 
     await waitFor(() => expect(screen.getByText(CULL_PASS_QUESTION)).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: CULL_PASS_YES })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: CULL_PASS_YES })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: CULL_PASS_NO })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText(CULL_PASS_HINT)).toBeInTheDocument()
   })
@@ -161,7 +161,7 @@ describe('Cull catalog modal cull section', () => {
     expect(screen.queryByRole('button', { name: CULL_AGREE })).not.toBeInTheDocument()
   })
 
-  it('shows the latest answer as the selected one', async () => {
+  it('shows No selected once the user said so; Yes withdraws it', async () => {
     vi.mocked(CullAPI.photoDetail).mockResolvedValue({
       image_key: KEY,
       filename: 'passed-one.jpg',
@@ -171,10 +171,7 @@ describe('Cull catalog modal cull section', () => {
       needs_send_work: false,
       score_forecast: [],
       recipe: { slug: '', name: '', level_sets: [] },
-      user_actions: [
-        { action: 'should_have_been_cut', acted_at: '2026-01-01T00:00:00Z' },
-        { action: 'agrees_with_pass', acted_at: '2026-01-02T00:00:00Z' },
-      ],
+      user_actions: [{ action: 'should_have_been_cut', acted_at: '2026-01-01T00:00:00Z' }],
       cut_by: null,
       score_forecast_p8: null,
     })
@@ -190,9 +187,13 @@ describe('Cull catalog modal cull section', () => {
     )
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: CULL_PASS_YES })).toHaveAttribute('aria-pressed', 'true'),
+      expect(screen.getByRole('button', { name: CULL_PASS_NO })).toHaveAttribute('aria-pressed', 'true'),
     )
-    expect(screen.getByRole('button', { name: CULL_PASS_NO })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: CULL_PASS_YES })).toHaveAttribute('aria-pressed', 'false')
+
+    const withdraw = vi.spyOn(CullAPI, 'withdrawShouldHaveBeenCut').mockResolvedValue({ ok: true, removed: 1 })
+    fireEvent.click(screen.getByRole('button', { name: CULL_PASS_YES }))
+    await waitFor(() => expect(withdraw).toHaveBeenCalledWith(KEY))
   })
 
   it('shows the sent-by-hand note for manually sent photos', async () => {

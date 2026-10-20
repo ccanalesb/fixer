@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
 
-export const CullUserActionSchema = z.enum(['sent_by_hand', 'agrees_with_cut', 'should_have_been_cut', 'agrees_with_pass']);
+export const CullUserActionSchema = z.enum(['sent_by_hand', 'agrees_with_cut', 'should_have_been_cut']);
 
 export const DimensionHighlight = z
   .object({

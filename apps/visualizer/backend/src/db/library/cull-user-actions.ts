@@ -1,7 +1,7 @@
 /**
- * What the user said about a cull verdict: sent by hand, agrees with the cut, should have been cut,
- * agrees with the pass. The latest of the last two is the user's answer on a passed photo.
- * Append-only, each with the summary it answered — the labels a future retraining reads.
+ * What the user said about a cull verdict: sent by hand, agrees with the cut, should have been cut.
+ * Append-only except for withdrawing "should have been cut", each with the summary it answered — the
+ * labels a future retraining reads.
  *
  * Sent by hand sticks across stage and pipeline versions: the history, not the summary, is the
  * record, so no re-decide or new version can cut the photo automatically again.
@@ -11,7 +11,7 @@ import type { Db } from '../connection.js';
 import { getCullVerdict } from './cull-verdicts.js';
 import { libraryWrite } from './write.js';
 
-export type CullUserAction = 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut' | 'agrees_with_pass';
+export type CullUserAction = 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut';
 
 export interface CullUserActionRow {
   id: number;
@@ -56,6 +56,20 @@ export function recordCullUserAction(db: Db, imageKey: string, action: CullUserA
       ).run(imageKey, current?.version ?? 0, nowIsoUtc());
     }
   });
+}
+
+/**
+ * Withdraw "should have been cut" on a photo. The one action that is deleted rather than appended to:
+ * on a passed photo, no row is the user's "yes, it passed rightly".
+ */
+export function withdrawShouldHaveBeenCut(db: Db, imageKey: string): number {
+  return libraryWrite(
+    db,
+    () =>
+      db
+        .prepare("DELETE FROM cull_user_actions WHERE image_key = ? AND action = 'should_have_been_cut'")
+        .run(imageKey).changes,
+  );
 }
 
 export function listCullUserActions(db: Db, imageKey: string): CullUserActionRow[] {

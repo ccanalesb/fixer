@@ -2798,7 +2798,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut" | "agrees_with_pass";
+                        action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
                     };
                 };
             };
@@ -2814,7 +2814,7 @@ export interface paths {
                             ok: true;
                             verdict: string;
                             /** @enum {string} */
-                            user_action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut" | "agrees_with_pass";
+                            user_action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
                         };
                     };
                 };
@@ -2830,6 +2830,57 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/photos/{image_key}/actions/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    image_key: string;
+                    action: "should_have_been_cut";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Withdrawn */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {boolean} */
+                            ok: true;
+                            removed: number;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -5289,7 +5340,7 @@ export interface components {
             }[];
             user_actions: {
                 /** @enum {string} */
-                action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut" | "agrees_with_pass";
+                action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
                 acted_at: string;
             }[];
             /** @enum {string} */

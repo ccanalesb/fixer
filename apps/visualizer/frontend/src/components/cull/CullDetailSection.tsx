@@ -15,6 +15,8 @@ import { levelHighlightClass } from './cullHighlight'
 import { rowSendButtonLabel } from './sendLabel'
 import type { CullReviewDetail } from '../../services/api'
 
+const SELECTED_ANSWER_CLASS = '!border-accent !text-accent !bg-accent-light'
+
 function RecipeTable({ recipe }: { recipe: CullReviewDetail['recipe'] }) {
   return (
     <table className="w-full text-xs border-collapse">
@@ -71,16 +73,16 @@ function ScoreForecast({ forecast, boldTop }: { forecast: CullReviewDetail['scor
 export function CullDetailSection({
   detail,
   onAction,
+  onWithdrawShouldHaveBeenCut,
   onSend,
 }: {
   detail: CullReviewDetail
-  onAction: (action: 'agrees_with_cut' | 'should_have_been_cut' | 'agrees_with_pass') => void
+  onAction: (action: 'agrees_with_cut' | 'should_have_been_cut') => void
+  onWithdrawShouldHaveBeenCut: () => void
   onSend: () => void
 }) {
   const agreed = detail.user_actions.some((a) => a.action === 'agrees_with_cut')
-  const passAnswer = detail.user_actions
-    .filter((a) => a.action === 'agrees_with_pass' || a.action === 'should_have_been_cut')
-    .at(-1)?.action
+  const shouldHaveBeenCut = detail.user_actions.some((a) => a.action === 'should_have_been_cut')
   const sentByHand = detail.sent_by_hand
   const sendLabel = rowSendButtonLabel({
     completion: detail.completion,
@@ -108,24 +110,26 @@ export function CullDetailSection({
           <div>
             <p className="text-sm text-text-secondary mb-2">{CULL_PASS_QUESTION}</p>
             <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  ['agrees_with_pass', CULL_PASS_YES],
-                  ['should_have_been_cut', CULL_PASS_NO],
-                ] as const
-              ).map(([action, label]) => (
-                <Button
-                  key={action}
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  aria-pressed={passAnswer === action}
-                  className={passAnswer === action ? '!border-accent !text-accent !bg-accent-light' : ''}
-                  onClick={() => passAnswer !== action && onAction(action)}
-                >
-                  {label}
-                </Button>
-              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                aria-pressed={!shouldHaveBeenCut}
+                className={shouldHaveBeenCut ? '' : SELECTED_ANSWER_CLASS}
+                onClick={() => shouldHaveBeenCut && onWithdrawShouldHaveBeenCut()}
+              >
+                {CULL_PASS_YES}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                aria-pressed={shouldHaveBeenCut}
+                className={shouldHaveBeenCut ? SELECTED_ANSWER_CLASS : ''}
+                onClick={() => !shouldHaveBeenCut && onAction('should_have_been_cut')}
+              >
+                {CULL_PASS_NO}
+              </Button>
             </div>
             <p className="text-xs text-text-tertiary mt-2">{CULL_PASS_HINT}</p>
           </div>

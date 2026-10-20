@@ -26,6 +26,10 @@ export function CullDetailSectionLoader({
         await CullAPI.recordAction(imageKey, action)
         refresh()
       }}
+      onWithdrawShouldHaveBeenCut={async () => {
+        await CullAPI.withdrawShouldHaveBeenCut(imageKey)
+        refresh()
+      }}
       onSend={async () => {
         await CullAPI.sendPhotos([imageKey])
         refresh()

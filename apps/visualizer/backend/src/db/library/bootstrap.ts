@@ -17,7 +17,7 @@ import { seedCullingDefaults } from './cull-recipes.js';
 import { markdownMarksOptional } from './scores.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 13;
+export const LIBRARY_SCHEMA_VERSION = 12;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 8;
@@ -47,25 +47,6 @@ CREATE TABLE IF NOT EXISTS vision_stale (
     output TEXT NOT NULL,
     PRIMARY KEY (image_key, output)
 );
-`;
-
-/** The user's cull actions; version 13 added `agrees_with_pass`, which needs a table rebuild in SQLite. */
-const CULL_USER_ACTIONS_SQL = `
-CREATE TABLE IF NOT EXISTS cull_user_actions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    image_key TEXT NOT NULL,
-    action TEXT NOT NULL
-        CHECK (action IN ('sent_by_hand','agrees_with_cut','should_have_been_cut','agrees_with_pass')),
-    acted_at TEXT NOT NULL,
-    -- The summary the action answered; 'none' when the photo had no verdict yet.
-    answered_verdict TEXT NOT NULL,
-    answered_cut_by TEXT,
-    answered_pipeline_setting_version INTEGER,
-    answered_stage_version_ids TEXT NOT NULL DEFAULT '[]'
-);
-
-CREATE INDEX IF NOT EXISTS idx_cull_user_actions_image
-    ON cull_user_actions(image_key, acted_at);
 `;
 
 /**
@@ -177,7 +158,21 @@ CREATE TABLE IF NOT EXISTS cull_verdicts (
 
 CREATE INDEX IF NOT EXISTS idx_cull_verdicts_verdict ON cull_verdicts(verdict, cut_by);
 
-${CULL_USER_ACTIONS_SQL}
+CREATE TABLE IF NOT EXISTS cull_user_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_key TEXT NOT NULL,
+    action TEXT NOT NULL
+        CHECK (action IN ('sent_by_hand','agrees_with_cut','should_have_been_cut')),
+    acted_at TEXT NOT NULL,
+    -- The summary the action answered; 'none' when the photo had no verdict yet.
+    answered_verdict TEXT NOT NULL,
+    answered_cut_by TEXT,
+    answered_pipeline_setting_version INTEGER,
+    answered_stage_version_ids TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_cull_user_actions_image
+    ON cull_user_actions(image_key, acted_at);
 
 CREATE TABLE IF NOT EXISTS cull_pipeline_settings (
     version INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -543,15 +538,6 @@ export function upgradeLibrarySchema(db: Db): void {
     }
     if (version < 12) {
       db.exec(LR_WRITEBACK_SQL);
-    }
-    if (version >= 11 && version < 13) {
-      db.exec(`
-        DROP INDEX IF EXISTS idx_cull_user_actions_image;
-        ALTER TABLE cull_user_actions RENAME TO cull_user_actions_v12;
-        ${CULL_USER_ACTIONS_SQL}
-        INSERT INTO cull_user_actions SELECT * FROM cull_user_actions_v12;
-        DROP TABLE cull_user_actions_v12;
-      `);
     }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   })();
