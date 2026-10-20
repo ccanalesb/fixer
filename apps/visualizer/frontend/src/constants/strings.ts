@@ -685,6 +685,8 @@ export const CULL_MANUALLY_CULL = 'Manually cull'
 export const CULL_MANUALLY_CULL_NOTE =
   'Manually cull — never cut automatically again.'
 export const CULL_SHOULD_HAVE_BEEN_CUT = 'Should have been cut'
+export const CULL_SHOULD_HAVE_BEEN_CUT_MARKED = 'Marked: should have been cut'
+export const CULL_PASSED = 'Passed the cull'
 export const CULL_RECIPES_SECTION = 'Culling recipes'
 export const CULL_ADD_RECIPE = 'Add recipe'
 export const CULL_DUPLICATE = 'Duplicate'
