@@ -70,9 +70,11 @@ type SelectedCatalogEntry = {
 type CatalogTabProps = {
   /** Fires when the posted / not-posted filter changes (for parent UI, e.g. Analytics cross-link). */
   onPostedFilterChange?: (posted: boolean | undefined) => void;
+  /** Images → Cull catalog: passed + sent-by-hand only. */
+  cullCatalog?: boolean;
 };
 
-export function CatalogTab({ onPostedFilterChange }: CatalogTabProps = {}) {
+export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: CatalogTabProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
@@ -277,8 +279,9 @@ export function CatalogTab({ onPostedFilterChange }: CatalogTabProps = {}) {
       ...toQueryParams(),
       limit: LIMIT,
       offset: (page - 1) * LIMIT,
+      ...(cullCatalog ? { cull_catalog: true as const } : {}),
     }),
-    [page, toQueryParams],
+    [page, toQueryParams, cullCatalog],
   );
 
   const listQueryKey = useMemo(

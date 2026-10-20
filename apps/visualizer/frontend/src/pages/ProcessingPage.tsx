@@ -8,6 +8,7 @@ import { JobsHealthBanner } from '../components/processing/JobsHealthBanner';
 import { ProvidersTab } from '../components/processing/ProvidersTab';
 import { SettingsTab } from '../components/processing/SettingsTab';
 import { PerspectivesTab } from '../components/processing/PerspectivesTab';
+import { CullReviewTab } from '../components/cull/CullReviewTab';
 import { Button } from '../components/ui/Button';
 import { useJobSocket } from '../hooks/useJobSocket';
 import { usePageTab } from '../hooks/usePageTab';
@@ -17,6 +18,7 @@ import { AnalyzeOptionsProvider } from '../stores/analyzeOptionsContext';
 import { PROCESSING_TAB_IDS, usePageUiStore } from '../stores/pageUiStore';
 import {
   TAB_ANALYZE,
+  TAB_CULL,
   TAB_PERSPECTIVES,
   TAB_CATALOG_CACHE,
   TAB_JOB_QUEUE,
@@ -110,6 +112,27 @@ export function ProcessingPage() {
             <AnalyzeOptionsProvider>
               <AnalyzeTab />
             </AnalyzeOptionsProvider>
+          </Suspense>
+        </ErrorBoundary>
+      ),
+    },
+    {
+      id: 'cull',
+      label: TAB_CULL,
+      content: (
+        <ErrorBoundary
+          fallback={({ error, reset }) => (
+            <ErrorState
+              error={error}
+              reset={() => {
+                invalidateAll(['cull.summary', 'cull.photos']);
+                reset();
+              }}
+            />
+          )}
+        >
+          <Suspense fallback={tabSuspenseFallback}>
+            <CullReviewTab />
           </Suspense>
         </ErrorBoundary>
       ),

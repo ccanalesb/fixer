@@ -9,6 +9,8 @@ export const NAV_IDENTITY = 'Identity'
 
 // Tab labels
 export const TAB_CATALOG = 'Catalog'
+export const TAB_CULL_CATALOG = 'Cull catalog'
+export const TAB_CULL = 'Cull'
 export const TAB_ANALYZE = 'Analyze'
 export const TAB_PERSPECTIVES = 'Perspectives'
 export const TAB_CATALOG_CACHE = 'Catalog Cache'
@@ -664,3 +666,34 @@ export const ANALYZE_DESCRIBE_JOB_STARTED =
 export const ANALYZE_SCORE_JOB_STARTED =
   'Batch scoring job started (1–10 scores + short rationale per perspective). Check Job Queue for progress.'
 export const ANALYZE_JOB_FAILED_PREFIX = 'Failed to start job:'
+
+// Cull UI (#340)
+export const CULL_HEADING = (n: number) => `${n} photos did not pass the cull`
+export const CULL_SUB_MANUAL = (m: number) => `${m} already sent manually.`
+export const CULL_SUB_AUTO =
+  'They are not described or scored automatically.'
+export const CULL_LAST_CHECKED = 'Last checked'
+export const CULL_SORT_HINT = 'Sorted by score forecast, highest first'
+export const CULL_SELECT_ALL = (n: number) => `Select all ${n}`
+export const CULL_AGREE = 'Agree with culling'
+export const CULL_AGREED = 'Agreed'
+export const CULL_CLEAR = 'Clear'
+export const CULL_ALREADY_SCORED = (d: number) => `· ${d} already described and scored`
+export const CULL_MANUALLY_CULL = 'Manually cull'
+export const CULL_MANUALLY_CULL_NOTE =
+  'Manually cull — never cut automatically again.'
+export const CULL_SHOULD_HAVE_BEEN_CUT = 'Should have been cut'
+export const CULL_RECIPES_SECTION = 'Culling recipes'
+export const CULL_ADD_RECIPE = 'Add recipe'
+export const CULL_DUPLICATE = 'Duplicate'
+export const CULL_NOT_MEASURED = 'Not measured against AI scores'
+export const CULL_ADVANCED = 'Advanced'
+export const CULL_SCORE_FORECAST_THRESHOLD = 'Score forecast threshold'
+export const CULL_THRESHOLD_NOTE =
+  'Changing this re-checks every photo from stored answers (no new model run).'
+export const CULL_SAVE = 'Save'
+export const CULL_SAVE_ONLY = 'Save only'
+export const CULL_SAVE_AND_QUEUE = 'Save and queue cull job'
+export const CULL_RULE_SAVE_NOTE =
+  'Saving re-checks every photo from stored answers (no new model run).'
+export const CULL_SCORE_FORECAST = 'Score forecast'

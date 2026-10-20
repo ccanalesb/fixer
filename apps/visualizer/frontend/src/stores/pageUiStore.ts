@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 
-export const IMAGES_TAB_IDS = ['catalog'] as const
+export const IMAGES_TAB_IDS = ['catalog', 'cull-catalog'] as const
 export type ImagesTabId = (typeof IMAGES_TAB_IDS)[number]
 
 export const PROCESSING_TAB_IDS = [
   'analyze',
+  'cull',
   'perspectives',
   'cache',
   'jobs',

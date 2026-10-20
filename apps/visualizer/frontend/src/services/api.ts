@@ -63,6 +63,7 @@ import type {
   StackSuggestionAcceptResponse,
   StackSuggestionsResponse,
 } from '../types/stacks'
+import type { components } from '../types/api.gen'
 import type {
   IdentityBestPhotoItem,
   IdentityBestPhotosMeta,
@@ -379,6 +380,7 @@ export type CatalogListQueryParams = {
   sort_by_date?: 'newest' | 'oldest'
   limit?: number
   offset?: number
+  cull_catalog?: boolean
 }
 
 function appendCatalogListSearchParams(
@@ -418,6 +420,7 @@ function appendCatalogListSearchParams(
   if (params.sort_by_date) searchParams.set('sort_by_date', params.sort_by_date)
   if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
   if (params.offset !== undefined) searchParams.set('offset', String(params.offset))
+  if (params.cull_catalog === true) searchParams.set('cull_catalog', 'true')
 }
 
 export const SystemAPI = {
@@ -812,4 +815,69 @@ export const ProvidersAPI = {
     invalidateAll(['providers.list'])
     return result
   },
+}
+
+export type CullReviewSummary = components['schemas']['CullReviewSummaryResponse']
+export type CullReviewListResponse = components['schemas']['CullReviewListResponse']
+export type CullReviewRow = components['schemas']['CullReviewRow']
+export type CullReviewDetail = components['schemas']['CullReviewDetail']
+export type CullRecipeDetail = components['schemas']['CullRecipeDetail']
+export type CullRecipeSummary = components['schemas']['CullRecipeSummary']
+export type PipelineSettingResponse = components['schemas']['PipelineSettingResponse']
+
+export const CullAPI = {
+  summary: () => request<CullReviewSummary>('/cull/summary'),
+  listPhotos: (params?: { tab?: string; limit?: number; offset?: number }) => {
+    const sp = new URLSearchParams()
+    if (params?.tab) sp.set('tab', params.tab)
+    if (params?.limit !== undefined) sp.set('limit', String(params.limit))
+    if (params?.offset !== undefined) sp.set('offset', String(params.offset))
+    const qs = sp.toString()
+    return request<CullReviewListResponse>(`/cull/photos/${qs ? `?${qs}` : ''}`)
+  },
+  photoDetail: (imageKey: string) =>
+    request<CullReviewDetail>(`/cull/photos/${encodeURIComponent(imageKey)}`),
+  recordAction: (imageKey: string, action: 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut') =>
+    request<{ ok: boolean }>(`/cull/photos/${encodeURIComponent(imageKey)}/actions`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
+  sendPhotos: (imageKeys: string[]) =>
+    request<{ sent_by_hand: string[]; job_id: string | null; skipped_complete: number }>(
+      '/cull/photos/send',
+      { method: 'POST', body: JSON.stringify({ image_keys: imageKeys }) },
+    ),
+}
+
+export const CullingRecipesAPI = {
+  list: () => request<{ recipes: CullRecipeSummary[] }>('/culling-recipes/'),
+  get: (slug: string) => request<CullRecipeDetail>(`/culling-recipes/${encodeURIComponent(slug)}`),
+  create: (body: unknown) =>
+    request<CullRecipeDetail>('/culling-recipes/', { method: 'POST', body: JSON.stringify(body) }),
+  duplicate: (slug: string, body: { new_slug: string; new_name?: string }) =>
+    request<CullRecipeDetail>(`/culling-recipes/${encodeURIComponent(slug)}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  saveDefinition: (slug: string, body: { definition: unknown; mode: 'save_only' | 'save_and_queue_cull' }) =>
+    request<{ recipe: CullRecipeDetail; version: number; created: boolean; impact?: { photos: number; hours_estimate: number } }>(
+      `/culling-recipes/${encodeURIComponent(slug)}/definition`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
+  saveRule: (slug: string, rule: unknown) =>
+    request<{ recipe: CullRecipeDetail; pipeline_setting_version: number | null; redecide_job_id: string | null }>(
+      `/culling-recipes/${encodeURIComponent(slug)}/rule`,
+      { method: 'PUT', body: JSON.stringify({ rule }) },
+    ),
+  patch: (slug: string, body: { name?: string; model?: string; active?: boolean }) =>
+    request<CullRecipeDetail>(`/culling-recipes/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  getPipeline: () => request<PipelineSettingResponse>('/culling-recipes/pipeline'),
+  saveScoreForecastThreshold: (threshold: number) =>
+    request<{ version: number; redecide_job_id: string | null }>(
+      '/culling-recipes/pipeline/score-forecast',
+      { method: 'PUT', body: JSON.stringify({ threshold }) },
+    ),
 }
