@@ -41,8 +41,10 @@ import {
   readIntOrNull,
   resolveDateWindow,
   resolveLibraryDbOrFail,
+  readImageKeysFromMetadata,
   selectCatalogKeys,
   selectCatalogKeysMissingVisualTags,
+  selectionFromImageKeys,
   withLibraryDb,
   type PassContext,
 } from './common.js';
@@ -288,6 +290,9 @@ export function selectDescribeCandidates(
   metadata: Record<string, unknown>,
   force: boolean,
 ): [string, string][] {
+  const scopedKeys = readImageKeysFromMetadata(metadata['image_keys']);
+  if (scopedKeys) return selectionFromImageKeys(db, scopedKeys);
+
   // A model-scoped re-do has to widen the candidate set to every image, the same
   // way `force` does: rows written by an *older* model are described already, so
   // an undescribed-only selection would never surface them.

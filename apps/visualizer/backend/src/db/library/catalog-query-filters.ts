@@ -24,7 +24,12 @@ export function nonEmptyStrListForJsonArrayFilter(
   return out.length > 0 ? out : null;
 }
 
+/** Passed cull or sent-by-hand (Images → Cull catalog). */
+const CULL_CATALOG_SQL =
+  "EXISTS (SELECT 1 FROM cull_verdicts cv WHERE cv.image_key = i.key AND (cv.verdict = 'sent' OR cv.sent_by_hand = 1 OR EXISTS (SELECT 1 FROM cull_user_actions ua WHERE ua.image_key = cv.image_key AND ua.action = 'sent_by_hand')))";
+
 export interface CatalogImageFilters {
+  cullCatalog?: boolean | null;
   posted?: boolean | null;
   month?: string | null;
   keyword?: string | null;
@@ -59,6 +64,8 @@ export function appendQueryCatalogImageFilters(
   bindings: Binding[],
   f: CatalogImageFilters = {},
 ): void {
+  if (f.cullCatalog === true) clauses.push(CULL_CATALOG_SQL);
+
   if (f.posted === true) clauses.push('i.instagram_posted = 1');
   else if (f.posted === false) clauses.push('i.instagram_posted = 0');
 

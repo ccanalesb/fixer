@@ -379,6 +379,23 @@ export function selectCatalogKeys(
   return rows.map((r) => [r.key, 'catalog']);
 }
 
+/** Narrow a job to explicit catalog keys (send-by-hand and similar). */
+export function selectionFromImageKeys(db: Db, keys: readonly string[]): [string, string][] {
+  const out: [string, string][] = [];
+  for (let i = 0; i < keys.length; i += KEYS_PER_QUERY) {
+    const chunk = keys.slice(i, i + KEYS_PER_QUERY);
+    const rows = db
+      .prepare(`SELECT key FROM images WHERE key IN (${chunk.map(() => '?').join(',')})`)
+      .all(...(chunk as never[])) as { key: string }[];
+    for (const r of rows) out.push([r.key, 'catalog']);
+  }
+  return out;
+}
+
+export function readImageKeysFromMetadata(raw: unknown): string[] | null {
+  return Array.isArray(raw) && raw.length > 0 ? raw.map((k) => String(k)) : null;
+}
+
 /**
  * Catalog images whose description row predates the visual-tag columns.
  *
