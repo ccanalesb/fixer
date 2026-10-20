@@ -5,8 +5,8 @@ import { ErrorBoundary, ErrorState, invalidateAll, useQuery } from '../../data';
 import { Modal } from '../modal/Modal';
 import { Badge } from '../ui/badges';
 import { Button } from '../ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
-import { NAV_PERSPECTIVES_HELP } from '../../constants/strings';
+import { FoldingCard } from '../ui/Card';
+import { NAV_PERSPECTIVES_HELP, PERSPECTIVES_SUMMARY } from '../../constants/strings';
 import { PerspectivesAPI, type PerspectiveSummary } from '../../services/api';
 import { CullingRecipesSection } from '../cull/CullingRecipesSection';
 
@@ -272,61 +272,60 @@ function PerspectivesTabInner() {
 
   return (
     <div>
-      <Card padding="lg">
-        <CardHeader>
-          <CardTitle>Perspective rubrics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-text-secondary mb-4">{NAV_PERSPECTIVES_HELP}</p>
-          {error && (
-            <div className="mb-4 text-sm text-error" role="alert">
-              {error}
-            </div>
-          )}
-          <div className="flex flex-col lg:flex-row gap-6">
-            <PerspectivesListPanel
-              rows={rows}
-              selectedSlug={selectedSlug}
-              onSelect={setSelectedSlug}
-              onToggleActive={handleToggleActive}
-              onRefresh={refreshList}
-              onAdd={() => setAddOpen(true)}
-            />
-
-            <div className="flex-1 min-w-0 space-y-4">
-              {!selectedSlug ? (
-                <p className="text-sm text-text-secondary">Select a perspective to edit.</p>
-              ) : (
-                <ErrorBoundary
-                  resetKeys={[selectedSlug]}
-                  fallback={({ error: err, reset }) => (
-                    <ErrorState
-                      error={err}
-                      reset={() => {
-                        invalidateAll(['perspectives.detail']);
-                        reset();
-                      }}
-                    />
-                  )}
-                >
-                  <Suspense fallback={<p className="text-sm text-text-secondary">Loading editor…</p>}>
-                    <PerspectiveEditorBody
-                      slug={selectedSlug}
-                      onDeleted={() => {
-                        setSelectedSlug(null);
-                        setListRev((n) => n + 1);
-                      }}
-                      onError={setError}
-                      saving={saving}
-                      setSaving={setSaving}
-                    />
-                  </Suspense>
-                </ErrorBoundary>
-              )}
-            </div>
+      <FoldingCard
+        title="Perspective rubrics"
+        summary={PERSPECTIVES_SUMMARY(rows.length, rows.filter((r) => r.active).length)}
+        storageKey="lt.perspectives.rubrics.open"
+      >
+        <p className="text-sm text-text-secondary mb-4">{NAV_PERSPECTIVES_HELP}</p>
+        {error && (
+          <div className="mb-4 text-sm text-error" role="alert">
+            {error}
           </div>
-        </CardContent>
-      </Card>
+        )}
+        <div className="flex flex-col lg:flex-row gap-6">
+          <PerspectivesListPanel
+            rows={rows}
+            selectedSlug={selectedSlug}
+            onSelect={setSelectedSlug}
+            onToggleActive={handleToggleActive}
+            onRefresh={refreshList}
+            onAdd={() => setAddOpen(true)}
+          />
+
+          <div className="flex-1 min-w-0 space-y-4">
+            {!selectedSlug ? (
+              <p className="text-sm text-text-secondary">Select a perspective to edit.</p>
+            ) : (
+              <ErrorBoundary
+                resetKeys={[selectedSlug]}
+                fallback={({ error: err, reset }) => (
+                  <ErrorState
+                    error={err}
+                    reset={() => {
+                      invalidateAll(['perspectives.detail']);
+                      reset();
+                    }}
+                  />
+                )}
+              >
+                <Suspense fallback={<p className="text-sm text-text-secondary">Loading editor…</p>}>
+                  <PerspectiveEditorBody
+                    slug={selectedSlug}
+                    onDeleted={() => {
+                      setSelectedSlug(null);
+                      setListRev((n) => n + 1);
+                    }}
+                    onError={setError}
+                    saving={saving}
+                    setSaving={setSaving}
+                  />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+          </div>
+        </div>
+      </FoldingCard>
 
       <CullingRecipesSection />
 

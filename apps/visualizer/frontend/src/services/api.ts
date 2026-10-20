@@ -913,7 +913,10 @@ export const CullingRecipesAPI = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  saveDefinition: (slug: string, body: { definition: unknown; mode: 'save_only' | 'save_and_queue_cull' }) =>
+  saveDefinition: (
+    slug: string,
+    body: { definition: unknown; rule?: unknown; mode: 'save_only' | 'save_and_queue_cull' },
+  ) =>
     request<{
       recipe: CullRecipeDetail
       version: number

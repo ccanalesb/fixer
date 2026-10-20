@@ -99,6 +99,11 @@ describe('PUT /api/culling-recipes/{slug}/rule', () => {
   });
 });
 
+type Recipe = {
+  definition: { dimensions: { slug: string }[]; level_sets: { id: string; levels: Record<string, string[]> }[] };
+  rule: { level_sets: Record<string, { fails_at_most: number; strong_at_least: number }> };
+};
+
 describe('PUT /api/culling-recipes/{slug}/definition', () => {
   it('save_only returns JSON with hours impact (F16)', async () => {
     const recipe = await json<{ definition: Record<string, unknown> }>(
@@ -166,6 +171,62 @@ describe('PUT /api/culling-recipes/{slug}/definition', () => {
     jobsDb.close();
     expect(job!.type).toBe(BATCH_CULL_JOB_TYPE);
     expect(job!.metadata).toEqual({});
+  });
+
+  const putDefinition = (body: unknown) =>
+    app.request('/api/culling-recipes/recipe-7h47/definition', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('refuses an empty level text with its set|dimension|level field', async () => {
+    const recipe = await json<Recipe>(await app.request('/api/culling-recipes/recipe-7h47'));
+    const def = structuredClone(recipe.definition);
+    const dim = def.dimensions[0]!.slug;
+    def.level_sets[0]!.levels[dim]![2] = '  ';
+    const res = await putDefinition({ definition: def, mode: 'save_only' });
+    expect(res.status).toBe(400);
+    const body = await json<{ validation_errors: { field: string }[] }>(res);
+    expect(body.validation_errors.map((e) => e.field)).toEqual([`${def.level_sets[0]!.id}|${dim}|2`]);
+  });
+
+  it('saves a new level set together with its bands and re-decides on save_only', async () => {
+    const recipe = await json<Recipe>(await app.request('/api/culling-recipes/recipe-7h47'));
+    const def = structuredClone(recipe.definition);
+    const src = def.level_sets[0]!;
+    const levels = Object.fromEntries(Object.entries(src.levels).map(([k, v]) => [k, v.slice(0, 5)]));
+    def.level_sets.push({ id: '5', levels });
+    const rule = { ...recipe.rule, level_sets: { ...recipe.rule.level_sets, '5': { fails_at_most: 2, strong_at_least: 4 } } };
+
+    const withoutBands = await putDefinition({ definition: def, mode: 'save_only' });
+    expect(withoutBands.status).toBe(400);
+
+    const res = await putDefinition({ definition: def, rule, mode: 'save_only' });
+    expect(res.status).toBe(200);
+    const saved = await json<Recipe>(await app.request('/api/culling-recipes/recipe-7h47'));
+    expect(saved.definition.level_sets.map((s) => s.id)).toContain('5');
+    expect(saved.rule.level_sets['5']).toEqual({ fails_at_most: 2, strong_at_least: 4 });
+    const jobsDb = initJobsDb(jobsDbPath);
+    const redecide = getPendingJobs(jobsDb).filter((j) => j.type === BATCH_REDECIDE_JOB_TYPE);
+    jobsDb.close();
+    expect(redecide.length).toBe(1);
+  });
+});
+
+describe('PUT /api/culling-recipes/{slug}/rule bands', () => {
+  it('refuses strong past the top level of a set', async () => {
+    const recipe = await json<Recipe>(await app.request('/api/culling-recipes/recipe-7h47'));
+    const [id, bands] = Object.entries(recipe.rule.level_sets)[0]!;
+    const rule = { ...recipe.rule, level_sets: { ...recipe.rule.level_sets, [id]: { ...bands, strong_at_least: 99 } } };
+    const res = await app.request('/api/culling-recipes/recipe-7h47/rule', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rule }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json<{ validation_errors: { field: string }[] }>(res);
+    expect(body.validation_errors.map((e) => e.field)).toEqual([`bands|${id}`]);
   });
 });
 

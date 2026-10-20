@@ -3,7 +3,8 @@
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { config } from '../config.js';
-import { validateRecipeDefinitionForLaya } from '../cull/recipe-validate.js';
+import { validateRecipeShape } from '../cull/recipe-shape.js';
+import { validateRecipeDefinitionForLaya, type RecipeValidationError } from '../cull/recipe-validate.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import {
   countCatalogPhotosForCullEstimate,
@@ -36,6 +37,11 @@ import {
 import { compactJobPayload } from './schemas/jobs.js';
 
 export const cullingRecipesRoutes = createOpenApiApp<LibraryEnv>();
+
+const validationFailed = (errors: RecipeValidationError[]) => ({
+  error: errors.map((e) => e.message).join('; '),
+  validation_errors: errors,
+});
 
 cullingRecipesRoutes.use('/culling-recipes/*', libraryDb({ write: true }));
 redirectToTrailingSlash(cullingRecipesRoutes, '/culling-recipes');
@@ -215,10 +221,10 @@ cullingRecipesRoutes.openapi(createRouteDef, (c) => {
   if (!isValidPerspectiveSlug(body.slug)) return c.json({ error: 'invalid slug' }, 400);
   if (RESERVED_CULL_RECIPE_SLUGS.has(body.slug)) return c.json({ error: 'slug is reserved' }, 400);
   if (getCullRecipe(db, body.slug)) return c.json({ error: 'slug already exists' }, 409);
+  const shape = validateRecipeShape(body.definition, body.rule, { requireText: false });
+  if (shape.length) return c.json(validationFailed(shape), 400);
   const v = validateRecipeDefinitionForLaya(body.definition, body.model);
-  if (!v.ok) {
-    return c.json({ error: v.errors.map((e) => e.message).join('; '), validation_errors: v.errors }, 400);
-  }
+  if (!v.ok) return c.json(validationFailed(v.errors), 400);
   createCullRecipe(db, { ...body, measured: false, active: body.active !== false });
   if (body.active !== false) setCullRecipePipelineActive(db, body.slug, true);
   const detail = recipeDetail(db, body.slug)!;
@@ -261,6 +267,9 @@ const definitionRoute = createRoute({
         z
           .object({
             definition: RecipeDefinitionSchema,
+            rule: RecipeRuleSchema.optional().openapi({
+              description: 'Saved with the definition; required when level sets or their bands change.',
+            }),
             mode: z.enum(['save_only', 'save_and_queue_cull']),
           })
           .strict(),
@@ -298,12 +307,13 @@ cullingRecipesRoutes.openapi(definitionRoute, (c) => {
   const slug = c.req.param('slug');
   const recipe = getCullRecipe(db, slug);
   if (!recipe) return errorNotFound(c, 'image');
-  const { definition, mode } = c.req.valid('json');
+  const { definition, rule, mode } = c.req.valid('json');
+  const shape = validateRecipeShape(definition, rule ?? recipe.rule, { requireText: true });
+  if (shape.length) return c.json(validationFailed(shape), 400);
   const v = validateRecipeDefinitionForLaya(definition, recipe.model);
-  if (!v.ok) {
-    return c.json({ error: v.errors.map((e) => e.message).join('; '), validation_errors: v.errors }, 400);
-  }
+  if (!v.ok) return c.json(validationFailed(v.errors), 400);
   const saved = saveRecipeDefinition(db, slug, definition);
+  const ruleVersion = rule ? setRecipeRule(db, slug, rule) : null;
   const photos = countCatalogPhotosForCullEstimate(db);
   const hours_estimate = (photos * 2) / 3600;
   let jobId: string | null = null;
@@ -313,6 +323,12 @@ cullingRecipesRoutes.openapi(definitionRoute, (c) => {
       const job = getJob(jobsDb, id);
       if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
       return id;
+    });
+  } else if (ruleVersion !== null) {
+    withJobsDb((jobsDb) => {
+      const id = enqueueRedecideCullVerdicts(jobsDb, `rule of ${slug} changed`);
+      const job = id ? getJob(jobsDb, id) : null;
+      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
     });
   }
   return c.json(
@@ -347,14 +363,26 @@ const ruleRoute = createRoute({
       ),
     },
     404: { description: 'Not found', content: jsonBody(ErrorBody) },
+    400: {
+      description: 'Bands do not fit the level sets',
+      content: jsonBody(
+        z.object({
+          error: z.string(),
+          validation_errors: z.array(z.object({ field: z.string(), message: z.string() })),
+        }),
+      ),
+    },
   }),
 });
 
 cullingRecipesRoutes.openapi(ruleRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
-  if (!getCullRecipe(db, slug)) return errorNotFound(c, 'image');
+  const recipe = getCullRecipe(db, slug);
+  if (!recipe) return errorNotFound(c, 'image');
   const { rule } = c.req.valid('json');
+  const shape = validateRecipeShape(recipe.definition, rule, { requireText: false });
+  if (shape.length) return c.json(validationFailed(shape), 400);
   const version = setRecipeRule(db, slug, rule);
   let redecideJobId: string | null = null;
   if (version !== null) {
