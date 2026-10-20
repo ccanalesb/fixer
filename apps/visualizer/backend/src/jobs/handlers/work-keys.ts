@@ -123,3 +123,14 @@ export function selectKeysWithScoreWork(
   );
   return [...new Set(filterTriplesWithScoreWork(db, metadata, workTriples).map(([k]) => k))];
 }
+
+/** Keys that `POST /cull/photos/send` would enqueue (describe and/or score work). */
+export function batchKeysWithSendWork(db: Db, imageKeys: readonly string[]): Set<string> {
+  if (imageKeys.length === 0) return new Set();
+  const selection = imageKeys.map((k) => [k, 'catalog'] as const);
+  const meta = { image_type: 'catalog', force: false, image_keys: [...imageKeys] };
+  return new Set([
+    ...selectKeysWithDescribeWork(db, meta, selection),
+    ...selectKeysWithScoreWork(db, meta, selection),
+  ]);
+}

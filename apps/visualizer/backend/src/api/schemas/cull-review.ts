@@ -32,6 +32,7 @@ export const CullReviewRow = z
     score_forecast_p8: z.number().nullable(),
     recipe: CullReviewRecipeBlock,
     completion: z.enum(['none', 'some', 'all']),
+    needs_send_work: z.boolean(),
     thumbnail_url: z.string(),
   })
   .strict()
@@ -83,6 +84,7 @@ export const CullReviewDetail = z
       }),
     ),
     completion: z.enum(['none', 'some', 'all']),
+    needs_send_work: z.boolean(),
     sent_by_hand: z.boolean(),
     verdict: z.string(),
   })

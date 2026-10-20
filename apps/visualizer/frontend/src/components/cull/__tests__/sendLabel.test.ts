@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CULL_HEADING } from '../../../constants/strings'
-import { bulkSendButtonLabel, sendButtonLabel } from '../sendLabel'
+import { bulkSendButtonLabel, rowSendButtonLabel, sendButtonLabel } from '../sendLabel'
 
 describe('CULL_HEADING', () => {
   it('uses singular copy for one photo', () => {
@@ -24,9 +24,31 @@ describe('sendButtonLabel', () => {
   })
 })
 
+describe('rowSendButtonLabel', () => {
+  it('respects needs_send_work from the server', () => {
+    expect(rowSendButtonLabel({ completion: 'all', needs_send_work: false })).toBeNull()
+    expect(rowSendButtonLabel({ completion: 'all', needs_send_work: true })).toBe('Send to re-scoring')
+    expect(rowSendButtonLabel({ completion: 'none', needs_send_work: true })).toBe('Send to scoring')
+  })
+})
+
 describe('bulkSendButtonLabel', () => {
-  it('counts only photos that need work', () => {
-    expect(bulkSendButtonLabel(['none', 'none', 'none'])).toBe('Send 3 to scoring')
-    expect(bulkSendButtonLabel(['none', 'all'])).toBe('Send 1 to scoring')
+  it('counts only photos that need send work', () => {
+    expect(
+      bulkSendButtonLabel([
+        { completion: 'none', needs_send_work: true },
+        { completion: 'none', needs_send_work: true },
+        { completion: 'none', needs_send_work: true },
+      ]),
+    ).toBe('Send 3 to scoring')
+    expect(
+      bulkSendButtonLabel([
+        { completion: 'none', needs_send_work: true },
+        { completion: 'all', needs_send_work: false },
+      ]),
+    ).toBe('Send 1 to scoring')
+    expect(
+      bulkSendButtonLabel([{ completion: 'all', needs_send_work: false }]),
+    ).toBeNull()
   })
 })

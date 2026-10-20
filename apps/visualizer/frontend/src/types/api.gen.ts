@@ -2667,6 +2667,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cull/photos/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        image_keys: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Send by hand */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            sent_by_hand: string[];
+                            job_id: string | null;
+                            skipped_complete: number;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cull/photos/{image_key}": {
         parameters: {
             query?: never;
@@ -2761,60 +2815,6 @@ export interface paths {
                             verdict: string;
                             /** @enum {string} */
                             user_action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
-                        };
-                    };
-                };
-                /** @description Unprocessable Content */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ValidationError"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cull/photos/send": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": {
-                        image_keys: string[];
-                    };
-                };
-            };
-            responses: {
-                /** @description Send by hand */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            sent_by_hand: string[];
-                            job_id: string | null;
-                            skipped_complete: number;
                         };
                     };
                 };
@@ -3292,7 +3292,7 @@ export interface paths {
                             recipe: components["schemas"]["CullRecipeDetail"];
                             version: number;
                             created: boolean;
-                            impact?: {
+                            impact: {
                                 photos: number;
                                 hours_estimate: number;
                             };
@@ -3306,7 +3306,13 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ErrorBody"];
+                        "application/json": {
+                            error: string;
+                            validation_errors: {
+                                field: string;
+                                message: string;
+                            }[];
+                        };
                     };
                 };
                 /** @description Not found */
@@ -5004,6 +5010,7 @@ export interface components {
             };
             /** @enum {string} */
             completion: "none" | "some" | "all";
+            needs_send_work: boolean;
             thumbnail_url: string;
         };
         CullReviewDetail: {
@@ -5039,6 +5046,7 @@ export interface components {
             }[];
             /** @enum {string} */
             completion: "none" | "some" | "all";
+            needs_send_work: boolean;
             sent_by_hand: boolean;
             verdict: string;
         };

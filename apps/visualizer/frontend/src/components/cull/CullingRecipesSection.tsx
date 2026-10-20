@@ -14,6 +14,7 @@ import {
   CULL_THRESHOLD_NOTE,
 } from '../../constants/strings'
 import { CullingRecipeEditor } from './CullingRecipeEditor'
+import { minimalNewRecipeBody } from './minimalRecipe'
 
 export function CullingRecipesSection() {
   const recipes = useQuery(['culling-recipes.list'] as const, () => CullingRecipesAPI.list())
@@ -43,22 +44,8 @@ export function CullingRecipesSection() {
 
   const onAdd = async () => {
     const slug = `recipe-${Date.now()}`
-    await CullingRecipesAPI.create({
-      slug,
-      name: 'New recipe',
-      model: 'laya-base',
-      definition: {
-        dimensions: [{ slug: 'dimension-1', name: 'Dimension 1', question: '' }],
-        level_sets: [{ id: '5', levels: { 'dimension-1': ['', '', '', '', ''] } }],
-      },
-      rule: {
-        level_sets: { '5': { fails_at_most: 2, strong_at_least: 4 } },
-        combine: 'any',
-        cut_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
-      },
-      active: false,
-    })
-    setSelectedSlug(slug)
+    const created = await CullingRecipesAPI.create(minimalNewRecipeBody(slug, 'New recipe'))
+    setSelectedSlug(created.slug)
     refresh()
   }
 

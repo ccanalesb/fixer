@@ -43,7 +43,7 @@ export function CullReviewTab() {
     () => rows.filter((r) => selected.has(r.image_key)),
     [rows, selected],
   )
-  const sendLabel = bulkSendButtonLabel(selectedRows.map((r) => r.completion))
+  const sendLabel = bulkSendButtonLabel(selectedRows)
   const completeCount = selectedRows.filter((r) => r.completion === 'all').length
 
   const toggleAll = () => {
@@ -52,7 +52,7 @@ export function CullReviewTab() {
   }
 
   const sendSelected = async () => {
-    const keys = selectedRows.filter((r) => r.completion !== 'all').map((r) => r.image_key)
+    const keys = selectedRows.filter((r) => r.needs_send_work).map((r) => r.image_key)
     if (keys.length === 0) return
     await CullAPI.sendPhotos(keys)
     setSelected(new Set())
@@ -62,7 +62,7 @@ export function CullReviewTab() {
   const agreeSelected = async () => {
     await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_cut')))
     setSelected(new Set())
-    invalidateAll(['cull.photos'])
+    invalidateAll(['cull.summary', 'cull.photos'])
   }
 
   const tabs: { id: TabId; label: string }[] = [

@@ -216,7 +216,9 @@ cullingRecipesRoutes.openapi(createRouteDef, (c) => {
   if (RESERVED_CULL_RECIPE_SLUGS.has(body.slug)) return c.json({ error: 'slug is reserved' }, 400);
   if (getCullRecipe(db, body.slug)) return c.json({ error: 'slug already exists' }, 409);
   const v = validateRecipeDefinitionForLaya(body.definition, body.model);
-  if (!v.ok) return c.json({ error: v.errors.map((e) => e.message).join('; ') }, 400);
+  if (!v.ok) {
+    return c.json({ error: v.errors.map((e) => e.message).join('; '), validation_errors: v.errors }, 400);
+  }
   createCullRecipe(db, { ...body, measured: false, active: body.active !== false });
   if (body.active !== false) setCullRecipePipelineActive(db, body.slug, true);
   const detail = recipeDetail(db, body.slug)!;
@@ -273,13 +275,21 @@ const definitionRoute = createRoute({
           recipe: CullRecipeDetail,
           version: z.number().int(),
           created: z.boolean(),
-          impact: z.object({ photos: z.number().int(), hours_estimate: z.number() }).optional(),
+          impact: z.object({ photos: z.number().int(), hours_estimate: z.number() }),
           cull_job_id: z.string().nullable(),
         }),
       ),
     },
     404: { description: 'Not found', content: jsonBody(ErrorBody) },
-    400: { description: 'Validation failed', content: jsonBody(ErrorBody) },
+    400: {
+      description: 'Validation failed',
+      content: jsonBody(
+        z.object({
+          error: z.string(),
+          validation_errors: z.array(z.object({ field: z.string(), message: z.string() })),
+        }),
+      ),
+    },
   }),
 });
 
@@ -290,7 +300,9 @@ cullingRecipesRoutes.openapi(definitionRoute, (c) => {
   if (!recipe) return errorNotFound(c, 'image');
   const { definition, mode } = c.req.valid('json');
   const v = validateRecipeDefinitionForLaya(definition, recipe.model);
-  if (!v.ok) return c.json({ error: v.errors.map((e) => e.message).join('; ') }, 400);
+  if (!v.ok) {
+    return c.json({ error: v.errors.map((e) => e.message).join('; '), validation_errors: v.errors }, 400);
+  }
   const saved = saveRecipeDefinition(db, slug, definition);
   const photos = countCatalogPhotosForCullEstimate(db);
   const hours_estimate = (photos * 2) / 3600;

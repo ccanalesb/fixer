@@ -24,7 +24,12 @@
   # Blank vision overrides so a real .env cannot steer describe/score at a live model.
   export VISION_MODEL=""
   export DESCRIPTION_VISION_MODEL=""
-  unset NVIDIA_NIM_API_KEY OPENROUTER_API_KEY OPENCODE_GO_API_KEY || true
+  # Empty exports beat node --env-file-if-exists (unset lets .env repopulate keys).
+  export NVIDIA_NIM_API_KEY=""
+  export OPENROUTER_API_KEY=""
+  export OPENCODE_GO_API_KEY=""
+  export GITHUB_TOKEN=""
+  export OLLAMA_HOST=""
 
   cat > "$LT_CONFIG_YAML" <<EOF
 library_db: $LIBRARY_DB

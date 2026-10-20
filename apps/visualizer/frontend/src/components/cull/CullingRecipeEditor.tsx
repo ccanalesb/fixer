@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CullRecipeDetail } from '../../services/api'
-import { CullingRecipesAPI } from '../../services/api'
+import { ApiRequestError, CullingRecipesAPI } from '../../services/api'
 import { Button } from '../ui/Button'
 import {
   CULL_DUPLICATE,
@@ -29,6 +29,7 @@ export function CullingRecipeEditor({
   const [draft, setDraft] = useState(() => structuredClone(recipe) as Draft)
   const [impact, setImpact] = useState<{ photos: number; hours_estimate: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const setDefinition = (fn: (d: Draft['definition']) => Draft['definition']) => {
     setDraft((d) => ({ ...d, definition: fn(d.definition) }))
@@ -44,20 +45,31 @@ export function CullingRecipeEditor({
 
   const saveRule = async () => {
     setError(null)
-    await CullingRecipesAPI.saveRule(draft.slug, draft.rule)
-    onRefresh()
+    setFieldErrors({})
+    try {
+      await CullingRecipesAPI.saveRule(draft.slug, draft.rule)
+      onRefresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   const saveDefinition = async (mode: 'save_only' | 'save_and_queue_cull') => {
     setError(null)
+    setFieldErrors({})
     try {
       const res = await CullingRecipesAPI.saveDefinition(draft.slug, {
         definition: draft.definition,
         mode,
       })
-      if (res.impact) setImpact(res.impact)
+      setImpact(res.impact)
       onRefresh()
     } catch (e) {
+      if (e instanceof ApiRequestError && e.validationErrors.length > 0) {
+        const map: Record<string, string> = {}
+        for (const ve of e.validationErrors) map[ve.field] = ve.message
+        setFieldErrors(map)
+      }
       setError(e instanceof Error ? e.message : String(e))
     }
   }
@@ -73,6 +85,7 @@ export function CullingRecipeEditor({
         draft={draft}
         setDefinition={setDefinition}
         setRule={setRule}
+        fieldErrors={fieldErrors}
         onNameChange={(name) => setDraft((d) => ({ ...d, name }))}
         onNameBlur={() => void saveMeta()}
       />

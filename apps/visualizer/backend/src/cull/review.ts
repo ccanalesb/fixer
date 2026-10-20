@@ -34,6 +34,21 @@ export interface RecipeRowReadout {
   }[];
 }
 
+/** Map stored Laya qids (`{levelSet}|{dim}`) to dimension slugs for readout. */
+export function answersForLevelSetDimensions(
+  answers: StageAnswers,
+  levelSetId: string,
+  dimensionSlugs: readonly string[],
+): StageAnswers {
+  const out: StageAnswers = {};
+  for (const slug of dimensionSlugs) {
+    const qid = `${levelSetId}|${slug}`;
+    if (answers[qid] !== undefined) out[slug] = answers[qid]!;
+    else if (answers[slug] !== undefined) out[slug] = answers[slug]!;
+  }
+  return out;
+}
+
 /** Parse `culling_recipe:slug:levelSet` from a verdict's cut stage key. */
 export function recipeSlugFromCutStageKey(cutByStageKey: string | null): string | null {
   if (!cutByStageKey?.startsWith('culling_recipe:')) return null;
@@ -50,7 +65,9 @@ export function buildRecipeRowReadout(
 ): RecipeRowReadout {
   const level_sets = definition.level_sets.map((set) => {
     const stageKey = recipeStageKey(recipe.slug, set.id);
-    const answers = answersByStage[stageKey] ?? {};
+    const raw = answersByStage[stageKey] ?? {};
+    const dimSlugs = definition.dimensions.map((d) => d.slug);
+    const answers = answersForLevelSetDimensions(raw, set.id, dimSlugs);
     const bands = rule.level_sets[set.id];
     const readout = bands ? levelSetReadout(answers, bands) : {};
     return {

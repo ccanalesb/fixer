@@ -100,6 +100,55 @@ describe('PUT /api/culling-recipes/{slug}/rule', () => {
 });
 
 describe('PUT /api/culling-recipes/{slug}/definition', () => {
+  it('save_only returns JSON with hours impact (F16)', async () => {
+    const recipe = await json<{ definition: Record<string, unknown> }>(
+      await app.request('/api/culling-recipes/recipe-7h47'),
+    );
+    const res = await app.request('/api/culling-recipes/recipe-7h47/definition', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ definition: recipe.definition, mode: 'save_only' }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text.length).toBeGreaterThan(0);
+    const body = JSON.parse(text) as { impact: { photos: number; hours_estimate: number } };
+    expect(body.impact.photos).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(body.impact.hours_estimate)).toBe(true);
+  });
+
+  it('returns validation_errors when Laya rejects the definition', async () => {
+    const baseModel = join(jobsDir, 'models', 'laya-base', 'model.json');
+    writeFileSync(
+      baseModel,
+      JSON.stringify({
+        temperature: [1, 1, 1],
+        temperature_by_options: {},
+        max_len: 20,
+        head_max_len: 8,
+        image_token_id: 1,
+        pad_token_id: 0,
+        prefix_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      }),
+    );
+    const recipe = await json<{ definition: Record<string, unknown> }>(
+      await app.request('/api/culling-recipes/recipe-7h47'),
+    );
+    const bad = structuredClone(recipe.definition) as {
+      dimensions: { slug: string; name: string; question: string }[];
+      level_sets: { id: string; levels: Record<string, string[]> }[];
+    };
+    bad.dimensions[0]!.question = 'This question is too long for the Laya row budget.';
+    const res = await app.request('/api/culling-recipes/recipe-7h47/definition', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ definition: bad, mode: 'save_only' }),
+    });
+    expect(res.status).toBe(400);
+    const body = await json<{ validation_errors: { field: string; message: string }[] }>(res);
+    expect(body.validation_errors.length).toBeGreaterThan(0);
+  });
+
   it('save_and_queue_cull enqueues whole-catalog cull job', async () => {
     const recipe = await json<{ definition: Record<string, unknown> }>(
       await app.request('/api/culling-recipes/recipe-7h47'),
@@ -151,6 +200,32 @@ describe('PATCH /api/culling-recipes/{slug}', () => {
 });
 
 describe('POST /api/culling-recipes/', () => {
+  it('creates F19 minimal recipe with empty texts', async () => {
+    const res = await app.request('/api/culling-recipes/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'new-minimal',
+        name: 'New recipe',
+        model: 'laya-base',
+        definition: {
+          dimensions: [{ slug: 'dimension-1', name: 'Dimension 1', question: '' }],
+          level_sets: [{ id: '5', levels: { 'dimension-1': ['', '', '', '', ''] } }],
+        },
+        rule: {
+          level_sets: { '5': { fails_at_most: 2, strong_at_least: 4 } },
+          combine: 'any',
+          cut_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
+        },
+        active: false,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const text = await res.text();
+    expect(text.length).toBeGreaterThan(0);
+    expect(JSON.parse(text)).toMatchObject({ slug: 'new-minimal' });
+  });
+
   it('creates a minimal recipe (F19)', async () => {
     const res = await app.request('/api/culling-recipes/', {
       method: 'POST',

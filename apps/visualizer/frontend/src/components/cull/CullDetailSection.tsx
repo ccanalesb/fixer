@@ -8,7 +8,7 @@ import {
   CULL_SHOULD_HAVE_BEEN_CUT,
 } from '../../constants/strings'
 import { failingLevelClass } from './cullHighlight'
-import { sendButtonLabel } from './sendLabel'
+import { rowSendButtonLabel } from './sendLabel'
 import type { CullReviewDetail } from '../../services/api'
 
 export function CullDetailSection({
@@ -22,7 +22,10 @@ export function CullDetailSection({
 }) {
   const agreed = detail.user_actions.some((a) => a.action === 'agrees_with_cut')
   const sentByHand = detail.sent_by_hand
-  const sendLabel = sendButtonLabel([detail.completion])
+  const sendLabel = rowSendButtonLabel({
+    completion: detail.completion,
+    needs_send_work: detail.needs_send_work,
+  })
 
   return (
     <section className="mt-6 pt-6 border-t border-border space-y-4">

@@ -17,7 +17,7 @@ import { getCullReviewSummary, listCullReviewPhotos } from '../db/library/cull-r
 import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
 import { listCullUserActions, recordCullUserAction } from '../db/library/cull-user-actions.js';
 import { initJobsDb, createJob, getJob } from '../db/jobs/jobs.js';
-import { selectKeysWithDescribeWork, selectKeysWithScoreWork } from '../jobs/handlers/work-keys.js';
+import { batchKeysWithSendWork } from '../jobs/handlers/work-keys.js';
 import { emitJobEvent } from '../websocket/events.js';
 import { clampPagination, errorNotFound } from '../utils/responses.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
@@ -36,6 +36,9 @@ export const cullReviewRoutes = createOpenApiApp<LibraryEnv>();
 
 cullReviewRoutes.use('/cull/*', libraryDb({ write: true }));
 redirectToTrailingSlash(cullReviewRoutes, '/cull');
+
+/** Not catalog image keys — must not match `/cull/photos/{image_key}`. */
+const RESERVED_CULL_PHOTO_KEYS = new Set(['send']);
 
 function thumbnailUrl(imageKey: string): string {
   return `/api/images/catalog/${encodeURIComponent(imageKey)}/thumbnail`;
@@ -58,6 +61,7 @@ function shapeReviewRow(
   },
   answersByStage: Record<string, Record<string, number[]>>,
   completionByKey: Map<string, import('../db/library/cull-completion.js').DescribeScoreCompletion>,
+  sendWorkKeys: Set<string>,
 ) {
   const recipe = resolveCuttingRecipe(db, row.cut_by_stage_key, pipelineFallbackRecipe(db));
   const recipeBlock = recipe
@@ -71,6 +75,7 @@ function shapeReviewRow(
     score_forecast_p8: row.score_forecast_p8,
     recipe: recipeBlock,
     completion: completionByKey.get(row.image_key) ?? 'none',
+    needs_send_work: sendWorkKeys.has(row.image_key),
     thumbnail_url: thumbnailUrl(row.image_key),
   };
 }
@@ -116,10 +121,63 @@ cullReviewRoutes.openapi(listRoute, (c) => {
   const keys = rows.map((r) => r.image_key);
   const answers = loadCurrentStageAnswers(db, stages, keys);
   const completionByKey = batchDescribeScoreCompletion(db, keys);
+  const sendWorkKeys = batchKeysWithSendWork(db, keys);
   const data = rows.map((r) =>
-    shapeReviewRow(db, r, answers.get(r.image_key) ?? {}, completionByKey),
+    shapeReviewRow(db, r, answers.get(r.image_key) ?? {}, completionByKey, sendWorkKeys),
   );
   return c.json({ data, total, limit, offset }, 200);
+});
+
+const sendRoute = createRoute({
+  method: 'post',
+  path: '/cull/photos/send',
+  tags: ['cull'],
+  request: {
+    body: { content: jsonBody(z.object({ image_keys: z.array(z.string()).min(1) }).strict()) },
+  },
+  responses: withValidationError({
+    200: {
+      description: 'Send by hand',
+      content: jsonBody(
+        z.object({
+          sent_by_hand: z.array(z.string()),
+          job_id: z.string().nullable(),
+          skipped_complete: z.number().int(),
+        }),
+      ),
+    },
+  }),
+});
+
+cullReviewRoutes.openapi(sendRoute, (c) => {
+  const db = c.get('libraryDb');
+  const { image_keys: keys } = c.req.valid('json');
+  const sendWorkKeys = batchKeysWithSendWork(db, keys);
+  const sent: string[] = [];
+  for (const key of keys) {
+    if (!sendWorkKeys.has(key)) continue;
+    recordCullUserAction(db, key, 'sent_by_hand');
+    sent.push(key);
+  }
+  const skippedComplete = keys.length - sent.length;
+  const workKeys = [...sendWorkKeys];
+  let jobId: string | null = null;
+  if (workKeys.length > 0) {
+    const jobsDb = initJobsDb(config.VISUALIZER_DB);
+    try {
+      jobId = createJob(jobsDb, 'batch_analyze', {
+        image_type: 'catalog',
+        image_keys: workKeys,
+        force_describe: false,
+        force_score: false,
+      });
+      const job = getJob(jobsDb, jobId);
+      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
+    } finally {
+      jobsDb.close();
+    }
+  }
+  return c.json({ sent_by_hand: sent, job_id: jobId, skipped_complete: skippedComplete }, 200);
 });
 
 const detailRoute = createRoute({
@@ -136,6 +194,7 @@ const detailRoute = createRoute({
 cullReviewRoutes.openapi(detailRoute, (c) => {
   const db = c.get('libraryDb');
   const imageKey = c.req.param('image_key');
+  if (RESERVED_CULL_PHOTO_KEYS.has(imageKey)) return errorNotFound(c, 'image');
   const v = getCullVerdict(db, imageKey);
   if (!v || (v.verdict !== 'cut' && v.verdict !== 'sent')) {
     return errorNotFound(c, 'image');
@@ -152,6 +211,7 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
   const sfAnswers = answers[SCORE_FORECAST_STAGE_KEY] ?? {};
   const actions = listCullUserActions(db, imageKey).map((a) => ({ action: a.action, acted_at: a.acted_at }));
   const sentByHand = v.sent_by_hand || actions.some((a) => a.action === 'sent_by_hand');
+  const needs_send_work = batchKeysWithSendWork(db, [imageKey]).has(imageKey);
   return c.json(
     {
       image_key: imageKey,
@@ -162,6 +222,7 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
       score_forecast: scoreForecastByPerspective(sfAnswers, pipe.config.score_forecast),
       user_actions: actions,
       completion: describeScoreCompletion(db, imageKey),
+      needs_send_work,
       sent_by_hand: sentByHand,
       verdict: v.verdict,
     },
@@ -192,63 +253,4 @@ cullReviewRoutes.openapi(actionRoute, async (c) => {
   recordCullUserAction(db, imageKey, action);
   const v = getCullVerdict(db, imageKey);
   return c.json({ ok: true as const, verdict: v?.verdict ?? 'none', user_action: action }, 200);
-});
-
-const sendRoute = createRoute({
-  method: 'post',
-  path: '/cull/photos/send',
-  tags: ['cull'],
-  request: {
-    body: { content: jsonBody(z.object({ image_keys: z.array(z.string()).min(1) }).strict()) },
-  },
-  responses: withValidationError({
-    200: {
-      description: 'Send by hand',
-      content: jsonBody(
-        z.object({
-          sent_by_hand: z.array(z.string()),
-          job_id: z.string().nullable(),
-          skipped_complete: z.number().int(),
-        }),
-      ),
-    },
-  }),
-});
-
-cullReviewRoutes.openapi(sendRoute, (c) => {
-  const db = c.get('libraryDb');
-  const { image_keys: keys } = c.req.valid('json');
-  const selection = keys.map((k) => [k, 'catalog'] as const);
-  const meta = { image_type: 'catalog', force: false, image_keys: keys };
-  const workKeys = [
-    ...new Set([
-      ...selectKeysWithDescribeWork(db, meta, selection),
-      ...selectKeysWithScoreWork(db, meta, selection),
-    ]),
-  ];
-  const workSet = new Set(workKeys);
-  const sent: string[] = [];
-  for (const key of keys) {
-    if (!workSet.has(key)) continue;
-    recordCullUserAction(db, key, 'sent_by_hand');
-    sent.push(key);
-  }
-  const skippedComplete = keys.length - sent.length;
-  let jobId: string | null = null;
-  if (workKeys.length > 0) {
-    const jobsDb = initJobsDb(config.VISUALIZER_DB);
-    try {
-      jobId = createJob(jobsDb, 'batch_analyze', {
-        image_type: 'catalog',
-        image_keys: workKeys,
-        force_describe: false,
-        force_score: false,
-      });
-      const job = getJob(jobsDb, jobId);
-      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
-    } finally {
-      jobsDb.close();
-    }
-  }
-  return c.json({ sent_by_hand: sent, job_id: jobId, skipped_complete: skippedComplete }, 200);
 });

@@ -311,6 +311,7 @@ files.forEach((file, i) => {
          VALUES (?, 'catalog', ?, 7, '', 'test', ?, datetime('now'), 1, 0, 0)`,
       ).run(key, p.slug, computePromptVersion(p));
     }
+    db.prepare('DELETE FROM vision_stale WHERE image_key = ?').run(key);
     return;
   }
   upsertCullVerdict(

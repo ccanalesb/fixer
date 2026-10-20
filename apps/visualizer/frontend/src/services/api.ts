@@ -163,6 +163,38 @@ const API_URL = import.meta.env.VITE_API_URL || API_DEFAULT_URL
 /** Outlasts the backend's own dialog timeout, so the server's error is what surfaces. */
 const CATALOG_PICK_TIMEOUT_MS = 6 * 60 * 1000
 
+export class ApiRequestError extends Error {
+  readonly validationErrors: readonly { field: string; message: string }[]
+
+  constructor(message: string, validationErrors: readonly { field: string; message: string }[] = []) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.validationErrors = validationErrors
+  }
+}
+
+async function readJsonBody(response: Response): Promise<unknown> {
+  if (typeof response.json === 'function') {
+    try {
+      return await response.json()
+    } catch {
+      /* fall through — some environments expose json() but need text() */
+    }
+  }
+  if (typeof response.text === 'function') {
+    const text = await response.text()
+    if (!text.trim()) {
+      throw new Error('Unexpected end of JSON input')
+    }
+    try {
+      return JSON.parse(text) as unknown
+    } catch {
+      throw new Error('Unexpected end of JSON input')
+    }
+  }
+  throw new Error('Unexpected end of JSON input')
+}
+
 async function request<T>(path: string, options?: RequestInit, timeoutMs?: number): Promise<T> {
   const response = await fetchWithTimeout(
     `${API_URL}${path}`,
@@ -178,18 +210,35 @@ async function request<T>(path: string, options?: RequestInit, timeoutMs?: numbe
 
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`
-    try {
-      const body = await response.json()
-      if (body && typeof (body as { error?: unknown }).error === 'string') {
-        detail = (body as { error: string }).error
+    let parsed: unknown
+    if (typeof response.text === 'function') {
+      const text = await response.text()
+      if (text.trim()) {
+        try {
+          parsed = JSON.parse(text) as unknown
+        } catch {
+          parsed = undefined
+        }
       }
-    } catch {
-      /* ignore non-JSON error bodies */
+    } else if (typeof response.json === 'function') {
+      try {
+        parsed = await response.json()
+      } catch {
+        parsed = undefined
+      }
+    }
+    if (parsed && typeof parsed === 'object') {
+      const body = parsed as { error?: unknown; validation_errors?: { field: string; message: string }[] }
+      if (typeof body.error === 'string') detail = body.error
+      const validationErrors = Array.isArray(body.validation_errors) ? body.validation_errors : []
+      if (typeof body.error === 'string' || validationErrors.length > 0) {
+        throw new ApiRequestError(detail, validationErrors)
+      }
     }
     throw new Error(detail)
   }
 
-  return response.json()
+  return (await readJsonBody(response)) as T
 }
 
 async function requestVoid(path: string, options?: RequestInit): Promise<void> {
@@ -864,7 +913,7 @@ export const CullingRecipesAPI = {
       recipe: CullRecipeDetail
       version: number
       created: boolean
-      impact?: { photos: number; hours_estimate: number }
+      impact: { photos: number; hours_estimate: number }
       cull_job_id: string | null
     }>(
       `/culling-recipes/${encodeURIComponent(slug)}/definition`,

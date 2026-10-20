@@ -43,23 +43,36 @@ export function fakeLayaState(): FakeLayaState {
   };
 }
 
+function writeMinimalLayaTokenizer(dir: string): void {
+  mkdirSync(join(dir, 'tokenizer'), { recursive: true });
+  const vocab: Record<string, number> = {};
+  for (let i = 0; i < 256; i += 1) vocab[String.fromCharCode(i)] = i + 1;
+  writeFileSync(join(dir, 'tokenizer', 'tokenizer.json'), JSON.stringify({ model: { vocab } }));
+  writeFileSync(join(dir, 'tokenizer', 'tokenizer_config.json'), '{}');
+  writeFileSync(
+    join(dir, 'model.json'),
+    JSON.stringify({
+      temperature: [1, 1, 1],
+      temperature_by_options: {},
+      max_len: 512,
+      head_max_len: 128,
+      image_token_id: 1,
+      pad_token_id: 0,
+      prefix_ids: [1, 2, 3],
+      source: 'thaitea/laya-vision',
+      revision: '8b318c99d7ad3ce19c24369263463882eada9d1e',
+    }),
+  );
+}
+
 export function writeFakeLayaModels(modelsDir: string, opts: { withNew?: boolean } = {}): void {
   const withNew = opts.withNew !== false;
   const base = join(modelsDir, 'laya-base');
-  for (const d of ['tokenizer', 'reference']) mkdirSync(join(base, d), { recursive: true });
-  for (const f of [
-    'vision.onnx',
-    'decoder.onnx',
-    'tokenizer/tokenizer.json',
-    'tokenizer/tokenizer_config.json',
-    'reference/photo.png',
-  ]) {
+  mkdirSync(join(base, 'reference'), { recursive: true });
+  for (const f of ['vision.onnx', 'decoder.onnx', 'reference/photo.png']) {
     writeFileSync(join(base, f), '');
   }
-  writeFileSync(
-    join(base, 'model.json'),
-    JSON.stringify({ source: 'thaitea/laya-vision', revision: '8b318c99d7ad3ce19c24369263463882eada9d1e' }),
-  );
+  writeMinimalLayaTokenizer(base);
   if (!withNew) return;
   const neu = join(modelsDir, 'laya-new');
   mkdirSync(join(neu, 'tokenizer'), { recursive: true });

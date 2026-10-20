@@ -15,13 +15,16 @@ export function CullingRecipeDefinitionFields({
   setRule,
   onNameBlur,
   onNameChange,
+  fieldErrors = {},
 }: {
   draft: Draft
   setDefinition: (fn: (d: Draft['definition']) => Draft['definition']) => void
   setRule: (fn: (r: Draft['rule']) => Draft['rule']) => void
+  fieldErrors?: Record<string, string>
   onNameChange: (name: string) => void
   onNameBlur: () => void
 }) {
+  const fieldError = (key: string) => fieldErrors[key]
   const levelSetIds = draft.definition.level_sets.map((s) => s.id)
 
   const levelCount = (setId: string) =>
@@ -126,6 +129,7 @@ export function CullingRecipeDefinitionFields({
               className="w-full border border-border rounded-base px-2 py-1 min-h-[60px]"
               value={dim.question}
               placeholder="Question"
+              aria-invalid={Boolean(levelSetIds.map((id) => fieldError(`${id}|${dim.slug}`)).find(Boolean))}
               onChange={(e) =>
                 setDefinition((def) => ({
                   ...def,
@@ -135,6 +139,14 @@ export function CullingRecipeDefinitionFields({
                 }))
               }
             />
+            {levelSetIds.map((setId) => {
+              const msg = fieldError(`${setId}|${dim.slug}`)
+              return msg ? (
+                <p key={setId} className="text-error text-xs" role="alert">
+                  {msg}
+                </p>
+              ) : null
+            })}
           </div>
         ))}
       </div>
