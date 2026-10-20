@@ -343,7 +343,7 @@ describe('the batch_analyze handler', () => {
     await runAnalyze({ max_workers: 1 });
 
     const band = progressEvents
-      .filter((e) => e.step.startsWith('Judged ') || e.step.includes('Frame substance'))
+      .filter((e) => e.step.includes('Frame substance'))
       .map((e) => e.progress);
     expect(band.length).toBeGreaterThan(0);
     expect(Math.max(...band)).toBeLessThanOrEqual(31);

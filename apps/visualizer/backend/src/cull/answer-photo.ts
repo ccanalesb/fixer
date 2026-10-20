@@ -81,6 +81,8 @@ export interface CullPhotoArgs {
   imageKey: string;
   sentByHand: boolean;
   runId: number;
+  /** Ask Laya every required stage again, as if nothing were stored. */
+  force?: boolean;
   resolveImage?: (db: Db, key: string) => Promise<string | null>;
 }
 
@@ -100,7 +102,9 @@ export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, ar
     error,
   });
 
-  let missing = missingStages(ctx, stored, sentByHand);
+  // Forced, the stored answers still decide a photo Laya cannot be asked about.
+  const known = (fresh: Record<string, StageAnswers>) => (args.force ? fresh : { ...stored, ...fresh });
+  let missing = missingStages(ctx, known({}), sentByHand);
   if (missing.length === 0) {
     return {
       outcome: 'redecided',
@@ -123,7 +127,7 @@ export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, ar
       seconds.base += r.seconds.base;
       seconds.new += r.seconds.new;
       Object.assign(fresh, stageAnswersFromLaya(ask, r.answers));
-      missing = missingStages(ctx, { ...stored, ...fresh }, sentByHand);
+      missing = missingStages(ctx, known(fresh), sentByHand);
     }
   } catch (e) {
     if (e instanceof LayaSetupError) throw e;

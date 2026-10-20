@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { createApp } from '../src/app.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
+import { nowIsoLocal, storedInstantMs } from '../src/utils/datetime.js';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -247,7 +248,7 @@ describe('GET /api/images/catalog/{image_key}/frame-substance', () => {
 
     // A cache entry newer than the verdict means the detector judged a preview that
     // no longer exists.
-    const later = `${judgedAt.slice(0, 4)}9-01-01T00:00:00+00:00`;
+    const later = nowIsoLocal(new Date(storedInstantMs(judgedAt) + 60 * 60_000));
     const db = new Database(fx.dbPath);
     db.prepare(
       'INSERT INTO vision_cache (key, compressed_path, compressed_at) VALUES (?, ?, ?)',

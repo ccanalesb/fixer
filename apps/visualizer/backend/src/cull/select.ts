@@ -20,7 +20,21 @@ export interface SelectPhotosToCullResult {
   needsAnswers: Set<string>;
 }
 
-export function selectPhotosToCull(db: Db, ctx: CullContext, keys: readonly string[]): SelectPhotosToCullResult {
+export interface SelectPhotosToCullOptions {
+  /**
+   * Re-ask Laya on every photo, except those one of these cull runs already decided — the forced
+   * job's earlier attempts, so a resumed job does not start over.
+   */
+  force?: { doneByRuns: ReadonlySet<number> };
+}
+
+export function selectPhotosToCull(
+  db: Db,
+  ctx: CullContext,
+  keys: readonly string[],
+  opts: SelectPhotosToCullOptions = {},
+): SelectPhotosToCullResult {
+  if (opts.force) return selectAllPhotosToCull(db, keys, opts.force.doneByRuns);
   const cfg = ctx.pipeline.config;
   const forecastOn = ctx.scoreForecastAvailable && cfg.score_forecast.enabled;
   const active = ctx.stages.filter((s) => s.kind !== 'score_forecast' || forecastOn);
@@ -58,4 +72,18 @@ export function selectPhotosToCull(db: Db, ctx: CullContext, keys: readonly stri
     (stamp?.pendingReason === WORKER_DIED_REASON ? diedOn : work).push(key);
   }
   return { keys: [...work, ...diedOn], needsAnswers: needsLaya };
+}
+
+function selectAllPhotosToCull(db: Db, keys: readonly string[], doneByRuns: ReadonlySet<number>): SelectPhotosToCullResult {
+  const stamps = loadCullVerdictStamps(db);
+  const work: string[] = [];
+  const diedOn: string[] = [];
+  for (const key of keys) {
+    const stamp = stamps.get(key);
+    // Left pending by an earlier attempt: taken again, so the resumed run counts its failures.
+    if (stamp?.runId != null && doneByRuns.has(stamp.runId) && stamp.pendingReason === '') continue;
+    (stamp?.pendingReason === WORKER_DIED_REASON ? diedOn : work).push(key);
+  }
+  const selected = [...work, ...diedOn];
+  return { keys: selected, needsAnswers: new Set(selected) };
 }

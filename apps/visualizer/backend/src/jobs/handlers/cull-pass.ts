@@ -16,7 +16,7 @@ import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-recipes.js';
 import { loadCurrentStageAnswers } from '../../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
-import { finishCullRun, getCullVerdict, insertCullRun } from '../../db/library/cull-verdicts.js';
+import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { resolveLayaModelFiles } from '../../laya/files.js';
 import { readLayaModelIds } from '../../laya/model-id.js';
@@ -74,7 +74,7 @@ export async function runCullPass(
   metadata: Record<string, unknown>,
   db: Db,
   ctx: PassContext,
-  opts: { imageKeys?: readonly string[]; skipLayaFor?: ReadonlySet<string> } = {},
+  opts: { imageKeys?: readonly string[]; skipLayaFor?: ReadonlySet<string>; force?: boolean } = {},
 ): Promise<BatchCullResult | null> {
   const t0 = performance.now();
   const prefix = ctx.logPrefix;
@@ -111,6 +111,7 @@ export async function runCullPass(
     resolvedMonths: months,
     resolvedYear: year,
     minRating,
+    force: opts.force ?? false,
   });
 
   const cp = ctx.checkpoint;
@@ -130,7 +131,9 @@ export async function runCullPass(
   const cullCtx: CullContext = { stages, pipeline, scoreForecastAvailable };
   const scoreForecast = scoreForecastAvailable && pipeline.config.score_forecast.enabled;
   const activeStages = stages.filter((s) => s.kind !== 'score_forecast' || scoreForecast);
-  const selected = selectPhotosToCull(db, cullCtx, keys);
+  const selected = selectPhotosToCull(db, cullCtx, keys, {
+    force: opts.force ? { doneByRuns: listCullRunIdsForJob(db, jobId) } : undefined,
+  });
   const candidates = selected.keys;
   const totalAtStart = resume.totalAtStart ?? candidates.length;
   const work = candidates.filter((k) => !resume.failed.has(k));
@@ -219,7 +222,7 @@ export async function runCullPass(
           error: undefined,
         };
       } else {
-        r = await cullPhoto(db, cullCtx, lazy, { imageKey: key, sentByHand: sentByHand.has(key), runId });
+        r = await cullPhoto(db, cullCtx, lazy, { imageKey: key, sentByHand: sentByHand.has(key), runId, force: opts.force });
       }
 
       for (const k of Object.keys(layaSec) as (keyof typeof layaSec)[]) layaSec[k] += r.seconds[k];

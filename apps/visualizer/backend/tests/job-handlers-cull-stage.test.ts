@@ -340,6 +340,29 @@ describe('no re-cull when verdicts are current', () => {
   });
 });
 
+describe('batch_analyze force_cull', () => {
+  it('asks Laya again on photos already culled and described, but not on those sent by hand', async () => {
+    await seedCullPhoto('pass', PASS);
+    await seedCullPhoto('hand', RECIPE_CUT);
+    const lib = openLibraryDb(fx.dbPath);
+    recordCullUserAction(lib, 'hand', 'sent_by_hand');
+    lib.close();
+    await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('sent');
+
+    laya().scripts.set('pass', RECIPE_CUT);
+    laya().calls.length = 0;
+    await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
+    expect(laya().calls).toHaveLength(0);
+
+    const job = await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'], force_cull: true });
+    expect(job.status).toBe('completed');
+    expect(laya().calls.map((c) => c.file.split('/').at(-1))).toEqual(['pass.jpg']);
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('cut');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('sent');
+  });
+});
+
 describe('Laya setup failures fail the job', () => {
   it('batch_describe fails with warning when models are missing', async () => {
     await seedCullPhoto('pass', PASS);

@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import * as sqliteVec from 'sqlite-vec';
 import { serializeFloat32 } from '../../src/db/connection.js';
 import { createLibrarySchema } from '../../src/db/library/bootstrap.js';
+import { nowIsoLocal } from '../../src/utils/datetime.js';
 
 export interface PerspectiveSeed {
   slug: string;
@@ -241,8 +242,8 @@ export class LibraryFixture {
     const db = this.open();
     db.prepare(
       `INSERT INTO vision_cache (key, compressed_path, phash, compressed_at, original_mtime)
-       VALUES (?, ?, NULL, datetime('now'), 12345.0)`,
-    ).run(imageKey, compressedPath);
+       VALUES (?, ?, NULL, ?, 12345.0)`,
+    ).run(imageKey, compressedPath, nowIsoLocal());
     db.close();
     return this;
   }

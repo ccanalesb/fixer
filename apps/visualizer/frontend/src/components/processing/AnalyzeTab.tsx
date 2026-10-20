@@ -27,6 +27,8 @@ import {
   ANALYZE_CARD_SUBTITLE,
   ANALYZE_CARD_TITLE,
   ANALYZE_DESCRIBE_JOB_STARTED,
+  ANALYZE_FORCE_CULL_HINT,
+  ANALYZE_FORCE_CULL_LABEL,
   ANALYZE_FORCE_DESCRIBE_LABEL,
   ANALYZE_FORCE_SCORE_LABEL,
   ANALYZE_BACKFILL_FORCE_EXCLUSIVE_HINT,
@@ -92,6 +94,7 @@ export function AnalyzeTab() {
   const { options, updateOption } = useAnalyzeOptions();
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [batchMinRating, setBatchMinRating] = useState<number | null>(null);
+  const [forceCull, setForceCull] = useState(false);
   const [forceDescribe, setForceDescribe] = useState(false);
   const [forceScore, setForceScore] = useState(false);
   const [backfillVisualTags, setBackfillVisualTags] = useState(false);
@@ -203,11 +206,12 @@ export function AnalyzeTab() {
   const buildBatchJobMetadata = useCallback((): Record<string, unknown> => {
     return {
       ...buildSharedBaseMetadata(),
+      force_cull: forceCull,
       force_describe: forceDescribe,
       force_score: forceScore,
       backfill_visual_tags: backfillVisualTags,
     };
-  }, [buildSharedBaseMetadata, forceDescribe, forceScore, backfillVisualTags]);
+  }, [buildSharedBaseMetadata, forceCull, forceDescribe, forceScore, backfillVisualTags]);
 
   // Shared submission core: guards against double-submission (both from React's
   // async state and from cross-button clicks), runs the POST, shows an inline
@@ -360,6 +364,22 @@ export function AnalyzeTab() {
               <p className="mt-1.5 text-xs text-text-secondary">
                 Applies to catalog images in the selected date range.
               </p>
+            </div>
+
+            <div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="force-recull"
+                  checked={forceCull}
+                  onChange={(e) => setForceCull(e.target.checked)}
+                  className="w-4 h-4 rounded border-border text-accent focus:ring-accent focus:ring-offset-0"
+                />
+                <label htmlFor="force-recull" className="text-sm text-text cursor-pointer">
+                  {ANALYZE_FORCE_CULL_LABEL}
+                </label>
+              </div>
+              {forceCull && <p className="mt-1.5 ml-6 text-xs text-warning">{ANALYZE_FORCE_CULL_HINT}</p>}
             </div>
 
             <div className="flex items-center space-x-2">
