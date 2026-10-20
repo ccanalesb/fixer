@@ -13,10 +13,11 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { openLibraryDb, type Db } from '../connection.js';
 import { REPO_ROOT } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
+import { seedCullingDefaults } from './cull-recipes.js';
 import { markdownMarksOptional } from './scores.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 10;
+export const LIBRARY_SCHEMA_VERSION = 11;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 8;
@@ -46,6 +47,143 @@ CREATE TABLE IF NOT EXISTS vision_stale (
     output TEXT NOT NULL,
     PRIMARY KEY (image_key, output)
 );
+`;
+
+/**
+ * The cull (version 11): culling recipes and their text versions, stage versions, one answer row per
+ * photo per stage version, the per-photo summary jobs and the UI read, the user's actions, and the
+ * versioned pipeline setting. See `cull/` and the cull terms in `CONTEXT.md`.
+ *
+ * A stage is a culling recipe at one level set, or the Score forecast. Its version changes with the
+ * model or the text Laya is asked; a rule or threshold change is a new pipeline-setting version instead,
+ * re-decided from the stored answers.
+ */
+const CULL_SQL = `
+CREATE TABLE IF NOT EXISTS cull_recipes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    model TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    -- How answers become cut / sent; not versioned (cull/types.ts RecipeRule).
+    rule_json TEXT NOT NULL,
+    -- Checked against AI scores; a user's own recipe starts unmeasured.
+    measured INTEGER NOT NULL DEFAULT 0,
+    source_filename TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cull_recipe_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id INTEGER NOT NULL REFERENCES cull_recipes(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    definition_json TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    is_current INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    UNIQUE (recipe_id, version),
+    UNIQUE (recipe_id, content_hash)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cull_recipe_versions_current
+    ON cull_recipe_versions(recipe_id) WHERE is_current = 1;
+
+CREATE TABLE IF NOT EXISTS cull_stage_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stage_key TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('culling_recipe','score_forecast')),
+    recipe_slug TEXT,
+    level_set TEXT,
+    model_id TEXT NOT NULL,
+    -- Exactly what Laya is asked, by question id.
+    questions_json TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    is_current INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    UNIQUE (stage_key, content_hash)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cull_stage_versions_current
+    ON cull_stage_versions(stage_key) WHERE is_current = 1;
+
+CREATE TABLE IF NOT EXISTS cull_runs (
+    run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('job','research_import','redecide')),
+    job_id TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    pipeline_setting_version INTEGER NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS cull_stage_answers (
+    image_key TEXT NOT NULL,
+    stage_version_id INTEGER NOT NULL REFERENCES cull_stage_versions(id),
+    -- Every level probability, lowest level first, by dimension or question id.
+    answers_json TEXT NOT NULL,
+    verdict TEXT NOT NULL CHECK (verdict IN ('cut','sent')),
+    -- The rule or threshold that produced the verdict, and the readout.
+    decision_json TEXT NOT NULL,
+    pipeline_setting_version INTEGER NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('job','research_import')),
+    produced_by TEXT NOT NULL DEFAULT '',
+    image_path TEXT NOT NULL DEFAULT '',
+    -- size:mtime of the image Laya read, when known.
+    image_signature TEXT,
+    run_id INTEGER NOT NULL,
+    answered_at TEXT NOT NULL,
+    decided_at TEXT NOT NULL,
+    PRIMARY KEY (image_key, stage_version_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cull_stage_answers_stage
+    ON cull_stage_answers(stage_version_id, verdict);
+
+CREATE TABLE IF NOT EXISTS cull_verdicts (
+    image_key TEXT PRIMARY KEY,
+    verdict TEXT NOT NULL CHECK (verdict IN ('cut','sent','pending')),
+    cut_by TEXT CHECK (cut_by IN ('culling_recipe','score_forecast')),
+    cut_by_stage_key TEXT,
+    sent_by_hand INTEGER NOT NULL DEFAULT 0,
+    pending_stages TEXT NOT NULL DEFAULT '[]',
+    pending_reason TEXT NOT NULL DEFAULT '',
+    score_forecast_off INTEGER NOT NULL DEFAULT 0,
+    score_forecast_p8 REAL,
+    pipeline_setting_version INTEGER NOT NULL,
+    stage_version_ids TEXT NOT NULL DEFAULT '[]',
+    run_id INTEGER,
+    decided_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cull_verdicts_verdict ON cull_verdicts(verdict, cut_by);
+
+CREATE TABLE IF NOT EXISTS cull_user_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_key TEXT NOT NULL,
+    action TEXT NOT NULL
+        CHECK (action IN ('sent_by_hand','agrees_with_cut','should_have_been_cut')),
+    acted_at TEXT NOT NULL,
+    -- The summary the action answered; 'none' when the photo had no verdict yet.
+    answered_verdict TEXT NOT NULL,
+    answered_cut_by TEXT,
+    answered_pipeline_setting_version INTEGER,
+    answered_stage_version_ids TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_cull_user_actions_image
+    ON cull_user_actions(image_key, acted_at);
+
+CREATE TABLE IF NOT EXISTS cull_pipeline_settings (
+    version INTEGER PRIMARY KEY AUTOINCREMENT,
+    config_json TEXT NOT NULL,
+    is_current INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT ''
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cull_pipeline_settings_current
+    ON cull_pipeline_settings(is_current) WHERE is_current = 1;
 `;
 
 const SCHEMA_SQL = `
@@ -261,6 +399,8 @@ CREATE TABLE IF NOT EXISTS library_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+${CULL_SQL}
 `;
 
 /**
@@ -361,6 +501,10 @@ export function upgradeLibrarySchema(db: Db): void {
       addColumnIfMissing(db, 'vision_cache', 'orientation TEXT');
       db.exec(VISION_STALE_SQL);
     }
+    if (version < 11) {
+      db.exec(CULL_SQL);
+      seedCullingDefaults(db);
+    }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   })();
 }
@@ -386,6 +530,7 @@ export function initLibraryDb(path: string): Db {
     upgradeLibrarySchema(db);
     createLibrarySchema(db);
     seedPerspectivesFromPromptsDir(db);
+    seedCullingDefaults(db);
   } catch (e) {
     db.close();
     throw e;

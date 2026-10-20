@@ -13,7 +13,7 @@ import * as ort from 'onnxruntime-node';
 import { decodePlaneFromFile } from '../imaging/decode-plane.js';
 import type { LayaModelFiles } from './files.js';
 import { LAYA_PIXEL_VALUES_SHAPE, layaPixelValues } from './image.js';
-import questionsJson from './questions.json' with { type: 'json' };
+import { LAYA_QUESTIONS, type LayaModelName } from './questions.js';
 import {
   IMAGE_PREFIX_TEXT,
   buildRow,
@@ -22,8 +22,6 @@ import {
   type LayaQuestion,
   type LayaRow,
 } from './rows.js';
-
-export type LayaModelName = 'base' | 'new';
 
 /** Level probabilities per question id, lowest level first. */
 export type LayaModelAnswers = Record<string, number[]>;
@@ -41,8 +39,6 @@ export interface LayaSeconds {
   new: number;
   total: number;
 }
-
-export const LAYA_QUESTIONS = questionsJson as Record<LayaModelName, Record<string, LayaQuestion>>;
 
 interface Decoder {
   session: ort.InferenceSession;
@@ -67,14 +63,27 @@ function loadTokenizer(dir: string): PreTrainedTokenizer {
   );
 }
 
-export function buildModelRows(dir: string, name: LayaModelName): { meta: LayaModelMeta; rows: LayaRow[] } {
+/** What a worker is asked, per model; defaults to `questions.json`, the rows the setup step's reference checks. */
+export type LayaQuestionsByModel = Record<LayaModelName, Record<string, LayaQuestion>>;
+
+/** One photo's request: Laya base rows by question id (all when absent), and whether Laya new runs. */
+export interface LayaAnswerWant {
+  base?: readonly string[];
+  new?: boolean;
+}
+
+export function buildModelRows(
+  dir: string,
+  name: LayaModelName,
+  questions: Record<string, LayaQuestion> = LAYA_QUESTIONS[name],
+): { meta: LayaModelMeta; rows: LayaRow[] } {
   const meta = readJson<LayaModelMeta>(join(dir, 'model.json'));
   const tok = loadTokenizer(dir);
   const encode = (s: string): number[] => tok.encode(s, { add_special_tokens: false });
   if (encode(IMAGE_PREFIX_TEXT).join(',') !== meta.prefix_ids.join(',')) {
     throw new Error(`Laya ${name}: the tokenizer's image prefix differs from model.json`);
   }
-  const rows = Object.entries(LAYA_QUESTIONS[name]).map(([qid, q]) => buildRow(encode, meta, qid, q));
+  const rows = Object.entries(questions).map(([qid, q]) => buildRow(encode, meta, qid, q));
   return { meta, rows };
 }
 
@@ -88,10 +97,10 @@ export class LayaSessions {
     private readonly decoders: { base: Decoder; new: Decoder | null },
   ) {}
 
-  static async load(files: LayaModelFiles): Promise<LayaSessions> {
+  static async load(files: LayaModelFiles, questions: LayaQuestionsByModel = LAYA_QUESTIONS): Promise<LayaSessions> {
     const vision = await ort.InferenceSession.create(join(files.baseDir, 'vision.onnx'), SESSION_OPTIONS);
     const decoder = async (dir: string, name: LayaModelName): Promise<Decoder> => ({
-      ...buildModelRows(dir, name),
+      ...buildModelRows(dir, name, questions[name]),
       session: await ort.InferenceSession.create(join(dir, 'decoder.onnx'), SESSION_OPTIONS),
     });
     return new LayaSessions(vision, {
@@ -104,7 +113,8 @@ export class LayaSessions {
     return this.decoders.new !== null;
   }
 
-  async answerFile(file: string): Promise<{ answers: LayaAnswers; seconds: LayaSeconds }> {
+  /** Answers what `want` asks for (everything by default); the image is encoded once either way. */
+  async answerFile(file: string, want: LayaAnswerWant = {}): Promise<{ answers: LayaAnswers; seconds: LayaSeconds }> {
     const t = [performance.now()];
     const pv = await loadLayaPixelValues(file);
     t.push(performance.now());
@@ -113,9 +123,9 @@ export class LayaSessions {
     });
     const feats = out.image_features!;
     t.push(performance.now());
-    const base = await this.answerAll(this.decoders.base, feats);
+    const base = await this.answerAll(this.decoders.base, feats, want.base);
     t.push(performance.now());
-    const neu = this.decoders.new ? await this.answerAll(this.decoders.new, feats) : null;
+    const neu = this.decoders.new && want.new !== false ? await this.answerAll(this.decoders.new, feats) : null;
     t.push(performance.now());
     const s = (i: number) => (t[i + 1]! - t[i]!) / 1000;
     return {
@@ -124,9 +134,12 @@ export class LayaSessions {
     };
   }
 
-  private async answerAll(d: Decoder, feats: ort.Tensor): Promise<LayaModelAnswers> {
+  private async answerAll(d: Decoder, feats: ort.Tensor, only?: readonly string[]): Promise<LayaModelAnswers> {
     const out: LayaModelAnswers = {};
-    for (const row of d.rows) out[row.qid] = await this.answerRow(d, row, feats);
+    const wanted = only ? new Set(only) : null;
+    for (const row of d.rows) {
+      if (!wanted || wanted.has(row.qid)) out[row.qid] = await this.answerRow(d, row, feats);
+    }
     return out;
   }
 

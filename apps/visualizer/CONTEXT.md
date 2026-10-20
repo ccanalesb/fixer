@@ -27,6 +27,13 @@ The visualizer is the web product that surfaces library data to the user. It con
 | **response helpers** | `utils/responses.ts` — `errorNotFound`, `errorBadRequest`, `successPaginated`, etc. Always use these for consistent JSON shapes. |
 | **WebSocket / SocketIO** | Real-time job progress pushed from backend to frontend via socket.io + socket.io-client. |
 | **perspective** | Named scoring lens shown in the UI (matches the library concept). |
+| **cull** | The local stage between the void-frame filter and kimi: every photo goes through each culling recipe, then the Score forecast; a photo either one cuts is not described or scored automatically. Runs Laya (ADR-0020); job `batch_cull_photos_before_scoring`. |
+| **culling recipe** | Questions on dimensions (e.g. point of tension, connotation), each answered on levels lowest first, in one or more **level sets** (recipe 7H47: 7 and 10 levels), plus a rule — when a dimension fails or is strong, when a level set cuts (all listed fail / N or more fail unless one is strong / the average fails), and with several sets whether every one or any must cut. Seeded from `prompts/culling-recipes/`, edited in the app like a perspective. Its text is versioned; its rule is not. |
+| **Score forecast** | The second stage: Laya new's probability that the AI score is 8 or more on a perspective; cuts when the highest is below the pipeline setting's threshold (0.111). Off when Laya new is not set up. Never call it a score in the UI — the bigger model's output is the "AI score". |
+| **stage** | One thing Laya answers per photo: a culling recipe at one level set, or the Score forecast. A **stage version** changes with the model or the text asked (question, level text or count); answers are stored per stage version and old versions stay as history. |
+| **pipeline setting** | Which culling recipes run, a snapshot of their rules, and the Score forecast threshold; versioned in `library.db`. A rule or threshold change is a new pipeline-setting version, re-decided from stored answers without a model call. |
+| **cull verdict** | The per-photo summary jobs and the UI read (`cull_verdicts`): `cut` (by the culling recipe or the Score forecast), `sent`, or `pending` (a stage still unanswered — never sent). A recipe never cuts on a level set it has no answer for. |
+| **manually cull** (sent by hand) | The user sends a cut photo on: it is described and scored, and never cut automatically again, across every version. Shown as the "Manually cull" badge. Recorded in `cull_user_actions` with the other two cull actions, "agrees with the cut" and "should have been cut", each with the verdict it answered. |
 | **model-scoped re-do** (`redo_unless_model`) | A batch describe/score mode that regenerates every eligible image *except* those whose current row was produced by the named target model, which it preserves. Lets a model-swap backlog run over many throttled cycles without redoing the target model's own finished work. Overrides blanket `force`. |
 | **identity** | Photographer style fingerprint and suggestions page (`IdentityPage.tsx`). Catalog-only candidate pool ([#218](https://github.com/ccanalesb/lightroom-tagger/issues/218)); Advisor `high_score_unposted` / `eligible_unposted` key off manually set `instagram_posted` (see [#205](https://github.com/ccanalesb/lightroom-tagger/issues/205)). |
 | **description search** | Keyword filter on the Images page (`CatalogTab` / `description_search` → FTS5 over `image_descriptions`); not the retired chat Search page. |
@@ -64,8 +71,9 @@ Paths are relative to `apps/visualizer/backend/src/`.
 | `api/schemas/` | zod request/response models, one module per group |
 | `websocket/` | SocketIO event handlers |
 | `utils/responses.ts` | Shared JSON response helpers |
-| `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check` |
+| `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check`, `cull-import` |
 | `laya/` | Laya base and Laya new (the cull's local models) through ONNX in a worker thread; files from `scripts/laya/export_onnx.py` in the git-ignored `models/`. See ADR-0020 |
+| `cull/` | The cull's decisions (`decide.ts`, pure), stages and their versions (`stages.ts`), one photo stored and decided (`persist.ts`), the research-run import. Storage in `db/library/cull-*.ts`; the job in `jobs/handlers/cull.ts` |
 | `lightroom/` | `.lrcat` reader, keyword writer and the catalog sync driver |
 | `imaging/`, `vision/`, `providers/`, `analyzer/`, `identity/`, `clip/` | The library layer: RAW decode, CLIP, phash, vision calls, scoring, identity |
 

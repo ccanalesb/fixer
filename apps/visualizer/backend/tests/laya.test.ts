@@ -3,7 +3,8 @@
  * Parity against the exported models is `laya-parity.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadLibraryConfig } from '../src/config.js';
@@ -11,7 +12,8 @@ import { run } from '../src/cli/main.js';
 import { LAYA_SETUP_COMMAND, LayaSetupError, resolveLayaModelFiles } from '../src/laya/files.js';
 import { rescaleToMaxLen, thumbnailSize } from '../src/laya/image.js';
 import { buildRow, renderOptions, softmax, tempBucket, type LayaModelMeta } from '../src/laya/rows.js';
-import { LAYA_QUESTIONS } from '../src/laya/sessions.js';
+import { LAYA_QUESTIONS } from '../src/laya/questions.js';
+import { layaBaseModelId, layaNewModelId } from '../src/laya/model-id.js';
 
 describe('image sizes', () => {
   // [width, height, thumbnail w, h, Idefics3 resize w, h], from PIL 12.3 and transformers 5.17.
@@ -173,5 +175,28 @@ describe('model files', () => {
     const cfg = join(dir, 'config.yaml');
     writeFileSync(cfg, 'laya_models_dir: /somewhere/laya\n');
     expect(loadLibraryConfig(cfg).layaModelsDir).toBe('/somewhere/laya');
+  });
+});
+
+describe('model ids', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'lt-laya-id-'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('names Laya base by its Hugging Face revision', () => {
+    writeFileSync(join(dir, 'model.json'), JSON.stringify({ source: 'thaitea/laya-vision', revision: 'abc' }));
+    expect(layaBaseModelId(dir)).toBe('thaitea/laya-vision@abc');
+  });
+
+  it('names Laya new by its decoder’s SHA-256, kept beside it until the file changes', async () => {
+    writeFileSync(join(dir, 'decoder.onnx'), 'one');
+    const first = await layaNewModelId(dir);
+    expect(first).toBe(`laya-new@sha256:${createHash('sha256').update('one').digest('hex')}`);
+    expect(existsSync(join(dir, 'decoder.onnx.sha256.json'))).toBe(true);
+    expect(await layaNewModelId(dir)).toBe(first);
+    writeFileSync(join(dir, 'decoder.onnx'), 'two, longer');
+    expect(await layaNewModelId(dir)).not.toBe(first);
   });
 });

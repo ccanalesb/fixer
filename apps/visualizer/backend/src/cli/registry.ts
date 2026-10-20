@@ -6,7 +6,7 @@
 import type { LibraryConfig } from '../config.js';
 import type { FlagSpec, ParsedArgs } from './parse.js';
 import { cmdScan, cmdSync } from './commands/catalog.js';
-import { cmdCullCheck } from './commands/cull.js';
+import { cmdCullCheck, cmdCullImport } from './commands/cull.js';
 import { cmdEnrichCatalog } from './commands/enrich.js';
 import { cmdInit } from './commands/init.js';
 import { cmdExport, cmdSearch, cmdStats } from './commands/query.js';
@@ -133,5 +133,17 @@ export const COMMANDS: readonly CliCommand[] = [
     help: 'Check that Laya is set up for the cull: files, load, one test photo',
     flags: [{ name: 'photo', kind: 'string', help: 'Also answer this photo and print the probabilities' }],
     handler: cmdCullCheck,
+  },
+  {
+    name: 'cull-import',
+    help: 'Import the research cull runs as the first stored cull answers',
+    flags: [
+      DB_FLAG,
+      { name: 'laya-new', kind: 'string', help: 'Laya new on the catalog: laya_new_catalog.jsonl' },
+      { name: 'recipe', kind: 'string', help: 'Recipe 7H47 on Laya base: laya_cull_catalog_all.jsonl' },
+      { name: 'laya-new-model-id', kind: 'string', help: 'Name Laya new by hand instead of by its export' },
+      { name: 'dry-run', kind: 'boolean', help: 'Report what would be imported, write nothing' },
+    ],
+    handler: cmdCullImport,
   },
 ];

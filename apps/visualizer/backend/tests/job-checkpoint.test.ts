@@ -12,7 +12,6 @@ import {
   buildBatchEmbedImageCheckpointBody,
   buildBatchScoreCheckpointBody,
   buildBatchStackDetectCheckpointBody,
-  canonicalJson,
   fingerprintBatchDescribe,
   fingerprintBatchEmbedImage,
   fingerprintBatchScore,
@@ -22,6 +21,8 @@ import {
   persistAnalyzeStageCheckpoint,
   readAnalyzeCheckpoint,
 } from '../src/jobs/checkpoint.js';
+import { canonicalJson } from '../src/utils/canonical-json.js';
+import { CHECKPOINT_MAX_ENTRIES, buildBatchCullCheckpointBody } from '../src/jobs/checkpoint.js';
 
 const MISMATCH = 'checkpoint mismatch: batch_describe fingerprint changed, starting fresh';
 
@@ -461,3 +462,20 @@ describe('buildBatchStackDetectCheckpointBody', () => {
     });
   });
 });
+
+describe('buildBatchCullCheckpointBody', () => {
+  it('caps failed_keys and says so', () => {
+    const failed = new Set(Array.from({ length: CHECKPOINT_MAX_ENTRIES + 2 }, (_, i) => `k${String(i).padStart(7, '0')}`));
+    const lines: string[] = [];
+    const body = buildBatchCullCheckpointBody({
+      fingerprint: 'f',
+      state: { doneByStage: { s: 3 }, failed, totalAtStart: null },
+      totalAtStart: 9,
+      log: (m) => lines.push(m),
+    });
+    expect((body.failed_keys as string[]).length).toBe(CHECKPOINT_MAX_ENTRIES);
+    expect(body).toMatchObject({ done_by_stage: { s: 3 }, total_at_start: 9 });
+    expect(lines).toEqual([`checkpoint: ${failed.size} failed photos, keeping the first ${CHECKPOINT_MAX_ENTRIES}`]);
+  });
+});
+
