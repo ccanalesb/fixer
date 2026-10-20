@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import * as sqliteVec from 'sqlite-vec';
 import { serializeFloat32 } from '../../src/db/connection.js';
 import { createLibrarySchema } from '../../src/db/library/bootstrap.js';
-import { nowIsoLocal } from '../../src/utils/datetime.js';
+import { nowIsoLocal, nowIsoUtc } from '../../src/utils/datetime.js';
 
 export interface PerspectiveSeed {
   slug: string;
@@ -261,9 +261,9 @@ export class LibraryFixture {
   addFrameSubstance(imageKey: string, verdict: 'void' | 'illegible' | 'ok' | 'unknown'): this {
     const db = this.open();
     db.prepare(
-      `INSERT INTO image_frame_substance (image_key, verdict, detector_version, run_id)
-       VALUES (?, ?, 'test', 1)`,
-    ).run(imageKey, verdict);
+      `INSERT INTO image_frame_substance (image_key, verdict, detector_version, judged_at, run_id)
+       VALUES (?, ?, 'test', ?, 1)`,
+    ).run(imageKey, verdict, nowIsoUtc());
     db.close();
     return this;
   }

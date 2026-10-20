@@ -407,7 +407,7 @@ describe('the batch_frame_substance handler', () => {
 });
 
 describe('storedInstantMs', () => {
-  it('reads an offset, Z, and no offset as local wall-clock', () => {
+  it('reads an offset and Z; without one, SQLite datetime() as UTC and a T as local wall-clock', () => {
     const tz = process.env.TZ;
     process.env.TZ = 'America/New_York';
     try {
@@ -416,7 +416,7 @@ describe('storedInstantMs', () => {
       expect(storedInstantMs('2026-10-20T21:14:52.219Z')).toBe(utc);
       expect(storedInstantMs('2026-10-20T17:14:52.219000-04:00')).toBe(utc);
       expect(storedInstantMs('2026-10-20T17:14:52.219000')).toBe(utc);
-      expect(storedInstantMs('2026-10-20 17:14:52')).toBe(utc - 219);
+      expect(storedInstantMs('2026-10-20 21:14:52')).toBe(utc - 219);
     } finally {
       if (tz === undefined) delete process.env.TZ;
       else process.env.TZ = tz;
