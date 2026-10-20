@@ -33,8 +33,8 @@ export async function handleBatchRedecideCullVerdicts(
             `duration_s=${result.durations_s.redecide}`,
         );
         try {
-          const { reconcileLrWriteback } = await import('../../lightroom/writeback.js');
-          await reconcileLrWriteback(db, { trigger: 'redecide_complete' });
+          const { enqueueLrWritebackIfEnabled } = await import('./lr-writeback.js');
+          enqueueLrWritebackIfEnabled(db);
         } catch (e) {
           runner.log(
             jobId,

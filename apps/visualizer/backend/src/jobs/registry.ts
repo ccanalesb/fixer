@@ -22,6 +22,7 @@ import {
 } from './handlers/describe.js';
 import { BATCH_EMBED_IMAGE_CHECKPOINT_MISMATCH, handleBatchEmbedImage } from './handlers/embed.js';
 import { handleBatchFrameSubstance } from './handlers/frame-substance.js';
+import { LR_WRITEBACK_JOB_TYPE, handleLrWriteback } from './handlers/lr-writeback.js';
 import {
   BATCH_REDECIDE_JOB_TYPE,
   handleBatchRedecideCullVerdicts,
@@ -128,6 +129,12 @@ export const JOB_TYPES: readonly JobType[] = [
   {
     name: BATCH_REDECIDE_JOB_TYPE,
     handler: handleBatchRedecideCullVerdicts,
+    requiresCatalog: true,
+    checkpointMismatchMessage: null,
+  },
+  {
+    name: LR_WRITEBACK_JOB_TYPE,
+    handler: handleLrWriteback,
     requiresCatalog: true,
     checkpointMismatchMessage: null,
   },

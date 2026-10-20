@@ -1,5 +1,5 @@
 /**
- * write-pending via HTTP must persist lr_writeback_state.status=written when the
+ * Switch-on job / reconcile must persist lr_writeback_state.status=written when the
  * catalog already holds the app reject/stars (idempotent re-run).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -16,9 +16,12 @@ import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
-import { markEligiblePending } from '../src/lightroom/writeback.js';
+import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
+import { LR_WRITEBACK_JOB_TYPE } from '../src/jobs/handlers/lr-writeback.js';
+import { JobRunner } from '../src/jobs/runner.js';
+import { tick } from '../src/jobs/processor.js';
+import { reconcileLrWriteback } from '../src/lightroom/writeback.js';
 import {
-  AUTO_REJECT_KEYWORD,
   AUTO_STARS_KEYWORD,
   connectCatalog,
   imageHasKeywordByKey,
@@ -34,6 +37,7 @@ let fx: LibraryFixture;
 let dir: string;
 let cfgPath: string;
 let lrcatPath: string;
+let jobsDbPath: string;
 const imageKey = '2024-06-01_cut-photo';
 const starsKey = '2024-06-01_star-photo';
 const MODEL_IDS = { base: 'test-laya-base', new: 'test-laya-new' };
@@ -80,12 +84,23 @@ function seedStarsEligible(db: ReturnType<typeof openLibraryDb>, imageKey: strin
   });
 }
 
+async function runWritebackJob(): Promise<string> {
+  const jobsDb = initJobsDb(jobsDbPath);
+  const jobId = createJob(jobsDb, LR_WRITEBACK_JOB_TYPE, {});
+  await tick(jobsDb, new JobRunner(jobsDb));
+  expect(getJob(jobsDb, jobId)!.status).toBe('completed');
+  jobsDb.close();
+  return jobId;
+}
+
 beforeEach(() => {
   fx = new LibraryFixture().activate();
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-rst-'));
   cfgPath = join(dir, 'config.yaml');
   lrcatPath = join(dir, 'Test.lrcat');
+  jobsDbPath = join(dir, 'visualizer.db');
   process.env.LT_CONFIG_YAML = cfgPath;
+  process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(cfgPath, stringifyYaml({ workers: 4, catalog_path: lrcatPath }));
   makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: null }]);
   const db = openLibraryDb(fx.dbPath);
@@ -111,10 +126,11 @@ beforeEach(() => {
 afterEach(() => {
   fx.cleanup();
   delete process.env.LT_CONFIG_YAML;
+  delete process.env.DATABASE_PATH;
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('POST write-pending state', () => {
+describe('switch job reject state', () => {
   it('sets written after catalog already has reject from a prior write with skipped state', async () => {
     const conn = connectCatalog(lrcatPath);
     writeRejectToCatalog(conn, imageKey);
@@ -133,8 +149,7 @@ describe('POST write-pending state', () => {
     });
     db.close();
 
-    const res = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
-    expect(res.status).toBe(200);
+    await runWritebackJob();
 
     const state = fx.query<{ status: string }>(
       "SELECT status FROM lr_writeback_state WHERE image_key = ? AND kind = 'reject'",
@@ -174,6 +189,13 @@ describe('POST write-pending state', () => {
     });
     expect(res.status).toBe(200);
 
+    const jobsDb = initJobsDb(jobsDbPath);
+    const runner = new JobRunner(jobsDb);
+    for (let i = 0; i < 5; i += 1) {
+      await tick(jobsDb, runner);
+    }
+    jobsDb.close();
+
     const cat = connectCatalog(lrcatPath);
     const live = cat
       .prepare(
@@ -185,7 +207,7 @@ describe('POST write-pending state', () => {
   });
 });
 
-describe('POST write-pending stars state', () => {
+describe('switch job stars state', () => {
   beforeEach(() => {
     try {
       unlinkSync(lrcatPath);
@@ -211,7 +233,6 @@ describe('POST write-pending stars state', () => {
       runId: null,
     });
     seedStarsEligible(db, starsKey, 1);
-    markEligiblePending(db, 'stars');
     db.close();
   });
 
@@ -233,8 +254,7 @@ describe('POST write-pending stars state', () => {
     });
     db.close();
 
-    const res = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
-    expect(res.status).toBe(200);
+    await runWritebackJob();
 
     const state = fx.query<{ status: string }>(
       "SELECT status FROM lr_writeback_state WHERE image_key = ? AND kind = 'stars'",
@@ -248,8 +268,7 @@ describe('POST write-pending stars state', () => {
   });
 
   it('undo restores null rating and removes keyword', async () => {
-    const res = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
-    expect(res.status).toBe(200);
+    await runWritebackJob();
 
     const undo = await app.request(`/api/cull/lightroom-writeback/photos/${starsKey}/undo`, {
       method: 'POST',
@@ -269,13 +288,23 @@ describe('POST write-pending stars state', () => {
     conn.close();
   });
 
-  it('second write-pending does not update catalog again (ruling 9)', async () => {
-    const first = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
-    const firstBody = (await first.json()) as { stars: { catalog_updated?: number } };
-    expect(firstBody.stars.catalog_updated).toBeGreaterThan(0);
+  it('second reconcile run does not update catalog again (ruling 9)', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    const first = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    expect(first.catalog_updated_stars).toBeGreaterThan(0);
+    const second = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    expect(second.catalog_updated_stars ?? 0).toBe(0);
+    db.close();
+  });
+});
 
-    const second = await app.request('/api/cull/lightroom-writeback/write-pending', { method: 'POST' });
-    const secondBody = (await second.json()) as { stars: { catalog_updated?: number } };
-    expect(secondBody.stars.catalog_updated ?? 0).toBe(0);
+describe('locked catalog', () => {
+  it('writes nothing when catalog is locked', async () => {
+    writeFileSync(join(dir, 'Test.lrcat-lock'), '');
+    const db = openLibraryDb(fx.dbPath);
+    patchLrWritebackSettings(db, { write_reject: true });
+    const result = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    expect(result.catalog_updated_reject).toBe(0);
+    db.close();
   });
 });

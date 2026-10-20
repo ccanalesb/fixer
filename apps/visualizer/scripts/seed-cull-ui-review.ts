@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { catalogBaseNameFromImageKey } from '../backend/src/lightroom/writer.js';
 import { makeFakeCatalog } from '../backend/tests/helpers/fake-catalog.js';
 import { patchLrWritebackSettings } from '../backend/src/db/library/lr-writeback-settings.js';
-import { markEligiblePending } from '../backend/src/lightroom/writeback.js';
+import { reconcileLrWriteback } from '../backend/src/lightroom/writeback.js';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { resolveCurrentStages } from '../backend/src/cull/stages.js';
@@ -402,8 +402,6 @@ makeFakeCatalog(
   })),
 );
 patchLrWritebackSettings(db, { write_stars: true, write_reject: true });
-markEligiblePending(db, 'reject');
-markEligiblePending(db, 'stars');
 if (process.env.LT_CONFIG_YAML) {
   writeFileSync(
     process.env.LT_CONFIG_YAML,
@@ -413,7 +411,9 @@ if (process.env.LT_CONFIG_YAML) {
     ),
   );
 }
-
-db.close();
-console.log(`Seeded ${libPath} with ${files.length} photos from prototype`);
-console.log(`Temp catalog: ${lrcatPath}`);
+// A path that is not the configured catalog: rows are marked pending, nothing is written.
+void reconcileLrWriteback(db, { trigger: 'job', catalogPath: join(tmpRoot, 'no-write.lrcat') }).then(() => {
+  db.close();
+  console.log(`Seeded ${libPath} with ${files.length} photos from prototype`);
+  console.log(`Temp catalog: ${lrcatPath}`);
+});

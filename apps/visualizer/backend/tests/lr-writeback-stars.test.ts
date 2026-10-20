@@ -61,6 +61,14 @@ describe('countStrongDimensions', () => {
     }
   });
 
+  it('counts strong when answers use dimension slugs (stored job shape)', () => {
+    const qidAnswers = answers('7', 'a', 5);
+    const byStage = {
+      'culling_recipe:recipe:7': { a: qidAnswers['7|a']! },
+    };
+    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: '7' }, byStage, 'recipe')).toBe(1);
+  });
+
   it('counts strong at 7-level set only', () => {
     const byStage = {
       'culling_recipe:recipe:7': merge(

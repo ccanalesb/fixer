@@ -282,8 +282,8 @@ export async function runCullPass(
   );
   if (ctx.settle === 'stage') return result;
   try {
-    const { reconcileLrWriteback } = await import('../../lightroom/writeback.js');
-    await reconcileLrWriteback(db, { trigger: 'cull_job_complete' });
+    const { enqueueLrWritebackIfEnabled } = await import('./lr-writeback.js');
+    enqueueLrWritebackIfEnabled(db);
   } catch (e) {
     log(`lightroom write-back after cull: ${e instanceof Error ? e.message : String(e)}`, 'warning');
   }

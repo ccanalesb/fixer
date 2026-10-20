@@ -1,14 +1,9 @@
 /**
- * Lightroom write-back settings, write-pending, and per-photo detail (#341).
+ * Lightroom write-back settings and per-photo detail (#341).
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { config, loadLibraryConfig } from '../config.js';
-import {
-  buildWritebackPhotoDetail,
-  markEligiblePending,
-  reconcileLrWriteback,
-  undoWritebackKind,
-} from '../lightroom/writeback.js';
+import { buildWritebackPhotoDetail, undoWritebackKind } from '../lightroom/writeback.js';
 import type { WritebackKind } from '../lightroom/writeback-types.js';
 import { countWritebackByStatus } from '../db/library/lr-writeback-state.js';
 import {
@@ -17,8 +12,16 @@ import {
   getLrWritebackSettings,
   patchLrWritebackSettings,
 } from '../db/library/lr-writeback-settings.js';
+import { getJob, initJobsDb } from '../db/jobs/jobs.js';
+import {
+  cancelActiveLrWritebackJobs,
+  enqueueLrWritebackWrite,
+  findActiveLrWritebackJob,
+} from '../jobs/handlers/lr-writeback.js';
+import { compactJobPayload } from './schemas/jobs.js';
 import { describeLrCatalogWriteStatus } from '../utils/lr-catalog-write.js';
 import { HttpError } from '../utils/responses.js';
+import { emitJobEvent } from '../websocket/events.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
@@ -27,12 +30,21 @@ import {
   LrWritebackPhotoDetailSchema,
   LrWritebackSettingsPatchSchema,
   LrWritebackSettingsSchema,
-  LrWritebackWritePendingResponse,
+  LrWritebackWriteResponse,
 } from './schemas/lr-writeback.js';
 
 export const lrWritebackRoutes = createOpenApiApp<LibraryEnv>();
 
 lrWritebackRoutes.use('/cull/lightroom-writeback/*', libraryDb({ write: true }));
+
+function withJobsDb<T>(fn: (db: import('../db/connection.js').Db) => T): T {
+  const db = initJobsDb(config.VISUALIZER_DB);
+  try {
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
 
 function settingsPayload(db: import('../db/connection.js').Db) {
   const settings = getLrWritebackSettings(db);
@@ -81,45 +93,47 @@ lrWritebackRoutes.openapi(patchSettingsRoute, (c) => {
   const db = c.get('libraryDb');
   const body = c.req.valid('json');
   const before = getLrWritebackSettings(db);
+
+  const turningStarsOff = body.write_stars === false && before.write_stars;
+  const turningRejectOff = body.write_reject === false && before.write_reject;
+  const turningAnyOff = turningStarsOff || turningRejectOff;
+
   patchLrWritebackSettings(db, body);
-  const after = getLrWritebackSettings(db);
-  if (!before.write_stars && after.write_stars) markEligiblePending(db, 'stars');
-  if (!before.write_reject && after.write_reject) markEligiblePending(db, 'reject');
+
+  if (turningAnyOff) {
+    withJobsDb((jobsDb) => cancelActiveLrWritebackJobs(jobsDb));
+  }
+
   return c.json(settingsPayload(db), 200);
 });
 
-const writePendingRoute = createRoute({
+const writeRoute = createRoute({
   method: 'post',
-  path: '/cull/lightroom-writeback/write-pending',
+  path: '/cull/lightroom-writeback/write',
   tags: ['cull'],
   responses: withValidationError({
-    200: { description: 'Write pending result', content: jsonBody(LrWritebackWritePendingResponse) },
-    400: { description: 'Catalog locked', content: jsonBody(ErrorBody) },
+    200: { description: 'Write-back job enqueued', content: jsonBody(LrWritebackWriteResponse) },
   }),
 });
 
-lrWritebackRoutes.openapi(writePendingRoute, async (c) => {
+lrWritebackRoutes.openapi(writeRoute, (c) => {
   const db = c.get('libraryDb');
-  const status = describeLrCatalogWriteStatus();
-  if (!status.available) {
-    throw new HttpError(400, status.reason ?? 'Lightroom catalog unavailable.');
+  const settings = getLrWritebackSettings(db);
+  if (!settings.write_stars && !settings.write_reject) {
+    throw new HttpError(400, 'Enable at least one write-back switch first.');
   }
-  const result = await reconcileLrWriteback(db, { trigger: 'write_pending' });
-  return c.json(
-    {
-      stars: {
-        pending: result.stars.pending,
-        written: result.stars.written,
-        catalog_updated: result.catalog_updated_stars,
-      },
-      reject: {
-        pending: result.reject.pending,
-        written: result.reject.written,
-        catalog_updated: result.catalog_updated_reject,
-      },
-    },
-    200,
-  );
+  const jobId = withJobsDb((jobsDb) => {
+    const hadActive = Boolean(findActiveLrWritebackJob(jobsDb));
+    const id = enqueueLrWritebackWrite(jobsDb);
+    if (!hadActive) {
+      const job = getJob(jobsDb, id);
+      if (job) {
+        emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
+      }
+    }
+    return id;
+  });
+  return c.json({ job_id: jobId }, 200);
 });
 
 const photoDetailRoute = createRoute({

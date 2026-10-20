@@ -105,7 +105,7 @@ export function planRejectPhoto(
 
   if (row?.status === 'written' && liveMatchesWritten('reject', live, row)) return null;
 
-  if (!canWrite || !conn || trigger === 'switch_on') {
+  if (!canWrite || !conn) {
     return {
       image_key: imageKey,
       kind: 'reject',
