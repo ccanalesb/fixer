@@ -4,10 +4,12 @@ import {
   CULL_AGREED,
   CULL_DETAIL_SECTION,
   CULL_MANUALLY_CULL_NOTE,
+  CULL_PASS_HINT,
+  CULL_PASS_NO,
+  CULL_PASS_QUESTION,
+  CULL_PASS_YES,
   CULL_PASSED,
   CULL_SCORE_FORECAST,
-  CULL_SHOULD_HAVE_BEEN_CUT,
-  CULL_SHOULD_HAVE_BEEN_CUT_MARKED,
 } from '../../constants/strings'
 import { levelHighlightClass } from './cullHighlight'
 import { rowSendButtonLabel } from './sendLabel'
@@ -72,11 +74,13 @@ export function CullDetailSection({
   onSend,
 }: {
   detail: CullReviewDetail
-  onAction: (action: 'agrees_with_cut' | 'should_have_been_cut') => void
+  onAction: (action: 'agrees_with_cut' | 'should_have_been_cut' | 'agrees_with_pass') => void
   onSend: () => void
 }) {
   const agreed = detail.user_actions.some((a) => a.action === 'agrees_with_cut')
-  const markedShouldHaveBeenCut = detail.user_actions.some((a) => a.action === 'should_have_been_cut')
+  const passAnswer = detail.user_actions
+    .filter((a) => a.action === 'agrees_with_pass' || a.action === 'should_have_been_cut')
+    .at(-1)?.action
   const sentByHand = detail.sent_by_hand
   const sendLabel = rowSendButtonLabel({
     completion: detail.completion,
@@ -101,15 +105,30 @@ export function CullDetailSection({
             </div>
           ) : null}
           <ScoreForecast forecast={detail.score_forecast} boldTop />
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={markedShouldHaveBeenCut}
-            onClick={() => onAction('should_have_been_cut')}
-          >
-            {markedShouldHaveBeenCut ? CULL_SHOULD_HAVE_BEEN_CUT_MARKED : CULL_SHOULD_HAVE_BEEN_CUT}
-          </Button>
+          <div>
+            <p className="text-sm text-text-secondary mb-2">{CULL_PASS_QUESTION}</p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ['agrees_with_pass', CULL_PASS_YES],
+                  ['should_have_been_cut', CULL_PASS_NO],
+                ] as const
+              ).map(([action, label]) => (
+                <Button
+                  key={action}
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  aria-pressed={passAnswer === action}
+                  className={passAnswer === action ? '!border-accent !text-accent !bg-accent-light' : ''}
+                  onClick={() => passAnswer !== action && onAction(action)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-text-tertiary mt-2">{CULL_PASS_HINT}</p>
+          </div>
         </>
       ) : (
         <>

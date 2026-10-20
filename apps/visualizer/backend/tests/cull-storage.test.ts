@@ -75,7 +75,7 @@ const tables = (d: Db) =>
 describe('migration and seed', () => {
   it('a fresh library has every cull table, recipe 7H47 and the default pipeline setting', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
-    expect(LIBRARY_SCHEMA_VERSION).toBe(12);
+    expect(LIBRARY_SCHEMA_VERSION).toBe(13);
     expect(tables(db)).toEqual(CULL_TABLES);
     const recipe = getCullRecipe(db, 'recipe-7h47')!;
     expect(recipe).toMatchObject({ name: 'Recipe 7H47', model: 'laya-base', active: true, measured: true });
@@ -107,7 +107,7 @@ describe('migration and seed', () => {
 
     db = openLibraryDb(join(dir, 'library.db'));
     upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(12);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
     expect(tables(db)).toEqual(CULL_TABLES);
     expect(listCullRecipes(db).map((r) => r.slug)).toEqual(['recipe-7h47']);
 
@@ -115,6 +115,39 @@ describe('migration and seed', () => {
     expect(seedCullingDefaults(db)).toBe(false);
     upgradeLibrarySchema(db);
     expect(listCullRecipes(db)).toEqual([]);
+  });
+
+  it('upgrades a version 12 library: keeps the stored actions and accepts agrees_with_pass', () => {
+    recordCullUserAction(db, 'a', 'should_have_been_cut', '2026-10-19T10:00:00+00:00');
+    db.exec(`
+      ALTER TABLE cull_user_actions RENAME TO cull_user_actions_new;
+      CREATE TABLE cull_user_actions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          image_key TEXT NOT NULL,
+          action TEXT NOT NULL
+              CHECK (action IN ('sent_by_hand','agrees_with_cut','should_have_been_cut')),
+          acted_at TEXT NOT NULL,
+          answered_verdict TEXT NOT NULL,
+          answered_cut_by TEXT,
+          answered_pipeline_setting_version INTEGER,
+          answered_stage_version_ids TEXT NOT NULL DEFAULT '[]'
+      );
+      INSERT INTO cull_user_actions SELECT * FROM cull_user_actions_new;
+      DROP TABLE cull_user_actions_new;
+    `);
+    db.pragma('user_version = 12');
+    expect(() => recordCullUserAction(db, 'a', 'agrees_with_pass')).toThrow();
+    db.close();
+
+    db = openLibraryDb(join(dir, 'library.db'));
+    upgradeLibrarySchema(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
+    expect(listCullUserActions(db, 'a').map((r) => r.action)).toEqual(['should_have_been_cut']);
+    recordCullUserAction(db, 'a', 'agrees_with_pass', '2026-10-19T11:00:00+00:00');
+    expect(listCullUserActions(db, 'a').map((r) => r.action)).toEqual(['should_have_been_cut', 'agrees_with_pass']);
+    expect(
+      db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_cull_user_actions_image'").get(),
+    ).toBeDefined();
   });
 
   it('is not marked seeded until a pipeline setting exists', () => {

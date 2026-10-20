@@ -684,8 +684,10 @@ export const CULL_DETAIL_SECTION = 'Culling'
 export const CULL_MANUALLY_CULL = 'Manually cull'
 export const CULL_MANUALLY_CULL_NOTE =
   'Manually cull — never cut automatically again.'
-export const CULL_SHOULD_HAVE_BEEN_CUT = 'Should have been cut'
-export const CULL_SHOULD_HAVE_BEEN_CUT_MARKED = 'Marked: should have been cut'
+export const CULL_PASS_QUESTION = 'Did the cull get this right?'
+export const CULL_PASS_YES = 'Yes, keep it'
+export const CULL_PASS_NO = "No, it shouldn't have passed"
+export const CULL_PASS_HINT = 'Your answer only tunes the recipes. The photo stays where it is.'
 export const CULL_PASSED = 'Passed the cull'
 export const CULL_RECIPES_SECTION = 'Culling recipes'
 export const CULL_ADD_RECIPE = 'Add recipe'

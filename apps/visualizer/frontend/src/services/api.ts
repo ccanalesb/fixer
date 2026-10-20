@@ -886,7 +886,10 @@ export const CullAPI = {
   },
   photoDetail: (imageKey: string) =>
     request<CullReviewDetail>(`/cull/photos/${encodeURIComponent(imageKey)}`),
-  recordAction: (imageKey: string, action: 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut') =>
+  recordAction: (
+    imageKey: string,
+    action: 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut' | 'agrees_with_pass',
+  ) =>
     request<{ ok: boolean }>(`/cull/photos/${encodeURIComponent(imageKey)}/actions`, {
       method: 'POST',
       body: JSON.stringify({ action }),

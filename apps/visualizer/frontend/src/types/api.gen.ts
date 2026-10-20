@@ -2798,7 +2798,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                        action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut" | "agrees_with_pass";
                     };
                 };
             };
@@ -2814,7 +2814,7 @@ export interface paths {
                             ok: true;
                             verdict: string;
                             /** @enum {string} */
-                            user_action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                            user_action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut" | "agrees_with_pass";
                         };
                     };
                 };
@@ -5289,7 +5289,7 @@ export interface components {
             }[];
             user_actions: {
                 /** @enum {string} */
-                action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut" | "agrees_with_pass";
                 acted_at: string;
             }[];
             /** @enum {string} */

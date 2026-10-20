@@ -1,5 +1,6 @@
 /**
- * What the user said about a cull verdict: sent by hand, agrees with the cut, should have been cut.
+ * What the user said about a cull verdict: sent by hand, agrees with the cut, should have been cut,
+ * agrees with the pass. The latest of the last two is the user's answer on a passed photo.
  * Append-only, each with the summary it answered — the labels a future retraining reads.
  *
  * Sent by hand sticks across stage and pipeline versions: the history, not the summary, is the
@@ -10,7 +11,7 @@ import type { Db } from '../connection.js';
 import { getCullVerdict } from './cull-verdicts.js';
 import { libraryWrite } from './write.js';
 
-export type CullUserAction = 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut';
+export type CullUserAction = 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut' | 'agrees_with_pass';
 
 export interface CullUserActionRow {
   id: number;
