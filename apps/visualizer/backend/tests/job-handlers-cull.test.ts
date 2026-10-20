@@ -450,4 +450,53 @@ describe('batch_cull_photos_before_scoring', () => {
     await runCull();
     expect(laya.calls.map((x) => x.file.split('/').at(-1))).toEqual(['d.jpg', 'b.jpg', 'a.jpg', 'c.jpg']);
   });
+
+  async function cullCheckpoint(failedKeys: string[], totalAtStart: number, pipelineSettingVersion = 1) {
+    const stages = fx.query<{ stage_key: string; id: number }>('SELECT stage_key, id FROM cull_stage_versions WHERE is_current = 1');
+    const { fingerprintBatchCull } = await import('../src/jobs/checkpoint.js');
+    const fingerprint = await fingerprintBatchCull({
+      stageVersions: Object.fromEntries(stages.map((st) => [st.stage_key, st.id])),
+      pipelineSettingVersion,
+      imageKeys: null,
+      resolvedMonths: null,
+      resolvedYear: null,
+      minRating: null,
+    });
+    return {
+      checkpoint_version: 1,
+      job_type: 'batch_cull_photos_before_scoring',
+      fingerprint,
+      done_by_stage: {},
+      failed_keys: failedKeys,
+      total_at_start: totalAtStart,
+    };
+  }
+
+  it('a resumed run keeps the checkpoint’s total at start', async () => {
+    await addPhoto('a', PASS);
+    await addPhoto('b', PASS);
+    await runCull();
+    const lib = openLibraryDb(fx.dbPath);
+    createPipelineSettingVersion(lib, getCurrentPipelineSetting(lib).config);
+    lib.close();
+    laya.dieOn = 'a';
+    fx.exec("DELETE FROM cull_stage_answers WHERE image_key = 'a'");
+    const job = await runCull({ checkpoint: await cullCheckpoint(['b'], 7, 2) });
+    expect(job.status).toBe('failed');
+    expect(job.metadata.checkpoint).toMatchObject({ total_at_start: 7, failed_keys: ['a', 'b'] });
+  });
+
+  it('a photo skipped on resume counts as sent by hand past a cut, from what is stored', async () => {
+    await addPhoto('b', RECIPE_CUT);
+    await runCull();
+    const lib = openLibraryDb(fx.dbPath);
+    recordCullUserAction(lib, 'b', 'sent_by_hand');
+    createPipelineSettingVersion(lib, getCurrentPipelineSetting(lib).config);
+    lib.close();
+    laya.calls = [];
+    const job = await runCull({ checkpoint: await cullCheckpoint(['b'], 1, 2) });
+    expect(laya.calls).toEqual([]);
+    expect(result(job)).toMatchObject({ failed: 1, sent: 1, sent_by_hand_passed: 1 });
+  });
 });
+

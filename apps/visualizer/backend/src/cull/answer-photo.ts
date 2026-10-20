@@ -14,7 +14,7 @@ import { resolveFilepath } from '../utils/path-resolve.js';
 import { resolveVisionImage } from '../vision/vision-cache.js';
 import { requiredStages } from './decide.js';
 import { imageSignature } from './image-signature.js';
-import { decideAndStorePhoto, type CullContext } from './persist.js';
+import { decideAndStorePhoto, WORKER_DIED_REASON, type CullContext } from './persist.js';
 import { layaWant, stageAnswersFromLaya } from './stages.js';
 import type { PhotoDecision, PipelineSettingConfig, ResolvedStage, StageAnswers } from './types.js';
 
@@ -24,9 +24,6 @@ export interface LayaAnswerer {
   /** The worker died: every later answer fails too. */
   readonly broken: boolean;
 }
-
-/** Pending reason of a photo the worker died on: the next fresh job asks it last. */
-export const WORKER_DIED_REASON = 'laya_worker_died';
 
 /** Whether a stage is answered even on a photo an earlier stage already cut. */
 export function runsAfterCut(cfg: PipelineSettingConfig, stage: ResolvedStage): boolean {

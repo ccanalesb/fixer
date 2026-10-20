@@ -216,18 +216,25 @@ export function fingerprintBatchCull(args: {
 export interface CullResumeState {
   doneByStage: Record<string, number>;
   failed: Set<string>;
+  /** From the checkpoint a run resumed from; null on a fresh run. */
+  totalAtStart: number | null;
 }
 
 export function buildBatchCullCheckpointBody(args: {
   fingerprint: string;
   state: CullResumeState;
   totalAtStart: number;
+  log?: (message: string) => void;
 }): Record<string, unknown> {
+  const failed = [...args.state.failed].sort();
+  if (failed.length > CHECKPOINT_MAX_ENTRIES) {
+    args.log?.(`checkpoint: ${failed.length} failed photos, keeping the first ${CHECKPOINT_MAX_ENTRIES}`);
+  }
   return {
     job_type: 'batch_cull_photos_before_scoring',
     fingerprint: args.fingerprint,
     done_by_stage: { ...args.state.doneByStage },
-    failed_keys: [...args.state.failed].sort().slice(0, CHECKPOINT_MAX_ENTRIES),
+    failed_keys: failed.slice(0, CHECKPOINT_MAX_ENTRIES),
     total_at_start: args.totalAtStart,
   };
 }
@@ -239,7 +246,7 @@ export function loadCullResumeState(args: {
   mismatchMessage: string;
   log: (message: string) => void;
 }): CullResumeState {
-  const empty: CullResumeState = { doneByStage: {}, failed: new Set() };
+  const empty: CullResumeState = { doneByStage: {}, failed: new Set(), totalAtStart: null };
   const body = checkpointBody(args.metadata, 'batch_cull_photos_before_scoring');
   if (body === null) return empty;
   if (body['fingerprint'] !== args.fingerprint) {
@@ -253,6 +260,7 @@ export function loadCullResumeState(args: {
       Object.entries(done).map(([stage, n]) => [stage, typeof n === 'number' ? n : 0]),
     ),
     failed: new Set(Array.isArray(failed) ? failed.map((k) => String(k)) : []),
+    totalAtStart: typeof body['total_at_start'] === 'number' ? body['total_at_start'] : null,
   };
 }
 

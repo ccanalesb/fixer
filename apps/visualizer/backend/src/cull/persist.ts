@@ -13,6 +13,12 @@ import { libraryWrite } from '../db/library/write.js';
 import { decidePhoto } from './decide.js';
 import type { PhotoDecision, ResolvedStage, StageAnswers } from './types.js';
 
+/**
+ * Pending reason of a photo the Laya worker died on. Kept whatever the verdict (a photo sent by hand
+ * is `sent` and still killed the worker), so the next fresh job asks it last.
+ */
+export const WORKER_DIED_REASON = 'laya_worker_died';
+
 /** Everything a decision depends on, resolved once per run. */
 export interface CullContext {
   stages: ResolvedStage[];
@@ -87,7 +93,8 @@ export function decideAndStorePhoto(db: Db, ctx: CullContext, args: StorePhotoAr
       cutByStageKey: decision.cutByStageKey,
       sentByHand: args.sentByHand,
       pendingStages: decision.pendingStages,
-      pendingReason: decision.verdict === 'pending' ? (args.pendingReason ?? '') : '',
+      pendingReason:
+        decision.verdict === 'pending' || args.pendingReason === WORKER_DIED_REASON ? (args.pendingReason ?? '') : '',
       scoreForecastOff: !ctx.scoreForecastAvailable || !ctx.pipeline.config.score_forecast.enabled,
       scoreForecastP8: decision.scoreForecastP8,
       pipelineSettingVersion: ctx.pipeline.version,

@@ -5,8 +5,8 @@
 import type { Db } from '../db/connection.js';
 import { loadAnsweredStageKeys, loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { loadCullVerdictStamps } from '../db/library/cull-verdicts.js';
-import { missingStages, runsAfterCut, WORKER_DIED_REASON } from './answer-photo.js';
-import { stageVersionIds, type CullContext } from './persist.js';
+import { missingStages, runsAfterCut } from './answer-photo.js';
+import { stageVersionIds, WORKER_DIED_REASON, type CullContext } from './persist.js';
 
 const sameIds = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
@@ -25,12 +25,17 @@ export function selectPhotosToCull(db: Db, ctx: CullContext, keys: readonly stri
   const stamps = loadCullVerdictStamps(db);
   const currentIds = stageVersionIds(ctx);
 
-  const needsAnswers = (key: string): boolean => {
+  const missingAny = (key: string): boolean => {
     const has = answered.get(key);
-    if (!active.some((s) => !has?.has(s.stageKey))) return false;
+    return active.some((s) => !has?.has(s.stageKey));
+  };
+  // A stage switched off for cut photos may be missing on purpose: read those photos' answers, in bulk.
+  const toCheck = everyStageRuns ? [] : keys.filter(missingAny);
+  const storedAnswers = loadCurrentStageAnswers(db, ctx.stages, toCheck);
+  const needsAnswers = (key: string): boolean => {
+    if (!missingAny(key)) return false;
     if (everyStageRuns) return true;
-    const stored = loadCurrentStageAnswers(db, ctx.stages, [key]).get(key) ?? {};
-    return missingStages(ctx, stored, false).length > 0;
+    return missingStages(ctx, storedAnswers.get(key) ?? {}, false).length > 0;
   };
 
   const work: string[] = [];

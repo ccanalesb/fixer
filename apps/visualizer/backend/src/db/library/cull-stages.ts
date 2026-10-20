@@ -128,7 +128,10 @@ export function updateStageDecision(
   ).run(verdict, JSON.stringify(decision), pipelineSettingVersion, nowIsoUtc(), imageKey, stageVersionId);
 }
 
-/** Answers under the current versions of `stages`, by photo and then stage key. */
+/** Photos per query: well under SQLite's bound-parameter limit. */
+const KEYS_PER_QUERY = 500;
+
+/** Answers under the current versions of `stages`, by photo and then stage key; one query per 500 photos. */
 export function loadCurrentStageAnswers(
   db: Db,
   stages: readonly ResolvedStage[],
@@ -137,13 +140,17 @@ export function loadCurrentStageAnswers(
   const out = new Map<string, Record<string, StageAnswers>>();
   if (stages.length === 0 || imageKeys.length === 0) return out;
   const keyByVersion = new Map(stages.map((s) => [s.versionId, s.stageKey]));
-  const stmt = db.prepare(
-    `SELECT image_key, stage_version_id, answers_json FROM cull_stage_answers
-     WHERE image_key = ? AND stage_version_id IN (${stages.map(() => '?').join(',')})`,
-  );
   const ids = stages.map((s) => s.versionId);
-  for (const key of imageKeys) {
-    for (const r of stmt.all(key, ...ids) as { image_key: string; stage_version_id: number; answers_json: string }[]) {
+  for (let i = 0; i < imageKeys.length; i += KEYS_PER_QUERY) {
+    const chunk = imageKeys.slice(i, i + KEYS_PER_QUERY);
+    const rows = db
+      .prepare(
+        `SELECT image_key, stage_version_id, answers_json FROM cull_stage_answers
+         WHERE image_key IN (${chunk.map(() => '?').join(',')})
+           AND stage_version_id IN (${ids.map(() => '?').join(',')})`,
+      )
+      .all(...chunk, ...ids) as { image_key: string; stage_version_id: number; answers_json: string }[];
+    for (const r of rows) {
       const byStage = out.get(r.image_key) ?? {};
       byStage[keyByVersion.get(r.stage_version_id)!] = JSON.parse(r.answers_json) as StageAnswers;
       out.set(r.image_key, byStage);

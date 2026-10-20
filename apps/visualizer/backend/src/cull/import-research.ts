@@ -155,19 +155,17 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
     for (const [qid, a] of Object.entries(line.answers)) p.recipe[qid] = a.probabilities;
     if (line.copied_from) p.recipeFrom.push(line.copied_from);
   }
-  // Photos with an incomplete answer somewhere: counted once, however many lines or level sets.
+  // Photos with an incomplete answer kept nowhere complete: counted once, however many lines or sets.
   const partial = new Set<string>();
   for (const line of layaNewFile.rows) {
     const p = photo(line.key, line.image);
     const answers = layaNewAnswers(line);
-    if (!answers) {
-      partial.add(line.key);
-      continue;
-    }
+    if (!answers) continue;
     p.layaNew = answers;
     p.layaNewFrom = [line.from, line.fix, line.why].filter(Boolean).join(' / ');
   }
 
+  for (const line of layaNewFile.rows) if (!photos.get(line.key)!.layaNew) partial.add(line.key);
   const inLibrary = new Set((db.prepare('SELECT key FROM images').all() as { key: string }[]).map((r) => r.key));
   const missing = [...photos.keys()].filter((k) => !inLibrary.has(k));
   const result: ResearchImportResult = {

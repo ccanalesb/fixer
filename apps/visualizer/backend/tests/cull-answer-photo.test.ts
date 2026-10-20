@@ -164,6 +164,13 @@ describe('selectPhotosToCull', () => {
     expect(selectPhotosToCull(db, context((c) => c), ['a'])).toEqual(['a']);
   });
 
+  it('puts a sent-by-hand photo the worker died on last too', async () => {
+    const ctx = context();
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 5, 5], { fail: 'worker' }), { imageKey: 'died', sentByHand: true, runId, resolveImage: image });
+    expect(getCullVerdict(db, 'died')).toMatchObject({ verdict: 'sent', pending_reason: 'laya_worker_died' });
+    expect(selectPhotosToCull(db, ctx, ['died', 'b'])).toEqual(['b', 'died']);
+  });
+
   it('puts photos the worker died on last', async () => {
     const ctx = context();
     await cullPhoto(db, ctx, fakeLaya([5, 5, 5, 5], { fail: 'worker' }), { imageKey: 'died', sentByHand: false, runId, resolveImage: image });

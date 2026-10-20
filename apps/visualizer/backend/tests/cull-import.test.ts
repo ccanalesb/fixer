@@ -144,7 +144,10 @@ describe('cull-import', () => {
     appendFileSync(layaNewPath, JSON.stringify(partialLine) + '\n' + JSON.stringify(partialLine) + '\n');
     const r = await importAll();
     expect(r.inserted['score_forecast']).toBe(4);
-    expect(r.partial).toBe(1);
+    // fx-001 still has its complete answer, so it is not counted as incomplete.
+    expect(r.partial).toBe(0);
+    appendFileSync(layaNewPath, JSON.stringify({ ...partialLine, key: 'fx-new-partial' }) + '\n');
+    expect((await importAll()).partial).toBe(1);
     expect(verdicts().find((v) => v.image_key === 'fx-001-pass')!.verdict).toBe('sent');
   });
 

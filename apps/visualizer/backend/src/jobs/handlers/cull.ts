@@ -13,6 +13,7 @@
 import { performance } from 'node:perf_hooks';
 import { config, loadLibraryConfig } from '../../config.js';
 import { cullPhoto } from '../../cull/answer-photo.js';
+import { decidePhoto } from '../../cull/decide.js';
 import type { CullContext } from '../../cull/persist.js';
 import { selectPhotosToCull } from '../../cull/select.js';
 import { layaQuestionSet, resolveCurrentStages } from '../../cull/stages.js';
@@ -20,6 +21,7 @@ import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-recipes.js';
+import { loadCurrentStageAnswers } from '../../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
@@ -176,7 +178,8 @@ export async function runCullPass(
             mismatchMessage: BATCH_CULL_CHECKPOINT_MISMATCH,
             log: (m) => runner.log(jobId, 'info', m),
           })
-        : { doneByStage: {}, failed: new Set() };
+        : { doneByStage: {}, failed: new Set(), totalAtStart: null };
+    const totalAtStart = resume.totalAtStart ?? candidates.length;
     const work = candidates.filter((k) => !resume.failed.has(k));
     const selectS = seconds(tSelect);
     progress(3, `Found ${work.length} photos to cull of ${keys.length}`);
@@ -186,7 +189,10 @@ export async function runCullPass(
     );
     const persist = (): void => {
       if (ctx.checkpoint.mode !== 'flat') return;
-      runner.persistCheckpoint(jobId, buildBatchCullCheckpointBody({ fingerprint, state: resume, totalAtStart: candidates.length }));
+      runner.persistCheckpoint(
+        jobId,
+        buildBatchCullCheckpointBody({ fingerprint, state: resume, totalAtStart, log: (m) => log(m, 'warning') }),
+      );
     };
 
     const sentByHand = listSentByHandKeys(db);
@@ -208,12 +214,18 @@ export async function runCullPass(
       else counts.cut_by_score_forecast += 1;
       if (sentByHandOverride) counts.sent_by_hand_passed += 1;
     };
-    // Photos an earlier attempt of this run already failed on: skipped, but still in the counts.
-    for (const key of candidates) {
-      if (!resume.failed.has(key)) continue;
+    // Photos an earlier attempt of this run already failed on: skipped, but still in the counts,
+    // decided from what is stored.
+    const skipped = candidates.filter((k) => resume.failed.has(k));
+    const skippedAnswers = loadCurrentStageAnswers(db, stages, skipped);
+    for (const key of skipped) {
       counts.failed += 1;
-      const v = getCullVerdict(db, key);
-      if (v) tally(v.verdict, v.cut_by, false);
+      const byHand = getCullVerdict(db, key)?.sent_by_hand ?? sentByHand.has(key);
+      const d = decidePhoto(pipeline.config, stages, skippedAnswers.get(key) ?? {}, {
+        sentByHand: byHand,
+        scoreForecastAvailable: cullCtx.scoreForecastAvailable,
+      });
+      tally(d.verdict, d.cutBy, d.sentByHandOverride);
     }
 
     const tCull = performance.now();
