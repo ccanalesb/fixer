@@ -7,8 +7,8 @@ import { buildWritebackPhotoDetail, undoWritebackKind } from '../lightroom/write
 import type { WritebackKind } from '../lightroom/writeback-types.js';
 import { countWritebackByStatus } from '../db/library/lr-writeback-state.js';
 import {
-  activePipelineRecipeSlugs,
-  activePipelineRecipes,
+  activePipelineProfileSlugs,
+  activePipelineProfiles,
   getLrWritebackSettings,
   patchLrWritebackSettings,
 } from '../db/library/lr-writeback-settings.js';
@@ -53,9 +53,9 @@ function settingsPayload(db: import('../db/connection.js').Db) {
   return {
     write_stars: settings.write_stars,
     write_reject: settings.write_reject,
-    stars_recipe_slug: settings.stars_recipe_slug,
-    active_recipe_slugs: activePipelineRecipeSlugs(db),
-    active_recipes: activePipelineRecipes(db),
+    stars_profile_slug: settings.stars_profile_slug,
+    active_profile_slugs: activePipelineProfileSlugs(db),
+    active_profiles: activePipelineProfiles(db),
     catalog_write_available: status.available,
     catalog_write_unavailable_reason: status.reason,
     counts: {

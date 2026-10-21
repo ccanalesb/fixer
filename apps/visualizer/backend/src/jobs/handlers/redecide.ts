@@ -1,5 +1,5 @@
 /**
- * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/recipe rule changes, no Laya.
+ * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/profile rule changes, no Laya.
  */
 import { redecideAllPhotos, RedecideCancelled } from '../../cull/redecide.js';
 import type { Db } from '../../db/connection.js';
@@ -28,8 +28,8 @@ export async function handleBatchRedecideCullVerdicts(
           jobId,
           'info',
           `[redecide] status=complete total=${result.total} changed=${result.changed} ` +
-            `cut_recipe=${result.cut_by_culling_recipe} cut_score_forecast=${result.cut_by_score_forecast} ` +
-            `pending=${result.pending} sent=${result.sent} sent_by_hand_passed=${result.sent_by_hand_passed} ` +
+            `filtered_profile=${result.filtered_by_culling_profile} filtered_score_forecast=${result.filtered_by_score_forecast} ` +
+            `pending=${result.pending} passed=${result.passed} sent_by_hand_passed=${result.sent_by_hand_passed} ` +
             `duration_s=${result.durations_s.redecide}`,
         );
         try {

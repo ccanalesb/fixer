@@ -26,8 +26,8 @@ export function CullDetailSectionLoader({
         await CullAPI.recordAction(imageKey, action)
         refresh()
       }}
-      onWithdrawShouldHaveBeenCut={async () => {
-        await CullAPI.withdrawShouldHaveBeenCut(imageKey)
+      onWithdrawShouldHaveBeenFiltered={async () => {
+        await CullAPI.withdrawShouldHaveBeenFiltered(imageKey)
         refresh()
       }}
       onSend={async () => {

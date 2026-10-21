@@ -107,7 +107,7 @@ describe('token rows', () => {
     expect(p[2]!).toBeGreaterThan(p[1]!);
   });
 
-  it('ships the culling recipe at 7 and 10 levels and Laya new’s five rows', () => {
+  it('ships the culling profile at 7 and 10 levels and Laya new’s five rows', () => {
     const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
     expect(Object.keys(LAYA_QUESTIONS.base)).toEqual([...dims.map((d) => `7|${d}`), ...dims.map((d) => `10|${d}`)]);
     for (const d of dims) {

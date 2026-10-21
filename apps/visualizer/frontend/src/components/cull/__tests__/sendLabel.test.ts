@@ -4,8 +4,8 @@ import { bulkSendButtonLabel, rowSendButtonLabel, sendButtonLabel } from '../sen
 
 describe('CULL_HEADING', () => {
   it('uses singular copy for one photo', () => {
-    expect(CULL_HEADING(1)).toBe('1 photo did not pass the cull')
-    expect(CULL_HEADING(2)).toContain('2 photos')
+    expect(CULL_HEADING(1)).toBe('1 photo filtered')
+    expect(CULL_HEADING(2)).toBe('2 photos filtered')
   })
 })
 

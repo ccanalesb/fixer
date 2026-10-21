@@ -143,7 +143,7 @@ const KEYS_PER_QUERY = 500;
  * Drop condemned frames from a selection that already exists.
  *
  * `selectCatalogKeys`'s `excludeVoidSubstance` does the same thing in SQL, and is
- * what a standalone `batch_score` uses. The cull step before describe and score
+ * what a standalone `batch_score` uses. The culling step before describe and score
  * cannot: the verdicts it filters on are written by its own frame-substance pass,
  * after the selection was made. Void frames are neither described nor scored.
  *
@@ -175,27 +175,27 @@ export function filterVoidSubstanceFromScoringSelection(
 
 /** Photos of a selection not sent to kimi because of their cull verdict, by reason. */
 export interface CullHeldBack {
-  cut_by_culling_recipe: number;
-  cut_by_score_forecast: number;
+  filtered_by_culling_profile: number;
+  filtered_by_score_forecast: number;
   /** A stage still unanswered (Laya failed on it, or no image to read): retried by the next job. */
   pending: number;
-  /** Never culled: only when the cull step could not reach the photo. */
+  /** Never culled: only when the culling step could not reach the photo. */
   no_verdict: number;
 }
 
 /**
- * Keep only the photos the cull sent on: verdict `sent`, or sent by hand whatever the verdict.
+ * Keep only the photos culling passed: verdict `passed`, or sent by hand whatever the verdict.
  *
- * Reads the summary rows as they are — the cull step before describe and score has just made them
+ * Reads the summary rows as they are — the culling step before describe and score has just made them
  * current for every photo in scope. `sentByHandKept` names the kept photos the user sent by hand, so
- * the step can count the ones the stages alone would have cut.
+ * the step can count the ones the stages alone would have filtered.
  */
-export function filterCutPhotosFromDescribeAndScoringSelection<T extends readonly [string, string]>(
+export function dropFilteredPhotosFromDescribeAndScoringSelection<T extends readonly [string, string]>(
   db: Db,
   selection: readonly T[],
 ): { kept: T[]; heldBack: CullHeldBack; sentByHandKept: string[] } {
   const verdicts = loadCullVerdictsForKeys(db, [...new Set(selection.map(([k]) => k))]);
-  const heldBack: CullHeldBack = { cut_by_culling_recipe: 0, cut_by_score_forecast: 0, pending: 0, no_verdict: 0 };
+  const heldBack: CullHeldBack = { filtered_by_culling_profile: 0, filtered_by_score_forecast: 0, pending: 0, no_verdict: 0 };
   const kept: T[] = [];
   const sentByHandKept: string[] = [];
   for (const pair of selection) {
@@ -203,11 +203,11 @@ export function filterCutPhotosFromDescribeAndScoringSelection<T extends readonl
     if (v?.sentByHand) {
       kept.push(pair);
       sentByHandKept.push(pair[0]);
-    } else if (v?.verdict === 'sent') kept.push(pair);
+    } else if (v?.verdict === 'passed') kept.push(pair);
     else if (v === undefined) heldBack.no_verdict += 1;
     else if (v.verdict === 'pending') heldBack.pending += 1;
-    else if (v.cutBy === 'score_forecast') heldBack.cut_by_score_forecast += 1;
-    else heldBack.cut_by_culling_recipe += 1;
+    else if (v.filteredBy === 'score_forecast') heldBack.filtered_by_score_forecast += 1;
+    else heldBack.filtered_by_culling_profile += 1;
   }
   return { kept, heldBack, sentByHandKept };
 }

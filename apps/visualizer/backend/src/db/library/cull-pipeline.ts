@@ -1,5 +1,5 @@
 /**
- * The pipeline setting: which culling recipes run, their rules, and the Score forecast threshold.
+ * The pipeline setting: which culling profiles run, their rules, and the Score forecast threshold.
  * Versioned; exactly one version is current, and every summary row names the version that decided it.
  */
 import { parsePipelineSetting } from '../../cull/default-pipeline.js';
@@ -17,7 +17,7 @@ export function getCurrentPipelineSetting(db: Db): PipelineSetting {
   const row = db
     .prepare('SELECT version, config_json FROM cull_pipeline_settings WHERE is_current = 1')
     .get() as { version: number; config_json: string } | undefined;
-  if (!row) throw new Error('library.db has no cull pipeline setting; the cull defaults were never seeded');
+  if (!row) throw new Error('library.db has no cull pipeline setting; culling defaults were never seeded');
   return { version: row.version, config: parsePipelineSetting(JSON.parse(row.config_json)) };
 }
 

@@ -7,9 +7,9 @@ import {
   ratingFromStrongCount,
   type StarsStrongFrom,
 } from '../src/lightroom/writeback-stars.js';
-import type { RecipeDefinition, RecipeRule, StageAnswers } from '../src/cull/types.js';
+import type { ProfileDefinition, ProfileRule, StageAnswers } from '../src/cull/types.js';
 
-const definition: RecipeDefinition = {
+const definition: ProfileDefinition = {
   dimensions: [
     { slug: 'a', name: 'A', question: 'Q' },
     { slug: 'b', name: 'B', question: 'Q' },
@@ -21,13 +21,13 @@ const definition: RecipeDefinition = {
   ],
 };
 
-const rule: RecipeRule = {
+const rule: ProfileRule = {
   level_sets: {
     '7': { fails_at_most: 2, strong_at_least: 6 },
     '10': { fails_at_most: 3, strong_at_least: 8 },
   },
   combine: 'every',
-  cut_rule: { type: 'all_fail', dimensions: ['a'] },
+  filter_rule: { type: 'all_fail', dimensions: ['a'] },
   stars_strong_from: 'every',
 };
 
@@ -57,51 +57,51 @@ describe('countStrongDimensions', () => {
 
   it('returns 0 when answers are missing', () => {
     for (const mode of modes) {
-      expect(countStrongDimensions(definition, { ...rule, stars_strong_from: mode }, {}, 'recipe')).toBe(0);
+      expect(countStrongDimensions(definition, { ...rule, stars_strong_from: mode }, {}, 'profile')).toBe(0);
     }
   });
 
   it('counts strong when answers use dimension slugs (stored job shape)', () => {
     const qidAnswers = answers('7', 'a', 5);
     const byStage = {
-      'culling_recipe:recipe:7': { a: qidAnswers['7|a']! },
+      'culling_profile:profile:7': { a: qidAnswers['7|a']! },
     };
-    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: '7' }, byStage, 'recipe')).toBe(1);
+    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: '7' }, byStage, 'profile')).toBe(1);
   });
 
   it('counts strong at 7-level set only', () => {
     const byStage = {
-      'culling_recipe:recipe:7': merge(
+      'culling_profile:profile:7': merge(
         answers('7', 'a', 5),
         answers('7', 'b', 5),
         answers('7', 'c', 0),
       ),
     };
-    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: '7' }, byStage, 'recipe')).toBe(2);
+    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: '7' }, byStage, 'profile')).toBe(2);
   });
 
   it('counts strong at 10-level set only', () => {
     const byStage = {
-      'culling_recipe:recipe:10': merge(answers('10', 'a', 9), answers('10', 'b', 0), answers('10', 'c', 9)),
+      'culling_profile:profile:10': merge(answers('10', 'a', 9), answers('10', 'b', 0), answers('10', 'c', 9)),
     };
-    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: '10' }, byStage, 'recipe')).toBe(2);
+    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: '10' }, byStage, 'profile')).toBe(2);
   });
 
   it('every requires strong in all level sets per dimension', () => {
     const byStage = {
-      'culling_recipe:recipe:7': merge(answers('7', 'a', 6), answers('7', 'b', 6)),
-      'culling_recipe:recipe:10': merge(answers('10', 'a', 6), answers('10', 'b', 6)),
+      'culling_profile:profile:7': merge(answers('7', 'a', 6), answers('7', 'b', 6)),
+      'culling_profile:profile:10': merge(answers('10', 'a', 6), answers('10', 'b', 6)),
     };
-    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: 'every' }, byStage, 'recipe')).toBe(0);
-    byStage['culling_recipe:recipe:10'] = merge(answers('10', 'a', 9), answers('10', 'b', 9));
-    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: 'every' }, byStage, 'recipe')).toBe(2);
+    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: 'every' }, byStage, 'profile')).toBe(0);
+    byStage['culling_profile:profile:10'] = merge(answers('10', 'a', 9), answers('10', 'b', 9));
+    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: 'every' }, byStage, 'profile')).toBe(2);
   });
 
   it('any requires strong in at least one level set per dimension', () => {
     const byStage = {
-      'culling_recipe:recipe:7': merge(answers('7', 'a', 6), answers('7', 'b', 0)),
-      'culling_recipe:recipe:10': merge(answers('10', 'a', 0), answers('10', 'b', 0)),
+      'culling_profile:profile:7': merge(answers('7', 'a', 6), answers('7', 'b', 0)),
+      'culling_profile:profile:10': merge(answers('10', 'a', 0), answers('10', 'b', 0)),
     };
-    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: 'any' }, byStage, 'recipe')).toBe(1);
+    expect(countStrongDimensions(definition, { ...rule, stars_strong_from: 'any' }, byStage, 'profile')).toBe(1);
   });
 });

@@ -2,10 +2,10 @@ import { countStrongDimensions, ratingFromStrongCount } from './writeback-stars.
 import { resolveCurrentStages } from '../cull/stages.js';
 import type { Db } from '../db/connection.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
-import { getCullRecipe } from '../db/library/cull-recipes.js';
+import { getCullProfile } from '../db/library/cull-profiles.js';
 import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
 import { getWritebackState } from '../db/library/lr-writeback-state.js';
-import { resolveStarsRecipeSlug, type LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
+import { resolveStarsProfileSlug, type LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import {
   AUTO_REJECT_KEYWORD,
   AUTO_STARS_KEYWORD,
@@ -20,7 +20,7 @@ export function buildWritebackPhotoDetail(
   imageKey: string,
   settings: LrWritebackSettings,
 ) {
-  const starsSlug = resolveStarsRecipeSlug(db, settings);
+  const starsSlug = resolveStarsProfileSlug(db, settings);
   const starsRow = getWritebackState(db, imageKey, 'stars');
   const rejectRow = getWritebackState(db, imageKey, 'reject');
 
@@ -37,22 +37,22 @@ export function buildWritebackPhotoDetail(
 
   let strongLine: string | null = null;
   if (starsSlug) {
-    const recipe = getCullRecipe(db, starsSlug);
-    if (recipe) {
+    const profile = getCullProfile(db, starsSlug);
+    if (profile) {
       const modelIds = readStoredLayaModelIds(db);
       const pipe = getCurrentPipelineSetting(db);
       const stages = modelIds
         ? resolveCurrentStages(db, pipe.config, modelIds).filter(
-            (s) => s.recipeSlug === starsSlug && s.kind === 'culling_recipe',
+            (s) => s.profileSlug === starsSlug && s.kind === 'culling_profile',
           )
         : [];
       const answers = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
-      const count = countStrongDimensions(recipe.definition, recipe.rule, answers, starsSlug);
+      const count = countStrongDimensions(profile.definition, profile.rule, answers, starsSlug);
       const rating = ratingFromStrongCount(count);
       strongLine =
         rating === null
-          ? `Strong dimensions (${recipe.name}): none`
-          : `Strong dimensions (${recipe.name}): ${count} strong → ${'★'.repeat(rating)}`;
+          ? `Strong dimensions (${profile.name}): none`
+          : `Strong dimensions (${profile.name}): ${count} strong → ${'★'.repeat(rating)}`;
     }
   }
 

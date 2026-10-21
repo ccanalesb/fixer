@@ -44,7 +44,7 @@ interface ImageDetailModalProps {
   scorePerspectiveSlug?: string
   /** Optional content rendered above the detail body (e.g. Mirror standout). */
   contextSlot?: ReactNode
-  /** When set, loads `/api/cull/photos/{key}` and renders the cull section. */
+  /** When set, loads `/api/cull/photos/{key}` and renders the culling section. */
   showCullSection?: boolean
   /** Prev / next within a cull review or catalog list (ticket 17). */
   cullNav?: {

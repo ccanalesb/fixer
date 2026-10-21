@@ -8,10 +8,10 @@ import {
   newLevelSetProblem,
   removeLevel,
   removeLevelSet,
-  type RecipeDraft,
-} from '../recipeDraft'
+  type ProfileDraft,
+} from '../profileDraft'
 
-const draft: RecipeDraft = {
+const draft: ProfileDraft = {
   definition: {
     dimensions: [
       { slug: 'a', name: 'A', question: 'qa' },
@@ -22,11 +22,11 @@ const draft: RecipeDraft = {
   rule: {
     level_sets: { '3': { fails_at_most: 1, strong_at_least: 3 } },
     combine: 'every',
-    cut_rule: { type: 'mean_fail' },
+    filter_rule: { type: 'mean_fail' },
   },
 }
 
-describe('recipeDraft', () => {
+describe('profileDraft', () => {
   it('inserts a level in every dimension at the given index', () => {
     const next = insertLevel(draft, '3', 1, { a: 'aX', b: 'bX' })
     expect(next.definition.level_sets[0]!.levels).toEqual({ a: ['a1', 'aX', 'a2', 'a3'], b: ['b1', 'bX', 'b2', 'b3'] })

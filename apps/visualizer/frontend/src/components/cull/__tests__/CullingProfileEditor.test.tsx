@@ -1,17 +1,17 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { CullingRecipeEditor } from '../CullingRecipeEditor'
+import { CullingProfileEditor } from '../CullingProfileEditor'
 import { ApiRequestError } from '../../../services/api'
 import {
-  CULL_RECIPE_ADD_LEVEL,
-  CULL_RECIPE_ADD_LEVEL_SET_BUTTON,
-  CULL_RECIPE_ADD_LEVEL_TOP,
-  CULL_RECIPE_CREATE,
-  CULL_RECIPE_QUESTION,
-  CULL_RECIPE_REMOVE,
-  CULL_RECIPE_REMOVE_SET,
-  CULL_RECIPE_TAB_LEVELS,
-  CULL_RECIPE_TEXT_SAVE_IMPACT,
+  CULL_PROFILE_ADD_LEVEL,
+  CULL_PROFILE_ADD_LEVEL_SET_BUTTON,
+  CULL_PROFILE_ADD_LEVEL_TOP,
+  CULL_PROFILE_CREATE,
+  CULL_PROFILE_QUESTION,
+  CULL_PROFILE_REMOVE,
+  CULL_PROFILE_REMOVE_SET,
+  CULL_PROFILE_TAB_LEVELS,
+  CULL_PROFILE_TEXT_SAVE_IMPACT,
   CULL_SAVE,
   CULL_SAVE_ONLY,
 } from '../../../constants/strings'
@@ -24,8 +24,8 @@ vi.mock('../../../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/api')>()
   return {
     ...actual,
-    CullingRecipesAPI: {
-      ...actual.CullingRecipesAPI,
+    CullingProfilesAPI: {
+      ...actual.CullingProfilesAPI,
       saveDefinition: (...args: unknown[]) => saveDefinition(...args),
       saveRule: (...args: unknown[]) => saveRule(...args),
       patch: (...args: unknown[]) => patch(...args),
@@ -34,9 +34,9 @@ vi.mock('../../../services/api', async (importOriginal) => {
   }
 })
 
-const baseRecipe = {
-  slug: 'recipe-7h47',
-  name: 'Recipe 7H47',
+const baseProfile = {
+  slug: 'recipe-culling',
+  name: 'Recipe culling',
   model: 'laya-base',
   active: true,
   measured: true,
@@ -58,21 +58,21 @@ const baseRecipe = {
   rule: {
     level_sets: { '5': { fails_at_most: 2, strong_at_least: 4 } },
     combine: 'any' as const,
-    cut_rule: { type: 'all_fail' as const, dimensions: ['impact'] },
+    filter_rule: { type: 'all_fail' as const, dimensions: ['impact'] },
   },
 }
 
 const editQuestion = () =>
-  fireEvent.change(screen.getAllByLabelText(CULL_RECIPE_QUESTION)[0]!, { target: { value: 'changed' } })
-const openLevels = () => fireEvent.click(screen.getByRole('tab', { name: CULL_RECIPE_TAB_LEVELS }))
+  fireEvent.change(screen.getAllByLabelText(CULL_PROFILE_QUESTION)[0]!, { target: { value: 'changed' } })
+const openLevels = () => fireEvent.click(screen.getByRole('tab', { name: CULL_PROFILE_TAB_LEVELS }))
 
-describe('CullingRecipeEditor', () => {
+describe('CullingProfileEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    patch.mockResolvedValue(baseRecipe)
-    saveRule.mockResolvedValue({ recipe: baseRecipe })
+    patch.mockResolvedValue(baseProfile)
+    saveRule.mockResolvedValue({ profile: baseProfile })
     saveDefinition.mockResolvedValue({
-      recipe: baseRecipe,
+      profile: baseProfile,
       version: 2,
       created: true,
       impact: { photos: 40, hours_estimate: 0.02 },
@@ -81,7 +81,7 @@ describe('CullingRecipeEditor', () => {
   })
 
   it('enables Save only once the text changes and shows the hours impact', async () => {
-    render(<CullingRecipeEditor recipe={baseRecipe} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     expect(screen.getByRole('button', { name: CULL_SAVE_ONLY })).toBeDisabled()
     editQuestion()
     expect(screen.getByRole('button', { name: CULL_SAVE })).toBeDisabled()
@@ -89,14 +89,14 @@ describe('CullingRecipeEditor', () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_ONLY }))
     })
     await waitFor(() => {
-      expect(screen.getByText(CULL_RECIPE_TEXT_SAVE_IMPACT(40, 0.02))).toBeInTheDocument()
+      expect(screen.getByText(CULL_PROFILE_TEXT_SAVE_IMPACT(40, 0.02))).toBeInTheDocument()
     })
     expect(saveDefinition.mock.calls[0]![1]).not.toHaveProperty('rule')
   })
 
   it('surfaces validation_errors on fields', async () => {
     saveDefinition.mockRejectedValue(new ApiRequestError('bad', [{ field: '5|impact', message: 'Too short' }]))
-    render(<CullingRecipeEditor recipe={baseRecipe} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     editQuestion()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_ONLY }))
@@ -107,10 +107,10 @@ describe('CullingRecipeEditor', () => {
   })
 
   it('adds a level only when every dimension has text, then saves it for all dimensions', async () => {
-    render(<CullingRecipeEditor recipe={baseRecipe} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     openLevels()
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_ADD_LEVEL_TOP }))
-    const add = screen.getByRole('button', { name: CULL_RECIPE_ADD_LEVEL })
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_TOP }))
+    const add = screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL })
     expect(add).toBeDisabled()
     const fields = screen.getAllByPlaceholderText('What level 6 looks like')
     fireEvent.change(fields[0]!, { target: { value: 'i6' } })
@@ -123,7 +123,7 @@ describe('CullingRecipeEditor', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_ONLY }))
     })
-    const body = saveDefinition.mock.calls[0]![1] as typeof baseRecipe
+    const body = saveDefinition.mock.calls[0]![1] as typeof baseProfile
     expect(body.definition.level_sets[0]!.levels).toEqual({
       impact: ['i1', 'i2', 'i3', 'i4', 'i5', 'i6'],
       tension: ['t1', 't2', 't3', 't4', 't5', 't6'],
@@ -131,21 +131,21 @@ describe('CullingRecipeEditor', () => {
   })
 
   it('creates a level set named by its count and saves its bands with the definition', async () => {
-    render(<CullingRecipeEditor recipe={baseRecipe} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     openLevels()
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_ADD_LEVEL_SET_BUTTON }))
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_SET_BUTTON }))
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Levels' }), { target: { value: '5' } })
     expect(screen.getByText('There is already a level set 5.')).toBeInTheDocument()
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Levels' }), { target: { value: '3' } })
     fireEvent.change(screen.getByRole('combobox', { name: 'Start from' }), { target: { value: '5' } })
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_CREATE }))
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_CREATE }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Created level set 3 with 3 levels copied from set 5.')
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_ONLY }))
     })
     const body = saveDefinition.mock.calls[0]![1] as {
-      definition: typeof baseRecipe.definition
+      definition: typeof baseProfile.definition
       rule: { level_sets: Record<string, unknown> }
     }
     expect(body.definition.level_sets.map((s) => s.id)).toEqual(['5', '3'])
@@ -153,26 +153,26 @@ describe('CullingRecipeEditor', () => {
   })
 
   it('blocks saving while a new set has empty levels', () => {
-    render(<CullingRecipeEditor recipe={baseRecipe} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     openLevels()
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_ADD_LEVEL_SET_BUTTON }))
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_SET_BUTTON }))
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Levels' }), { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_CREATE }))
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_CREATE }))
     expect(screen.getByText('4 empty level texts — fill them to save.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: CULL_SAVE_ONLY })).toBeDisabled()
   })
 
   it('asks before removing a level set and keeps the last one', () => {
-    render(<CullingRecipeEditor recipe={baseRecipe} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     openLevels()
-    expect(screen.getByRole('button', { name: CULL_RECIPE_REMOVE_SET('5') })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_ADD_LEVEL_SET_BUTTON }))
+    expect(screen.getByRole('button', { name: CULL_PROFILE_REMOVE_SET('5') })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_SET_BUTTON }))
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Levels' }), { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_CREATE }))
-    fireEvent.click(screen.getByRole('button', { name: CULL_RECIPE_REMOVE_SET('2') }))
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_CREATE }))
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_REMOVE_SET('2') }))
     const dialog = screen.getByRole('alertdialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: CULL_RECIPE_REMOVE }))
+    fireEvent.click(within(dialog).getByRole('button', { name: CULL_PROFILE_REMOVE }))
     expect(screen.getByRole('status')).toHaveTextContent('Removed level set 2.')
-    expect(screen.getByRole('button', { name: CULL_RECIPE_REMOVE_SET('5') })).toBeDisabled()
+    expect(screen.getByRole('button', { name: CULL_PROFILE_REMOVE_SET('5') })).toBeDisabled()
   })
 })

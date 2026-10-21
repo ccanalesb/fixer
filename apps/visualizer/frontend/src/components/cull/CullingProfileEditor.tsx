@@ -1,44 +1,44 @@
 import { useState } from 'react'
-import type { CullRecipeDetail } from '../../services/api'
-import { ApiRequestError, CullingRecipesAPI } from '../../services/api'
+import type { CullProfileDetail } from '../../services/api'
+import { ApiRequestError, CullingProfilesAPI } from '../../services/api'
 import { Button } from '../ui/Button'
 import {
   CULL_DUPLICATE,
   CULL_NOT_MEASURED,
-  CULL_RECIPE_ACTIVATE,
-  CULL_RECIPE_DEACTIVATE,
-  CULL_RECIPE_DEFINITION_CHANGED,
-  CULL_RECIPE_NAME,
-  CULL_RECIPE_TAB_DIMENSIONS,
-  CULL_RECIPE_TAB_LEVELS,
-  CULL_RECIPE_TAB_RULE,
-  CULL_RECIPE_TEXT_SAVE_IMPACT,
-  CULL_RECIPE_UNMEASURED_HINT,
+  CULL_PROFILE_ACTIVATE,
+  CULL_PROFILE_DEACTIVATE,
+  CULL_PROFILE_DEFINITION_CHANGED,
+  CULL_PROFILE_NAME,
+  CULL_PROFILE_TAB_DIMENSIONS,
+  CULL_PROFILE_TAB_LEVELS,
+  CULL_PROFILE_TAB_RULE,
+  CULL_PROFILE_TEXT_SAVE_IMPACT,
+  CULL_PROFILE_UNMEASURED_HINT,
   CULL_RULE_SAVE_NOTE,
   CULL_SAVE,
   CULL_SAVE_AND_QUEUE,
   CULL_SAVE_ONLY,
 } from '../../constants/strings'
-import { CullingRecipeDimensionsFields } from './CullingRecipeDimensionsFields'
-import { CullingRecipeLevelsFields } from './CullingRecipeLevelsFields'
-import { CullingRecipeRuleFields } from './CullingRecipeRuleFields'
+import { CullingProfileDimensionsFields } from './CullingProfileDimensionsFields'
+import { CullingProfileLevelsFields } from './CullingProfileLevelsFields'
+import { CullingProfileRuleFields } from './CullingProfileRuleFields'
 import { ScoreForecastThresholdField } from './ScoreForecastThresholdField'
 import { Segmented } from './Segmented'
-import { bandProblems, emptyLevelCount } from './recipeDraft'
+import { bandProblems, emptyLevelCount } from './profileDraft'
 
-type Draft = CullRecipeDetail
+type Draft = CullProfileDetail
 type Tab = 'dimensions' | 'levels' | 'rule'
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
-export function CullingRecipeEditor({
-  recipe,
+export function CullingProfileEditor({
+  profile,
   onRefresh,
 }: {
-  recipe: CullRecipeDetail
+  profile: CullProfileDetail
   onRefresh: () => void
 }) {
-  const [draft, setDraft] = useState(() => structuredClone(recipe) as Draft)
+  const [draft, setDraft] = useState(() => structuredClone(profile) as Draft)
   const [tab, setTab] = useState<Tab>('dimensions')
   const [impact, setImpact] = useState<{ photos: number; hours_estimate: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -51,8 +51,8 @@ export function CullingRecipeEditor({
     setDraft((d) => ({ ...d, rule: fn(d.rule) }))
   }
 
-  const definitionChanged = !same(draft.definition, recipe.definition)
-  const ruleChanged = !same(draft.rule, recipe.rule)
+  const definitionChanged = !same(draft.definition, profile.definition)
+  const ruleChanged = !same(draft.rule, profile.rule)
   const bandsBad = bandProblems(draft).length > 0
   const definitionBlocked = bandsBad || emptyLevelCount(draft) > 0
 
@@ -66,7 +66,7 @@ export function CullingRecipeEditor({
   }
 
   const saveMeta = async () => {
-    await CullingRecipesAPI.patch(draft.slug, { name: draft.name })
+    await CullingProfilesAPI.patch(draft.slug, { name: draft.name })
     onRefresh()
   }
 
@@ -74,7 +74,7 @@ export function CullingRecipeEditor({
     setError(null)
     setFieldErrors({})
     try {
-      await CullingRecipesAPI.saveRule(draft.slug, draft.rule)
+      await CullingProfilesAPI.saveRule(draft.slug, draft.rule)
       onRefresh()
     } catch (e) {
       showErrors(e)
@@ -85,7 +85,7 @@ export function CullingRecipeEditor({
     setError(null)
     setFieldErrors({})
     try {
-      const res = await CullingRecipesAPI.saveDefinition(draft.slug, {
+      const res = await CullingProfilesAPI.saveDefinition(draft.slug, {
         definition: draft.definition,
         ...(ruleChanged ? { rule: draft.rule } : {}),
         mode,
@@ -100,13 +100,13 @@ export function CullingRecipeEditor({
   return (
     <div className="space-y-4 text-sm border border-border rounded-base p-4">
       {!draft.measured ? (
-        <p className="text-warning text-xs">{CULL_NOT_MEASURED}. {CULL_RECIPE_UNMEASURED_HINT}</p>
+        <p className="text-warning text-xs">{CULL_NOT_MEASURED}. {CULL_PROFILE_UNMEASURED_HINT}</p>
       ) : null}
       {error ? <p className="text-error text-xs">{error}</p> : null}
 
       <div>
         <label className="block sm:max-w-md font-medium text-text-secondary">
-          {CULL_RECIPE_NAME}
+          {CULL_PROFILE_NAME}
           <input
             className="mt-1 w-full border border-border rounded-base px-2 py-1 bg-bg text-text font-normal"
             value={draft.name}
@@ -121,26 +121,26 @@ export function CullingRecipeEditor({
 
       <Segmented<Tab>
         asTabs
-        label="Recipe sections"
+        label="Profile sections"
         value={tab}
         onChange={setTab}
         options={[
-          { id: 'dimensions', label: CULL_RECIPE_TAB_DIMENSIONS },
-          { id: 'levels', label: CULL_RECIPE_TAB_LEVELS },
-          { id: 'rule', label: CULL_RECIPE_TAB_RULE },
+          { id: 'dimensions', label: CULL_PROFILE_TAB_DIMENSIONS },
+          { id: 'levels', label: CULL_PROFILE_TAB_LEVELS },
+          { id: 'rule', label: CULL_PROFILE_TAB_RULE },
         ]}
       />
 
       <div role="tabpanel">
         {tab === 'dimensions' ? (
-          <CullingRecipeDimensionsFields draft={draft} setDefinition={setDefinition} fieldErrors={fieldErrors} />
+          <CullingProfileDimensionsFields draft={draft} setDefinition={setDefinition} fieldErrors={fieldErrors} />
         ) : null}
         {tab === 'levels' ? (
-          <CullingRecipeLevelsFields draft={draft} setDraft={setDraft} fieldErrors={fieldErrors} />
+          <CullingProfileLevelsFields draft={draft} setDraft={setDraft} fieldErrors={fieldErrors} />
         ) : null}
         {tab === 'rule' ? (
           <div className="space-y-4">
-            <CullingRecipeRuleFields draft={draft} setRule={setRule} />
+            <CullingProfileRuleFields draft={draft} setRule={setRule} />
             <ScoreForecastThresholdField />
           </div>
         ) : null}
@@ -148,7 +148,7 @@ export function CullingRecipeEditor({
 
       <p className="text-text-secondary text-xs">{CULL_RULE_SAVE_NOTE}</p>
       {impact ? (
-        <p className="text-xs text-warning">{CULL_RECIPE_TEXT_SAVE_IMPACT(impact.photos, impact.hours_estimate)}</p>
+        <p className="text-xs text-warning">{CULL_PROFILE_TEXT_SAVE_IMPACT(impact.photos, impact.hours_estimate)}</p>
       ) : null}
 
       <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
@@ -183,9 +183,9 @@ export function CullingRecipeEditor({
           type="button"
           size="sm"
           variant="secondary"
-          onClick={() => void CullingRecipesAPI.patch(draft.slug, { active: !draft.active }).then(onRefresh)}
+          onClick={() => void CullingProfilesAPI.patch(draft.slug, { active: !draft.active }).then(onRefresh)}
         >
-          {draft.active ? CULL_RECIPE_DEACTIVATE : CULL_RECIPE_ACTIVATE}
+          {draft.active ? CULL_PROFILE_DEACTIVATE : CULL_PROFILE_ACTIVATE}
         </Button>
         <Button
           type="button"
@@ -193,13 +193,13 @@ export function CullingRecipeEditor({
           variant="secondary"
           onClick={() => {
             const newSlug = `${draft.slug}-copy`
-            void CullingRecipesAPI.duplicate(draft.slug, { new_slug: newSlug }).then(onRefresh)
+            void CullingProfilesAPI.duplicate(draft.slug, { new_slug: newSlug }).then(onRefresh)
           }}
         >
           {CULL_DUPLICATE}
         </Button>
       </div>
-      {definitionChanged ? <p className="text-xs text-text-tertiary">{CULL_RECIPE_DEFINITION_CHANGED}</p> : null}
+      {definitionChanged ? <p className="text-xs text-text-tertiary">{CULL_PROFILE_DEFINITION_CHANGED}</p> : null}
     </div>
   )
 }

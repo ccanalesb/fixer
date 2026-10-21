@@ -26,7 +26,7 @@
  *
  * `batch_analyze` — the composite, and the one that is not flat: `stage` names the
  * pass that is running, and `cull` / `describe` / `score` each hold a body of the
- * shape above (cull uses the cull job's checkpoint fields). Two fingerprints rather
+ * shape above (cull uses the culling job's checkpoint fields). Two fingerprints rather
  * than one because the stages are resumable independently — a run interrupted during
  * scoring must not re-describe.
  *
@@ -246,7 +246,7 @@ export function buildBatchCullCheckpointBody(args: {
   };
 }
 
-/** The cull's resume state, or an empty one; logs the mismatch when the fingerprint changed. */
+/** Culling's resume state, or an empty one; logs the mismatch when the fingerprint changed. */
 export function loadCullResumeState(args: {
   metadata: Record<string, unknown>;
   fingerprint: string;
@@ -324,7 +324,7 @@ export function readDescribeScoreCullSubObject(
   return asBody(flat['cull']);
 }
 
-/** Write the cull sub-object into a describe/score flat checkpoint without dropping describe/score progress. */
+/** Write the culling sub-object into a describe/score flat checkpoint without dropping describe/score progress. */
 export function mergeDescribeScoreCullCheckpoint(
   runner: CheckpointWriter,
   jobId: string,

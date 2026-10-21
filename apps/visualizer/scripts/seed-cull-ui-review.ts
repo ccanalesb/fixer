@@ -49,7 +49,7 @@ function levelPick(levelSet: '7' | '10', dim: string, levelIndex: number): Recor
   return { [`${levelSet}|${dim}`]: v };
 }
 
-function recipeAnswers(levelSet: '7' | '10', levelIndex: number): Record<string, number[]> {
+function profileAnswers(levelSet: '7' | '10', levelIndex: number): Record<string, number[]> {
   const out: Record<string, number[]> = {};
   for (const dim of DIMS) {
     Object.assign(out, levelPick(levelSet, dim, levelIndex));
@@ -57,8 +57,8 @@ function recipeAnswers(levelSet: '7' | '10', levelIndex: number): Record<string,
   return out;
 }
 
-/** Strong on `strongDimCount` dimensions (recipe-7h47 bands: level 6+ on 7-set, 8+ on 10-set). */
-function recipeAnswersStrongDims(strongDimCount: number): { seven: Record<string, number[]>; ten: Record<string, number[]> } {
+/** Strong on `strongDimCount` dimensions (recipe-culling bands: level 6+ on 7-set, 8+ on 10-set). */
+function profileAnswersStrongDims(strongDimCount: number): { seven: Record<string, number[]>; ten: Record<string, number[]> } {
   const seven: Record<string, number[]> = {};
   const ten: Record<string, number[]> = {};
   DIMS.forEach((dim, di) => {
@@ -124,10 +124,10 @@ const pipe = getCurrentPipelineSetting(db);
 const layaModelIds = { base: 'laya-base', new: 'laya-new' };
 const stages = resolveCurrentStages(db, pipe.config, layaModelIds);
 const stageByKey = new Map(stages.map((s) => [s.stageKey, s]));
-const recipe7 = stageByKey.get('culling_recipe:recipe-7h47:7');
-const recipe10 = stageByKey.get('culling_recipe:recipe-7h47:10');
+const profile7 = stageByKey.get('culling_profile:recipe-culling:7');
+const profile10 = stageByKey.get('culling_profile:recipe-culling:10');
 const scoreForecast = stageByKey.get('score_forecast');
-if (!recipe7 || !recipe10 || !scoreForecast) throw new Error('Expected cull stages missing');
+if (!profile7 || !profile10 || !scoreForecast) throw new Error('Expected cull stages missing');
 
 const runId = insertCullRun(db, {
   kind: 'job',
@@ -145,8 +145,8 @@ function baseVerdict(
 ): CullVerdictInput {
   return {
     imageKey,
-    cutBy: null,
-    cutByStageKey: null,
+    filteredBy: null,
+    filteredByStageKey: null,
     sentByHand: false,
     pendingStages: [],
     pendingReason: '',
@@ -162,19 +162,19 @@ function baseVerdict(
 function seedStageAnswers(
   imageKey: string,
   opts: {
-    recipeLevel?: number;
+    profileLevel?: number;
     forecastHigh?: boolean;
-    recipe10?: boolean;
+    profile10?: boolean;
     strongDimCount?: number;
   },
 ): void {
   if (opts.strongDimCount !== undefined) {
-    const { seven, ten } = recipeAnswersStrongDims(opts.strongDimCount);
+    const { seven, ten } = profileAnswersStrongDims(opts.strongDimCount);
     upsertStageAnswer(db, {
       imageKey,
-      stageVersionId: recipe7.versionId,
+      stageVersionId: profile7.versionId,
       answers: seven,
-      verdict: 'cut',
+      verdict: 'filtered',
       decision: {},
       pipelineSettingVersion: pipe.version,
       source: 'job',
@@ -182,32 +182,32 @@ function seedStageAnswers(
     });
     upsertStageAnswer(db, {
       imageKey,
-      stageVersionId: recipe10.versionId,
+      stageVersionId: profile10.versionId,
       answers: ten,
-      verdict: 'cut',
+      verdict: 'filtered',
       decision: {},
       pipelineSettingVersion: pipe.version,
       source: 'job',
       runId,
     });
   }
-  if (opts.recipeLevel !== undefined) {
+  if (opts.profileLevel !== undefined) {
     upsertStageAnswer(db, {
       imageKey,
-      stageVersionId: recipe7.versionId,
-      answers: recipeAnswers('7', opts.recipeLevel),
-      verdict: 'cut',
+      stageVersionId: profile7.versionId,
+      answers: profileAnswers('7', opts.profileLevel),
+      verdict: 'filtered',
       decision: {},
       pipelineSettingVersion: pipe.version,
       source: 'job',
       runId,
     });
-    if (opts.recipe10) {
+    if (opts.profile10) {
       upsertStageAnswer(db, {
         imageKey,
-        stageVersionId: recipe10.versionId,
-        answers: recipeAnswers('10', opts.recipeLevel),
-        verdict: 'cut',
+        stageVersionId: profile10.versionId,
+        answers: profileAnswers('10', opts.profileLevel),
+        verdict: 'filtered',
         decision: {},
         pipelineSettingVersion: pipe.version,
         source: 'job',
@@ -220,7 +220,7 @@ function seedStageAnswers(
       imageKey,
       stageVersionId: scoreForecast.versionId,
       answers: forecastAnswers(scoreForecast, opts.forecastHigh),
-      verdict: opts.forecastHigh ? 'sent' : 'cut',
+      verdict: opts.forecastHigh ? 'passed' : 'filtered',
       decision: {},
       pipelineSettingVersion: pipe.version,
       source: 'job',
@@ -232,7 +232,7 @@ function seedStageAnswers(
 files.forEach((file, i) => {
   const key = keyByFile.get(file)!;
   if (i < 3) {
-    upsertCullVerdict(db, baseVerdict(key, { verdict: 'sent' }));
+    upsertCullVerdict(db, baseVerdict(key, { verdict: 'passed' }));
     seedStageAnswers(key, { strongDimCount: i + 1, forecastHigh: true });
     return;
   }
@@ -240,13 +240,13 @@ files.forEach((file, i) => {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: 'culling_recipe',
-        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        verdict: 'filtered',
+        filteredBy: 'culling_profile',
+        filteredByStageKey: 'culling_profile:recipe-culling:7',
         scoreForecastP8: 0.08,
       }),
     );
-    seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false, recipe10: true });
+    seedStageAnswers(key, { profileLevel: 1, forecastHigh: false, profile10: true });
     recordCullUserAction(db, key, 'sent_by_hand');
     return;
   }
@@ -254,42 +254,42 @@ files.forEach((file, i) => {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: 'culling_recipe',
-        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        verdict: 'filtered',
+        filteredBy: 'culling_profile',
+        filteredByStageKey: 'culling_profile:recipe-culling:7',
         scoreForecastP8: 0.15,
         pendingStages: ['score_forecast'],
         pendingReason: 'awaiting forecast',
       }),
     );
-    seedStageAnswers(key, { recipeLevel: 1, recipe10: true });
+    seedStageAnswers(key, { profileLevel: 1, profile10: true });
     return;
   }
   if (i === 5) {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: 'culling_recipe',
-        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        verdict: 'filtered',
+        filteredBy: 'culling_profile',
+        filteredByStageKey: 'culling_profile:recipe-culling:7',
         scoreForecastP8: 0.12,
       }),
     );
-    seedStageAnswers(key, { recipeLevel: 2, forecastHigh: false, recipe10: true });
-    recordCullUserAction(db, key, 'agrees_with_cut');
+    seedStageAnswers(key, { profileLevel: 2, forecastHigh: false, profile10: true });
+    recordCullUserAction(db, key, 'agrees_with_filter');
     return;
   }
   if (i === 11) {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: 'culling_recipe',
-        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        verdict: 'filtered',
+        filteredBy: 'culling_profile',
+        filteredByStageKey: 'culling_profile:recipe-culling:7',
         scoreForecastP8: 0.1,
       }),
     );
-    seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false, recipe10: true });
+    seedStageAnswers(key, { profileLevel: 1, forecastHigh: false, profile10: true });
     return;
   }
   if (i >= 6 && i < 28) {
@@ -297,16 +297,16 @@ files.forEach((file, i) => {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: byForecast ? 'score_forecast' : 'culling_recipe',
-        cutByStageKey: byForecast ? 'score_forecast' : 'culling_recipe:recipe-7h47:7',
+        verdict: 'filtered',
+        filteredBy: byForecast ? 'score_forecast' : 'culling_profile',
+        filteredByStageKey: byForecast ? 'score_forecast' : 'culling_profile:recipe-culling:7',
         scoreForecastP8: byForecast ? 0.06 + (i % 5) * 0.02 : 0.14 + (i % 4) * 0.03,
       }),
     );
     if (byForecast) {
-      seedStageAnswers(key, { recipeLevel: 4, forecastHigh: false, recipe10: i % 3 === 0 });
+      seedStageAnswers(key, { profileLevel: 4, forecastHigh: false, profile10: i % 3 === 0 });
     } else {
-      seedStageAnswers(key, { recipeLevel: i % 2 === 0 ? 1 : 2, forecastHigh: false, recipe10: true });
+      seedStageAnswers(key, { profileLevel: i % 2 === 0 ? 1 : 2, forecastHigh: false, profile10: true });
     }
     return;
   }
@@ -314,26 +314,26 @@ files.forEach((file, i) => {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: 'culling_recipe',
-        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        verdict: 'filtered',
+        filteredBy: 'culling_profile',
+        filteredByStageKey: 'culling_profile:recipe-culling:7',
         scoreForecastP8: 0.09,
       }),
     );
-    seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false });
+    seedStageAnswers(key, { profileLevel: 1, forecastHigh: false });
     return;
   }
   if (i === 29) {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: 'culling_recipe',
-        cutByStageKey: 'culling_recipe:recipe-7h47:7',
+        verdict: 'filtered',
+        filteredBy: 'culling_profile',
+        filteredByStageKey: 'culling_profile:recipe-culling:7',
         scoreForecastP8: 0.11,
       }),
     );
-    seedStageAnswers(key, { recipeLevel: 2, forecastHigh: false });
+    seedStageAnswers(key, { profileLevel: 2, forecastHigh: false });
     const perspectives = db
       .prepare('SELECT slug, prompt_markdown FROM perspectives WHERE active = 1 LIMIT 2')
       .all() as { slug: string; prompt_markdown: string }[];
@@ -353,13 +353,13 @@ files.forEach((file, i) => {
     upsertCullVerdict(
       db,
       baseVerdict(key, {
-        verdict: 'cut',
-        cutBy: 'score_forecast',
-        cutByStageKey: 'score_forecast',
+        verdict: 'filtered',
+        filteredBy: 'score_forecast',
+        filteredByStageKey: 'score_forecast',
         scoreForecastP8: 0.07,
       }),
     );
-    seedStageAnswers(key, { recipeLevel: 3, forecastHigh: false });
+    seedStageAnswers(key, { profileLevel: 3, forecastHigh: false });
     const perspectives = db
       .prepare('SELECT slug, prompt_markdown FROM perspectives WHERE active = 1')
       .all() as { slug: string; prompt_markdown: string }[];
@@ -379,13 +379,13 @@ files.forEach((file, i) => {
   upsertCullVerdict(
     db,
     baseVerdict(key, {
-      verdict: 'cut',
-      cutBy: 'culling_recipe',
-      cutByStageKey: 'culling_recipe:recipe-7h47:7',
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: 'culling_profile:recipe-culling:7',
       scoreForecastP8: 0.05 + (i % 7) * 0.015,
     }),
   );
-  seedStageAnswers(key, { recipeLevel: 1, forecastHigh: false, recipe10: i % 2 === 0 });
+  seedStageAnswers(key, { profileLevel: 1, forecastHigh: false, profile10: i % 2 === 0 });
 });
 
 const lrcatPath = join(tmpRoot, 'review.lrcat');

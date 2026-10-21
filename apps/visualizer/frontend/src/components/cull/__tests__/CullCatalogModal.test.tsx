@@ -79,18 +79,18 @@ describe('Cull catalog modal cull section', () => {
     vi.restoreAllMocks()
   })
 
-  it('asks whether the cull got a passed photo right', async () => {
+  it('asks whether culling got a passed photo right', async () => {
     vi.mocked(CullAPI.photoDetail).mockResolvedValue({
       image_key: KEY,
       filename: 'passed-one.jpg',
-      verdict: 'sent',
+      verdict: 'passed',
       sent_by_hand: false,
       completion: 'none',
       needs_send_work: false,
       score_forecast: [],
-      recipe: { slug: '', name: '', level_sets: [] },
+      profile: { slug: '', name: '', level_sets: [] },
       user_actions: [],
-      cut_by: null,
+      filtered_by: null,
       score_forecast_p8: null,
     })
 
@@ -110,11 +110,11 @@ describe('Cull catalog modal cull section', () => {
     expect(screen.getByText(CULL_PASS_HINT)).toBeInTheDocument()
   })
 
-  it('shows why a passed photo passed: recipe answers and score forecast', async () => {
+  it('shows why a passed photo passed: profile answers and score forecast', async () => {
     vi.mocked(CullAPI.photoDetail).mockResolvedValue({
       image_key: KEY,
       filename: 'passed-one.jpg',
-      verdict: 'sent',
+      verdict: 'passed',
       sent_by_hand: false,
       completion: 'none',
       needs_send_work: true,
@@ -122,9 +122,9 @@ describe('Cull catalog modal cull section', () => {
         { name: 'Natural framing device', p8: 0.1704 },
         { name: 'Clean composition', p8: 0.0208 },
       ],
-      recipe: {
-        slug: 'recipe-7h47',
-        name: 'Recipe 7H47',
+      profile: {
+        slug: 'recipe-culling',
+        name: 'Recipe culling',
         level_sets: [
           {
             id: '10',
@@ -136,7 +136,7 @@ describe('Cull catalog modal cull section', () => {
         ],
       },
       user_actions: [],
-      cut_by: null,
+      filtered_by: null,
       score_forecast_p8: 0.1704,
     })
 
@@ -151,7 +151,7 @@ describe('Cull catalog modal cull section', () => {
     )
 
     await waitFor(() => expect(screen.getByText(CULL_PASSED)).toBeInTheDocument())
-    expect(screen.getByText('Recipe 7H47')).toBeInTheDocument()
+    expect(screen.getByText('Recipe culling')).toBeInTheDocument()
     expect(screen.getByText('10 levels')).toBeInTheDocument()
     expect(screen.getByText('Immediate impact')).toBeInTheDocument()
     expect(screen.getByText(CULL_SCORE_FORECAST)).toBeInTheDocument()
@@ -165,14 +165,14 @@ describe('Cull catalog modal cull section', () => {
     vi.mocked(CullAPI.photoDetail).mockResolvedValue({
       image_key: KEY,
       filename: 'passed-one.jpg',
-      verdict: 'sent',
+      verdict: 'passed',
       sent_by_hand: false,
       completion: 'none',
       needs_send_work: false,
       score_forecast: [],
-      recipe: { slug: '', name: '', level_sets: [] },
-      user_actions: [{ action: 'should_have_been_cut', acted_at: '2026-01-01T00:00:00Z' }],
-      cut_by: null,
+      profile: { slug: '', name: '', level_sets: [] },
+      user_actions: [{ action: 'should_have_been_filtered', acted_at: '2026-01-01T00:00:00Z' }],
+      filtered_by: null,
       score_forecast_p8: null,
     })
 
@@ -191,7 +191,7 @@ describe('Cull catalog modal cull section', () => {
     )
     expect(screen.getByRole('button', { name: CULL_PASS_YES })).toHaveAttribute('aria-pressed', 'false')
 
-    const withdraw = vi.spyOn(CullAPI, 'withdrawShouldHaveBeenCut').mockResolvedValue({ ok: true, removed: 1 })
+    const withdraw = vi.spyOn(CullAPI, 'withdrawShouldHaveBeenFiltered').mockResolvedValue({ ok: true, removed: 1 })
     fireEvent.click(screen.getByRole('button', { name: CULL_PASS_YES }))
     await waitFor(() => expect(withdraw).toHaveBeenCalledWith(KEY))
   })
@@ -200,14 +200,14 @@ describe('Cull catalog modal cull section', () => {
     vi.mocked(CullAPI.photoDetail).mockResolvedValue({
       image_key: KEY,
       filename: 'passed-one.jpg',
-      verdict: 'sent',
+      verdict: 'passed',
       sent_by_hand: true,
       completion: 'none',
       needs_send_work: false,
       score_forecast: [],
-      recipe: { slug: '', name: '', level_sets: [] },
+      profile: { slug: '', name: '', level_sets: [] },
       user_actions: [{ action: 'sent_by_hand', acted_at: '2026-01-01T00:00:00Z' }],
-      cut_by: null,
+      filtered_by: null,
       score_forecast_p8: null,
     })
 

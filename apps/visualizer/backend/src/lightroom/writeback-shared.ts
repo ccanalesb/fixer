@@ -2,7 +2,7 @@ import { countStrongDimensions, ratingFromStrongCount } from './writeback-stars.
 import type { WritebackKind } from './writeback-types.js';
 import { resolveCurrentStages } from '../cull/stages.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
-import { getCullRecipe } from '../db/library/cull-recipes.js';
+import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getCullVerdict, listDecidedCullImageKeys, type CullVerdictRow } from '../db/library/cull-verdicts.js';
 import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
@@ -70,16 +70,16 @@ export function userChangedAfterWrite(kind: WritebackKind, live: LivePickRating,
 export function desiredReject(settings: LrWritebackSettings, verdict: CullVerdictRow | null): boolean {
   if (!settings.write_reject || !verdict) return false;
   if (verdict.sent_by_hand) return false;
-  if (verdict.verdict !== 'cut') return false;
-  return verdict.cut_by === 'culling_recipe';
+  if (verdict.verdict !== 'filtered') return false;
+  return verdict.filtered_by === 'culling_profile';
 }
 
-function stagesForStarsRecipe(db: Db, starsSlug: string) {
+function stagesForStarsProfile(db: Db, starsSlug: string) {
   const modelIds = readStoredLayaModelIds(db);
   if (!modelIds) return [];
   const pipe = getCurrentPipelineSetting(db);
   return resolveCurrentStages(db, pipe.config, modelIds).filter(
-    (s) => s.recipeSlug === starsSlug && s.kind === 'culling_recipe',
+    (s) => s.profileSlug === starsSlug && s.kind === 'culling_profile',
   );
 }
 
@@ -90,11 +90,11 @@ export function desiredStarsRating(
   starsSlug: string | null,
 ): number | null {
   if (!settings.write_stars || !starsSlug) return null;
-  const recipe = getCullRecipe(db, starsSlug);
-  if (!recipe) return null;
-  const stages = stagesForStarsRecipe(db, starsSlug);
+  const profile = getCullProfile(db, starsSlug);
+  if (!profile) return null;
+  const stages = stagesForStarsProfile(db, starsSlug);
   const answersByStage = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
-  const count = countStrongDimensions(recipe.definition, recipe.rule, answersByStage, starsSlug);
+  const count = countStrongDimensions(profile.definition, profile.rule, answersByStage, starsSlug);
   return ratingFromStrongCount(count);
 }
 
@@ -121,7 +121,7 @@ export function syncWrittenFromLiveCatalog(
   desiredRating: number | null,
   desiredReject: boolean,
   live: LivePickRating,
-  starsRecipeVersionId: number | null = null,
+  starsProfileVersionId: number | null = null,
   beforePick: number | null = null,
   beforeRating: number | null = null,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
@@ -135,7 +135,7 @@ export function syncWrittenFromLiveCatalog(
       before_rating: beforeRating,
       written_pick: null,
       written_rating: desiredRating,
-      stars_recipe_version_id: starsRecipeVersionId,
+      stars_profile_version_id: starsProfileVersionId,
       written_at: nowIsoUtc(),
     };
   }
@@ -149,7 +149,7 @@ export function syncWrittenFromLiveCatalog(
       before_rating: null,
       written_pick: -1,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: nowIsoUtc(),
     };
   }
@@ -169,7 +169,7 @@ export function adoptWrittenRejectState(
     before_rating: null,
     written_pick: -1,
     written_rating: null,
-    stars_recipe_version_id: null,
+    stars_profile_version_id: null,
     written_at: row?.written_at ?? nowIsoUtc(),
   };
 }
@@ -177,7 +177,7 @@ export function adoptWrittenRejectState(
 export function adoptWrittenStarsState(
   imageKey: string,
   rating: number,
-  starsRecipeVersionId: number | null,
+  starsProfileVersionId: number | null,
   row: LrWritebackStateRow | null,
 ): Omit<LrWritebackStateRow, 'updated_at'> {
   return {
@@ -188,7 +188,7 @@ export function adoptWrittenStarsState(
     before_rating: row?.before_rating ?? null,
     written_pick: null,
     written_rating: rating,
-    stars_recipe_version_id: starsRecipeVersionId,
+    stars_profile_version_id: starsProfileVersionId,
     written_at: row?.written_at ?? nowIsoUtc(),
   };
 }
@@ -209,7 +209,7 @@ export function notFoundState(
     before_rating: row?.before_rating ?? null,
     written_pick: row?.written_pick ?? null,
     written_rating: row?.written_rating ?? null,
-    stars_recipe_version_id: row?.stars_recipe_version_id ?? null,
+    stars_profile_version_id: row?.stars_profile_version_id ?? null,
     written_at: row?.written_at ?? null,
   };
 }

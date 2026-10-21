@@ -1,12 +1,12 @@
 /**
- * One photo through the cull (`cull/answer-photo.ts`) and the choice of photos to cull
+ * One photo through culling (`cull/answer-photo.ts`) and the choice of photos to cull
  * (`cull/select.ts`), on a temp library and a fake Laya.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { askNow, cullPhoto, runsAfterCut, type LayaAnswerer } from '../src/cull/answer-photo.js';
+import { askNow, cullPhoto, runsAfterFiltered, type LayaAnswerer } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import { selectPhotosToCull } from '../src/cull/select.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
@@ -43,10 +43,10 @@ function context(change?: (cfg: PipelineSettingConfig) => PipelineSettingConfig)
 
 const forecastOffForCut = (cfg: PipelineSettingConfig): PipelineSettingConfig => ({
   ...cfg,
-  score_forecast: { ...cfg.score_forecast, run_after_cut: false },
+  score_forecast: { ...cfg.score_forecast, run_after_filtered: false },
 });
 
-/** A fake Laya: recipe levels per photo on both level sets, P(≥ 8) 0.5. */
+/** A fake Laya: profile levels per photo on both level sets, P(≥ 8) 0.5. */
 function fakeLaya(levels10: number[], opts: { fail?: 'answer' | 'worker' } = {}) {
   const calls: LayaAnswerWant[] = [];
   const at = (l: number, n: number) => Array.from({ length: n }, (_, i) => (i === l - 1 ? 1 : 0));
@@ -76,16 +76,16 @@ const image = async () => '/cache/a.jpg';
 const noImage = async () => null;
 
 describe('which stages to ask now', () => {
-  it('asks everything at once when every stage runs after a cut', () => {
+  it('asks everything at once when every stage runs after a filter', () => {
     const ctx = context();
     expect(askNow(ctx.pipeline.config, ctx.stages).map((s) => s.stageKey)).toEqual(ctx.stages.map((s) => s.stageKey));
   });
 
-  it('holds back a stage switched off for cut photos until the stages before it are answered', () => {
+  it('holds back a stage switched off for filtered photos until the stages before it are answered', () => {
     const ctx = context(forecastOffForCut);
     const forecast = ctx.stages.find((s) => s.kind === 'score_forecast')!;
-    expect(runsAfterCut(ctx.pipeline.config, forecast)).toBe(false);
-    expect(askNow(ctx.pipeline.config, ctx.stages).map((s) => s.kind)).toEqual(['culling_recipe', 'culling_recipe']);
+    expect(runsAfterFiltered(ctx.pipeline.config, forecast)).toBe(false);
+    expect(askNow(ctx.pipeline.config, ctx.stages).map((s) => s.kind)).toEqual(['culling_profile', 'culling_profile']);
     expect(askNow(ctx.pipeline.config, [forecast])).toEqual([forecast]);
   });
 });
@@ -102,7 +102,7 @@ describe('cullPhoto', () => {
     ]);
     expect(r.answeredStages).toHaveLength(3);
     expect(r.seconds).toEqual({ prep: 2, vision: 2, base: 2, new: 2 });
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent' });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed' });
   });
 
   it('re-decides without Laya when nothing is missing', async () => {
@@ -112,18 +112,18 @@ describe('cullPhoto', () => {
     const r = await cullPhoto(db, ctx, laya, { imageKey: 'a', sentByHand: true, runId, resolveImage: image });
     expect(r.outcome).toBe('redecided');
     expect(laya.calls).toEqual([]);
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent', sent_by_hand: true });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed', sent_by_hand: true });
   });
 
   it('forced, asks Laya again though every stage is answered, and stores the new answers', async () => {
     const ctx = context();
     await cullPhoto(db, ctx, fakeLaya([5, 5, 6, 6]), { imageKey: 'a', sentByHand: false, runId, resolveImage: image });
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent' });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed' });
     const laya = fakeLaya([5, 5, 2, 3]);
     const r = await cullPhoto(db, ctx, laya, { imageKey: 'a', sentByHand: false, runId, force: true, resolveImage: image });
     expect(r.outcome).toBe('culled');
     expect(laya.calls).toHaveLength(1);
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'cut', cut_by: 'culling_recipe' });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'filtered', filtered_by: 'culling_profile' });
   });
 
   it('forced with no image: decided from what is stored', async () => {
@@ -137,7 +137,7 @@ describe('cullPhoto', () => {
       resolveImage: noImage,
     });
     expect(r.outcome).toBe('no_image');
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent' });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed' });
   });
 
   it('no image: pending', async () => {
@@ -177,11 +177,11 @@ describe('selectPhotosToCull', () => {
     expect(selectPhotosToCull(db, ctx, ['new', 'done']).keys).toEqual(['new']);
   });
 
-  it('a photo the recipe cut is not selected again for a stage switched off for cut photos', async () => {
+  it('a photo the profile filtered is not selected again for a stage switched off for filtered photos', async () => {
     const ctx = context(forecastOffForCut);
-    await cullPhoto(db, ctx, fakeLaya([5, 5, 2, 3]), { imageKey: 'cut', sentByHand: false, runId, resolveImage: image });
-    expect(getCullVerdict(db, 'cut')).toMatchObject({ verdict: 'cut' });
-    expect(selectPhotosToCull(db, ctx, ['cut']).keys).toEqual([]);
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 2, 3]), { imageKey: 'filtered', sentByHand: false, runId, resolveImage: image });
+    expect(getCullVerdict(db, 'filtered')).toMatchObject({ verdict: 'filtered' });
+    expect(selectPhotosToCull(db, ctx, ['filtered']).keys).toEqual([]);
   });
 
   it('a summary decided under another pipeline setting is selected, to be re-decided', async () => {
@@ -192,7 +192,7 @@ describe('selectPhotosToCull', () => {
   it('puts a sent-by-hand photo the worker died on last too', async () => {
     const ctx = context();
     await cullPhoto(db, ctx, fakeLaya([5, 5, 5, 5], { fail: 'worker' }), { imageKey: 'died', sentByHand: true, runId, resolveImage: image });
-    expect(getCullVerdict(db, 'died')).toMatchObject({ verdict: 'sent', pending_reason: 'laya_worker_died' });
+    expect(getCullVerdict(db, 'died')).toMatchObject({ verdict: 'passed', pending_reason: 'laya_worker_died' });
     expect(selectPhotosToCull(db, ctx, ['died', 'b']).keys).toEqual(['b', 'died']);
   });
 

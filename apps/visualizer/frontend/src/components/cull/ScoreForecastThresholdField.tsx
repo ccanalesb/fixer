@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { CullingRecipesAPI } from '../../services/api'
+import { CullingProfilesAPI } from '../../services/api'
 import { invalidateAll, useQuery } from '../../data'
 import { Button } from '../ui/Button'
 import { CULL_ADVANCED, CULL_SAVE, CULL_SCORE_FORECAST_THRESHOLD, CULL_THRESHOLD_NOTE } from '../../constants/strings'
 
-/** Pipeline-wide setting, shown under each recipe's rule behind an Advanced disclosure. */
+/** Pipeline-wide setting, shown under each profile's rule behind an Advanced disclosure. */
 export function ScoreForecastThresholdField() {
-  const pipeline = useQuery(['culling-recipes.pipeline'] as const, () => CullingRecipesAPI.getPipeline())
+  const pipeline = useQuery(['culling-profiles.pipeline'] as const, () => CullingProfilesAPI.getPipeline())
   const [open, setOpen] = useState(false)
   const [threshold, setThreshold] = useState('')
   const current = pipeline?.config.score_forecast.threshold
@@ -18,8 +18,8 @@ export function ScoreForecastThresholdField() {
   const save = async () => {
     const n = Number.parseFloat(threshold)
     if (!Number.isFinite(n)) return
-    await CullingRecipesAPI.saveScoreForecastThreshold(n)
-    invalidateAll(['culling-recipes.pipeline'])
+    await CullingProfilesAPI.saveScoreForecastThreshold(n)
+    invalidateAll(['culling-profiles.pipeline'])
   }
 
   return (

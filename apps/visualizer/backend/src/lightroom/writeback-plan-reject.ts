@@ -90,7 +90,7 @@ export function planRejectPhoto(
       before_rating: null,
       written_pick: row?.written_pick ?? null,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: row?.written_at ?? null,
     };
   }
@@ -107,7 +107,7 @@ export function planRejectPhoto(
       before_rating: null,
       written_pick: row?.written_pick ?? null,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: row?.written_at ?? null,
     };
   }
@@ -123,7 +123,7 @@ export function planRejectPhoto(
       before_rating: null,
       written_pick: row?.written_pick ?? null,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: row?.written_at ?? null,
     };
   }
@@ -143,7 +143,7 @@ export function planRejectPhoto(
       before_rating: null,
       written_pick: row?.written_pick ?? null,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: row?.written_at ?? null,
     };
   }
@@ -156,7 +156,7 @@ export function planRejectPhoto(
     before_rating: null,
     written_pick: -1,
     written_rating: null,
-    stars_recipe_version_id: null,
+    stars_profile_version_id: null,
     written_at: nowIsoUtc(),
   };
 }

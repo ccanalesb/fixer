@@ -1,5 +1,5 @@
 /**
- * `cull-check` — the cull's start check, by hand: Laya's files, load, the reference photo answered.
+ * `cull-check` — culling's start check, by hand: Laya's files, load, the reference photo answered.
  * With `--photo`, also prints Laya's level probabilities for that photo.
  *
  * `cull-import` — the research runs as the first stored cull answers (`cull/import-research.ts`).
@@ -58,7 +58,7 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
 
 /**
  * Laya new has no revision: the research answers are filed under the exported decoder's hash, which
- * says they came from the same checkpoint the cull job runs. `--laya-new-model-id` names it by hand.
+ * says they came from the same checkpoint the culling job runs. `--laya-new-model-id` names it by hand.
  */
 async function researchLayaNewModelId(ctx: CommandContext): Promise<string> {
   const given = stringFlag(ctx.args, 'laya-new-model-id');
@@ -74,20 +74,22 @@ async function researchLayaNewModelId(ctx: CommandContext): Promise<string> {
 
 export async function cmdCullImport(ctx: CommandContext): Promise<number> {
   const layaNewPath = stringFlag(ctx.args, 'laya-new');
-  const recipePath = stringFlag(ctx.args, 'recipe');
-  if (!layaNewPath || !recipePath) {
-    throw new CliError('cull-import needs --laya-new <laya_new_catalog.jsonl> and --recipe <laya_cull_catalog_all.jsonl>');
+  const profilePath = stringFlag(ctx.args, 'culling-profile');
+  if (!layaNewPath || !profilePath) {
+    throw new CliError(
+      'cull-import needs --laya-new <laya_new_catalog.jsonl> and --culling-profile <laya_cull_catalog_all.jsonl>',
+    );
   }
-  for (const p of [layaNewPath, recipePath]) if (!existsSync(p)) throw new CliError(`File not found: ${p}`);
+  for (const p of [layaNewPath, profilePath]) if (!existsSync(p)) throw new CliError(`File not found: ${p}`);
   const modelIds = { base: LAYA_BASE_RESEARCH_MODEL_ID, new: await researchLayaNewModelId(ctx) };
   const dryRun = boolFlag(ctx.args, 'dry-run');
   return withLibraryDbAsync(ctx, { mustExist: true }, async (db, dbPath) => {
     ctx.out(`${dryRun ? 'Dry run: nothing is written. ' : ''}Importing the research runs into ${dbPath}`);
     ctx.out(`Laya base: ${modelIds.base}`);
     ctx.out(`Laya new: ${modelIds.new}`);
-    const r = await importResearchRuns(db, { layaNewPath, recipePath, modelIds, dryRun });
-    ctx.out(`Lines: Laya new ${r.lines.laya_new}, culling recipe ${r.lines.recipe}`);
-    if (r.truncated_tail.recipe || r.truncated_tail.laya_new) {
+    const r = await importResearchRuns(db, { layaNewPath, profilePath, modelIds, dryRun });
+    ctx.out(`Lines: Laya new ${r.lines.laya_new}, culling profile ${r.lines.profile}`);
+    if (r.truncated_tail.profile || r.truncated_tail.laya_new) {
       ctx.out('Skipped a half-written last line: the file is still being written. Import again when it is done.');
     }
     ctx.out(`Photos: ${r.photos} in the library, ${r.missing_from_library} not in it`);
@@ -98,8 +100,8 @@ export async function cmdCullImport(ctx: CommandContext): Promise<number> {
     }
     const v = r.verdicts;
     ctx.out(
-      `Verdicts: cut by the culling recipe ${v.cut_by_culling_recipe}, cut by the Score forecast ` +
-        `${v.cut_by_score_forecast}, pending ${v.pending}, sent ${v.sent}`,
+      `Verdicts: filtered by the culling profile ${v.filtered_by_culling_profile}, filtered by the Score forecast ` +
+        `${v.filtered_by_score_forecast}, pending ${v.pending}, passed ${v.passed}`,
     );
     return 0;
   });

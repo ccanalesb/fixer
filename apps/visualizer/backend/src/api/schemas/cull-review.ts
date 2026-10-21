@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
 
-export const CullUserActionSchema = z.enum(['sent_by_hand', 'agrees_with_cut', 'should_have_been_cut']);
+export const CullUserActionSchema = z.enum(['sent_by_hand', 'agrees_with_filter', 'should_have_been_filtered']);
 
 export const DimensionHighlight = z
   .object({
@@ -10,7 +10,7 @@ export const DimensionHighlight = z
   })
   .strict();
 
-export const CullReviewRecipeBlock = z
+export const CullReviewProfileBlock = z
   .object({
     slug: z.string(),
     name: z.string(),
@@ -28,9 +28,9 @@ export const CullReviewRow = z
     image_key: z.string(),
     filename: z.string(),
     date_taken: z.string().nullable(),
-    cut_by: z.enum(['culling_recipe', 'score_forecast']),
+    filtered_by: z.enum(['culling_profile', 'score_forecast']),
     score_forecast_p8: z.number().nullable(),
-    recipe: CullReviewRecipeBlock,
+    profile: CullReviewProfileBlock,
     completion: z.enum(['none', 'some', 'all']),
     needs_send_work: z.boolean(),
     thumbnail_url: z.string(),
@@ -54,7 +54,7 @@ export const CullReviewSummaryResponse = z
     sent_manually_count: z.number().int(),
     tab_counts: z.object({
       all: z.number().int(),
-      culling_recipe: z.number().int(),
+      culling_profile: z.number().int(),
       score_forecast: z.number().int(),
     }),
     last_checked_at: z.string().nullable(),
@@ -73,9 +73,9 @@ export const CullReviewDetail = z
   .object({
     image_key: z.string(),
     filename: z.string(),
-    cut_by: z.enum(['culling_recipe', 'score_forecast']).nullable(),
+    filtered_by: z.enum(['culling_profile', 'score_forecast']).nullable(),
     score_forecast_p8: z.number().nullable(),
-    recipe: CullReviewRecipeBlock,
+    profile: CullReviewProfileBlock,
     score_forecast: z.array(ForecastPerspective),
     user_actions: z.array(
       z.object({

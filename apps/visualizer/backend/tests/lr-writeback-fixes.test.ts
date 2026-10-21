@@ -12,7 +12,7 @@ import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { getWritebackState, upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { reconcileLrWriteback, undoWritebackKind } from '../src/lightroom/writeback.js';
 import {
   AUTO_STARS_KEYWORD,
@@ -145,9 +145,9 @@ describe('finding the catalog photo for an image key', () => {
     patchLrWritebackSettings(db, { write_reject: true });
     upsertCullVerdict(db, {
       imageKey: '2024-06-01_pair',
-      verdict: 'cut',
-      cutBy: 'culling_recipe',
-      cutByStageKey: 'x',
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: 'x',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -193,7 +193,7 @@ describe('writeStarsToCatalog transaction', () => {
 
 describe('stars clear updates state', () => {
   it('clears written state when re-decide removes stars from catalog', async () => {
-    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: 3 }]);
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: 3 }]);
     const conn = connectCatalog(lrcatPath);
     conn.prepare('UPDATE Adobe_images SET rating = 3 WHERE id_local = 900001').run();
     conn.close();
@@ -201,22 +201,22 @@ describe('stars clear updates state', () => {
     seedCullingDefaults(db);
     patchLrWritebackSettings(db, { write_stars: true });
     upsertWritebackState(db, {
-      image_key: '2024-06-01_cut-photo',
+      image_key: '2024-06-01_filtered-photo',
       kind: 'stars',
       status: 'written',
       before_pick: null,
       before_rating: null,
       written_pick: null,
       written_rating: 3,
-      stars_recipe_version_id: 1,
+      stars_profile_version_id: 1,
       written_at: '2026-01-01T00:00:00Z',
     });
     await reconcileLrWriteback(db, {
       trigger: 'redecide_complete',
       catalogPath: lrcatPath,
-      imageKeys: ['2024-06-01_cut-photo'],
+      imageKeys: ['2024-06-01_filtered-photo'],
     });
-    const state = getWritebackState(db, '2024-06-01_cut-photo', 'stars');
+    const state = getWritebackState(db, '2024-06-01_filtered-photo', 'stars');
     expect(state?.status).not.toBe('written');
     db.close();
   });
@@ -234,7 +234,7 @@ describe('undo reject restores before_pick', () => {
       before_rating: null,
       written_pick: -1,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: '2026-01-01T00:00:00Z',
     });
     const r = undoWritebackKind(db, lrcatPath, '2024-06-01_p', 'reject');
@@ -261,9 +261,9 @@ describe('sent_by_hand reconcile errors', () => {
     patchLrWritebackSettings(db, { write_reject: true });
     upsertCullVerdict(db, {
       imageKey: '2024-06-01_s',
-      verdict: 'cut',
-      cutBy: 'culling_recipe',
-      cutByStageKey: 'x',
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: 'x',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -291,9 +291,9 @@ describe('image_not_found', () => {
     patchLrWritebackSettings(db, { write_reject: true });
     upsertCullVerdict(db, {
       imageKey: '2024-06-01_missing',
-      verdict: 'cut',
-      cutBy: 'culling_recipe',
-      cutByStageKey: 'x',
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: 'x',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -322,9 +322,9 @@ describe('per-photo lock stops run', () => {
     for (const key of ['2024-06-01_a', '2024-06-01_b']) {
       upsertCullVerdict(db, {
         imageKey: key,
-        verdict: 'cut',
-        cutBy: 'culling_recipe',
-        cutByStageKey: 'x',
+        verdict: 'filtered',
+        filteredBy: 'culling_profile',
+        filteredByStageKey: 'x',
         sentByHand: false,
         pendingStages: [],
         pendingReason: '',

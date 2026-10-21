@@ -1,13 +1,13 @@
 /**
- * Cull review API — cut photos list, detail, user actions, send by hand.
+ * Cull review API — filtered photos list, detail, user actions, send by hand.
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { config } from '../config.js';
 import {
   batchDescribeScoreCompletion,
-  buildRecipeRowReadout,
+  buildProfileRowReadout,
   describeScoreCompletion,
-  resolveCuttingRecipe,
+  resolveFilteringProfile,
   scoreForecastByPerspective,
 } from '../cull/review.js';
 import { SCORE_FORECAST_STAGE_KEY, resolveCurrentStages } from '../cull/stages.js';
@@ -18,7 +18,7 @@ import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/c
 import {
   listCullUserActions,
   recordCullUserAction,
-  withdrawShouldHaveBeenCut,
+  withdrawShouldHaveBeenFiltered,
 } from '../db/library/cull-user-actions.js';
 import { initJobsDb, createJob, getJob } from '../db/jobs/jobs.js';
 import { batchKeysWithSendWork } from '../jobs/handlers/work-keys.js';
@@ -48,9 +48,9 @@ function thumbnailUrl(imageKey: string): string {
   return `/api/images/catalog/${encodeURIComponent(imageKey)}/thumbnail`;
 }
 
-function pipelineFallbackRecipe(db: import('../db/connection.js').Db): string {
+function pipelineFallbackProfile(db: import('../db/connection.js').Db): string {
   const { config: pipe } = getCurrentPipelineSetting(db);
-  return pipe.culling_recipes[0]?.recipe_slug ?? 'recipe-7h47';
+  return pipe.culling_profiles[0]?.profile_slug ?? 'recipe-culling';
 }
 
 function shapeReviewRow(
@@ -59,25 +59,25 @@ function shapeReviewRow(
     image_key: string;
     filename: string;
     date_taken: string | null;
-    cut_by: import('../cull/types.js').StageKind;
-    cut_by_stage_key: string | null;
+    filtered_by: import('../cull/types.js').StageKind;
+    filtered_by_stage_key: string | null;
     score_forecast_p8: number | null;
   },
   answersByStage: Record<string, Record<string, number[]>>,
   completionByKey: Map<string, import('../db/library/cull-completion.js').DescribeScoreCompletion>,
   sendWorkKeys: Set<string>,
 ) {
-  const recipe = resolveCuttingRecipe(db, row.cut_by_stage_key, pipelineFallbackRecipe(db));
-  const recipeBlock = recipe
-    ? buildRecipeRowReadout(recipe, recipe.definition, recipe.rule, answersByStage)
+  const profile = resolveFilteringProfile(db, row.filtered_by_stage_key, pipelineFallbackProfile(db));
+  const profileBlock = profile
+    ? buildProfileRowReadout(profile, profile.definition, profile.rule, answersByStage)
     : { slug: '', name: '', level_sets: [] };
   return {
     image_key: row.image_key,
     filename: row.filename,
     date_taken: row.date_taken,
-    cut_by: row.cut_by as 'culling_recipe' | 'score_forecast',
+    filtered_by: row.filtered_by as 'culling_profile' | 'score_forecast',
     score_forecast_p8: row.score_forecast_p8,
-    recipe: recipeBlock,
+    profile: profileBlock,
     completion: completionByKey.get(row.image_key) ?? 'none',
     needs_send_work: sendWorkKeys.has(row.image_key),
     thumbnail_url: thumbnailUrl(row.image_key),
@@ -104,19 +104,19 @@ const listRoute = createRoute({
   tags: ['cull'],
   request: {
     query: z.object({
-      tab: z.enum(['all', 'culling_recipe', 'score_forecast']).optional(),
+      tab: z.enum(['all', 'culling_profile', 'score_forecast']).optional(),
       limit: z.string().optional(),
       offset: z.string().optional(),
     }),
   },
   responses: withValidationError({
-    200: { description: 'Cut photos for review', content: jsonBody(CullReviewListResponse) },
+    200: { description: 'Filtered photos for review', content: jsonBody(CullReviewListResponse) },
   }),
 });
 
 cullReviewRoutes.openapi(listRoute, (c) => {
   const db = c.get('libraryDb');
-  const tab = (c.req.query('tab') ?? 'all') as 'all' | 'culling_recipe' | 'score_forecast';
+  const tab = (c.req.query('tab') ?? 'all') as 'all' | 'culling_profile' | 'score_forecast';
   const { limit, offset } = clampPagination(c.req.query('limit'), c.req.query('offset'), 50);
   const { rows, total } = listCullReviewPhotos(db, tab, limit, offset);
   const modelIds = readStoredLayaModelIds(db);
@@ -200,7 +200,7 @@ const detailRoute = createRoute({
   tags: ['cull'],
   request: { params: z.object({ image_key: z.string() }) },
   responses: withValidationError({
-    200: { description: 'One cut photo', content: jsonBody(CullReviewDetail) },
+    200: { description: 'One filtered or passed photo', content: jsonBody(CullReviewDetail) },
     404: { description: 'Not found', content: jsonBody(ErrorBody) },
   }),
 });
@@ -210,7 +210,7 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
   const imageKey = c.req.param('image_key');
   if (RESERVED_CULL_PHOTO_KEYS.has(imageKey)) return errorNotFound(c, 'image');
   const v = getCullVerdict(db, imageKey);
-  if (!v || (v.verdict !== 'cut' && v.verdict !== 'sent')) {
+  if (!v || (v.verdict !== 'filtered' && v.verdict !== 'passed')) {
     return errorNotFound(c, 'image');
   }
   const image = db.prepare('SELECT filename FROM images WHERE key = ?').get(imageKey) as { filename: string } | undefined;
@@ -218,9 +218,9 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
   const pipe = getCurrentPipelineSetting(db);
   const stages = modelIds ? resolveCurrentStages(db, pipe.config, modelIds) : [];
   const answers = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
-  const recipe = resolveCuttingRecipe(db, v.cut_by_stage_key, pipelineFallbackRecipe(db));
-  const recipeBlock = recipe
-    ? buildRecipeRowReadout(recipe, recipe.definition, recipe.rule, answers)
+  const profile = resolveFilteringProfile(db, v.filtered_by_stage_key, pipelineFallbackProfile(db));
+  const profileBlock = profile
+    ? buildProfileRowReadout(profile, profile.definition, profile.rule, answers)
     : { slug: '', name: '', level_sets: [] };
   const sfAnswers = answers[SCORE_FORECAST_STAGE_KEY] ?? {};
   const actions = listCullUserActions(db, imageKey).map((a) => ({ action: a.action, acted_at: a.acted_at }));
@@ -230,9 +230,9 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
     {
       image_key: imageKey,
       filename: image?.filename ?? imageKey,
-      cut_by: v.cut_by,
+      filtered_by: v.filtered_by,
       score_forecast_p8: v.score_forecast_p8,
-      recipe: recipeBlock,
+      profile: profileBlock,
       score_forecast: scoreForecastByPerspective(sfAnswers, pipe.config.score_forecast),
       user_actions: actions,
       completion: describeScoreCompletion(db, imageKey),
@@ -274,7 +274,7 @@ const withdrawActionRoute = createRoute({
   path: '/cull/photos/{image_key}/actions/{action}',
   tags: ['cull'],
   request: {
-    params: z.object({ image_key: z.string(), action: z.enum(['should_have_been_cut']) }),
+    params: z.object({ image_key: z.string(), action: z.enum(['should_have_been_filtered']) }),
   },
   responses: withValidationError({
     200: {
@@ -287,6 +287,6 @@ const withdrawActionRoute = createRoute({
 cullReviewRoutes.openapi(withdrawActionRoute, async (c) => {
   const db = c.get('libraryDb');
   const { image_key: imageKey } = c.req.valid('param');
-  const removed = withdrawShouldHaveBeenCut(db, imageKey);
+  const removed = withdrawShouldHaveBeenFiltered(db, imageKey);
   return c.json({ ok: true as const, removed }, 200);
 });

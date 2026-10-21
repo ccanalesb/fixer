@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LayaAnswerWant } from '../../src/laya/sessions.js';
 
-/** Per photo file: recipe levels and highest P(≥ 8) for the forecast stage. */
+/** Per photo file: profile levels and highest P(≥ 8) for the forecast stage. */
 export interface FakeLayaScript {
   levels: [number, number, number, number];
   p8: number;

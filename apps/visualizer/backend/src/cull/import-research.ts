@@ -1,9 +1,9 @@
 /**
  * The research runs as the first stored cull answers (ticket 15): Laya new on the whole catalog
- * (`laya_new_catalog.jsonl`) and recipe 7H47 on Laya base at 10 and 7 levels
+ * (`laya_new_catalog.jsonl`) and the research's recipe 7H47 (seeded as Recipe culling) on Laya base at 10 and 7 levels
  * (`laya_cull_catalog_all.jsonl`), marked imported from research with their model revision.
  *
- * The rows land in the very stage versions a cull job resolves — the seeded recipe's text is checked
+ * The rows land in the very stage versions a cull job resolves — the seeded profile's text is checked
  * against what the research asked — so the next job finds them current and asks Laya nothing.
  * Re-runnable: a row already stored (imported or answered by a job) is never overwritten, so a second
  * run after the 7-level run finishes adds only the new answers.
@@ -14,7 +14,7 @@ import { readFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
 import type { Db } from '../db/connection.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
-import { DEFAULT_CULLING_RECIPE_SLUG, seedCullingDefaults } from '../db/library/cull-recipes.js';
+import { DEFAULT_CULLING_PROFILE_SLUG, seedCullingDefaults } from '../db/library/cull-profiles.js';
 import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../db/library/cull-user-actions.js';
 import { finishCullRun, insertCullRun } from '../db/library/cull-verdicts.js';
@@ -25,7 +25,7 @@ import { FRAMING_EXCUSAL_QID } from './decide.js';
 import { imageSignature } from './image-signature.js';
 import { decideAndStorePhoto, type CullContext } from './persist.js';
 import type { LayaModelIds } from '../laya/model-id.js';
-import { recipeStageKey, resolveCurrentStages, SCORE_FORECAST_STAGE_KEY } from './stages.js';
+import { profileStageKey, resolveCurrentStages, SCORE_FORECAST_STAGE_KEY } from './stages.js';
 import type { ResolvedStage, StageAnswers } from './types.js';
 
 /** Photos per transaction. */
@@ -33,7 +33,7 @@ const BATCH = 500;
 
 export interface ResearchImportOptions {
   layaNewPath: string;
-  recipePath: string;
+  profilePath: string;
   modelIds: { base: string; new: string };
   /** Report what would be written, write nothing. */
   dryRun?: boolean;
@@ -41,9 +41,9 @@ export interface ResearchImportOptions {
 
 export interface ResearchImportResult {
   dry_run: boolean;
-  lines: { laya_new: number; recipe: number };
+  lines: { laya_new: number; profile: number };
   /** A half-written last line, skipped: the file is still being appended to. */
-  truncated_tail: { laya_new: boolean; recipe: boolean };
+  truncated_tail: { laya_new: boolean; profile: boolean };
   photos: number;
   missing_from_library: number;
   missing_keys_sample: string[];
@@ -51,14 +51,14 @@ export interface ResearchImportResult {
   partial: number;
   inserted: Record<string, number>;
   already_stored: Record<string, number>;
-  verdicts: { cut_by_culling_recipe: number; cut_by_score_forecast: number; pending: number; sent: number };
+  verdicts: { filtered_by_culling_profile: number; filtered_by_score_forecast: number; pending: number; passed: number };
   run_id: number | null;
 }
 
 interface ResearchPhoto {
   image: string;
-  recipe: Record<string, number[]>;
-  recipeFrom: string[];
+  profile: Record<string, number[]>;
+  profileFrom: string[];
   layaNew: StageAnswers | null;
   layaNewFrom: string;
 }
@@ -88,7 +88,7 @@ async function readJsonl<T>(path: string): Promise<Jsonl<T>> {
   return { rows, lines: lines.length, truncatedTail };
 }
 
-interface RecipeLine {
+interface ProfileLine {
   key: string;
   image: string;
   copied_from: string | null;
@@ -120,40 +120,40 @@ function layaNewAnswers(line: LayaNewLine): StageAnswers | null {
   return want.every((q) => out[q]) ? Object.fromEntries(want.map((q) => [q, out[q]!])) : null;
 }
 
-/** The research asked the seeded recipe; refuse to file its answers under text it was not asked. */
+/** The research asked the seeded profile; refuse to file its answers under text it was not asked. */
 function assertResearchText(stage: ResolvedStage): void {
   const research = Object.fromEntries(
     Object.entries(LAYA_QUESTIONS.base).filter(([qid]) => qid.startsWith(`${stage.levelSet}|`)),
   );
   if (canonicalJson(research) !== canonicalJson(stage.questions)) {
     throw new Error(
-      `${stage.stageKey}: the recipe's text is no longer the one the research runs answered; ` +
+      `${stage.stageKey}: the profile's text is no longer the one the research runs answered; ` +
         'the research answers cannot be imported under it',
     );
   }
 }
 
 export async function importResearchRuns(db: Db, opts: ResearchImportOptions): Promise<ResearchImportResult> {
-  const [recipeFile, layaNewFile] = await Promise.all([
-    readJsonl<RecipeLine>(opts.recipePath),
+  const [profileFile, layaNewFile] = await Promise.all([
+    readJsonl<ProfileLine>(opts.profilePath),
     readJsonl<LayaNewLine>(opts.layaNewPath),
   ]);
-  const researchMtime = Math.min(statSync(opts.recipePath).mtimeMs, statSync(opts.layaNewPath).mtimeMs);
+  const researchMtime = Math.min(statSync(opts.profilePath).mtimeMs, statSync(opts.layaNewPath).mtimeMs);
 
   const photos = new Map<string, ResearchPhoto>();
   const photo = (key: string, image: string): ResearchPhoto => {
     let p = photos.get(key);
     if (!p) {
-      p = { image, recipe: {}, recipeFrom: [], layaNew: null, layaNewFrom: '' };
+      p = { image, profile: {}, profileFrom: [], layaNew: null, layaNewFrom: '' };
       photos.set(key, p);
     }
     return p;
   };
   // Lines for one photo are merged: the 7-level run appends its own lines to the 10-level file.
-  for (const line of recipeFile.rows) {
+  for (const line of profileFile.rows) {
     const p = photo(line.key, line.image);
-    for (const [qid, a] of Object.entries(line.answers)) p.recipe[qid] = a.probabilities;
-    if (line.copied_from) p.recipeFrom.push(line.copied_from);
+    for (const [qid, a] of Object.entries(line.answers)) p.profile[qid] = a.probabilities;
+    if (line.copied_from) p.profileFrom.push(line.copied_from);
   }
   // Photos with an incomplete answer kept nowhere complete: counted once, however many lines or sets.
   const partial = new Set<string>();
@@ -170,15 +170,15 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
   const missing = [...photos.keys()].filter((k) => !inLibrary.has(k));
   const result: ResearchImportResult = {
     dry_run: opts.dryRun === true,
-    lines: { laya_new: layaNewFile.lines, recipe: recipeFile.lines },
-    truncated_tail: { laya_new: layaNewFile.truncatedTail, recipe: recipeFile.truncatedTail },
+    lines: { laya_new: layaNewFile.lines, profile: profileFile.lines },
+    truncated_tail: { laya_new: layaNewFile.truncatedTail, profile: profileFile.truncatedTail },
     photos: photos.size - missing.length,
     missing_from_library: missing.length,
     missing_keys_sample: missing.slice(0, 10),
     partial: 0,
     inserted: {},
     already_stored: {},
-    verdicts: { cut_by_culling_recipe: 0, cut_by_score_forecast: 0, pending: 0, sent: 0 },
+    verdicts: { filtered_by_culling_profile: 0, filtered_by_score_forecast: 0, pending: 0, passed: 0 },
     run_id: null,
   };
 
@@ -189,9 +189,9 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
     const pipeline = getCurrentPipelineSetting(db);
     const models: LayaModelIds = { base: opts.modelIds.base, new: opts.modelIds.new };
     const stages = resolveCurrentStages(db, pipeline.config, models);
-    const recipeStages = ['7', '10'].map((set) => {
-      const s = stages.find((st) => st.stageKey === recipeStageKey(DEFAULT_CULLING_RECIPE_SLUG, set));
-      if (!s) throw new Error(`the pipeline setting does not run recipe 7H47 at ${set} levels; nothing to import into`);
+    const profileStages = ['7', '10'].map((set) => {
+      const s = stages.find((st) => st.stageKey === profileStageKey(DEFAULT_CULLING_PROFILE_SLUG, set));
+      if (!s) throw new Error(`the pipeline setting does not run Recipe culling at ${set} levels; nothing to import into`);
       assertResearchText(s);
       return s;
     });
@@ -204,7 +204,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
         detail: {
           files: {
             laya_new: { path: opts.layaNewPath, lines: layaNewFile.lines, mtime_ms: statSync(opts.layaNewPath).mtimeMs },
-            recipe: { path: opts.recipePath, lines: recipeFile.lines, mtime_ms: statSync(opts.recipePath).mtimeMs },
+            profile: { path: opts.profilePath, lines: profileFile.lines, mtime_ms: statSync(opts.profilePath).mtimeMs },
           },
           model_ids: opts.modelIds,
         },
@@ -221,9 +221,9 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
           const p = photos.get(key)!;
           const stored = loadCurrentStageAnswers(db, stages, [key]).get(key) ?? {};
           const fresh: Record<string, StageAnswers> = {};
-          for (const s of recipeStages) {
+          for (const s of profileStages) {
             const qids = Object.keys(s.questions);
-            const present = qids.filter((q) => p.recipe[q]);
+            const present = qids.filter((q) => p.profile[q]);
             if (present.length === 0) continue;
             if (present.length < qids.length) {
               partial.add(key);
@@ -233,7 +233,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
               bump(result.already_stored, s.stageKey);
               continue;
             }
-            fresh[s.stageKey] = Object.fromEntries(qids.map((q) => [q.slice(q.indexOf('|') + 1), p.recipe[q]!]));
+            fresh[s.stageKey] = Object.fromEntries(qids.map((q) => [q.slice(q.indexOf('|') + 1), p.profile[q]!]));
             bump(result.inserted, s.stageKey);
           }
           if (p.layaNew) {
@@ -245,7 +245,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
           }
           const producedBy = [
             'research (PyTorch)',
-            p.recipeFrom.length > 0 ? `recipe copied from ${[...new Set(p.recipeFrom)].join(', ')}` : '',
+            p.profileFrom.length > 0 ? `profile copied from ${[...new Set(p.profileFrom)].join(', ')}` : '',
             p.layaNewFrom ? `Laya new image from ${p.layaNewFrom}` : '',
           ]
             .filter(Boolean)
@@ -265,9 +265,9 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
             runId,
           });
           if (d.verdict === 'pending') result.verdicts.pending += 1;
-          else if (d.verdict === 'sent') result.verdicts.sent += 1;
-          else if (d.cutBy === 'culling_recipe') result.verdicts.cut_by_culling_recipe += 1;
-          else result.verdicts.cut_by_score_forecast += 1;
+          else if (d.verdict === 'passed') result.verdicts.passed += 1;
+          else if (d.filteredBy === 'culling_profile') result.verdicts.filtered_by_culling_profile += 1;
+          else result.verdicts.filtered_by_score_forecast += 1;
         }
       });
     }

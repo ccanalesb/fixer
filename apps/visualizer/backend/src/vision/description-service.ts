@@ -9,7 +9,7 @@ import type { ProviderRegistry } from '../providers/registry.js';
 import type { CancelCheck, LogCallback } from '../providers/retry.js';
 import { buildDescriptionUserPrompt } from '../analyzer/prompt-builder.js';
 import { getImage } from '../db/library/catalog.js';
-import { isPhotoCutAndNotSentByHand } from '../db/library/cull-verdicts.js';
+import { isPhotoFilteredAndNotSentByHand } from '../db/library/cull-verdicts.js';
 import { getFrameSubstanceVerdict, hasFrameSubstanceOverride } from '../db/library/frame-substance.js';
 import { getImageDescription, storeImageDescription } from '../db/library/descriptions.js';
 import { clearStaleDescription, isDescriptionStale } from '../db/library/vision-stale.js';
@@ -124,13 +124,13 @@ export interface DescribeOptions {
   telemetry?: DescribeTelemetry | null;
 }
 
-/** Why a photo is not described whatever `force` says: a void frame, or a cut nobody sent on. */
+/** Why a photo is not described whatever `force` says: a void frame, or a filtered photo nobody sent on. */
 export function describeRefusal(db: Db, catalogKey: string): string | null {
   const substance = getFrameSubstanceVerdict(db, catalogKey);
   if (substance?.verdict === 'void' && !hasFrameSubstanceOverride(db, catalogKey)) {
     return 'Frame substance verdict: void';
   }
-  if (isPhotoCutAndNotSentByHand(db, catalogKey)) return 'Cull verdict: cut (send it by hand to describe it)';
+  if (isPhotoFilteredAndNotSentByHand(db, catalogKey)) return 'Culling verdict: filtered (send it by hand to describe it)';
   return null;
 }
 
@@ -161,7 +161,7 @@ export async function describeMatchedImage(
   }
 
   // The same two checks scoring makes (#339): a void frame has nothing to describe, and a photo the
-  // cull cut is described only once the user sends it on.
+  // filtered photo is described only once the user sends it on.
   const refused = describeRefusal(db, catalogKey);
   if (refused !== null) return new VisionOpOutcome('skipped', refused);
 

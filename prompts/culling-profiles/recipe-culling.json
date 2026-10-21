@@ -1,6 +1,6 @@
 {
-  "slug": "recipe-7h47",
-  "name": "Recipe 7H47",
+  "slug": "recipe-culling",
+  "name": "Recipe culling",
   "model": "laya-base",
   "measured": true,
   "definition": {
@@ -135,7 +135,7 @@
       }
     },
     "combine": "every",
-    "cut_rule": {
+    "filter_rule": {
       "type": "all_fail",
       "dimensions": [
         "point-of-tension",

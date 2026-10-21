@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
-import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { createJob, getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import { LR_WRITEBACK_JOB_TYPE } from '../src/jobs/handlers/lr-writeback.js';
 import { JobRunner } from '../src/jobs/runner.js';
@@ -107,10 +107,10 @@ describe('redecide hook', () => {
     vi.spyOn(await import('../src/cull/redecide.js'), 'redecideAllPhotos').mockResolvedValue({
       total: 0,
       changed: 0,
-      cut_by_culling_recipe: 0,
-      cut_by_score_forecast: 0,
+      filtered_by_culling_profile: 0,
+      filtered_by_score_forecast: 0,
       pending: 0,
-      sent: 0,
+      passed: 0,
       sent_by_hand_passed: 0,
       pipeline_setting_version: 1,
       stage_versions: {},

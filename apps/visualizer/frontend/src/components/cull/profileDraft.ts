@@ -1,18 +1,18 @@
-import type { CullRecipeDetail } from '../../services/api'
+import type { CullProfileDetail } from '../../services/api'
 
-export type RecipeDraft = Pick<CullRecipeDetail, 'definition' | 'rule'>
-type Bands = CullRecipeDetail['rule']['level_sets'][string]
+export type ProfileDraft = Pick<CullProfileDetail, 'definition' | 'rule'>
+type Bands = CullProfileDetail['rule']['level_sets'][string]
 
 export const MIN_LEVELS_PER_SET = 2
 export const MAX_LEVELS_PER_SET = 15
 
-export function levelCount(draft: RecipeDraft, setId: string): number {
+export function levelCount(draft: ProfileDraft, setId: string): number {
   const set = draft.definition.level_sets.find((s) => s.id === setId)
   const first = draft.definition.dimensions[0]?.slug
   return set && first ? (set.levels[first]?.length ?? 0) : 0
 }
 
-function mapSet<T extends RecipeDraft>(
+function mapSet<T extends ProfileDraft>(
   draft: T,
   setId: string,
   fn: (levels: Record<string, string[]>) => Record<string, string[]>,
@@ -27,7 +27,7 @@ function mapSet<T extends RecipeDraft>(
 }
 
 /** Insert one level at `index` (0 = lowest) in every dimension of the set. */
-export function insertLevel<T extends RecipeDraft>(
+export function insertLevel<T extends ProfileDraft>(
   draft: T,
   setId: string,
   index: number,
@@ -45,7 +45,7 @@ export function insertLevel<T extends RecipeDraft>(
 }
 
 /** Remove the level at `index` from every dimension; a set keeps at least MIN_LEVELS_PER_SET. */
-export function removeLevel<T extends RecipeDraft>(draft: T, setId: string, index: number): T {
+export function removeLevel<T extends ProfileDraft>(draft: T, setId: string, index: number): T {
   if (levelCount(draft, setId) <= MIN_LEVELS_PER_SET) return draft
   return mapSet(draft, setId, (levels) => {
     const next: Record<string, string[]> = {}
@@ -56,7 +56,7 @@ export function removeLevel<T extends RecipeDraft>(draft: T, setId: string, inde
   })
 }
 
-export function setLevelText<T extends RecipeDraft>(
+export function setLevelText<T extends ProfileDraft>(
   draft: T,
   setId: string,
   dimSlug: string,
@@ -70,12 +70,12 @@ export function setLevelText<T extends RecipeDraft>(
   })
 }
 
-export function setBands<T extends RecipeDraft>(draft: T, setId: string, bands: Bands): T {
+export function setBands<T extends ProfileDraft>(draft: T, setId: string, bands: Bands): T {
   return { ...draft, rule: { ...draft.rule, level_sets: { ...draft.rule.level_sets, [setId]: bands } } }
 }
 
 /** Why a new set of `count` levels cannot be created, or null. Sets are named by their level count. */
-export function newLevelSetProblem(draft: RecipeDraft, count: number): string | null {
+export function newLevelSetProblem(draft: ProfileDraft, count: number): string | null {
   if (!Number.isInteger(count) || count < MIN_LEVELS_PER_SET || count > MAX_LEVELS_PER_SET) {
     return `Between ${MIN_LEVELS_PER_SET} and ${MAX_LEVELS_PER_SET} levels.`
   }
@@ -86,7 +86,7 @@ export function newLevelSetProblem(draft: RecipeDraft, count: number): string | 
 }
 
 /** New set named by its level count; copied from `fromId` (trimmed or padded) or empty. */
-export function addLevelSet<T extends RecipeDraft>(draft: T, count: number, fromId: string | null): T {
+export function addLevelSet<T extends ProfileDraft>(draft: T, count: number, fromId: string | null): T {
   const id = String(count)
   const src = fromId ? draft.definition.level_sets.find((s) => s.id === fromId) : undefined
   const levels: Record<string, string[]> = {}
@@ -109,7 +109,7 @@ export function addLevelSet<T extends RecipeDraft>(draft: T, count: number, from
 }
 
 /** The last level set cannot be removed. */
-export function removeLevelSet<T extends RecipeDraft>(draft: T, setId: string): T {
+export function removeLevelSet<T extends ProfileDraft>(draft: T, setId: string): T {
   if (draft.definition.level_sets.length <= 1) return draft
   const bands = { ...draft.rule.level_sets }
   delete bands[setId]
@@ -120,7 +120,7 @@ export function removeLevelSet<T extends RecipeDraft>(draft: T, setId: string): 
   }
 }
 
-export function emptyLevelCount(draft: RecipeDraft, setId?: string, dimSlug?: string): number {
+export function emptyLevelCount(draft: ProfileDraft, setId?: string, dimSlug?: string): number {
   let n = 0
   for (const set of draft.definition.level_sets) {
     if (setId !== undefined && set.id !== setId) continue
@@ -133,7 +133,7 @@ export function emptyLevelCount(draft: RecipeDraft, setId?: string, dimSlug?: st
 }
 
 /** Same band checks the backend makes on save. */
-export function bandProblems(draft: RecipeDraft): { setId: string; message: string }[] {
+export function bandProblems(draft: ProfileDraft): { setId: string; message: string }[] {
   const out: { setId: string; message: string }[] = []
   for (const set of draft.definition.level_sets) {
     const b = draft.rule.level_sets[set.id]

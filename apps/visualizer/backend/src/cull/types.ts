@@ -1,18 +1,18 @@
 /**
- * The cull's shapes: culling recipes, the pipeline setting, stages and their answers.
+ * Culling's shapes: culling profiles, the pipeline setting, stages and their answers.
  *
- * A **stage** is one thing Laya answers per photo: a culling recipe at one level set (Laya base), or
+ * A **stage** is one thing Laya answers per photo: a culling profile at one level set (Laya base), or
  * the Score forecast (Laya new). Stages are what get versioned and stored; the pipeline setting says
  * how their answers become a verdict.
  */
 import type { LayaQuestion } from '../laya/rows.js';
 
-export type CullVerdict = 'cut' | 'sent';
+export type CullVerdict = 'filtered' | 'passed';
 export type CullSummaryVerdict = CullVerdict | 'pending';
-export type StageKind = 'culling_recipe' | 'score_forecast';
+export type StageKind = 'culling_profile' | 'score_forecast';
 
 /** The text Laya is asked: versioned, so a change makes a new stage version. */
-export interface RecipeDefinition {
+export interface ProfileDefinition {
   dimensions: { slug: string; name: string; question: string }[];
   /** Levels per dimension, lowest first; every dimension has the same count within a set. */
   level_sets: { id: string; levels: Record<string, string[]> }[];
@@ -22,43 +22,43 @@ export interface RecipeDefinition {
  * When a dimension fails, all of these listed fail (`all_fail`, the default "video lenient" on point of
  * tension and connotation), N or more fail unless one is strong, or the average level fails.
  */
-export type CutRule =
+export type FilterRule =
   | { type: 'all_fail'; dimensions: string[] }
   | { type: 'n_fail_unless_strong'; n: number }
   | { type: 'mean_fail' };
 
-/** How a recipe's answers become cut / sent: not versioned, re-decided from stored answers. */
-export interface RecipeRule {
+/** How a profile's answers become filtered / passed: not versioned, re-decided from stored answers. */
+export interface ProfileRule {
   /** Levels are 1-based; a dimension fails at or below `fails_at_most`, is strong at or above `strong_at_least`. */
   level_sets: Record<string, { fails_at_most: number; strong_at_least: number }>;
-  /** With several level sets: cut when every set cuts, or when any does. */
+  /** With several level sets: filter when every set filters, or when any does. */
   combine: 'every' | 'any';
-  cut_rule: CutRule;
+  filter_rule: FilterRule;
   /** Which level-set readout counts toward Lightroom stars (defaults to every). */
   stars_strong_from?: '7' | '10' | 'every' | 'any';
 }
 
-export interface PipelineRecipe {
-  recipe_slug: string;
-  /** Snapshot of the recipe's rule, so a pipeline-setting version says exactly how a photo was decided. */
-  rule: RecipeRule;
-  /** Answer this recipe even on a photo an earlier stage already cut. */
-  run_after_cut: boolean;
+export interface PipelineProfile {
+  profile_slug: string;
+  /** Snapshot of the profile's rule, so a pipeline-setting version says exactly how a photo was decided. */
+  rule: ProfileRule;
+  /** Answer this profile even on a photo an earlier stage already filtered. */
+  run_after_filtered: boolean;
 }
 
 export interface ScoreForecastSetting {
   enabled: boolean;
-  /** Cut when the highest P(AI score ≥ `high_from_level`) is below this. */
+  /** Filter when the highest P(AI score ≥ `high_from_level`) is below this. */
   threshold: number;
   high_from_level: number;
   /** Framing is left out of the highest when P(no framing device) is at least this. */
   excused_at: number;
-  run_after_cut: boolean;
+  run_after_filtered: boolean;
 }
 
-/** Stored, versioned, in `cull_pipeline_settings`. Recipes run first, in order, then the Score forecast. */
+/** Stored, versioned, in `cull_pipeline_settings`. Profiles run first, in order, then the Score forecast. */
 export interface PipelineSettingConfig {
-  culling_recipes: PipelineRecipe[];
+  culling_profiles: PipelineProfile[];
   score_forecast: ScoreForecastSetting;
 }
 
@@ -69,15 +69,15 @@ export interface ResolvedStage {
   versionId: number;
   model: 'base' | 'new';
   modelId: string;
-  /** Recipe stages only. */
-  recipeSlug: string | null;
+  /** Profile stages only. */
+  profileSlug: string | null;
   levelSet: string | null;
-  /** Laya question id → question. Recipe ids are `<stage key>|<dimension>`; forecast ids are Laya new's own. */
+  /** Laya question id → question. Profile ids are `<stage key>|<dimension>`; forecast ids are Laya new's own. */
   questions: Record<string, LayaQuestion>;
 }
 
 /**
- * One stage's answers: level probabilities, lowest first, by dimension slug (recipe stages) or by
+ * One stage's answers: level probabilities, lowest first, by dimension slug (profile stages) or by
  * Laya new question id (Score forecast).
  */
 export type StageAnswers = Record<string, number[]>;
@@ -90,13 +90,13 @@ export interface StageDecision {
 
 export interface PhotoDecision {
   verdict: CullSummaryVerdict;
-  cutBy: StageKind | null;
-  cutByStageKey: string | null;
+  filteredBy: StageKind | null;
+  filteredByStageKey: string | null;
   /** Stages this photo still needs answered. */
   pendingStages: string[];
   /** Highest P(≥ 8) over Laya new's perspectives; null without a forecast answer. */
   scoreForecastP8: number | null;
-  /** Sent only because the user sent it by hand: the stages alone would have cut it. */
+  /** Passed only because the user sent it by hand: the stages alone would have filtered it. */
   sentByHandOverride: boolean;
   stages: Record<string, StageDecision>;
 }

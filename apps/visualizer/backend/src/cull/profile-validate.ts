@@ -1,23 +1,23 @@
 /**
- * Reject culling recipe text that would not fit in a Laya row at runtime.
+ * Reject culling profile text that would not fit in a Laya row at runtime.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, loadLibraryConfig } from '../config.js';
 import { buildRow, type LayaModelMeta, type LayaQuestion } from '../laya/rows.js';
-import type { RecipeDefinition } from './types.js';
+import type { ProfileDefinition } from './types.js';
 
-export interface RecipeValidationError {
+export interface ProfileValidationError {
   field: string;
   message: string;
 }
 
-export interface RecipeValidationResult {
+export interface ProfileValidationResult {
   ok: boolean;
-  errors: RecipeValidationError[];
+  errors: ProfileValidationError[];
 }
 
-function questionsForDefinition(definition: RecipeDefinition): Record<string, LayaQuestion> {
+function questionsForDefinition(definition: ProfileDefinition): Record<string, LayaQuestion> {
   const out: Record<string, LayaQuestion> = {};
   for (const set of definition.level_sets) {
     for (const dim of definition.dimensions) {
@@ -54,12 +54,12 @@ function loadBaseMetaAndEncode(modelSlug: string): { meta: LayaModelMeta; encode
   return { meta, encode };
 }
 
-/** Validate every question/level set row against the recipe model's Laya budget. */
-export function validateRecipeDefinitionForLaya(
-  definition: RecipeDefinition,
+/** Validate every question/level set row against the profile model's Laya budget. */
+export function validateProfileDefinitionForLaya(
+  definition: ProfileDefinition,
   modelSlug: string,
-): RecipeValidationResult {
-  const errors: RecipeValidationError[] = [];
+): ProfileValidationResult {
+  const errors: ProfileValidationError[] = [];
   let meta: LayaModelMeta;
   let encode: (s: string) => number[];
   try {

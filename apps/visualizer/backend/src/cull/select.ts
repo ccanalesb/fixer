@@ -5,7 +5,7 @@
 import type { Db } from '../db/connection.js';
 import { loadAnsweredStageKeys, loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { loadCullVerdictStamps } from '../db/library/cull-verdicts.js';
-import { missingStages, runsAfterCut } from './answer-photo.js';
+import { missingStages, runsAfterFiltered } from './answer-photo.js';
 import { stageVersionIds, WORKER_DIED_REASON, type CullContext } from './persist.js';
 
 const sameIds = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -38,9 +38,9 @@ export function selectPhotosToCull(
   const cfg = ctx.pipeline.config;
   const forecastOn = ctx.scoreForecastAvailable && cfg.score_forecast.enabled;
   const active = ctx.stages.filter((s) => s.kind !== 'score_forecast' || forecastOn);
-  // With every stage answered even on cut photos, a stage missing is a stage required: no need to
+  // With every stage answered even on filtered photos, a stage missing is a stage required: no need to
   // read the answers to know.
-  const everyStageRuns = active.every((s) => runsAfterCut(cfg, s));
+  const everyStageRuns = active.every((s) => runsAfterFiltered(cfg, s));
   const answered = loadAnsweredStageKeys(db, active);
   const stamps = loadCullVerdictStamps(db);
   const currentIds = stageVersionIds(ctx);
@@ -49,7 +49,7 @@ export function selectPhotosToCull(
     const has = answered.get(key);
     return active.some((s) => !has?.has(s.stageKey));
   };
-  // A stage switched off for cut photos may be missing on purpose: read those photos' answers, in bulk.
+  // A stage switched off for filtered photos may be missing on purpose: read those photos' answers, in bulk.
   const toCheck = everyStageRuns ? [] : keys.filter(missingAny);
   const storedAnswers = loadCurrentStageAnswers(db, ctx.stages, toCheck);
   const needsAnswers = (key: string): boolean => {

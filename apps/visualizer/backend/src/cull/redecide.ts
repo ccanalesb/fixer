@@ -4,7 +4,7 @@
 import { performance } from 'node:perf_hooks';
 import type { Db } from '../db/connection.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
-import { seedCullingDefaults } from '../db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../db/library/cull-profiles.js';
 import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCulledImageKeys } from '../db/library/cull-verdicts.js';
@@ -18,10 +18,10 @@ const CHUNK = 500;
 export interface RedecideAllPhotosResult {
   total: number;
   changed: number;
-  cut_by_culling_recipe: number;
-  cut_by_score_forecast: number;
+  filtered_by_culling_profile: number;
+  filtered_by_score_forecast: number;
   pending: number;
-  sent: number;
+  passed: number;
   sent_by_hand_passed: number;
   pipeline_setting_version: number;
   stage_versions: Record<string, number>;
@@ -44,10 +44,10 @@ export async function redecideAllPhotos(
     return {
       total: 0,
       changed: 0,
-      cut_by_culling_recipe: 0,
-      cut_by_score_forecast: 0,
+      filtered_by_culling_profile: 0,
+      filtered_by_score_forecast: 0,
       pending: 0,
-      sent: 0,
+      passed: 0,
       sent_by_hand_passed: 0,
       pipeline_setting_version: pipeline.version,
       stage_versions: {},
@@ -67,10 +67,10 @@ export async function redecideAllPhotos(
 
   const counts = {
     changed: 0,
-    cut_by_culling_recipe: 0,
-    cut_by_score_forecast: 0,
+    filtered_by_culling_profile: 0,
+    filtered_by_score_forecast: 0,
     pending: 0,
-    sent: 0,
+    passed: 0,
     sent_by_hand_passed: 0,
   };
   const yieldState = opts.yieldState ?? createEventLoopYieldState();
@@ -95,15 +95,15 @@ export async function redecideAllPhotos(
         });
         if (
           before?.verdict !== decision.verdict ||
-          before?.cut_by !== decision.cutBy ||
+          before?.filtered_by !== decision.filteredBy ||
           before?.pipeline_setting_version !== pipeline.version
         ) {
           counts.changed += 1;
         }
         if (decision.verdict === 'pending') counts.pending += 1;
-        else if (decision.verdict === 'sent') counts.sent += 1;
-        else if (decision.cutBy === 'culling_recipe') counts.cut_by_culling_recipe += 1;
-        else counts.cut_by_score_forecast += 1;
+        else if (decision.verdict === 'passed') counts.passed += 1;
+        else if (decision.filteredBy === 'culling_profile') counts.filtered_by_culling_profile += 1;
+        else counts.filtered_by_score_forecast += 1;
         if (decision.sentByHandOverride) counts.sent_by_hand_passed += 1;
       }
     });

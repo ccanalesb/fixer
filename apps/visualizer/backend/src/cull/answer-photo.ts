@@ -1,8 +1,8 @@
 /**
- * One photo through the cull: what is still missing is asked of Laya — in as few worker calls as the
+ * One photo through culling: what is still missing is asked of Laya — in as few worker calls as the
  * pipeline's switches allow — and the photo is stored and decided (`persist.ts`).
  *
- * Takes the Laya runtime as an argument, so the cull job and the jobs that cull before describing
+ * Takes the Laya runtime as an argument, so the culling job and the jobs that cull before describing
  * (#339) share it, and tests run it on a fake.
  */
 import type { Db } from '../db/connection.js';
@@ -19,28 +19,28 @@ import { decideAndStorePhoto, WORKER_DIED_REASON, type CullContext } from './per
 import { layaWant, stageAnswersFromLaya } from './stages.js';
 import type { PhotoDecision, PipelineSettingConfig, ResolvedStage, StageAnswers } from './types.js';
 
-/** What the cull needs of the Laya runtime. */
+/** What culling needs of the Laya runtime. */
 export interface LayaAnswerer {
   answer(file: string, want?: LayaAnswerWant): Promise<LayaPhotoResult>;
   /** The worker died: every later answer fails too. */
   readonly broken: boolean;
 }
 
-/** Whether a stage is answered even on a photo an earlier stage already cut. */
-export function runsAfterCut(cfg: PipelineSettingConfig, stage: ResolvedStage): boolean {
-  if (stage.kind === 'score_forecast') return cfg.score_forecast.run_after_cut;
-  return cfg.culling_recipes.find((r) => r.recipe_slug === stage.recipeSlug)?.run_after_cut ?? true;
+/** Whether a stage is answered even on a photo an earlier stage already filtered. */
+export function runsAfterFiltered(cfg: PipelineSettingConfig, stage: ResolvedStage): boolean {
+  if (stage.kind === 'score_forecast') return cfg.score_forecast.run_after_filtered;
+  return cfg.culling_profiles.find((r) => r.profile_slug === stage.profileSlug)?.run_after_filtered ?? true;
 }
 
 /**
- * The missing stages to ask in one worker call. A stage switched off for cut photos waits until the
+ * The missing stages to ask in one worker call. A stage switched off for filtered photos waits until the
  * stages before it are answered: whether it runs depends on what they say.
  */
 export function askNow(cfg: PipelineSettingConfig, missing: readonly ResolvedStage[]): ResolvedStage[] {
   const out: ResolvedStage[] = [];
   for (const s of missing) {
-    const group = s.recipeSlug ?? s.stageKey;
-    if (out.length > 0 && !runsAfterCut(cfg, s) && out.some((o) => (o.recipeSlug ?? o.stageKey) !== group)) break;
+    const group = s.profileSlug ?? s.stageKey;
+    if (out.length > 0 && !runsAfterFiltered(cfg, s) && out.some((o) => (o.profileSlug ?? o.stageKey) !== group)) break;
     out.push(s);
   }
   return out;

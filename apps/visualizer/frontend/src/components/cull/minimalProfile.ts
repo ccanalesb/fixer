@@ -1,5 +1,5 @@
 /** F19 / ruling 8=A — one dimension, one level set, five empty level texts. */
-export function minimalNewRecipeBody(slug: string, name: string) {
+export function minimalNewProfileBody(slug: string, name: string) {
   return {
     slug,
     name,
@@ -11,7 +11,7 @@ export function minimalNewRecipeBody(slug: string, name: string) {
     rule: {
       level_sets: { '5': { fails_at_most: 2, strong_at_least: 4 } },
       combine: 'any' as const,
-      cut_rule: { type: 'all_fail' as const, dimensions: ['dimension-1'] },
+      filter_rule: { type: 'all_fail' as const, dimensions: ['dimension-1'] },
     },
     active: false,
   }

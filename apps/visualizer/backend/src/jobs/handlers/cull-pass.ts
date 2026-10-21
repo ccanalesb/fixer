@@ -13,7 +13,7 @@ import { layaQuestionSet, resolveCurrentStages } from '../../cull/stages.js';
 import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
-import { seedCullingDefaults } from '../../db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../../db/library/cull-profiles.js';
 import { loadCurrentStageAnswers } from '../../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
@@ -48,10 +48,10 @@ export interface BatchCullResult {
   culled: number;
   redecided: number;
   failed: number;
-  cut_by_culling_recipe: number;
-  cut_by_score_forecast: number;
+  filtered_by_culling_profile: number;
+  filtered_by_score_forecast: number;
   pending: number;
-  sent: number;
+  passed: number;
   sent_by_hand_passed: number;
   score_forecast: 'on' | 'off';
   pipeline_setting_version: number;
@@ -167,17 +167,17 @@ export async function runCullPass(
     culled: 0,
     redecided: 0,
     failed: 0,
-    cut_by_culling_recipe: 0,
-    cut_by_score_forecast: 0,
+    filtered_by_culling_profile: 0,
+    filtered_by_score_forecast: 0,
     pending: 0,
-    sent: 0,
+    passed: 0,
     sent_by_hand_passed: 0,
   };
-  const tally = (verdict: CullSummaryVerdict, cutBy: StageKind | null, sentByHandOverride: boolean): void => {
+  const tally = (verdict: CullSummaryVerdict, filteredBy: StageKind | null, sentByHandOverride: boolean): void => {
     if (verdict === 'pending') counts.pending += 1;
-    else if (verdict === 'sent') counts.sent += 1;
-    else if (cutBy === 'culling_recipe') counts.cut_by_culling_recipe += 1;
-    else counts.cut_by_score_forecast += 1;
+    else if (verdict === 'passed') counts.passed += 1;
+    else if (filteredBy === 'culling_profile') counts.filtered_by_culling_profile += 1;
+    else counts.filtered_by_score_forecast += 1;
     if (sentByHandOverride) counts.sent_by_hand_passed += 1;
   };
 
@@ -190,7 +190,7 @@ export async function runCullPass(
       sentByHand: byHand,
       scoreForecastAvailable: cullCtx.scoreForecastAvailable,
     });
-    tally(d.verdict, d.cutBy, d.sentByHandOverride);
+    tally(d.verdict, d.filteredBy, d.sentByHandOverride);
   }
 
   const tCull = performance.now();
@@ -234,7 +234,7 @@ export async function runCullPass(
         resume.failed.add(key);
         if (r.outcome === 'laya_failed') log(`${key} left pending, Laya failed on it: ${r.error!.message}`, 'warning');
       }
-      tally(r.decision.verdict, r.decision.cutBy, r.decision.sentByHandOverride);
+      tally(r.decision.verdict, r.decision.filteredBy, r.decision.sentByHandOverride);
       if (r.outcome === 'worker_died') throw r.error!;
       if ((i + 1) % CHECKPOINT_EVERY === 0) persist();
       progress(3 + Math.trunc(((i + 1) / Math.max(work.length, 1)) * 97), `Culled ${i + 1}/${work.length}`);
@@ -278,8 +278,8 @@ export async function runCullPass(
   libraryWrite(db, () => finishCullRun(db, runId, { status: 'complete', ...result }));
   log(
     `status=complete photos=${work.length} culled=${counts.culled} redecided=${counts.redecided} ` +
-      `failed=${counts.failed} cut_recipe=${counts.cut_by_culling_recipe} ` +
-      `cut_score_forecast=${counts.cut_by_score_forecast} pending=${counts.pending} sent=${counts.sent} ` +
+      `failed=${counts.failed} filtered_profile=${counts.filtered_by_culling_profile} ` +
+      `filtered_score_forecast=${counts.filtered_by_score_forecast} pending=${counts.pending} passed=${counts.passed} ` +
       `sent_by_hand_passed=${counts.sent_by_hand_passed} score_forecast=${result.score_forecast} ` +
       `s_per_photo=${result.seconds_per_photo ?? '-'} duration_s=${result.durations_s.total}`,
   );

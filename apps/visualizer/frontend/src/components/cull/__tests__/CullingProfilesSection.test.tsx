@@ -1,10 +1,10 @@
 import { Suspense, act } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { CullingRecipesSection } from '../CullingRecipesSection'
-import { CULL_ADD_RECIPE, CULL_RECIPES_SECTION } from '../../../constants/strings'
+import { CullingProfilesSection } from '../CullingProfilesSection'
+import { CULL_ADD_PROFILE, CULL_PROFILES_SECTION } from '../../../constants/strings'
 
-const expand = () => fireEvent.click(screen.getByRole('button', { name: new RegExp(CULL_RECIPES_SECTION) }))
+const expand = () => fireEvent.click(screen.getByRole('button', { name: new RegExp(CULL_PROFILES_SECTION) }))
 import { deleteMatching } from '../../../data/cache'
 
 const apiMocks = vi.hoisted(() => ({
@@ -18,8 +18,8 @@ vi.mock('../../../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/api')>()
   return {
     ...actual,
-    CullingRecipesAPI: {
-      ...actual.CullingRecipesAPI,
+    CullingProfilesAPI: {
+      ...actual.CullingProfilesAPI,
       list: (...args: unknown[]) => apiMocks.list(...args),
       getPipeline: (...args: unknown[]) => apiMocks.getPipeline(...args),
       get: (...args: unknown[]) => apiMocks.get(...args),
@@ -28,16 +28,16 @@ vi.mock('../../../services/api', async (importOriginal) => {
   }
 })
 
-describe('CullingRecipesSection', () => {
+describe('CullingProfilesSection', () => {
   beforeEach(() => {
     localStorage.clear()
     deleteMatching(() => true)
     vi.clearAllMocks()
     apiMocks.list.mockResolvedValue({
-      recipes: [
+      profiles: [
         {
-          slug: 'recipe-7h47',
-          name: 'Recipe 7H47',
+          slug: 'recipe-culling',
+          name: 'Recipe culling',
           model: 'laya-base',
           active: true,
           measured: true,
@@ -49,11 +49,11 @@ describe('CullingRecipesSection', () => {
     })
     apiMocks.getPipeline.mockResolvedValue({
       version: 1,
-      config: { score_forecast: { threshold: 0.111, enabled: true, high_from_level: 8, excused_at: 1, run_after_cut: true }, culling_recipes: [] },
+      config: { score_forecast: { threshold: 0.111, enabled: true, high_from_level: 8, excused_at: 1, run_after_filtered: true }, culling_profiles: [] },
     })
     apiMocks.get.mockResolvedValue({
-      slug: 'recipe-7h47',
-      name: 'Recipe 7H47',
+      slug: 'recipe-culling',
+      name: 'Recipe culling',
       model: 'laya-base',
       active: true,
       measured: true,
@@ -67,15 +67,15 @@ describe('CullingRecipesSection', () => {
       rule: {
         level_sets: { '5': { fails_at_most: 2, strong_at_least: 4 } },
         combine: 'any',
-        cut_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
+        filter_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
       },
     })
   })
 
-  it('add recipe creates minimal F19 recipe and selects it', async () => {
+  it('add profile creates minimal F19 profile and selects it', async () => {
     apiMocks.create.mockResolvedValue({
-      slug: 'recipe-new',
-      name: 'New recipe',
+      slug: 'profile-new',
+      name: 'New profile',
       model: 'laya-base',
       active: false,
       measured: false,
@@ -89,14 +89,14 @@ describe('CullingRecipesSection', () => {
       rule: {
         level_sets: { '5': { fails_at_most: 2, strong_at_least: 4 } },
         combine: 'any',
-        cut_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
+        filter_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
       },
     })
     apiMocks.list.mockResolvedValue({
-      recipes: [
+      profiles: [
         {
-          slug: 'recipe-7h47',
-          name: 'Recipe 7H47',
+          slug: 'recipe-culling',
+          name: 'Recipe culling',
           model: 'laya-base',
           active: true,
           measured: true,
@@ -105,8 +105,8 @@ describe('CullingRecipesSection', () => {
           pipeline_order: 0,
         },
         {
-          slug: 'recipe-new',
-          name: 'New recipe',
+          slug: 'profile-new',
+          name: 'New profile',
           model: 'laya-base',
           active: false,
           measured: false,
@@ -117,11 +117,11 @@ describe('CullingRecipesSection', () => {
       ],
     })
     apiMocks.get.mockImplementation((slug: string) =>
-      slug === 'recipe-new'
+      slug === 'profile-new'
         ? Promise.resolve(apiMocks.create.mock.results[0]?.value)
         : Promise.resolve({
-            slug: 'recipe-7h47',
-            name: 'Recipe 7H47',
+            slug: 'recipe-culling',
+            name: 'Recipe culling',
             model: 'laya-base',
             active: true,
             measured: true,
@@ -135,7 +135,7 @@ describe('CullingRecipesSection', () => {
             rule: {
               level_sets: { '5': { fails_at_most: 2, strong_at_least: 4 } },
               combine: 'any',
-              cut_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
+              filter_rule: { type: 'all_fail', dimensions: ['dimension-1'] },
             },
           }),
     )
@@ -143,25 +143,25 @@ describe('CullingRecipesSection', () => {
     await act(async () => {
       render(
         <Suspense fallback={null}>
-          <CullingRecipesSection />
+          <CullingProfilesSection />
         </Suspense>,
       )
     })
-    await waitFor(() => expect(screen.getByText(/Recipe 7H47 active/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Recipe culling active/)).toBeInTheDocument())
     expand()
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: CULL_ADD_RECIPE }))
+      fireEvent.click(screen.getByRole('button', { name: CULL_ADD_PROFILE }))
     })
     await waitFor(() => {
       expect(apiMocks.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          slug: expect.stringMatching(/^recipe-\d+$/),
+          slug: expect.stringMatching(/^profile-\d+$/),
           definition: expect.objectContaining({
             level_sets: [expect.objectContaining({ id: '5' })],
           }),
         }),
       )
-      expect(screen.getByText('New recipe')).toBeInTheDocument()
+      expect(screen.getByText('New profile')).toBeInTheDocument()
     })
   })
 
@@ -171,20 +171,20 @@ describe('CullingRecipesSection', () => {
       await act(async () => {
         view = render(
           <Suspense fallback={null}>
-            <CullingRecipesSection />
+            <CullingProfilesSection />
           </Suspense>,
         )
       })
       return view!
     }
     const first = await mount()
-    await waitFor(() => expect(screen.getByText(/1 recipe · Recipe 7H47 active/)).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: CULL_ADD_RECIPE })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/1 profile · Recipe culling active/)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: CULL_ADD_PROFILE })).not.toBeInTheDocument()
     expand()
-    expect(screen.getByRole('button', { name: CULL_ADD_RECIPE })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: CULL_ADD_PROFILE })).toBeInTheDocument()
     first.unmount()
 
     await mount()
-    await waitFor(() => expect(screen.getByRole('button', { name: CULL_ADD_RECIPE })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: CULL_ADD_PROFILE })).toBeInTheDocument())
   })
 })

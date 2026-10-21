@@ -6,7 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vi } from 'vitest';
 import { openLibraryDb } from '../../src/db/connection.js';
-import { seedCullingDefaults } from '../../src/db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../../src/db/library/cull-profiles.js';
 import {
   fakeLayaRuntimeModule,
   fakeLayaState,

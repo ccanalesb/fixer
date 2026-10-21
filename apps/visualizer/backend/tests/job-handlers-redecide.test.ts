@@ -1,5 +1,5 @@
 /**
- * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/recipe changes, no Laya.
+ * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/profile changes, no Laya.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,14 +15,14 @@ import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
-import { seedCullingDefaults, getCullRecipe, setRecipeRule } from '../src/db/library/cull-recipes.js';
+import { seedCullingDefaults, getCullProfile, setProfileRule } from '../src/db/library/cull-profiles.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { enqueueRedecideCullVerdicts, BATCH_REDECIDE_JOB_TYPE } from '../src/jobs/handlers/redecide.js';
 
 type Script = { levels: [number, number, number, number]; p8: number };
 const PASS: Script = { levels: [5, 5, 6, 6], p8: 0.5 };
 const FORECAST_BORDER: Script = { levels: [5, 5, 6, 6], p8: 0.12 };
-const RECIPE_CUT: Script = { levels: [5, 5, 3, 3], p8: 0.5 };
+const PROFILE_CUT: Script = { levels: [5, 5, 3, 3], p8: 0.5 };
 
 const laya = vi.hoisted(() => ({
   scripts: new Map<string, Script>(),
@@ -133,21 +133,21 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     expect(job.status).toBe('completed');
     const r = job.result as { changed: number };
     expect(r.changed).toBeGreaterThanOrEqual(1);
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'c'")[0]?.verdict).toBe('cut');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'c'")[0]?.verdict).toBe('filtered');
     expect(laya.calls.length).toBe(0);
     expect(laya.starts).toBe(0);
   });
 
-  it('recipe rule change via setRecipeRule flips recipe cuts', async () => {
+  it('profile rule change via setProfileRule flips profile filters', async () => {
     await addPhoto('a', PASS);
     await runCull();
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'a'")[0]?.verdict).toBe('sent');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'a'")[0]?.verdict).toBe('passed');
     const lib = openLibraryDb(fx.dbPath);
-    const base = getCullRecipe(lib, 'recipe-7h47')!.rule;
-    setRecipeRule(lib, 'recipe-7h47', {
+    const base = getCullProfile(lib, 'recipe-culling')!.rule;
+    setProfileRule(lib, 'recipe-culling', {
       ...base,
       combine: 'any',
-      cut_rule: { type: 'mean_fail' },
+      filter_rule: { type: 'mean_fail' },
       level_sets: {
         ...base.level_sets,
         '10': { fails_at_most: 6, strong_at_least: base.level_sets['10']!.strong_at_least },
@@ -157,18 +157,18 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     laya.calls.length = 0;
     const job = await runRedecide();
     expect((job.result as { changed: number }).changed).toBeGreaterThanOrEqual(1);
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'a'")[0]?.verdict).toBe('cut');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'a'")[0]?.verdict).toBe('filtered');
     expect(laya.calls.length).toBe(0);
   });
 
-  it('keeps sent-by-hand sent and preserves pending_reason', async () => {
-    await addPhoto('cut', RECIPE_CUT);
+  it('keeps sent-by-hand passed and preserves pending_reason', async () => {
+    await addPhoto('filtered', PROFILE_CUT);
     await addPhoto('pend', PASS);
     laya.failOn = 'pend';
     await runCull();
     laya.failOn = null;
     const lib = openLibraryDb(fx.dbPath);
-    recordCullUserAction(lib, 'cut', 'sent_by_hand');
+    recordCullUserAction(lib, 'filtered', 'sent_by_hand');
     lib.close();
     const pendingReason = fx.query<{ pending_reason: string }>(
       "SELECT pending_reason FROM cull_verdicts WHERE image_key = 'pend'",
@@ -180,7 +180,7 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     lib2.close();
     const job = await runRedecide();
     expect(job.status).toBe('completed');
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'cut'")[0]?.verdict).toBe('sent');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'filtered'")[0]?.verdict).toBe('passed');
     expect(fx.query("SELECT pending_reason FROM cull_verdicts WHERE image_key = 'pend'")[0]?.pending_reason).toBe(
       pendingReason,
     );
@@ -225,7 +225,7 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
       fx.addImage({ key, filepath });
       fx.exec(
         `INSERT INTO cull_verdicts (image_key, verdict, pipeline_setting_version, decided_at, pending_reason, pending_stages, stage_version_ids, sent_by_hand, score_forecast_off)
-         VALUES (?, 'sent', 1, datetime('now'), '', '[]', '[]', 0, 0)`,
+         VALUES (?, 'passed', 1, datetime('now'), '', '[]', '[]', 0, 0)`,
         key,
       );
     }

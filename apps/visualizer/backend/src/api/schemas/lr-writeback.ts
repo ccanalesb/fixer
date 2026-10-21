@@ -4,9 +4,9 @@ export const LrWritebackSettingsSchema = z
   .object({
     write_stars: z.boolean(),
     write_reject: z.boolean(),
-    stars_recipe_slug: z.string().nullable(),
-    active_recipe_slugs: z.array(z.string()),
-    active_recipes: z.array(z.object({ slug: z.string(), name: z.string() }).strict()),
+    stars_profile_slug: z.string().nullable(),
+    active_profile_slugs: z.array(z.string()),
+    active_profiles: z.array(z.object({ slug: z.string(), name: z.string() }).strict()),
     catalog_write_available: z.boolean(),
     catalog_write_unavailable_reason: z.string().nullable(),
     counts: z.object({
@@ -34,7 +34,7 @@ export const LrWritebackSettingsPatchSchema = z
   .object({
     write_stars: z.boolean().optional(),
     write_reject: z.boolean().optional(),
-    stars_recipe_slug: z.string().nullable().optional(),
+    stars_profile_slug: z.string().nullable().optional(),
   })
   .strict();
 

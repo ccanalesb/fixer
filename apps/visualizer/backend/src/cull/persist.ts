@@ -2,7 +2,7 @@
  * One photo's cull, stored: new stage answers (if any), every current stage's verdict re-decided, and
  * the summary row — in one `libraryWrite`, so a photo is never half-decided.
  *
- * The cull job, the research import and the re-decide job (#339) all end here; re-decide passes no
+ * The culling job, the research import and the re-decide job (#339) all end here; re-decide passes no
  * new answers and so never needs Laya.
  */
 import type { Db } from '../db/connection.js';
@@ -15,7 +15,7 @@ import type { PhotoDecision, ResolvedStage, StageAnswers } from './types.js';
 
 /**
  * Pending reason of a photo the Laya worker died on. Kept whatever the verdict (a photo sent by hand
- * is `sent` and still killed the worker), so the next fresh job asks it last.
+ * is `passed` and still killed the worker), so the next fresh job asks it last.
  */
 export const WORKER_DIED_REASON = 'laya_worker_died';
 
@@ -23,7 +23,7 @@ export const WORKER_DIED_REASON = 'laya_worker_died';
 export interface CullContext {
   stages: ResolvedStage[];
   pipeline: PipelineSetting;
-  /** False without Laya new: the Score forecast is off and the recipe decides alone. */
+  /** False without Laya new: the Score forecast is off and the profile decides alone. */
   scoreForecastAvailable: boolean;
 }
 
@@ -89,8 +89,8 @@ export function decideAndStorePhoto(db: Db, ctx: CullContext, args: StorePhotoAr
     upsertCullVerdict(db, {
       imageKey: args.imageKey,
       verdict: decision.verdict,
-      cutBy: decision.cutBy,
-      cutByStageKey: decision.cutByStageKey,
+      filteredBy: decision.filteredBy,
+      filteredByStageKey: decision.filteredByStageKey,
       sentByHand: args.sentByHand,
       pendingStages: decision.pendingStages,
       pendingReason:

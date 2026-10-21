@@ -27,9 +27,9 @@ export function CullReviewRowView({
       <button type="button" onClick={onOpen} className="text-left min-w-0">
         <div className="font-medium text-sm truncate">{row.filename}</div>
         <div className="text-xs text-text-secondary mt-1 space-y-0.5">
-          {row.recipe.level_sets.map((set) => (
+          {row.profile.level_sets.map((set) => (
             <div key={set.id}>
-              <span className="text-text-tertiary">{row.recipe.name} · {set.id} levels · </span>
+              <span className="text-text-tertiary">{row.profile.name} · {set.id} levels · </span>
               {set.dimensions.map((dim, i) => (
                 <span key={dim.slug}>
                   {i > 0 ? ' · ' : ''}

@@ -140,17 +140,17 @@ afterEach(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-function cullVerdict(key: string, verdict: 'cut' | 'sent' | 'pending'): void {
+function cullVerdict(key: string, verdict: 'filtered' | 'passed' | 'pending'): void {
   fx.exec(
-    `INSERT INTO cull_verdicts (image_key, verdict, cut_by, pipeline_setting_version, decided_at)
+    `INSERT INTO cull_verdicts (image_key, verdict, filtered_by, pipeline_setting_version, decided_at)
      VALUES (?, ?, ?, 1, '2026-10-19T00:00:00+00:00')`,
     key,
     verdict,
-    verdict === 'cut' ? 'culling_recipe' : null,
+    verdict === 'filtered' ? 'culling_profile' : null,
   );
 }
 
-describe('the last check: cut photos and void frames are not described', () => {
+describe('the last check: filtered photos and void frames are not described', () => {
   let requests = 0;
   beforeEach(() => {
     requests = 0;
@@ -158,12 +158,12 @@ describe('the last check: cut photos and void frames are not described', () => {
     reply = completion(JSON.stringify({ summary: 'A street scene', subjects: ['bicycle'] }));
   });
 
-  it('skips a cut photo without calling the provider, and says why', async () => {
+  it('skips a filtered photo without calling the provider, and says why', async () => {
     fx.addImage({ key: 'a', filepath: await writePhoto() });
-    cullVerdict('a', 'cut');
+    cullVerdict('a', 'filtered');
     const job = await runJob({ image_key: 'a' });
     expect(job.status).toBe('failed');
-    expect(job.error).toBe('Cull verdict: cut (send it by hand to describe it)');
+    expect(job.error).toBe('Culling verdict: filtered (send it by hand to describe it)');
     expect(requests).toBe(0);
   });
 
@@ -174,10 +174,10 @@ describe('the last check: cut photos and void frames are not described', () => {
     expect(requests).toBe(0);
   });
 
-  it('describes a cut photo sent by hand, and a pending one', async () => {
+  it('describes a filtered photo sent by hand, and a pending one', async () => {
     const filepath = await writePhoto();
     fx.addImage({ key: 'a', filepath }).addImage({ key: 'p', filepath });
-    cullVerdict('a', 'cut');
+    cullVerdict('a', 'filtered');
     cullVerdict('p', 'pending');
     const db = openLibraryDb(fx.dbPath);
     recordCullUserAction(db, 'a', 'sent_by_hand');

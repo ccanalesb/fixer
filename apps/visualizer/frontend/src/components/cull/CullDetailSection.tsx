@@ -17,13 +17,13 @@ import type { CullReviewDetail } from '../../services/api'
 
 const SELECTED_ANSWER_CLASS = '!border-accent !text-accent !bg-accent-light'
 
-function RecipeTable({ recipe }: { recipe: CullReviewDetail['recipe'] }) {
+function ProfileTable({ profile }: { profile: CullReviewDetail['profile'] }) {
   return (
     <table className="w-full text-xs border-collapse">
       <thead>
         <tr>
           <th className="text-left p-1" />
-          {recipe.level_sets.map((s) => (
+          {profile.level_sets.map((s) => (
             <th key={s.id} className="p-1 text-right font-medium text-text-tertiary">
               {s.id} levels
             </th>
@@ -31,10 +31,10 @@ function RecipeTable({ recipe }: { recipe: CullReviewDetail['recipe'] }) {
         </tr>
       </thead>
       <tbody>
-        {recipe.level_sets[0]?.dimensions.map((dim) => (
+        {profile.level_sets[0]?.dimensions.map((dim) => (
           <tr key={dim.slug}>
             <td className="p-1">{dim.name}</td>
-            {recipe.level_sets.map((set) => {
+            {profile.level_sets.map((set) => {
               const lv = set.dimensions.find((x) => x.slug === dim.slug)?.levels[0]
               return (
                 <td key={set.id} className={`p-1 text-right ${levelHighlightClass(lv)}`}>
@@ -73,16 +73,16 @@ function ScoreForecast({ forecast, boldTop }: { forecast: CullReviewDetail['scor
 export function CullDetailSection({
   detail,
   onAction,
-  onWithdrawShouldHaveBeenCut,
+  onWithdrawShouldHaveBeenFiltered,
   onSend,
 }: {
   detail: CullReviewDetail
-  onAction: (action: 'agrees_with_cut' | 'should_have_been_cut') => void
-  onWithdrawShouldHaveBeenCut: () => void
+  onAction: (action: 'agrees_with_filter' | 'should_have_been_filtered') => void
+  onWithdrawShouldHaveBeenFiltered: () => void
   onSend: () => void
 }) {
-  const agreed = detail.user_actions.some((a) => a.action === 'agrees_with_cut')
-  const shouldHaveBeenCut = detail.user_actions.some((a) => a.action === 'should_have_been_cut')
+  const agreed = detail.user_actions.some((a) => a.action === 'agrees_with_filter')
+  const shouldHaveBeenFiltered = detail.user_actions.some((a) => a.action === 'should_have_been_filtered')
   const sentByHand = detail.sent_by_hand
   const sendLabel = rowSendButtonLabel({
     completion: detail.completion,
@@ -94,16 +94,16 @@ export function CullDetailSection({
       <h3 className="font-semibold text-sm">{CULL_DETAIL_SECTION}</h3>
       {sentByHand ? (
         <p className="text-sm text-text-secondary">{CULL_MANUALLY_CULL_NOTE}</p>
-      ) : detail.verdict === 'sent' ? (
+      ) : detail.verdict === 'passed' ? (
         <>
           <p className="flex items-center gap-2 text-sm font-semibold text-success">
             <span className="h-2 w-2 rounded-full bg-success" aria-hidden />
             {CULL_PASSED}
           </p>
-          {detail.recipe.level_sets.length > 0 ? (
+          {detail.profile.level_sets.length > 0 ? (
             <div>
-              <h4 className="text-sm font-medium mb-2">{detail.recipe.name}</h4>
-              <RecipeTable recipe={detail.recipe} />
+              <h4 className="text-sm font-medium mb-2">{detail.profile.name}</h4>
+              <ProfileTable profile={detail.profile} />
             </div>
           ) : null}
           <ScoreForecast forecast={detail.score_forecast} boldTop />
@@ -114,9 +114,9 @@ export function CullDetailSection({
                 type="button"
                 size="sm"
                 variant="secondary"
-                aria-pressed={!shouldHaveBeenCut}
-                className={shouldHaveBeenCut ? '' : SELECTED_ANSWER_CLASS}
-                onClick={() => shouldHaveBeenCut && onWithdrawShouldHaveBeenCut()}
+                aria-pressed={!shouldHaveBeenFiltered}
+                className={shouldHaveBeenFiltered ? '' : SELECTED_ANSWER_CLASS}
+                onClick={() => shouldHaveBeenFiltered && onWithdrawShouldHaveBeenFiltered()}
               >
                 {CULL_PASS_YES}
               </Button>
@@ -124,9 +124,9 @@ export function CullDetailSection({
                 type="button"
                 size="sm"
                 variant="secondary"
-                aria-pressed={shouldHaveBeenCut}
-                className={shouldHaveBeenCut ? SELECTED_ANSWER_CLASS : ''}
-                onClick={() => !shouldHaveBeenCut && onAction('should_have_been_cut')}
+                aria-pressed={shouldHaveBeenFiltered}
+                className={shouldHaveBeenFiltered ? SELECTED_ANSWER_CLASS : ''}
+                onClick={() => !shouldHaveBeenFiltered && onAction('should_have_been_filtered')}
               >
                 {CULL_PASS_NO}
               </Button>
@@ -136,7 +136,7 @@ export function CullDetailSection({
         </>
       ) : (
         <>
-          <RecipeTable recipe={detail.recipe} />
+          <ProfileTable profile={detail.profile} />
           <ScoreForecast forecast={detail.score_forecast} boldTop={false} />
           <div className="flex flex-wrap gap-2">
             {sendLabel && (
@@ -149,7 +149,7 @@ export function CullDetailSection({
               size="sm"
               variant="secondary"
               disabled={agreed}
-              onClick={() => onAction('agrees_with_cut')}
+              onClick={() => onAction('agrees_with_filter')}
             >
               {agreed ? CULL_AGREED : CULL_AGREE}
             </Button>

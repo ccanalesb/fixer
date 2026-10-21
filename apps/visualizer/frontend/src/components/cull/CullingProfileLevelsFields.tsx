@@ -1,46 +1,46 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import {
-  CULL_RECIPE_ADDED_LEVEL,
-  CULL_RECIPE_ADD_LEVEL,
-  CULL_RECIPE_ADD_LEVEL_SET_BUTTON,
-  CULL_RECIPE_ADD_LEVEL_TOP,
-  CULL_RECIPE_BAND_FAILS,
-  CULL_RECIPE_BAND_RANGE,
-  CULL_RECIPE_BAND_STRONG,
-  CULL_RECIPE_CANCEL,
-  CULL_RECIPE_CREATE,
-  CULL_RECIPE_CREATED_SET,
-  CULL_RECIPE_EMPTY_COUNT,
-  CULL_RECIPE_EMPTY_LEVELS,
-  CULL_RECIPE_EMPTY_PLACEHOLDER,
-  CULL_RECIPE_FAILS_AT,
-  CULL_RECIPE_FILL_ALL,
-  CULL_RECIPE_INSERT_ABOVE,
-  CULL_RECIPE_INSERT_BETWEEN,
-  CULL_RECIPE_INSERT_HERE,
-  CULL_RECIPE_INSERT_HINT,
-  CULL_RECIPE_LAST_SET,
-  CULL_RECIPE_LEVEL,
-  CULL_RECIPE_LEVEL_COUNT,
-  CULL_RECIPE_LEVEL_SET,
-  CULL_RECIPE_MIN_LEVELS,
-  CULL_RECIPE_NEW_LEVEL_PLACEHOLDER,
-  CULL_RECIPE_NEW_LEVEL_TITLE,
-  CULL_RECIPE_NEW_SET,
-  CULL_RECIPE_NEW_SET_COPY,
-  CULL_RECIPE_NEW_SET_EMPTY,
-  CULL_RECIPE_NEW_SET_FROM,
-  CULL_RECIPE_NEW_SET_LEVELS,
-  CULL_RECIPE_NEW_SET_NAME,
-  CULL_RECIPE_REMOVE,
-  CULL_RECIPE_REMOVED_LEVEL,
-  CULL_RECIPE_REMOVED_SET,
-  CULL_RECIPE_REMOVE_LEVEL,
-  CULL_RECIPE_REMOVE_SET,
-  CULL_RECIPE_REMOVE_SET_BODY,
-  CULL_RECIPE_REMOVE_SET_TITLE,
-  CULL_RECIPE_STRONG_AT,
+  CULL_PROFILE_ADDED_LEVEL,
+  CULL_PROFILE_ADD_LEVEL,
+  CULL_PROFILE_ADD_LEVEL_SET_BUTTON,
+  CULL_PROFILE_ADD_LEVEL_TOP,
+  CULL_PROFILE_BAND_FAILS,
+  CULL_PROFILE_BAND_RANGE,
+  CULL_PROFILE_BAND_STRONG,
+  CULL_PROFILE_CANCEL,
+  CULL_PROFILE_CREATE,
+  CULL_PROFILE_CREATED_SET,
+  CULL_PROFILE_EMPTY_COUNT,
+  CULL_PROFILE_EMPTY_LEVELS,
+  CULL_PROFILE_EMPTY_PLACEHOLDER,
+  CULL_PROFILE_FAILS_AT,
+  CULL_PROFILE_FILL_ALL,
+  CULL_PROFILE_INSERT_ABOVE,
+  CULL_PROFILE_INSERT_BETWEEN,
+  CULL_PROFILE_INSERT_HERE,
+  CULL_PROFILE_INSERT_HINT,
+  CULL_PROFILE_LAST_SET,
+  CULL_PROFILE_LEVEL,
+  CULL_PROFILE_LEVEL_COUNT,
+  CULL_PROFILE_LEVEL_SET,
+  CULL_PROFILE_MIN_LEVELS,
+  CULL_PROFILE_NEW_LEVEL_PLACEHOLDER,
+  CULL_PROFILE_NEW_LEVEL_TITLE,
+  CULL_PROFILE_NEW_SET,
+  CULL_PROFILE_NEW_SET_COPY,
+  CULL_PROFILE_NEW_SET_EMPTY,
+  CULL_PROFILE_NEW_SET_FROM,
+  CULL_PROFILE_NEW_SET_LEVELS,
+  CULL_PROFILE_NEW_SET_NAME,
+  CULL_PROFILE_REMOVE,
+  CULL_PROFILE_REMOVED_LEVEL,
+  CULL_PROFILE_REMOVED_SET,
+  CULL_PROFILE_REMOVE_LEVEL,
+  CULL_PROFILE_REMOVE_SET,
+  CULL_PROFILE_REMOVE_SET_BODY,
+  CULL_PROFILE_REMOVE_SET_TITLE,
+  CULL_PROFILE_STRONG_AT,
 } from '../../constants/strings'
 import { EmptyDot, Segmented } from './Segmented'
 import {
@@ -56,12 +56,12 @@ import {
   removeLevelSet,
   setBands,
   setLevelText,
-  type RecipeDraft,
-} from './recipeDraft'
+  type ProfileDraft,
+} from './profileDraft'
 
 const NUM = 'w-14 border border-border rounded-base px-1 bg-bg'
 
-export function CullingRecipeLevelsFields<T extends RecipeDraft>({
+export function CullingProfileLevelsFields<T extends ProfileDraft>({
   draft,
   setDraft,
   fieldErrors,
@@ -110,12 +110,12 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
   const addFromForm = () => {
     if (!form || !formReady) return
     setDraft((d) => insertLevel(d, set.id, form.at, form.texts))
-    setStatus(CULL_RECIPE_ADDED_LEVEL(form.at + 1, dims.length))
+    setStatus(CULL_PROFILE_ADDED_LEVEL(form.at + 1, dims.length))
     setForm(null)
   }
   const remove = (index: number) => {
     setDraft((d) => removeLevel(d, set.id, index))
-    setStatus(CULL_RECIPE_REMOVED_LEVEL(index + 1, dims.length, index < n - 1))
+    setStatus(CULL_PROFILE_REMOVED_LEVEL(index + 1, dims.length, index < n - 1))
   }
   const newSetCount = newSet ? Number.parseInt(newSet.count, 10) : Number.NaN
   const newSetProblem = newSet ? newLevelSetProblem(draft, newSetCount) : null
@@ -125,13 +125,13 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
     setDraft((d) => addLevelSet(d, newSetCount, from))
     setSetId(String(newSetCount))
     setNewSet(null)
-    setStatus(CULL_RECIPE_CREATED_SET(String(newSetCount), newSetCount, from))
+    setStatus(CULL_PROFILE_CREATED_SET(String(newSetCount), newSetCount, from))
   }
   const removeSet = () => {
     const id = set.id
     setDraft((d) => removeLevelSet(d, id))
     setConfirmRemoveSet(false)
-    setStatus(CULL_RECIPE_REMOVED_SET(id))
+    setStatus(CULL_PROFILE_REMOVED_SET(id))
   }
 
   const failsTo = bands ? Math.min(bands.fails_at_most, n) : 0
@@ -140,9 +140,9 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-text-secondary">{CULL_RECIPE_LEVEL_SET}</span>
+        <span className="text-text-secondary">{CULL_PROFILE_LEVEL_SET}</span>
         <Segmented
-          label={CULL_RECIPE_LEVEL_SET}
+          label={CULL_PROFILE_LEVEL_SET}
           value={set.id}
           onChange={pickSet}
           options={sets.map((s) => {
@@ -150,16 +150,16 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
             return { id: s.id, label: <>{s.id}{e ? <EmptyDot>{e}</EmptyDot> : null}</> }
           })}
         />
-        <span className="text-xs text-text-tertiary">{CULL_RECIPE_LEVEL_COUNT(n)}</span>
+        <span className="text-xs text-text-tertiary">{CULL_PROFILE_LEVEL_COUNT(n)}</span>
         <Button
           type="button"
           size="sm"
           variant="ghost"
           disabled={sets.length <= 1}
-          title={sets.length <= 1 ? CULL_RECIPE_LAST_SET : undefined}
+          title={sets.length <= 1 ? CULL_PROFILE_LAST_SET : undefined}
           onClick={() => setConfirmRemoveSet(true)}
         >
-          {CULL_RECIPE_REMOVE_SET(set.id)}
+          {CULL_PROFILE_REMOVE_SET(set.id)}
         </Button>
         <span className="ml-auto">
           <Button
@@ -168,21 +168,21 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
             variant="secondary"
             onClick={() => setNewSet((s) => (s ? null : { count: '5', from: '' }))}
           >
-            {CULL_RECIPE_ADD_LEVEL_SET_BUTTON}
+            {CULL_PROFILE_ADD_LEVEL_SET_BUTTON}
           </Button>
         </span>
       </div>
 
       {confirmRemoveSet ? (
         <div className="border border-border rounded-base p-3 space-y-2 max-w-md" role="alertdialog">
-          <p className="font-semibold">{CULL_RECIPE_REMOVE_SET_TITLE(set.id)}</p>
-          <p className="text-text-secondary">{CULL_RECIPE_REMOVE_SET_BODY(dims.length)}</p>
+          <p className="font-semibold">{CULL_PROFILE_REMOVE_SET_TITLE(set.id)}</p>
+          <p className="text-text-secondary">{CULL_PROFILE_REMOVE_SET_BODY(dims.length)}</p>
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="danger" onClick={removeSet}>
-              {CULL_RECIPE_REMOVE}
+              {CULL_PROFILE_REMOVE}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmRemoveSet(false)}>
-              {CULL_RECIPE_CANCEL}
+              {CULL_PROFILE_CANCEL}
             </Button>
           </div>
         </div>
@@ -190,9 +190,9 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
 
       {newSet ? (
         <div className="border border-border rounded-base p-3 space-y-2 max-w-md shadow-card bg-bg">
-          <p className="font-semibold">{CULL_RECIPE_NEW_SET}</p>
+          <p className="font-semibold">{CULL_PROFILE_NEW_SET}</p>
           <label className="flex items-center gap-2">
-            {CULL_RECIPE_NEW_SET_LEVELS}
+            {CULL_PROFILE_NEW_SET_LEVELS}
             <input
               type="number"
               className={NUM}
@@ -203,29 +203,29 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
             />
           </label>
           <label className="flex items-center gap-2">
-            {CULL_RECIPE_NEW_SET_FROM}
+            {CULL_PROFILE_NEW_SET_FROM}
             <select
               className="border border-border rounded-base px-2 py-1 bg-bg"
               value={newSet.from}
               onChange={(e) => setNewSet({ ...newSet, from: e.target.value })}
             >
-              <option value="">{CULL_RECIPE_NEW_SET_EMPTY}</option>
+              <option value="">{CULL_PROFILE_NEW_SET_EMPTY}</option>
               {sets.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {CULL_RECIPE_NEW_SET_COPY(s.id)}
+                  {CULL_PROFILE_NEW_SET_COPY(s.id)}
                 </option>
               ))}
             </select>
           </label>
           <p className={`text-xs ${newSetProblem ? 'text-error' : 'text-text-tertiary'}`}>
-            {newSetProblem ?? CULL_RECIPE_NEW_SET_NAME(String(newSetCount))}
+            {newSetProblem ?? CULL_PROFILE_NEW_SET_NAME(String(newSetCount))}
           </p>
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="primary" disabled={Boolean(newSetProblem)} onClick={createSet}>
-              {CULL_RECIPE_CREATE}
+              {CULL_PROFILE_CREATE}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setNewSet(null)}>
-              {CULL_RECIPE_CANCEL}
+              {CULL_PROFILE_CANCEL}
             </Button>
           </div>
         </div>
@@ -235,7 +235,7 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
         <div>
           <div className="flex flex-wrap gap-4 text-xs">
             <label>
-              {CULL_RECIPE_FAILS_AT} ≤{' '}
+              {CULL_PROFILE_FAILS_AT} ≤{' '}
               <input
                 type="number"
                 className={NUM}
@@ -246,7 +246,7 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
               />
             </label>
             <label>
-              {CULL_RECIPE_STRONG_AT} ≥{' '}
+              {CULL_PROFILE_STRONG_AT} ≥{' '}
               <input
                 type="number"
                 className={NUM}
@@ -258,8 +258,8 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
             </label>
           </div>
           <p className="text-xs text-text-secondary mt-1">
-            <b className="text-warning">{CULL_RECIPE_BAND_FAILS}</b> = {CULL_RECIPE_BAND_RANGE(1, failsTo)} ·{' '}
-            <b className="text-success">{CULL_RECIPE_BAND_STRONG}</b> = {CULL_RECIPE_BAND_RANGE(strongFrom, n)}
+            <b className="text-warning">{CULL_PROFILE_BAND_FAILS}</b> = {CULL_PROFILE_BAND_RANGE(1, failsTo)} ·{' '}
+            <b className="text-success">{CULL_PROFILE_BAND_STRONG}</b> = {CULL_PROFILE_BAND_RANGE(strongFrom, n)}
           </p>
         </div>
       ) : null}
@@ -279,7 +279,7 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
               onClick={() => setDimSlug(d.slug)}
             >
               {d.name}
-              {e ? <EmptyDot>{CULL_RECIPE_EMPTY_COUNT(e)}</EmptyDot> : null}
+              {e ? <EmptyDot>{CULL_PROFILE_EMPTY_COUNT(e)}</EmptyDot> : null}
             </button>
           )
         })}
@@ -287,14 +287,14 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
 
       {form ? (
         <div className="border border-accent rounded-base p-3 bg-accent-light space-y-1.5">
-          <p className="font-semibold">{CULL_RECIPE_NEW_LEVEL_TITLE(form.at + 1, form.at === n)}</p>
+          <p className="font-semibold">{CULL_PROFILE_NEW_LEVEL_TITLE(form.at + 1, form.at === n)}</p>
           {dims.map((d, i) => (
             <label key={d.slug} className="grid grid-cols-[130px_1fr] gap-2 items-center text-xs">
               <span>{d.name}</span>
               <input
                 ref={i === 0 ? firstFormField : undefined}
                 className="w-full border border-border rounded-base px-2 py-1 text-sm bg-bg"
-                placeholder={CULL_RECIPE_NEW_LEVEL_PLACEHOLDER(form.at + 1)}
+                placeholder={CULL_PROFILE_NEW_LEVEL_PLACEHOLDER(form.at + 1)}
                 value={form.texts[d.slug] ?? ''}
                 onChange={(e) => setForm({ ...form, texts: { ...form.texts, [d.slug]: e.target.value } })}
                 onKeyDown={(e) => {
@@ -306,12 +306,12 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
           ))}
           <div className="flex items-center gap-2 pt-1">
             <Button type="button" size="sm" variant="primary" disabled={!formReady} onClick={addFromForm}>
-              {CULL_RECIPE_ADD_LEVEL}
+              {CULL_PROFILE_ADD_LEVEL}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setForm(null)}>
-              {CULL_RECIPE_CANCEL}
+              {CULL_PROFILE_CANCEL}
             </Button>
-            <span className="text-xs text-text-tertiary">{CULL_RECIPE_FILL_ALL(dims.length)}</span>
+            <span className="text-xs text-text-tertiary">{CULL_PROFILE_FILL_ALL(dims.length)}</span>
           </div>
         </div>
       ) : null}
@@ -330,25 +330,25 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
           return (
             <Fragment key={i}>
               {i === n - 1 ? (
-                <InsertZone at={n} label={CULL_RECIPE_INSERT_ABOVE(n)} onInsert={(at) => setForm({ at, texts: {} })} />
+                <InsertZone at={n} label={CULL_PROFILE_INSERT_ABOVE(n)} onInsert={(at) => setForm({ at, texts: {} })} />
               ) : null}
               <div className="group grid grid-cols-[70px_1fr_26px] gap-2 items-center">
-                <span className={`text-xs ${tone}`}>{CULL_RECIPE_LEVEL(level)}</span>
+                <span className={`text-xs ${tone}`}>{CULL_PROFILE_LEVEL(level)}</span>
                 <input
                   className={`w-full border rounded-base px-2 py-1 text-sm ${
                     text.trim() ? 'border-border bg-bg' : 'border-warning bg-bg'
                   }`}
-                  aria-label={`${CULL_RECIPE_LEVEL(level)} · ${dim.name}`}
+                  aria-label={`${CULL_PROFILE_LEVEL(level)} · ${dim.name}`}
                   aria-invalid={!text.trim() || Boolean(serverError)}
-                  placeholder={CULL_RECIPE_EMPTY_PLACEHOLDER(level, dim.name)}
+                  placeholder={CULL_PROFILE_EMPTY_PLACEHOLDER(level, dim.name)}
                   value={text}
                   onChange={(e) => setDraft((d) => setLevelText(d, set.id, dim.slug, i, e.target.value))}
                 />
                 <button
                   type="button"
                   className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-text-tertiary hover:text-error rounded-base leading-6 disabled:cursor-not-allowed"
-                  aria-label={CULL_RECIPE_REMOVE_LEVEL(level)}
-                  title={n <= MIN_LEVELS_PER_SET ? CULL_RECIPE_MIN_LEVELS : CULL_RECIPE_REMOVE_LEVEL(level)}
+                  aria-label={CULL_PROFILE_REMOVE_LEVEL(level)}
+                  title={n <= MIN_LEVELS_PER_SET ? CULL_PROFILE_MIN_LEVELS : CULL_PROFILE_REMOVE_LEVEL(level)}
                   disabled={n <= MIN_LEVELS_PER_SET}
                   onClick={() => remove(i)}
                 >
@@ -358,7 +358,7 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
               {i > 0 ? (
                 <InsertZone
                   at={i}
-                  label={CULL_RECIPE_INSERT_BETWEEN(i)}
+                  label={CULL_PROFILE_INSERT_BETWEEN(i)}
                   onInsert={(at) => setForm({ at, texts: {} })}
                 />
               ) : null}
@@ -369,12 +369,12 @@ export function CullingRecipeLevelsFields<T extends RecipeDraft>({
 
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="secondary" onClick={() => setForm({ at: n, texts: {} })}>
-          {CULL_RECIPE_ADD_LEVEL_TOP}
+          {CULL_PROFILE_ADD_LEVEL_TOP}
         </Button>
-        <span className="text-xs text-text-tertiary">{CULL_RECIPE_INSERT_HINT}</span>
+        <span className="text-xs text-text-tertiary">{CULL_PROFILE_INSERT_HINT}</span>
       </div>
 
-      {empty ? <p className="text-xs text-warning">{CULL_RECIPE_EMPTY_LEVELS(empty)}</p> : null}
+      {empty ? <p className="text-xs text-warning">{CULL_PROFILE_EMPTY_LEVELS(empty)}</p> : null}
       {problems.map((p) => (
         <p key={p.message} className="text-xs text-error" role="alert">
           {p.message}
@@ -403,7 +403,7 @@ function InsertZone({ at, label, onInsert }: { at: number; label: string; onInse
     >
       <span className="hidden group-hover/insert:block group-focus/insert:block absolute left-0 right-[112px] top-1/2 border-t border-dashed border-accent" />
       <span className="hidden group-hover/insert:inline group-focus/insert:inline absolute left-0 -top-1.5 text-[11px] text-accent bg-bg px-1">
-        {CULL_RECIPE_INSERT_HERE}
+        {CULL_PROFILE_INSERT_HERE}
       </span>
     </button>
   )
