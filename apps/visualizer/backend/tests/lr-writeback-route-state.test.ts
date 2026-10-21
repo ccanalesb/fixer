@@ -22,6 +22,7 @@ import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { reconcileLrWriteback } from '../src/lightroom/writeback.js';
 import {
+  AUTO_REJECT_KEYWORD,
   AUTO_STARS_KEYWORD,
   connectCatalog,
   imageHasKeywordByKey,
@@ -94,7 +95,10 @@ async function runWritebackJob(): Promise<string> {
 }
 
 beforeEach(() => {
-  fx = new LibraryFixture().activate();
+  fx = new LibraryFixture()
+    .addImage({ key: imageKey, id: '1' })
+    .addImage({ key: starsKey, id: '1' })
+    .activate();
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-rst-'));
   cfgPath = join(dir, 'config.yaml');
   lrcatPath = join(dir, 'Test.lrcat');
@@ -205,7 +209,65 @@ describe('switch job reject state', () => {
     cat.close();
     expect(Number(live.pick)).toBe(0);
   });
+
+  it('takes a reject the user unflagged in Lightroom as undone, and does not write it again', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    editCatalog('UPDATE Adobe_images SET pick = 0');
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    const again = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    db.close();
+
+    expect(stateOf(imageKey, 'reject')).toBe('undone');
+    expect(again.catalog_updated_reject).toBe(0);
+    expect(liveOf('cut-photo')).toEqual({ pick: 0, rating: null, keyword: false });
+  });
+
+  it('keeps a pick the user set over the app reject', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    editCatalog('UPDATE Adobe_images SET pick = 1');
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    db.close();
+
+    expect(stateOf(imageKey, 'reject')).toBe('skipped');
+    expect(liveOf('cut-photo').pick).toBe(1);
+  });
 });
+
+function editCatalog(sql: string): void {
+  const cat = connectCatalog(lrcatPath);
+  cat.exec(sql);
+  cat.close();
+}
+
+function stateOf(key: string, kind: 'stars' | 'reject'): string | undefined {
+  return fx.query<{ status: string }>(
+    'SELECT status FROM lr_writeback_state WHERE image_key = ? AND kind = ?',
+    key,
+    kind,
+  )[0]?.status;
+}
+
+function liveOf(baseName: string): { pick: number; rating: number | null; keyword: boolean } {
+  const cat = connectCatalog(lrcatPath);
+  const row = cat
+    .prepare(
+      `SELECT ai.id_local AS id, ai.pick, ai.rating FROM Adobe_images ai
+       JOIN AgLibraryFile f ON f.id_local = ai.rootFile WHERE f.baseName = ?`,
+    )
+    .get(baseName) as { id: number; pick: number; rating: number | null };
+  const keyword =
+    cat
+      .prepare(
+        `SELECT 1 FROM AgLibraryKeywordImage ki JOIN AgLibraryKeyword k ON k.id_local = ki.tag
+         WHERE ki.image = ? AND k.name IN (?, ?)`,
+      )
+      .get(row.id, AUTO_STARS_KEYWORD, AUTO_REJECT_KEYWORD) !== undefined;
+  cat.close();
+  return { pick: Number(row.pick), rating: row.rating === null ? null : Number(row.rating), keyword };
+}
 
 describe('switch job stars state', () => {
   beforeEach(() => {
@@ -295,6 +357,20 @@ describe('switch job stars state', () => {
     const second = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
     expect(second.catalog_updated_stars ?? 0).toBe(0);
     db.close();
+  });
+
+  it('takes stars the user cleared in Lightroom as undone, and does not write them again', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    const first = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    expect(first.catalog_updated_stars).toBe(1);
+    editCatalog('UPDATE Adobe_images SET rating = NULL');
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    const again = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    db.close();
+
+    expect(stateOf(starsKey, 'stars')).toBe('undone');
+    expect(again.catalog_updated_stars).toBe(0);
+    expect(liveOf('star-photo')).toEqual({ pick: 0, rating: null, keyword: false });
   });
 });
 

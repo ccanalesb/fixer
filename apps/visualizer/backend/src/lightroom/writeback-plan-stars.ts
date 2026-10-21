@@ -2,7 +2,9 @@ import type { Db } from '../db/connection.js';
 import { getWritebackState, type LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
 import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import {
+  AUTO_STARS_KEYWORD,
   clearStarsFromCatalog,
+  removeKeywordByKey,
   writeStarsToCatalog,
   type LivePickRating,
 } from './writer.js';
@@ -39,7 +41,10 @@ export function planStarsPhoto(
   }
 
   if (live && row && userChangedAfterWrite('stars', live, row)) {
-    return { ...row, status: 'skipped' };
+    if (live.rating !== null) return { ...row, status: 'skipped' };
+    // Clearing the app's stars in Lightroom is an undo: not written again until the recipe changes.
+    if (conn && canWrite) removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+    return { ...row, status: 'undone', written_rating: null, written_at: null };
   }
 
   if (row?.status === 'undone' && starsVersionId !== null && row.stars_recipe_version_id === starsVersionId) {

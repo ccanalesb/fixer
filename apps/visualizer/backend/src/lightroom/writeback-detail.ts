@@ -24,7 +24,7 @@ export function buildWritebackPhotoDetail(
   const starsRow = getWritebackState(db, imageKey, 'stars');
   const rejectRow = getWritebackState(db, imageKey, 'reject');
 
-  const conn = connectCatalog(catalogPath);
+  const conn = connectCatalog(catalogPath, db);
   let live = null as ReturnType<typeof readPickRating>;
   const keywords: string[] = [];
   try {

@@ -34,7 +34,7 @@ let lrcatPath: string;
 let jobsDbPath: string;
 
 beforeEach(() => {
-  fx = new LibraryFixture().activate();
+  fx = new LibraryFixture().addImage({ key: '2024-06-01_cut-photo', id: '1' }).activate();
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-switch-'));
   cfgPath = join(dir, 'config.yaml');
   lrcatPath = join(dir, 'Test.lrcat');

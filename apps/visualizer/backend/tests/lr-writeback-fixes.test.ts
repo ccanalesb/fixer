@@ -18,6 +18,7 @@ import {
   AUTO_STARS_KEYWORD,
   catalogBaseNameFromImageKey,
   connectCatalog,
+  getImageLocalId,
   readPickRating,
   AUTO_REJECT_KEYWORD,
   clearRejectFromCatalog,
@@ -35,7 +36,11 @@ let cfgPath: string;
 let lrcatPath: string;
 
 beforeEach(() => {
-  fx = new LibraryFixture().activate();
+  fx = new LibraryFixture()
+    .addImage({ key: '2024-06-01_p', id: '1' })
+    .addImage({ key: '2024-06-01_a', id: '1' })
+    .addImage({ key: '2024-06-01_b', id: '2' })
+    .activate();
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-fix-'));
   cfgPath = join(dir, 'config.yaml');
   lrcatPath = join(dir, 'Test.lrcat');
@@ -65,6 +70,102 @@ describe('catalogBaseNameFromImageKey', () => {
   it('matches product keys YYYY-MM-DD_basename', () => {
     expect(catalogBaseNameFromImageKey('2017-03-03_DSC5875')).toBe('DSC5875');
     expect(catalogBaseNameFromImageKey('2024-06-01_foo.jpg')).toBe('foo');
+  });
+});
+
+describe('finding the catalog photo for an image key', () => {
+  function addVirtualCopy(masterId: number, fileId: number): void {
+    const cat = new Database(lrcatPath);
+    cat
+      .prepare('INSERT INTO Adobe_images (id_local, rootFile, captureTime, masterImage) VALUES (?, ?, ?, ?)')
+      .run(950_000 + fileId, fileId, '2024-06-01T12:00:00', masterId);
+    cat.close();
+  }
+
+  it('takes the file the library holds for the key when a JPG and RAW share a name', () => {
+    makeFakeCatalog(lrcatPath, [
+      { id: 1, baseName: 'pair', extension: 'jpg' },
+      { id: 2, baseName: 'pair', extension: 'dng' },
+    ]);
+    fx.addImage({ key: '2024-06-01_pair', id: '2' });
+    const db = openLibraryDb(fx.dbPath);
+    const bound = connectCatalog(lrcatPath, db);
+    const unbound = connectCatalog(lrcatPath);
+    expect(getImageLocalId(bound, '2024-06-01_pair')).toBe(900_002);
+    expect(getImageLocalId(unbound, '2024-06-01_pair')).toBeNull();
+    bound.close();
+    unbound.close();
+    db.close();
+  });
+
+  it('tells same-name photos apart by day without the library', () => {
+    makeFakeCatalog(lrcatPath, [
+      { id: 1, baseName: 'DSC0001', captureTime: '2017-03-03T10:00:00' },
+      { id: 2, baseName: 'DSC0001', captureTime: '2024-06-01T10:00:00' },
+    ]);
+    const conn = connectCatalog(lrcatPath);
+    expect(getImageLocalId(conn, '2024-06-01_DSC0001')).toBe(900_002);
+    expect(getImageLocalId(conn, '2017-03-03_DSC0001')).toBe(900_001);
+    expect(getImageLocalId(conn, '2020-01-01_DSC0001')).toBeNull();
+    conn.close();
+  });
+
+  it('takes the master, not a virtual copy', () => {
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'vc' }]);
+    addVirtualCopy(900_001, 1);
+    fx.addImage({ key: '2024-06-01_vc', id: '1' });
+    const db = openLibraryDb(fx.dbPath);
+    const bound = connectCatalog(lrcatPath, db);
+    const unbound = connectCatalog(lrcatPath);
+    expect(getImageLocalId(bound, '2024-06-01_vc')).toBe(900_001);
+    expect(getImageLocalId(unbound, '2024-06-01_vc')).toBe(900_001);
+    bound.close();
+    unbound.close();
+    db.close();
+  });
+
+  it('finds nothing for a key the library holds no file id for', () => {
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'lonely' }]);
+    fx.addImages('2024-06-01_lonely');
+    const db = openLibraryDb(fx.dbPath);
+    const bound = connectCatalog(lrcatPath, db);
+    expect(getImageLocalId(bound, '2024-06-01_lonely')).toBeNull();
+    bound.close();
+    db.close();
+  });
+
+  it('writes the reject to the RAW the library holds, leaving the JPG alone', async () => {
+    makeFakeCatalog(lrcatPath, [
+      { id: 1, baseName: 'pair', extension: 'jpg', pick: 0 },
+      { id: 2, baseName: 'pair', extension: 'dng', pick: 0 },
+    ]);
+    fx.addImage({ key: '2024-06-01_pair', id: '2' });
+    const db = openLibraryDb(fx.dbPath);
+    seedCullingDefaults(db);
+    patchLrWritebackSettings(db, { write_reject: true });
+    upsertCullVerdict(db, {
+      imageKey: '2024-06-01_pair',
+      verdict: 'cut',
+      cutBy: 'culling_recipe',
+      cutByStageKey: 'x',
+      sentByHand: false,
+      pendingStages: [],
+      pendingReason: '',
+      scoreForecastOff: false,
+      scoreForecastP8: null,
+      pipelineSettingVersion: 1,
+      stageVersionIds: [],
+      runId: null,
+    });
+    await reconcileLrWriteback(db, { trigger: 'write_pending', catalogPath: lrcatPath });
+    db.close();
+    const cat = new Database(lrcatPath, { readonly: true });
+    const picks = cat.prepare('SELECT id_local, pick FROM Adobe_images ORDER BY id_local').all();
+    cat.close();
+    expect(picks).toEqual([
+      { id_local: 900_001, pick: 0 },
+      { id_local: 900_002, pick: -1 },
+    ]);
   });
 });
 

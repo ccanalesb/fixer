@@ -11,12 +11,17 @@
  *   - `AgLibraryKeywordImage.image` references `Adobe_images.id_local`, NOT
  *     `AgLibraryFile.id_local`. Getting that wrong links the keyword to a different
  *     photo, silently.
+ *   - an image key does not name one catalog photo: a JPG+RAW pair, a second import
+ *     or a virtual copy share its `YYYY-MM-DD_basename`. Open the catalog with the
+ *     library (`connectCatalog(path, library)`) so the photo is found by the file id
+ *     `library.db` stored for the key.
  */
 import { copyFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import type { Db } from '../db/connection.js';
+import { parseCatalogDate } from './reader.js';
 
 export type KeywordAddResult = 'added' | 'already_present' | 'image_not_found';
 export type KeywordRemoveResult = 'removed' | 'not_present' | 'image_not_found';
@@ -80,11 +85,11 @@ export function catalogBaseNameFromImageKey(imageKey: string): string {
  */
 export function backupCatalogIfNeeded(
   catalogPath: string,
-  opts: { maxBackups?: number; minIntervalSeconds?: number } = {},
+  opts: { maxBackups?: number; minIntervalSeconds?: number; dir?: string } = {},
 ): string {
   const maxBackups = opts.maxBackups ?? 2;
   const minIntervalSeconds = opts.minIntervalSeconds ?? BACKUP_MIN_INTERVAL_SECONDS;
-  const parent = dirname(catalogPath);
+  const parent = opts.dir ?? dirname(catalogPath);
   const name = basename(catalogPath);
   const prefix = `${name}.backup-`;
 
@@ -125,15 +130,23 @@ export function backupCatalogIfNeeded(
   return dest;
 }
 
+const libraryFor = new WeakMap<Db, { library: Db; ids: Map<string, number | null> }>();
+
 /**
  * Open the `.lrcat`.
  *
  * Deliberately NOT routed through `openDb`: the Lightroom catalog is not our
  * database. It must not get a WAL-mode switch (which rewrites the file header and
  * would confuse Lightroom) and it has no sqlite-vec tables to load.
+ *
+ * With `library`, every lookup by image key on this connection goes through the
+ * file id `library.db` holds for the key; without it, only a key that names exactly
+ * one photo resolves.
  */
-export function connectCatalog(catalogPath: string): Db {
-  return new Database(catalogPath);
+export function connectCatalog(catalogPath: string, library?: Db): Db {
+  const conn = new Database(catalogPath);
+  if (library) libraryFor.set(conn, { library, ids: new Map() });
+  return conn;
 }
 
 export function getKeywordId(conn: Db, keywordName: string): number | null {
@@ -165,25 +178,52 @@ export function getOrCreateKeyword(conn: Db, keywordName: string): number {
   return getKeywordId(conn, keywordName) ?? createKeyword(conn, keywordName);
 }
 
+/** The master photo of a catalog file; its virtual copies are other `Adobe_images` rows. */
+function masterImageOfFile(conn: Db, fileId: number): number | null {
+  const row = conn
+    .prepare('SELECT id_local FROM Adobe_images WHERE rootFile = ? AND masterImage IS NULL')
+    .get(fileId) as { id_local: number } | undefined;
+  return row ? Number(row.id_local) : null;
+}
+
 /**
- * Resolve our `YYYY-MM-DD_basename` key to `Adobe_images.id_local`.
+ * Resolve our `YYYY-MM-DD_basename` key to `Adobe_images.id_local`, or null when it
+ * is not one known photo.
  *
  * The join through `AgLibraryFile` is the whole point: `AgLibraryKeywordImage.image`
  * references `Adobe_images.id_local`, and using the file id instead would attach the
  * keyword to whichever photo happened to share that number.
  */
 export function getImageLocalId(conn: Db, imageKey: string): number | null {
-  const filename = catalogBaseNameFromImageKey(imageKey);
+  const bound = libraryFor.get(conn);
+  if (!bound) return imageIdFromKey(conn, imageKey);
+  const cached = bound.ids.get(imageKey);
+  if (cached !== undefined) return cached;
+  const row = bound.library.prepare('SELECT id FROM images WHERE key = ?').get(imageKey) as
+    | { id: string | number | null }
+    | undefined;
+  const fileId = row?.id === null || row?.id === undefined || row.id === '' ? NaN : Number(row.id);
+  const id = Number.isInteger(fileId) ? masterImageOfFile(conn, fileId) : null;
+  bound.ids.set(imageKey, id);
+  return id;
+}
 
-  const row = conn
+function imageIdFromKey(conn: Db, imageKey: string): number | null {
+  const rows = conn
     .prepare(
-      `SELECT ai.id_local
+      `SELECT ai.id_local, ai.captureTime
        FROM AgLibraryFile f
        JOIN Adobe_images ai ON ai.rootFile = f.id_local
-       WHERE f.baseName = ?`,
+       WHERE f.baseName = ? AND ai.masterImage IS NULL`,
     )
-    .get(filename) as { id_local: number } | undefined;
-  return row ? Number(row.id_local) : null;
+    .all(catalogBaseNameFromImageKey(imageKey)) as { id_local: number; captureTime: string | null }[];
+  const sep = imageKey.indexOf('_');
+  const datePart = sep < 0 ? null : imageKey.slice(0, sep);
+  const matches =
+    datePart === null
+      ? rows
+      : rows.filter((r) => (parseCatalogDate(r.captureTime) ?? 'unknown').slice(0, 10) === datePart);
+  return matches.length === 1 ? Number(matches[0]!.id_local) : null;
 }
 
 export function imageHasKeyword(conn: Db, imageId: number, keywordId: number): boolean {

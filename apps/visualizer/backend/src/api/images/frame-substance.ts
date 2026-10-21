@@ -78,7 +78,7 @@ function buildFrameSubstanceResponse(
   // `null` rather than `false` when the catalog cannot be read: "we do not know" is
   // a different state from "the keyword is absent", and the UI renders them
   // differently.
-  const hasCullKeyword = catalogStatus.available ? readCullKeywordPresent(imageKey) : null;
+  const hasCullKeyword = catalogStatus.available ? readCullKeywordPresent(db, imageKey) : null;
 
   return {
     image_key: imageKey,
@@ -190,7 +190,7 @@ export function registerFrameSubstanceRoutes(app: OpenAPIHono<LibraryEnv>): void
     if (!getImage(db, imageKey)) return c.json({ error: ERROR_IMAGE_NOT_FOUND }, 404);
 
     try {
-      return c.json({ image_key: imageKey, result: writeCullKeyword(imageKey) }, 200);
+      return c.json({ image_key: imageKey, result: writeCullKeyword(db, imageKey) }, 200);
     } catch (e) {
       // An unavailable or locked catalog is a 400 the user can act on ("close
       // Lightroom"), not a 500. Anything else is genuinely unexpected.
@@ -215,7 +215,7 @@ export function registerFrameSubstanceRoutes(app: OpenAPIHono<LibraryEnv>): void
     if (!getImage(db, imageKey)) return c.json({ error: ERROR_IMAGE_NOT_FOUND }, 404);
 
     try {
-      return c.json({ image_key: imageKey, result: removeCullKeyword(imageKey) }, 200);
+      return c.json({ image_key: imageKey, result: removeCullKeyword(db, imageKey) }, 200);
     } catch (e) {
       if (e instanceof RangeError || (e instanceof Error && /Close Lightroom/.test(e.message))) {
         return c.json({ error: e.message }, 400);
