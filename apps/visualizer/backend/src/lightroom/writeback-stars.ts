@@ -1,11 +1,11 @@
 import { levelSetReadout } from '../cull/decide.js';
 import { answersForLevelSetDimensions } from '../cull/review.js';
-import type { RecipeDefinition, RecipeRule, StageAnswers } from '../cull/types.js';
+import type { ProfileDefinition, ProfileRule, StageAnswers } from '../cull/types.js';
 import type { StarsStrongFrom } from './writeback-types.js';
 
 export type { StarsStrongFrom };
 
-export function starsStrongFrom(rule: RecipeRule): StarsStrongFrom {
+export function starsStrongFrom(rule: ProfileRule): StarsStrongFrom {
   return rule.stars_strong_from ?? 'every';
 }
 
@@ -30,14 +30,14 @@ function dimensionStrongAtLevelSet(
 }
 
 /**
- * Count dimensions that qualify as "strong" for stars, using the recipe rule's
+ * Count dimensions that qualify as "strong" for stars, using the profile rule's
  * `stars_strong_from` mode and stored stage answers keyed by stage key.
  */
 export function countStrongDimensions(
-  definition: RecipeDefinition,
-  rule: RecipeRule,
+  definition: ProfileDefinition,
+  rule: ProfileRule,
   answersByStageKey: Record<string, StageAnswers>,
-  recipeSlug: string,
+  profileSlug: string,
 ): number {
   const mode = starsStrongFrom(rule);
   const levelSetIds = Object.keys(rule.level_sets);
@@ -48,20 +48,20 @@ export function countStrongDimensions(
     if (mode === '7' || mode === '10') {
       const bands = rule.level_sets[mode];
       if (!bands) continue;
-      const stageKey = `culling_recipe:${recipeSlug}:${mode}`;
+      const stageKey = `culling_profile:${profileSlug}:${mode}`;
       strong = dimensionStrongAtLevelSet(answersByStageKey[stageKey] ?? {}, bands, slug, mode);
     } else if (mode === 'every') {
       strong = levelSetIds.every((ls) => {
         const bands = rule.level_sets[ls];
         if (!bands) return false;
-        const stageKey = `culling_recipe:${recipeSlug}:${ls}`;
+        const stageKey = `culling_profile:${profileSlug}:${ls}`;
         return dimensionStrongAtLevelSet(answersByStageKey[stageKey] ?? {}, bands, slug, ls);
       });
     } else {
       strong = levelSetIds.some((ls) => {
         const bands = rule.level_sets[ls];
         if (!bands) return false;
-        const stageKey = `culling_recipe:${recipeSlug}:${ls}`;
+        const stageKey = `culling_profile:${profileSlug}:${ls}`;
         return dimensionStrongAtLevelSet(answersByStageKey[stageKey] ?? {}, bands, slug, ls);
       });
     }

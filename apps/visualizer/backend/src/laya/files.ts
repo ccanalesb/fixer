@@ -10,7 +10,7 @@ import { join } from 'node:path';
 export const LAYA_SETUP_COMMAND =
   'uv run scripts/laya/export_onnx.py --laya-new <Laya new checkpoint directory>';
 
-/** The cull cannot run until the setup step is (re)run; the message says what is missing and how. */
+/** Culling cannot run until the setup step is (re)run; the message says what is missing and how. */
 export class LayaSetupError extends Error {
   override readonly name = 'LayaSetupError';
 }

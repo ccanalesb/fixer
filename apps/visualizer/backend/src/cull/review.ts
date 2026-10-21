@@ -5,11 +5,11 @@ import { FRAMING_EXCUSAL_QID, levelSetReadout, scoreForecastHighestP8 } from './
 import { DEFAULT_SCORE_FORECAST } from './default-pipeline.js';
 import { LAYA_QUESTIONS } from '../laya/questions.js';
 import type { ScoreForecastSetting, StageAnswers } from './types.js';
-import { recipeStageKey } from './stages.js';
-import type { RecipeDefinition, RecipeRule } from './types.js';
-import type { CullRecipe } from '../db/library/cull-recipes.js';
+import { profileStageKey } from './stages.js';
+import type { ProfileDefinition, ProfileRule } from './types.js';
+import type { CullProfile } from '../db/library/cull-profiles.js';
 import type { Db } from '../db/connection.js';
-import { getCullRecipe } from '../db/library/cull-recipes.js';
+import { getCullProfile } from '../db/library/cull-profiles.js';
 import {
   batchDescribeScoreCompletion,
   type DescribeScoreCompletion,
@@ -25,7 +25,7 @@ export interface DimensionLevelHighlight {
   strong: boolean;
 }
 
-export interface RecipeRowReadout {
+export interface ProfileRowReadout {
   slug: string;
   name: string;
   level_sets: {
@@ -49,22 +49,22 @@ export function answersForLevelSetDimensions(
   return out;
 }
 
-/** Parse `culling_recipe:slug:levelSet` from a verdict's cut stage key. */
-export function recipeSlugFromCutStageKey(cutByStageKey: string | null): string | null {
-  if (!cutByStageKey?.startsWith('culling_recipe:')) return null;
-  const parts = cutByStageKey.split(':');
+/** Parse `culling_profile:slug:levelSet` from a verdict's filtered-by stage key. */
+export function profileSlugFromFilteredStageKey(filteredByStageKey: string | null): string | null {
+  if (!filteredByStageKey?.startsWith('culling_profile:')) return null;
+  const parts = filteredByStageKey.split(':');
   return parts.length >= 2 ? parts[1]! : null;
 }
 
-/** Build row readout for the recipe that cut the photo (F1), or the first pipeline recipe if unknown. */
-export function buildRecipeRowReadout(
-  recipe: CullRecipe,
-  definition: RecipeDefinition,
-  rule: RecipeRule,
+/** Build row readout for the profile that filtered the photo (F1), or the first pipeline profile if unknown. */
+export function buildProfileRowReadout(
+  profile: CullProfile,
+  definition: ProfileDefinition,
+  rule: ProfileRule,
   answersByStage: Record<string, Record<string, number[]>>,
-): RecipeRowReadout {
+): ProfileRowReadout {
   const level_sets = definition.level_sets.map((set) => {
-    const stageKey = recipeStageKey(recipe.slug, set.id);
+    const stageKey = profileStageKey(profile.slug, set.id);
     const raw = answersByStage[stageKey] ?? {};
     const dimSlugs = definition.dimensions.map((d) => d.slug);
     const answers = answersForLevelSetDimensions(raw, set.id, dimSlugs);
@@ -85,7 +85,7 @@ export function buildRecipeRowReadout(
       }),
     };
   });
-  return { slug: recipe.slug, name: recipe.name, level_sets };
+  return { slug: profile.slug, name: profile.name, level_sets };
 }
 
 export function compareScoreForecastDesc(a: number | null, b: number | null): number {
@@ -95,10 +95,10 @@ export function compareScoreForecastDesc(a: number | null, b: number | null): nu
   return b - a;
 }
 
-export function tabMatchesCutBy(tab: 'all' | 'culling_recipe' | 'score_forecast', cutBy: StageKind | null): boolean {
+export function tabMatchesFilteredBy(tab: 'all' | 'culling_profile' | 'score_forecast', filteredBy: StageKind | null): boolean {
   if (tab === 'all') return true;
-  if (tab === 'culling_recipe') return cutBy === 'culling_recipe';
-  return cutBy === 'score_forecast';
+  if (tab === 'culling_profile') return filteredBy === 'culling_profile';
+  return filteredBy === 'score_forecast';
 }
 
 /** Description + current scores on every active perspective (F13/F14). */
@@ -106,9 +106,9 @@ export function describeScoreCompletion(db: Db, imageKey: string): DescribeScore
   return batchDescribeScoreCompletion(db, [imageKey]).get(imageKey) ?? 'none';
 }
 
-export function resolveCuttingRecipe(db: Db, cutByStageKey: string | null, fallbackSlug: string): CullRecipe | null {
-  const slug = recipeSlugFromCutStageKey(cutByStageKey) ?? fallbackSlug;
-  return getCullRecipe(db, slug);
+export function resolveFilteringProfile(db: Db, filteredByStageKey: string | null, fallbackSlug: string): CullProfile | null {
+  const slug = profileSlugFromFilteredStageKey(filteredByStageKey) ?? fallbackSlug;
+  return getCullProfile(db, slug);
 }
 
 const FRAMING_QID = 'framing';

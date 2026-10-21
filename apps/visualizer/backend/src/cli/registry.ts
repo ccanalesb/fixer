@@ -130,17 +130,17 @@ export const COMMANDS: readonly CliCommand[] = [
   },
   {
     name: 'cull-check',
-    help: 'Check that Laya is set up for the cull: files, load, one test photo',
+    help: 'Check that Laya is set up for culling: files, load, one test photo',
     flags: [{ name: 'photo', kind: 'string', help: 'Also answer this photo and print the probabilities' }],
     handler: cmdCullCheck,
   },
   {
     name: 'cull-import',
-    help: 'Import the research cull runs as the first stored cull answers',
+    help: 'Import the research culling runs as the first stored culling answers',
     flags: [
       DB_FLAG,
       { name: 'laya-new', kind: 'string', help: 'Laya new on the catalog: laya_new_catalog.jsonl' },
-      { name: 'recipe', kind: 'string', help: 'Recipe 7H47 on Laya base: laya_cull_catalog_all.jsonl' },
+      { name: 'culling-profile', kind: 'string', help: 'The culling profile on Laya base: laya_cull_catalog_all.jsonl' },
       { name: 'laya-new-model-id', kind: 'string', help: 'Name Laya new by hand instead of by its export' },
       { name: 'dry-run', kind: 'boolean', help: 'Report what would be imported, write nothing' },
     ],

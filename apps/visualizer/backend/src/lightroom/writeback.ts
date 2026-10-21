@@ -5,12 +5,12 @@ import { config, loadLibraryConfig } from '../config.js';
 import type { WritebackReconcileCounts } from './writeback-types.js';
 import { WRITE_CHUNK_SIZE } from './writeback-types.js';
 import type { Db } from '../db/connection.js';
-import { getCullRecipe } from '../db/library/cull-recipes.js';
+import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
 import { countWritebackByStatus, getWritebackState, upsertWritebackState } from '../db/library/lr-writeback-state.js';
 import {
   getLrWritebackSettings,
-  resolveStarsRecipeSlug,
+  resolveStarsProfileSlug,
   type LrWritebackSettings,
 } from '../db/library/lr-writeback-settings.js';
 import { libraryWrite } from '../db/library/write.js';
@@ -112,8 +112,8 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const lrStatus = describeLrCatalogWriteStatus();
   let canWrite = lrStatus.available && lrStatus.path === catalogPath;
   const keys = listVerdictImageKeys(db, opts.imageKeys);
-  const starsSlug = resolveStarsRecipeSlug(db, settings);
-  const starsRecipe = starsSlug ? getCullRecipe(db, starsSlug) : null;
+  const starsSlug = resolveStarsProfileSlug(db, settings);
+  const starsProfile = starsSlug ? getCullProfile(db, starsSlug) : null;
   const yieldState = createEventLoopYieldState();
   const isCancelled = opts.isCancelled ?? (() => false);
 
@@ -170,7 +170,7 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
             db,
             settings,
             starsSlug,
-            starsRecipe?.versionId ?? null,
+            starsProfile?.versionId ?? null,
             live,
             imageKey,
             opts.trigger,

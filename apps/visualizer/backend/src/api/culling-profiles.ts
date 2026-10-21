@@ -1,21 +1,21 @@
 /**
- * Culling recipes and pipeline setting API.
+ * Culling profiles and pipeline setting API.
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { config } from '../config.js';
-import { validateRecipeShape } from '../cull/recipe-shape.js';
-import { validateRecipeDefinitionForLaya, type RecipeValidationError } from '../cull/recipe-validate.js';
+import { validateProfileShape } from '../cull/profile-shape.js';
+import { validateProfileDefinitionForLaya, type ProfileValidationError } from '../cull/profile-validate.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import {
   countCatalogPhotosForCullEstimate,
-  defaultMinimalRecipeDefinition,
-  defaultMinimalRecipeRule,
-  duplicateCullRecipe,
-  saveRecipeDefinition,
-  setCullRecipePipelineActive,
-  updateCullRecipeMeta,
-} from '../db/library/cull-recipes-mutations.js';
-import { createCullRecipe, getCullRecipe, listCullRecipes, setRecipeRule } from '../db/library/cull-recipes.js';
+  defaultMinimalProfileDefinition,
+  defaultMinimalProfileRule,
+  duplicateCullProfile,
+  saveProfileDefinition,
+  setCullProfilePipelineActive,
+  updateCullProfileMeta,
+} from '../db/library/cull-profiles-mutations.js';
+import { createCullProfile, getCullProfile, listCullProfiles, setProfileRule } from '../db/library/cull-profiles.js';
 import { initJobsDb, createJob, getJob } from '../db/jobs/jobs.js';
 import { BATCH_CULL_JOB_TYPE } from '../jobs/handlers/cull.js';
 import { enqueueRedecideCullVerdicts } from '../jobs/handlers/redecide.js';
@@ -27,27 +27,27 @@ import { createOpenApiApp } from './openapi.js';
 import { jsonBody, redirectToTrailingSlash, withValidationError } from './route-helpers.js';
 import { ErrorBody } from './schemas/errors.js';
 import {
-  CullRecipeDetail,
-  CullRecipeListResponse,
+  CullProfileDetail,
+  CullProfileListResponse,
   PipelineSettingResponse,
-  RecipeDefinitionSchema,
-  RecipeRuleSchema,
+  ProfileDefinitionSchema,
+  ProfileRuleSchema,
   ScoreForecastSettingSchema,
-} from './schemas/culling-recipes.js';
+} from './schemas/culling-profiles.js';
 import { compactJobPayload } from './schemas/jobs.js';
 
-export const cullingRecipesRoutes = createOpenApiApp<LibraryEnv>();
+export const cullingProfilesRoutes = createOpenApiApp<LibraryEnv>();
 
-const validationFailed = (errors: RecipeValidationError[]) => ({
+const validationFailed = (errors: ProfileValidationError[]) => ({
   error: errors.map((e) => e.message).join('; '),
   validation_errors: errors,
 });
 
-cullingRecipesRoutes.use('/culling-recipes/*', libraryDb({ write: true }));
-redirectToTrailingSlash(cullingRecipesRoutes, '/culling-recipes');
+cullingProfilesRoutes.use('/culling-profiles/*', libraryDb({ write: true }));
+redirectToTrailingSlash(cullingProfilesRoutes, '/culling-profiles');
 
-/** Fixed path segments under `/culling-recipes/` — not recipe slugs. */
-export const RESERVED_CULL_RECIPE_SLUGS = new Set(['pipeline']);
+/** Fixed path segments under `/culling-profiles/` — not profile slugs. */
+export const RESERVED_CULL_PROFILE_SLUGS = new Set(['pipeline']);
 
 function withJobsDb<T>(fn: (db: import('../db/connection.js').Db) => T): T {
   const db = initJobsDb(config.VISUALIZER_DB);
@@ -58,57 +58,57 @@ function withJobsDb<T>(fn: (db: import('../db/connection.js').Db) => T): T {
   }
 }
 
-function recipeSummary(db: import('../db/connection.js').Db, recipe: ReturnType<typeof getCullRecipe>) {
-  if (!recipe) throw new Error('missing recipe');
+function profileSummary(db: import('../db/connection.js').Db, profile: ReturnType<typeof getCullProfile>) {
+  if (!profile) throw new Error('missing profile');
   const pipe = getCurrentPipelineSetting(db);
-  const idx = pipe.config.culling_recipes.findIndex((r) => r.recipe_slug === recipe.slug);
+  const idx = pipe.config.culling_profiles.findIndex((r) => r.profile_slug === profile.slug);
   return {
-    slug: recipe.slug,
-    name: recipe.name,
-    model: recipe.model,
-    active: recipe.active,
-    measured: recipe.measured,
-    version: recipe.version,
+    slug: profile.slug,
+    name: profile.name,
+    model: profile.model,
+    active: profile.active,
+    measured: profile.measured,
+    version: profile.version,
     in_pipeline: idx >= 0,
     pipeline_order: idx >= 0 ? idx : null,
   };
 }
 
-function recipeDetail(db: import('../db/connection.js').Db, slug: string) {
-  const recipe = getCullRecipe(db, slug);
-  if (!recipe) return null;
+function profileDetail(db: import('../db/connection.js').Db, slug: string) {
+  const profile = getCullProfile(db, slug);
+  if (!profile) return null;
   return {
-    ...recipeSummary(db, recipe),
-    definition: recipe.definition,
-    rule: recipe.rule,
+    ...profileSummary(db, profile),
+    definition: profile.definition,
+    rule: profile.rule,
   };
 }
 
 const listRoute = createRoute({
   method: 'get',
-  path: '/culling-recipes/',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/',
+  tags: ['culling-profiles'],
   responses: withValidationError({
-    200: { description: 'All culling recipes', content: jsonBody(CullRecipeListResponse) },
+    200: { description: 'All culling profiles', content: jsonBody(CullProfileListResponse) },
   }),
 });
 
-cullingRecipesRoutes.openapi(listRoute, (c) => {
+cullingProfilesRoutes.openapi(listRoute, (c) => {
   const db = c.get('libraryDb');
-  const recipes = listCullRecipes(db).map((r) => recipeSummary(db, r));
-  return c.json({ recipes }, 200);
+  const profiles = listCullProfiles(db).map((r) => profileSummary(db, r));
+  return c.json({ profiles }, 200);
 });
 
 const pipelineGetRoute = createRoute({
   method: 'get',
-  path: '/culling-recipes/pipeline',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/pipeline',
+  tags: ['culling-profiles'],
   responses: withValidationError({
     200: { description: 'Pipeline setting', content: jsonBody(PipelineSettingResponse) },
   }),
 });
 
-cullingRecipesRoutes.openapi(pipelineGetRoute, (c) => {
+cullingProfilesRoutes.openapi(pipelineGetRoute, (c) => {
   const db = c.get('libraryDb');
   const pipe = getCurrentPipelineSetting(db);
   return c.json(pipe, 200);
@@ -116,8 +116,8 @@ cullingRecipesRoutes.openapi(pipelineGetRoute, (c) => {
 
 const scoreForecastRoute = createRoute({
   method: 'put',
-  path: '/culling-recipes/pipeline/score-forecast',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/pipeline/score-forecast',
+  tags: ['culling-profiles'],
   request: {
     body: {
       content: jsonBody(
@@ -127,7 +127,7 @@ const scoreForecastRoute = createRoute({
             enabled: z.boolean().optional(),
             high_from_level: z.number().int().optional(),
             excused_at: z.number().optional(),
-            run_after_cut: z.boolean().optional(),
+            run_after_filtered: z.boolean().optional(),
           })
           .strict(),
       ),
@@ -141,7 +141,7 @@ const scoreForecastRoute = createRoute({
   }),
 });
 
-cullingRecipesRoutes.openapi(scoreForecastRoute, (c) => {
+cullingProfilesRoutes.openapi(scoreForecastRoute, (c) => {
   const db = c.get('libraryDb');
   const body = c.req.valid('json');
   const { config: pipeConfig, version: _v } = getCurrentPipelineSetting(db);
@@ -153,7 +153,7 @@ cullingRecipesRoutes.openapi(scoreForecastRoute, (c) => {
       ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
       ...(body.high_from_level !== undefined ? { high_from_level: body.high_from_level } : {}),
       ...(body.excused_at !== undefined ? { excused_at: body.excused_at } : {}),
-      ...(body.run_after_cut !== undefined ? { run_after_cut: body.run_after_cut } : {}),
+      ...(body.run_after_filtered !== undefined ? { run_after_filtered: body.run_after_filtered } : {}),
     },
   };
   const version = createPipelineSettingVersion(db, next, 'score forecast threshold changed');
@@ -170,28 +170,28 @@ cullingRecipesRoutes.openapi(scoreForecastRoute, (c) => {
 
 const detailRoute = createRoute({
   method: 'get',
-  path: '/culling-recipes/{slug}',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/{slug}',
+  tags: ['culling-profiles'],
   request: { params: z.object({ slug: z.string() }) },
   responses: withValidationError({
-    200: { description: 'One recipe', content: jsonBody(CullRecipeDetail) },
+    200: { description: 'One profile', content: jsonBody(CullProfileDetail) },
     404: { description: 'Not found', content: jsonBody(ErrorBody) },
   }),
 });
 
-cullingRecipesRoutes.openapi(detailRoute, (c) => {
+cullingProfilesRoutes.openapi(detailRoute, (c) => {
   const slug = c.req.param('slug');
-  if (RESERVED_CULL_RECIPE_SLUGS.has(slug)) return errorNotFound(c, 'image');
+  if (RESERVED_CULL_PROFILE_SLUGS.has(slug)) return errorNotFound(c, 'image');
   const db = c.get('libraryDb');
-  const detail = recipeDetail(db, slug);
+  const detail = profileDetail(db, slug);
   if (!detail) return errorNotFound(c, 'image');
   return c.json(detail, 200);
 });
 
 const createRouteDef = createRoute({
   method: 'post',
-  path: '/culling-recipes/',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/',
+  tags: ['culling-profiles'],
   request: {
     body: {
       content: jsonBody(
@@ -200,8 +200,8 @@ const createRouteDef = createRoute({
             slug: z.string(),
             name: z.string(),
             model: z.string(),
-            definition: RecipeDefinitionSchema,
-            rule: RecipeRuleSchema,
+            definition: ProfileDefinitionSchema,
+            rule: ProfileRuleSchema,
             active: z.boolean().optional(),
           })
           .strict(),
@@ -209,65 +209,65 @@ const createRouteDef = createRoute({
     },
   },
   responses: withValidationError({
-    201: { description: 'Created', content: jsonBody(CullRecipeDetail) },
+    201: { description: 'Created', content: jsonBody(CullProfileDetail) },
     400: { description: 'Validation failed', content: jsonBody(ErrorBody) },
     409: { description: 'Duplicate slug', content: jsonBody(ErrorBody) },
   }),
 });
 
-cullingRecipesRoutes.openapi(createRouteDef, (c) => {
+cullingProfilesRoutes.openapi(createRouteDef, (c) => {
   const db = c.get('libraryDb');
   const body = c.req.valid('json');
   if (!isValidPerspectiveSlug(body.slug)) return c.json({ error: 'invalid slug' }, 400);
-  if (RESERVED_CULL_RECIPE_SLUGS.has(body.slug)) return c.json({ error: 'slug is reserved' }, 400);
-  if (getCullRecipe(db, body.slug)) return c.json({ error: 'slug already exists' }, 409);
-  const shape = validateRecipeShape(body.definition, body.rule, { requireText: false });
+  if (RESERVED_CULL_PROFILE_SLUGS.has(body.slug)) return c.json({ error: 'slug is reserved' }, 400);
+  if (getCullProfile(db, body.slug)) return c.json({ error: 'slug already exists' }, 409);
+  const shape = validateProfileShape(body.definition, body.rule, { requireText: false });
   if (shape.length) return c.json(validationFailed(shape), 400);
-  const v = validateRecipeDefinitionForLaya(body.definition, body.model);
+  const v = validateProfileDefinitionForLaya(body.definition, body.model);
   if (!v.ok) return c.json(validationFailed(v.errors), 400);
-  createCullRecipe(db, { ...body, measured: false, active: body.active !== false });
-  if (body.active !== false) setCullRecipePipelineActive(db, body.slug, true);
-  const detail = recipeDetail(db, body.slug)!;
+  createCullProfile(db, { ...body, measured: false, active: body.active !== false });
+  if (body.active !== false) setCullProfilePipelineActive(db, body.slug, true);
+  const detail = profileDetail(db, body.slug)!;
   return c.json(detail, 201);
 });
 
 const duplicateRoute = createRoute({
   method: 'post',
-  path: '/culling-recipes/{slug}/duplicate',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/{slug}/duplicate',
+  tags: ['culling-profiles'],
   request: {
     params: z.object({ slug: z.string() }),
     body: { content: jsonBody(z.object({ new_slug: z.string(), new_name: z.string().optional() }).strict()) },
   },
   responses: withValidationError({
-    201: { description: 'Duplicated', content: jsonBody(CullRecipeDetail) },
+    201: { description: 'Duplicated', content: jsonBody(CullProfileDetail) },
     404: { description: 'Not found', content: jsonBody(ErrorBody) },
     409: { description: 'Duplicate slug', content: jsonBody(ErrorBody) },
   }),
 });
 
-cullingRecipesRoutes.openapi(duplicateRoute, (c) => {
+cullingProfilesRoutes.openapi(duplicateRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
   const { new_slug, new_name } = c.req.valid('json');
-  if (!getCullRecipe(db, slug)) return errorNotFound(c, 'image');
-  if (getCullRecipe(db, new_slug)) return c.json({ error: 'slug already exists' }, 409);
-  duplicateCullRecipe(db, slug, new_slug, new_name);
-  return c.json(recipeDetail(db, new_slug)!, 201);
+  if (!getCullProfile(db, slug)) return errorNotFound(c, 'image');
+  if (getCullProfile(db, new_slug)) return c.json({ error: 'slug already exists' }, 409);
+  duplicateCullProfile(db, slug, new_slug, new_name);
+  return c.json(profileDetail(db, new_slug)!, 201);
 });
 
 const definitionRoute = createRoute({
   method: 'put',
-  path: '/culling-recipes/{slug}/definition',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/{slug}/definition',
+  tags: ['culling-profiles'],
   request: {
     params: z.object({ slug: z.string() }),
     body: {
       content: jsonBody(
         z
           .object({
-            definition: RecipeDefinitionSchema,
-            rule: RecipeRuleSchema.optional().openapi({
+            definition: ProfileDefinitionSchema,
+            rule: ProfileRuleSchema.optional().openapi({
               description: 'Saved with the definition; required when level sets or their bands change.',
             }),
             mode: z.enum(['save_only', 'save_and_queue_cull']),
@@ -281,7 +281,7 @@ const definitionRoute = createRoute({
       description: 'Saved',
       content: jsonBody(
         z.object({
-          recipe: CullRecipeDetail,
+          profile: CullProfileDetail,
           version: z.number().int(),
           created: z.boolean(),
           impact: z.object({ photos: z.number().int(), hours_estimate: z.number() }),
@@ -302,18 +302,18 @@ const definitionRoute = createRoute({
   }),
 });
 
-cullingRecipesRoutes.openapi(definitionRoute, (c) => {
+cullingProfilesRoutes.openapi(definitionRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
-  const recipe = getCullRecipe(db, slug);
-  if (!recipe) return errorNotFound(c, 'image');
+  const profile = getCullProfile(db, slug);
+  if (!profile) return errorNotFound(c, 'image');
   const { definition, rule, mode } = c.req.valid('json');
-  const shape = validateRecipeShape(definition, rule ?? recipe.rule, { requireText: true });
+  const shape = validateProfileShape(definition, rule ?? profile.rule, { requireText: true });
   if (shape.length) return c.json(validationFailed(shape), 400);
-  const v = validateRecipeDefinitionForLaya(definition, recipe.model);
+  const v = validateProfileDefinitionForLaya(definition, profile.model);
   if (!v.ok) return c.json(validationFailed(v.errors), 400);
-  const saved = saveRecipeDefinition(db, slug, definition);
-  const ruleVersion = rule ? setRecipeRule(db, slug, rule) : null;
+  const saved = saveProfileDefinition(db, slug, definition);
+  const ruleVersion = rule ? setProfileRule(db, slug, rule) : null;
   const photos = countCatalogPhotosForCullEstimate(db);
   const hours_estimate = (photos * 2) / 3600;
   let jobId: string | null = null;
@@ -333,7 +333,7 @@ cullingRecipesRoutes.openapi(definitionRoute, (c) => {
   }
   return c.json(
     {
-      recipe: recipeDetail(db, slug)!,
+      profile: profileDetail(db, slug)!,
       version: saved.version,
       created: saved.created,
       impact: { photos, hours_estimate },
@@ -345,18 +345,18 @@ cullingRecipesRoutes.openapi(definitionRoute, (c) => {
 
 const ruleRoute = createRoute({
   method: 'put',
-  path: '/culling-recipes/{slug}/rule',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/{slug}/rule',
+  tags: ['culling-profiles'],
   request: {
     params: z.object({ slug: z.string() }),
-    body: { content: jsonBody(z.object({ rule: RecipeRuleSchema }).strict()) },
+    body: { content: jsonBody(z.object({ rule: ProfileRuleSchema }).strict()) },
   },
   responses: withValidationError({
     200: {
       description: 'Rule saved',
       content: jsonBody(
         z.object({
-          recipe: CullRecipeDetail,
+          profile: CullProfileDetail,
           pipeline_setting_version: z.number().int().nullable(),
           redecide_job_id: z.string().nullable(),
         }),
@@ -375,15 +375,15 @@ const ruleRoute = createRoute({
   }),
 });
 
-cullingRecipesRoutes.openapi(ruleRoute, (c) => {
+cullingProfilesRoutes.openapi(ruleRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
-  const recipe = getCullRecipe(db, slug);
-  if (!recipe) return errorNotFound(c, 'image');
+  const profile = getCullProfile(db, slug);
+  if (!profile) return errorNotFound(c, 'image');
   const { rule } = c.req.valid('json');
-  const shape = validateRecipeShape(recipe.definition, rule, { requireText: false });
+  const shape = validateProfileShape(profile.definition, rule, { requireText: false });
   if (shape.length) return c.json(validationFailed(shape), 400);
-  const version = setRecipeRule(db, slug, rule);
+  const version = setProfileRule(db, slug, rule);
   let redecideJobId: string | null = null;
   if (version !== null) {
     redecideJobId = withJobsDb((jobsDb) => {
@@ -396,15 +396,15 @@ cullingRecipesRoutes.openapi(ruleRoute, (c) => {
     });
   }
   return c.json(
-    { recipe: recipeDetail(db, slug)!, pipeline_setting_version: version, redecide_job_id: redecideJobId },
+    { profile: profileDetail(db, slug)!, pipeline_setting_version: version, redecide_job_id: redecideJobId },
     200,
   );
 });
 
 const patchRoute = createRoute({
   method: 'patch',
-  path: '/culling-recipes/{slug}',
-  tags: ['culling-recipes'],
+  path: '/culling-profiles/{slug}',
+  tags: ['culling-profiles'],
   request: {
     params: z.object({ slug: z.string() }),
     body: {
@@ -414,19 +414,19 @@ const patchRoute = createRoute({
     },
   },
   responses: withValidationError({
-    200: { description: 'Updated', content: jsonBody(CullRecipeDetail) },
+    200: { description: 'Updated', content: jsonBody(CullProfileDetail) },
     404: { description: 'Not found', content: jsonBody(ErrorBody) },
   }),
 });
 
-cullingRecipesRoutes.openapi(patchRoute, (c) => {
+cullingProfilesRoutes.openapi(patchRoute, (c) => {
   const db = c.get('libraryDb');
   const slug = c.req.param('slug');
-  if (!getCullRecipe(db, slug)) return errorNotFound(c, 'image');
+  if (!getCullProfile(db, slug)) return errorNotFound(c, 'image');
   const body = c.req.valid('json');
-  updateCullRecipeMeta(db, slug, body);
+  updateCullProfileMeta(db, slug, body);
   if (body.active !== undefined) {
-    const version = setCullRecipePipelineActive(db, slug, body.active);
+    const version = setCullProfilePipelineActive(db, slug, body.active);
     if (version !== null) {
       withJobsDb((jobsDb) => {
         const id = enqueueRedecideCullVerdicts(jobsDb, `${slug} active=${body.active}`);
@@ -438,17 +438,17 @@ cullingRecipesRoutes.openapi(patchRoute, (c) => {
       });
     }
   }
-  return c.json(recipeDetail(db, slug)!, 200);
+  return c.json(profileDetail(db, slug)!, 200);
 });
 
 /** Default body for POST when client sends minimal create (F19). */
-export function minimalNewRecipeBody(slug: string, name: string) {
+export function minimalNewProfileBody(slug: string, name: string) {
   return {
     slug,
     name,
     model: 'laya-base',
-    definition: defaultMinimalRecipeDefinition(),
-    rule: defaultMinimalRecipeRule(),
+    definition: defaultMinimalProfileDefinition(),
+    rule: defaultMinimalProfileRule(),
     active: false,
   };
 }

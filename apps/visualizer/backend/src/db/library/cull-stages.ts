@@ -13,7 +13,7 @@ import { libraryWrite } from './write.js';
 export interface StageVersionSpec {
   stageKey: string;
   kind: StageKind;
-  recipeSlug: string | null;
+  profileSlug: string | null;
   levelSet: string | null;
   modelId: string;
   questions: Record<string, LayaQuestion>;
@@ -42,13 +42,13 @@ export function getOrCreateStageVersion(db: Db, spec: StageVersionSpec): number 
     const info = db
       .prepare(
         `INSERT INTO cull_stage_versions
-           (stage_key, kind, recipe_slug, level_set, model_id, questions_json, content_hash, is_current, created_at)
+           (stage_key, kind, profile_slug, level_set, model_id, questions_json, content_hash, is_current, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       )
       .run(
         spec.stageKey,
         spec.kind,
-        spec.recipeSlug,
+        spec.profileSlug,
         spec.levelSet,
         spec.modelId,
         JSON.stringify(spec.questions),
@@ -179,7 +179,7 @@ export function loadAnsweredStageKeys(db: Db, stages: readonly ResolvedStage[]):
 }
 
 /**
- * The model ids the current stage versions were made with: Laya base from a recipe stage, Laya new
+ * The model ids the current stage versions were made with: Laya base from a profile stage, Laya new
  * from the Score forecast. What re-decide resolves stages with, so it never reads a model file. Null
  * when nothing was ever culled. (The shape of `laya/model-id.ts`'s `LayaModelIds`.)
  */
@@ -190,7 +190,7 @@ export function readStoredLayaModelIds(db: Db): { base: string; new: string | nu
         .prepare('SELECT model_id FROM cull_stage_versions WHERE kind = ? AND is_current = 1 ORDER BY id DESC LIMIT 1')
         .get(kind) as { model_id: string } | undefined
     )?.model_id ?? null;
-  const base = modelOf('culling_recipe');
+  const base = modelOf('culling_profile');
   if (base === null) return null;
   return { base, new: modelOf('score_forecast') };
 }

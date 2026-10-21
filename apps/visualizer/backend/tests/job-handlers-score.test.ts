@@ -201,22 +201,22 @@ describe('computePromptVersion', () => {
   });
 });
 
-/** A cull summary row, as the cull job would leave it. */
-function cullVerdict(key: string, verdict: 'cut' | 'sent' | 'pending'): void {
+/** A cull summary row, as the culling job would leave it. */
+function cullVerdict(key: string, verdict: 'filtered' | 'passed' | 'pending'): void {
   fx.exec(
-    `INSERT INTO cull_verdicts (image_key, verdict, cut_by, pipeline_setting_version, decided_at)
+    `INSERT INTO cull_verdicts (image_key, verdict, filtered_by, pipeline_setting_version, decided_at)
      VALUES (?, ?, ?, 1, '2026-10-19T00:00:00+00:00')`,
     key,
     verdict,
-    verdict === 'cut' ? 'culling_recipe' : null,
+    verdict === 'filtered' ? 'culling_profile' : null,
   );
 }
 
-describe('the last check: a photo the cull cut is not scored', () => {
-  it('skips a cut photo without calling the provider', async () => {
+describe('the last check: a photo culling filtered is not scored', () => {
+  it('skips a filtered photo without calling the provider', async () => {
     const filepath = await writePhoto();
     fx.addImage({ key: 'a', filepath }).addPerspectives({ slug: 'street' });
-    cullVerdict('a', 'cut');
+    cullVerdict('a', 'filtered');
 
     const job = await runJob({ image_key: 'a' });
 
@@ -226,10 +226,10 @@ describe('the last check: a photo the cull cut is not scored', () => {
     expect(storedScores('a')).toEqual([]);
   });
 
-  it('scores a cut photo the user sent by hand', async () => {
+  it('scores a filtered photo the user sent by hand', async () => {
     const filepath = await writePhoto();
     fx.addImage({ key: 'a', filepath }).addPerspectives({ slug: 'street' });
-    cullVerdict('a', 'cut');
+    cullVerdict('a', 'filtered');
     const db = openLibraryDb(fx.dbPath);
     recordCullUserAction(db, 'a', 'sent_by_hand');
     db.close();
@@ -239,7 +239,7 @@ describe('the last check: a photo the cull cut is not scored', () => {
     expect(job.result).toMatchObject({ scored: 1 });
   });
 
-  it('refuses only a cut: a pending or never-culled photo is scored', async () => {
+  it('refuses only a filtered photo: a pending or never-culled photo is scored', async () => {
     const filepath = await writePhoto();
     fx.addImage({ key: 'p', filepath }).addImage({ key: 'n', filepath }).addPerspectives({ slug: 'street' });
     cullVerdict('p', 'pending');

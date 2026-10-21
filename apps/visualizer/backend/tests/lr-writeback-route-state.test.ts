@@ -12,7 +12,7 @@ import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
-import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
@@ -39,7 +39,7 @@ let dir: string;
 let cfgPath: string;
 let lrcatPath: string;
 let jobsDbPath: string;
-const imageKey = '2024-06-01_cut-photo';
+const imageKey = '2024-06-01_filtered-photo';
 const starsKey = '2024-06-01_star-photo';
 const MODEL_IDS = { base: 'test-laya-base', new: 'test-laya-new' };
 const STAR_DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
@@ -54,9 +54,9 @@ function levelPick(levelSet: '7' | '10', dim: string, levelIndex: number): Recor
 function seedStarsEligible(db: ReturnType<typeof openLibraryDb>, imageKey: string, strongDimCount: number): void {
   const pipe = getCurrentPipelineSetting(db);
   const stages = resolveCurrentStages(db, pipe.config, MODEL_IDS);
-  const recipe7 = stages.find((s) => s.stageKey === 'culling_recipe:recipe-7h47:7');
-  const recipe10 = stages.find((s) => s.stageKey === 'culling_recipe:recipe-7h47:10');
-  if (!recipe7 || !recipe10) throw new Error('recipe stages missing');
+  const profile7 = stages.find((s) => s.stageKey === 'culling_profile:recipe-culling:7');
+  const profile10 = stages.find((s) => s.stageKey === 'culling_profile:recipe-culling:10');
+  if (!profile7 || !profile10) throw new Error('profile stages missing');
   const seven: Record<string, number[]> = {};
   const ten: Record<string, number[]> = {};
   STAR_DIMS.forEach((dim, di) => {
@@ -65,9 +65,9 @@ function seedStarsEligible(db: ReturnType<typeof openLibraryDb>, imageKey: strin
   });
   upsertStageAnswer(db, {
     imageKey,
-    stageVersionId: recipe7.versionId,
+    stageVersionId: profile7.versionId,
     answers: seven,
-    verdict: 'cut',
+    verdict: 'filtered',
     decision: {},
     pipelineSettingVersion: pipe.version,
     source: 'job',
@@ -75,9 +75,9 @@ function seedStarsEligible(db: ReturnType<typeof openLibraryDb>, imageKey: strin
   });
   upsertStageAnswer(db, {
     imageKey,
-    stageVersionId: recipe10.versionId,
+    stageVersionId: profile10.versionId,
     answers: ten,
-    verdict: 'cut',
+    verdict: 'filtered',
     decision: {},
     pipelineSettingVersion: pipe.version,
     source: 'job',
@@ -106,15 +106,15 @@ beforeEach(() => {
   process.env.LT_CONFIG_YAML = cfgPath;
   process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(cfgPath, stringifyYaml({ workers: 4, catalog_path: lrcatPath }));
-  makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: null }]);
+  makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
   const db = openLibraryDb(fx.dbPath);
   seedCullingDefaults(db);
   patchLrWritebackSettings(db, { write_reject: true });
   upsertCullVerdict(db, {
     imageKey,
-    verdict: 'cut',
-    cutBy: 'culling_recipe',
-    cutByStageKey: 'culling_recipe:recipe-7h47:7',
+    verdict: 'filtered',
+    filteredBy: 'culling_profile',
+    filteredByStageKey: 'culling_profile:recipe-culling:7',
     sentByHand: false,
     pendingStages: [],
     pendingReason: '',
@@ -148,7 +148,7 @@ describe('switch job reject state', () => {
       before_rating: null,
       written_pick: null,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: null,
     });
     db.close();
@@ -168,7 +168,7 @@ describe('switch job reject state', () => {
     } catch {
       /* fresh catalog */
     }
-    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: null }]);
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
     const conn = connectCatalog(lrcatPath);
     writeRejectToCatalog(conn, imageKey);
     conn.close();
@@ -181,7 +181,7 @@ describe('switch job reject state', () => {
       before_rating: null,
       written_pick: null,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: null,
     });
     db.close();
@@ -203,7 +203,7 @@ describe('switch job reject state', () => {
     const cat = connectCatalog(lrcatPath);
     const live = cat
       .prepare(
-        `SELECT ai.pick FROM Adobe_images ai JOIN AgLibraryFile f ON f.id_local = ai.rootFile WHERE f.baseName = 'cut-photo'`,
+        `SELECT ai.pick FROM Adobe_images ai JOIN AgLibraryFile f ON f.id_local = ai.rootFile WHERE f.baseName = 'filtered-photo'`,
       )
       .get() as { pick: number };
     cat.close();
@@ -220,7 +220,7 @@ describe('switch job reject state', () => {
 
     expect(stateOf(imageKey, 'reject')).toBe('undone');
     expect(again.catalog_updated_reject).toBe(0);
-    expect(liveOf('cut-photo')).toEqual({ pick: 0, rating: null, keyword: false });
+    expect(liveOf('filtered-photo')).toEqual({ pick: 0, rating: null, keyword: false });
   });
 
   it('keeps a pick the user set over the app reject', async () => {
@@ -232,7 +232,7 @@ describe('switch job reject state', () => {
     db.close();
 
     expect(stateOf(imageKey, 'reject')).toBe('skipped');
-    expect(liveOf('cut-photo').pick).toBe(1);
+    expect(liveOf('filtered-photo').pick).toBe(1);
   });
 });
 
@@ -282,9 +282,9 @@ describe('switch job stars state', () => {
     patchLrWritebackSettings(db, { write_stars: true });
     upsertCullVerdict(db, {
       imageKey: starsKey,
-      verdict: 'sent',
-      cutBy: null,
-      cutByStageKey: null,
+      verdict: 'passed',
+      filteredBy: null,
+      filteredByStageKey: null,
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -311,7 +311,7 @@ describe('switch job stars state', () => {
       before_rating: null,
       written_pick: null,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: null,
     });
     db.close();

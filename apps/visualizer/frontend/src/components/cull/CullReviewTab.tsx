@@ -19,7 +19,7 @@ import { bulkSendButtonLabel } from './sendLabel'
 import { ImageDetailModal } from '../image-view/ImageDetailModal'
 
 const LIMIT = 50
-type TabId = 'all' | 'culling_recipe' | 'score_forecast'
+type TabId = 'all' | 'culling_profile' | 'score_forecast'
 
 export function CullReviewTab() {
   const [tab, setTab] = useState<TabId>('all')
@@ -37,7 +37,7 @@ export function CullReviewTab() {
   const rows = useMemo(() => list?.data ?? [], [list])
   const total = list?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / LIMIT))
-  const tabCounts = summary.tab_counts ?? { all: 0, culling_recipe: 0, score_forecast: 0 }
+  const tabCounts = summary.tab_counts ?? { all: 0, culling_profile: 0, score_forecast: 0 }
 
   const selectedRows = useMemo(
     () => rows.filter((r) => selected.has(r.image_key)),
@@ -60,14 +60,14 @@ export function CullReviewTab() {
   }
 
   const agreeSelected = async () => {
-    await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_cut')))
+    await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_filter')))
     setSelected(new Set())
     invalidateAll(['cull.summary', 'cull.photos'])
   }
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'all', label: `All (${tabCounts.all})` },
-    { id: 'culling_recipe', label: `Culling recipe (${tabCounts.culling_recipe})` },
+    { id: 'culling_profile', label: `Culling (${tabCounts.culling_profile})` },
     { id: 'score_forecast', label: `Score forecast (${tabCounts.score_forecast})` },
   ]
 

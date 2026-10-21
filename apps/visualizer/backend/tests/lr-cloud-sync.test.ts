@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { openLibraryDb } from '../src/db/connection.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
 import { closeCloudDocstore, openCloudDocstore, pushPhotoToCloud } from '../src/lightroom/cloud-sync/docstore.js';
@@ -198,7 +198,7 @@ describe('write-back carries stars and flags to the cloud', () => {
 
   beforeEach(() => {
     fx = new LibraryFixture()
-      .addImage({ key: '2024-06-01_cut-photo', id: '1' })
+      .addImage({ key: '2024-06-01_filtered-photo', id: '1' })
       .addImage({ key: '2024-06-01_p', id: '1' })
       .activate();
     const cfgPath = join(dir, 'config.yaml');
@@ -211,12 +211,12 @@ describe('write-back carries stars and flags to the cloud', () => {
     delete process.env.LT_CONFIG_YAML;
   });
 
-  function cutByRecipe(db: ReturnType<typeof openLibraryDb>, imageKey: string) {
+  function filteredByProfile(db: ReturnType<typeof openLibraryDb>, imageKey: string) {
     upsertCullVerdict(db, {
       imageKey,
-      verdict: 'cut',
-      cutBy: 'culling_recipe',
-      cutByStageKey: 'culling_recipe:recipe-7h47:7',
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: 'culling_profile:recipe-culling:7',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -229,12 +229,12 @@ describe('write-back carries stars and flags to the cloud', () => {
   }
 
   it('pushes the reject it writes to the catalog', async () => {
-    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: null }]);
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
     const mcat = addCloudSync(lrcatPath, [{ imageId: IMAGE, ozAssetId: ASSET }]);
     const db = openLibraryDb(fx.dbPath);
     seedCullingDefaults(db);
     patchLrWritebackSettings(db, { write_reject: true });
-    cutByRecipe(db, '2024-06-01_cut-photo');
+    filteredByProfile(db, '2024-06-01_filtered-photo');
 
     const result = await reconcileLrWriteback(db, { trigger: 'write_pending', catalogPath: lrcatPath });
     db.close();
@@ -245,24 +245,24 @@ describe('write-back carries stars and flags to the cloud', () => {
   });
 
   it('catches up a photo written to the catalog before cloud sync existed', async () => {
-    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: null }]);
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
     const conn = connectCatalog(lrcatPath);
-    writeRejectToCatalog(conn, '2024-06-01_cut-photo');
+    writeRejectToCatalog(conn, '2024-06-01_filtered-photo');
     conn.close();
     const mcat = addCloudSync(lrcatPath, [{ imageId: IMAGE, ozAssetId: ASSET }]);
     const db = openLibraryDb(fx.dbPath);
     seedCullingDefaults(db);
     patchLrWritebackSettings(db, { write_reject: true });
-    cutByRecipe(db, '2024-06-01_cut-photo');
+    filteredByProfile(db, '2024-06-01_filtered-photo');
     upsertWritebackState(db, {
-      image_key: '2024-06-01_cut-photo',
+      image_key: '2024-06-01_filtered-photo',
       kind: 'reject',
       status: 'written',
       before_pick: 0,
       before_rating: null,
       written_pick: -1,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: '2026-10-20T19:42:54.074Z',
     });
 
@@ -277,13 +277,13 @@ describe('write-back carries stars and flags to the cloud', () => {
   });
 
   it('pushes nothing while Lightroom holds the catalog', async () => {
-    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: null }]);
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
     const mcat = addCloudSync(lrcatPath, [{ imageId: IMAGE, ozAssetId: ASSET }]);
     writeFileSync(join(dir, 'Test.lrcat-lock'), '');
     const db = openLibraryDb(fx.dbPath);
     seedCullingDefaults(db);
     patchLrWritebackSettings(db, { write_reject: true });
-    cutByRecipe(db, '2024-06-01_cut-photo');
+    filteredByProfile(db, '2024-06-01_filtered-photo');
 
     const result = await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
     db.close();
@@ -315,7 +315,7 @@ describe('write-back carries stars and flags to the cloud', () => {
       before_rating: null,
       written_pick: -1,
       written_rating: null,
-      stars_recipe_version_id: null,
+      stars_profile_version_id: null,
       written_at: '2026-10-20T19:42:54.074Z',
     });
 

@@ -672,10 +672,10 @@ export const ANALYZE_JOB_FAILED_PREFIX = 'Failed to start job:'
 
 // Cull UI (#340)
 export const CULL_HEADING = (n: number) =>
-  n === 1 ? '1 photo did not pass the cull' : `${n} photos did not pass the cull`
+  n === 1 ? '1 photo filtered' : `${n} photos filtered`
 export const CULL_SUB_MANUAL = (m: number) => `${m} already sent manually.`
 export const CULL_SUB_AUTO =
-  'They are not described or scored automatically.'
+  'Filtered photos are not described or scored. Send one by hand to change that.'
 export const CULL_LAST_CHECKED = 'Last checked'
 export const CULL_SORT_HINT = 'Sorted by score forecast, highest first'
 export const CULL_SELECT_ALL = (n: number) => `Select all ${n}`
@@ -686,14 +686,14 @@ export const CULL_ALREADY_SCORED = (d: number) => `· ${d} already described and
 export const CULL_DETAIL_SECTION = 'Culling'
 export const CULL_MANUALLY_CULL = 'Manually cull'
 export const CULL_MANUALLY_CULL_NOTE =
-  'Manually cull — never cut automatically again.'
-export const CULL_PASS_QUESTION = 'Did the cull get this right?'
+  'Manually cull — never filtered automatically again.'
+export const CULL_PASS_QUESTION = 'Did culling get this right?'
 export const CULL_PASS_YES = 'Yes, keep it'
 export const CULL_PASS_NO = "No, it shouldn't have passed"
-export const CULL_PASS_HINT = 'Your answer only tunes the recipes. The photo stays where it is.'
-export const CULL_PASSED = 'Passed the cull'
-export const CULL_RECIPES_SECTION = 'Culling recipes'
-export const CULL_ADD_RECIPE = 'Add recipe'
+export const CULL_PASS_HINT = 'Your answer only tunes the culling profiles. The photo stays where it is.'
+export const CULL_PASSED = 'Passed culling'
+export const CULL_PROFILES_SECTION = 'Culling profiles'
+export const CULL_ADD_PROFILE = 'Add profile'
 export const CULL_DUPLICATE = 'Duplicate'
 export const CULL_NOT_MEASURED = 'Not measured against AI scores'
 export const CULL_ADVANCED = 'Advanced'
@@ -702,101 +702,101 @@ export const CULL_THRESHOLD_NOTE =
   'Changing this re-checks every photo from stored answers (no new model run).'
 export const CULL_SAVE = 'Save'
 export const CULL_SAVE_ONLY = 'Save only'
-export const CULL_SAVE_AND_QUEUE = 'Save and queue cull job'
+export const CULL_SAVE_AND_QUEUE = 'Save and queue culling job'
 export const CULL_RULE_SAVE_NOTE =
   'Saving re-checks every photo from stored answers (no new model run).'
 export const CULL_SCORE_FORECAST = 'Score forecast'
 export const CULL_MODAL_PREV = 'Prev'
 export const CULL_MODAL_NEXT = 'Next'
-export const CULL_RECIPE_MODEL = 'Model'
-export const CULL_RECIPE_ADD_LEVEL = 'Add level'
-export const CULL_RECIPE_FAILS_AT = 'fails at'
-export const CULL_RECIPE_STRONG_AT = 'strong at'
-export const CULL_RECIPE_COMBINE_EVERY = 'Cut when every set cuts'
-export const CULL_RECIPE_COMBINE_ANY = 'Cut when any set cuts'
-export const CULL_RECIPE_RULE_ALL_FAIL = 'All of these fail'
-export const CULL_RECIPE_RULE_N_FAIL = 'N or more fail unless one is strong'
-export const CULL_RECIPE_RULE_MEAN = 'The average fails'
-export const CULL_RECIPE_UNMEASURED_HINT =
-  'Not measured against AI scores — check what it cuts in Processing → Cull.'
-export const CULL_RECIPE_TEXT_SAVE_IMPACT = (photos: number, hours: number) =>
+export const CULL_PROFILE_MODEL = 'Model'
+export const CULL_PROFILE_ADD_LEVEL = 'Add level'
+export const CULL_PROFILE_FAILS_AT = 'fails at'
+export const CULL_PROFILE_STRONG_AT = 'strong at'
+export const CULL_PROFILE_COMBINE_EVERY = 'Filter when every set filters'
+export const CULL_PROFILE_COMBINE_ANY = 'Filter when any set filters'
+export const CULL_PROFILE_RULE_ALL_FAIL = 'All of these fail'
+export const CULL_PROFILE_RULE_N_FAIL = 'N or more fail unless one is strong'
+export const CULL_PROFILE_RULE_MEAN = 'The average fails'
+export const CULL_PROFILE_UNMEASURED_HINT =
+  'Not measured against AI scores — check what it filters in Processing → Cull.'
+export const CULL_PROFILE_TEXT_SAVE_IMPACT = (photos: number, hours: number) =>
   `Saving text re-answers every catalog photo (~${hours.toFixed(2)} h, ${photos} photos × 2 s).`
-export const CULL_RECIPE_ACTIVE = 'Active'
-export const CULL_RECIPE_INACTIVE = 'Inactive'
-export const CULL_RECIPE_ACTIVATE = 'Activate'
-export const CULL_RECIPE_DEACTIVATE = 'Deactivate'
-export const CULL_RECIPES_HELP = 'How the cull decides which photos pass.'
-export const CULL_RECIPES_SUMMARY = (count: number, activeNames: string[]) =>
-  `${count} recipe${count === 1 ? '' : 's'} · ${activeNames.length ? `${activeNames.join(', ')} active` : 'none active'}`
+export const CULL_PROFILE_ACTIVE = 'Active'
+export const CULL_PROFILE_INACTIVE = 'Inactive'
+export const CULL_PROFILE_ACTIVATE = 'Activate'
+export const CULL_PROFILE_DEACTIVATE = 'Deactivate'
+export const CULL_PROFILES_HELP = 'How culling decides which photos pass.'
+export const CULL_PROFILES_SUMMARY = (count: number, activeNames: string[]) =>
+  `${count} profile${count === 1 ? '' : 's'} · ${activeNames.length ? `${activeNames.join(', ')} active` : 'none active'}`
 export const PERSPECTIVES_SUMMARY = (count: number, active: number) =>
   `${count} perspective${count === 1 ? '' : 's'} · ${active} active`
-export const CULL_RECIPE_NAME = 'Name'
-export const CULL_RECIPE_TAB_DIMENSIONS = 'Dimensions'
-export const CULL_RECIPE_TAB_LEVELS = 'Levels'
-export const CULL_RECIPE_TAB_RULE = 'Rule'
-export const CULL_RECIPE_DIMENSION_NAME = 'Dimension name'
-export const CULL_RECIPE_QUESTION = 'Question'
-export const CULL_RECIPE_LEVEL_SET = 'Level set'
-export const CULL_RECIPE_LEVEL_COUNT = (n: number) => `${n} levels`
-export const CULL_RECIPE_LEVEL = (n: number) => `Level ${n}`
-export const CULL_RECIPE_EMPTY_COUNT = (n: number) => `${n} empty`
-export const CULL_RECIPE_BAND_FAILS = 'fails'
-export const CULL_RECIPE_BAND_STRONG = 'strong'
-export const CULL_RECIPE_BAND_RANGE = (from: number, to: number) => (from > to ? 'no level' : `levels ${from}–${to}`)
-export const CULL_RECIPE_ADD_LEVEL_TOP = '+ Add level at the top'
-export const CULL_RECIPE_INSERT_HINT = 'or hover between two levels to insert'
-export const CULL_RECIPE_INSERT_HERE = '+ insert level here'
-export const CULL_RECIPE_INSERT_ABOVE = (level: number) => `Insert a level above level ${level}`
-export const CULL_RECIPE_INSERT_BETWEEN = (below: number) => `Insert a level between ${below} and ${below + 1}`
-export const CULL_RECIPE_NEW_LEVEL_TITLE = (level: number, top: boolean) =>
+export const CULL_PROFILE_NAME = 'Name'
+export const CULL_PROFILE_TAB_DIMENSIONS = 'Dimensions'
+export const CULL_PROFILE_TAB_LEVELS = 'Levels'
+export const CULL_PROFILE_TAB_RULE = 'Rule'
+export const CULL_PROFILE_DIMENSION_NAME = 'Dimension name'
+export const CULL_PROFILE_QUESTION = 'Question'
+export const CULL_PROFILE_LEVEL_SET = 'Level set'
+export const CULL_PROFILE_LEVEL_COUNT = (n: number) => `${n} levels`
+export const CULL_PROFILE_LEVEL = (n: number) => `Level ${n}`
+export const CULL_PROFILE_EMPTY_COUNT = (n: number) => `${n} empty`
+export const CULL_PROFILE_BAND_FAILS = 'fails'
+export const CULL_PROFILE_BAND_STRONG = 'strong'
+export const CULL_PROFILE_BAND_RANGE = (from: number, to: number) => (from > to ? 'no level' : `levels ${from}–${to}`)
+export const CULL_PROFILE_ADD_LEVEL_TOP = '+ Add level at the top'
+export const CULL_PROFILE_INSERT_HINT = 'or hover between two levels to insert'
+export const CULL_PROFILE_INSERT_HERE = '+ insert level here'
+export const CULL_PROFILE_INSERT_ABOVE = (level: number) => `Insert a level above level ${level}`
+export const CULL_PROFILE_INSERT_BETWEEN = (below: number) => `Insert a level between ${below} and ${below + 1}`
+export const CULL_PROFILE_NEW_LEVEL_TITLE = (level: number, top: boolean) =>
   `New level ${level} ${top ? '(top)' : `(between ${level - 1} and ${level})`}`
-export const CULL_RECIPE_NEW_LEVEL_PLACEHOLDER = (level: number) => `What level ${level} looks like`
-export const CULL_RECIPE_FILL_ALL = (n: number) => `fill all ${n} to add`
-export const CULL_RECIPE_REMOVE_LEVEL = (level: number) => `Remove level ${level} from all dimensions`
-export const CULL_RECIPE_MIN_LEVELS = 'A level set needs at least 2 levels.'
-export const CULL_RECIPE_EMPTY_PLACEHOLDER = (level: number, dim: string) => `Empty — describe level ${level} for ${dim}`
-export const CULL_RECIPE_ADDED_LEVEL = (level: number, dims: number) => `Added level ${level} to all ${dims} dimensions.`
-export const CULL_RECIPE_REMOVED_LEVEL = (level: number, dims: number, shifted: boolean) =>
+export const CULL_PROFILE_NEW_LEVEL_PLACEHOLDER = (level: number) => `What level ${level} looks like`
+export const CULL_PROFILE_FILL_ALL = (n: number) => `fill all ${n} to add`
+export const CULL_PROFILE_REMOVE_LEVEL = (level: number) => `Remove level ${level} from all dimensions`
+export const CULL_PROFILE_MIN_LEVELS = 'A level set needs at least 2 levels.'
+export const CULL_PROFILE_EMPTY_PLACEHOLDER = (level: number, dim: string) => `Empty — describe level ${level} for ${dim}`
+export const CULL_PROFILE_ADDED_LEVEL = (level: number, dims: number) => `Added level ${level} to all ${dims} dimensions.`
+export const CULL_PROFILE_REMOVED_LEVEL = (level: number, dims: number, shifted: boolean) =>
   `Removed level ${level} from all ${dims} dimensions${shifted ? '; levels above it moved down one.' : '.'}`
-export const CULL_RECIPE_EMPTY_LEVELS = (n: number) =>
+export const CULL_PROFILE_EMPTY_LEVELS = (n: number) =>
   `${n} empty level text${n === 1 ? '' : 's'} — fill ${n === 1 ? 'it' : 'them'} to save.`
-export const CULL_RECIPE_ADD_LEVEL_SET_BUTTON = '+ Add level set'
-export const CULL_RECIPE_NEW_SET = 'New level set'
-export const CULL_RECIPE_NEW_SET_LEVELS = 'Levels'
-export const CULL_RECIPE_NEW_SET_FROM = 'Start from'
-export const CULL_RECIPE_NEW_SET_EMPTY = 'empty levels'
-export const CULL_RECIPE_NEW_SET_COPY = (id: string) => `a copy of set ${id} (trimmed or padded)`
-export const CULL_RECIPE_NEW_SET_NAME = (id: string) => `It will be called “Level set ${id}”.`
-export const CULL_RECIPE_CREATE = 'Create'
-export const CULL_RECIPE_CANCEL = 'Cancel'
-export const CULL_RECIPE_CREATED_SET = (id: string, n: number, from: string | null) =>
+export const CULL_PROFILE_ADD_LEVEL_SET_BUTTON = '+ Add level set'
+export const CULL_PROFILE_NEW_SET = 'New level set'
+export const CULL_PROFILE_NEW_SET_LEVELS = 'Levels'
+export const CULL_PROFILE_NEW_SET_FROM = 'Start from'
+export const CULL_PROFILE_NEW_SET_EMPTY = 'empty levels'
+export const CULL_PROFILE_NEW_SET_COPY = (id: string) => `a copy of set ${id} (trimmed or padded)`
+export const CULL_PROFILE_NEW_SET_NAME = (id: string) => `It will be called “Level set ${id}”.`
+export const CULL_PROFILE_CREATE = 'Create'
+export const CULL_PROFILE_CANCEL = 'Cancel'
+export const CULL_PROFILE_CREATED_SET = (id: string, n: number, from: string | null) =>
   `Created level set ${id} with ${n} levels${from ? ` copied from set ${from}` : ''}.`
-export const CULL_RECIPE_REMOVE_SET = (id: string) => `Remove set ${id}`
-export const CULL_RECIPE_LAST_SET = 'The last level set cannot be removed'
-export const CULL_RECIPE_REMOVE_SET_TITLE = (id: string) => `Remove level set ${id}?`
-export const CULL_RECIPE_REMOVE_SET_BODY = (dims: number) =>
-  `Its level texts for all ${dims} dimensions and its fails/strong bands are removed from the recipe.`
-export const CULL_RECIPE_REMOVE = 'Remove'
-export const CULL_RECIPE_REMOVED_SET = (id: string) => `Removed level set ${id}.`
-export const CULL_RECIPE_CUT_RULE = 'Cut rule'
-export const CULL_RECIPE_COMBINE = 'Combine level sets'
-export const CULL_RECIPE_DEFINITION_CHANGED =
-  'Text or levels changed: the model has to answer again, so only “Save only” / “Save and queue cull job” apply.'
+export const CULL_PROFILE_REMOVE_SET = (id: string) => `Remove set ${id}`
+export const CULL_PROFILE_LAST_SET = 'The last level set cannot be removed'
+export const CULL_PROFILE_REMOVE_SET_TITLE = (id: string) => `Remove level set ${id}?`
+export const CULL_PROFILE_REMOVE_SET_BODY = (dims: number) =>
+  `Its level texts for all ${dims} dimensions and its fails/strong bands are removed from the profile.`
+export const CULL_PROFILE_REMOVE = 'Remove'
+export const CULL_PROFILE_REMOVED_SET = (id: string) => `Removed level set ${id}.`
+export const CULL_PROFILE_FILTER_RULE = 'Filter rule'
+export const CULL_PROFILE_COMBINE = 'Combine level sets'
+export const CULL_PROFILE_DEFINITION_CHANGED =
+  'Text or levels changed: the model has to answer again, so only “Save only” / “Save and queue culling job” apply.'
 
 // Lightroom write-back (#341)
 export const LR_WRITEBACK_SECTION = 'Lightroom write-back'
 export const LR_WRITEBACK_SECTION_LEAD =
-  'What the cull writes back to your Lightroom catalog. Off until you turn it on. Which level set gives stars is set in each culling recipe (Perspectives).'
+  'What culling writes back to your Lightroom catalog. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'
 export const LR_WRITEBACK_STARS_SWITCH = 'Write stars to Lightroom'
 export const LR_WRITEBACK_STARS_HELP =
-  "Stars from the culling recipe's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos with no rating; photos you rated are never touched. Marked with the keyword lrt-auto-stars."
+  "Stars from the culling profile's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos with no rating; photos you rated are never touched. Marked with the keyword lrt-auto-stars."
 export const LR_WRITEBACK_REJECT_SWITCH = 'Write the reject flag to Lightroom'
 export const LR_WRITEBACK_REJECT_HELP =
-  'Photos the culling recipe cut get the reject flag, only when they have no flag; flags you set are never touched. Photos held back by the score forecast are not flagged. Marked with the keyword lrt-auto-reject.'
-export const LR_WRITEBACK_STARS_RECIPE = 'Culling recipe for stars'
+  'Photos the culling profile filtered get the reject flag, only when they have no flag; flags you set are never touched. Photos filtered by the Score forecast are not flagged. Marked with the keyword lrt-auto-reject.'
+export const LR_WRITEBACK_STARS_PROFILE = 'Culling profile for stars'
 export const LR_WRITEBACK_STATUS_TITLE = 'Lightroom write-back'
 export const LR_WRITEBACK_STATUS_HELP =
-  'Written automatically when a cull ends, if Lightroom is closed. Turning a switch on writes nothing until then, or until you press Write to Lightroom.'
+  'Written automatically when culling ends, if Lightroom is closed. Turning a switch on writes nothing until then, or until you press Write to Lightroom.'
 export const LR_WRITEBACK_PENDING = 'photos pending'
 export const LR_WRITEBACK_WRITTEN = 'photos written'
 export const LR_WRITEBACK_LR_OPEN = 'Lightroom is open'

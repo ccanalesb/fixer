@@ -42,12 +42,12 @@ export function planStarsPhoto(
 
   if (live && row && userChangedAfterWrite('stars', live, row)) {
     if (live.rating !== null) return { ...row, status: 'skipped' };
-    // Clearing the app's stars in Lightroom is an undo: not written again until the recipe changes.
+    // Clearing the app's stars in Lightroom is an undo: not written again until the profile changes.
     if (conn && canWrite) removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
     return { ...row, status: 'undone', written_rating: null, written_at: null };
   }
 
-  if (row?.status === 'undone' && starsVersionId !== null && row.stars_recipe_version_id === starsVersionId) {
+  if (row?.status === 'undone' && starsVersionId !== null && row.stars_profile_version_id === starsVersionId) {
     return null;
   }
 
@@ -87,7 +87,7 @@ export function planStarsPhoto(
       before_rating: row?.before_rating ?? null,
       written_pick: null,
       written_rating: row?.written_rating ?? null,
-      stars_recipe_version_id: row?.stars_recipe_version_id ?? starsVersionId,
+      stars_profile_version_id: row?.stars_profile_version_id ?? starsVersionId,
       written_at: row?.written_at ?? null,
     };
   }
@@ -109,7 +109,7 @@ export function planStarsPhoto(
         before_rating: live.rating,
         written_pick: null,
         written_rating: row?.written_rating ?? null,
-        stars_recipe_version_id: row?.stars_recipe_version_id ?? starsVersionId,
+        stars_profile_version_id: row?.stars_profile_version_id ?? starsVersionId,
         written_at: row?.written_at ?? null,
       };
     }
@@ -124,7 +124,7 @@ export function planStarsPhoto(
       before_rating: null,
       written_pick: null,
       written_rating: row?.written_rating ?? null,
-      stars_recipe_version_id: starsVersionId,
+      stars_profile_version_id: starsVersionId,
       written_at: row?.written_at ?? null,
     };
   }
@@ -144,7 +144,7 @@ export function planStarsPhoto(
       before_rating: null,
       written_pick: null,
       written_rating: row?.written_rating ?? null,
-      stars_recipe_version_id: starsVersionId,
+      stars_profile_version_id: starsVersionId,
       written_at: row?.written_at ?? null,
     };
   }
@@ -157,7 +157,7 @@ export function planStarsPhoto(
     before_rating: beforeRating,
     written_pick: null,
     written_rating: rating,
-    stars_recipe_version_id: starsVersionId,
+    stars_profile_version_id: starsVersionId,
     written_at: nowIsoUtc(),
   };
 }

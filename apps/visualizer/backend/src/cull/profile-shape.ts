@@ -1,9 +1,9 @@
 /**
- * Structural checks on a culling recipe: every level set has the same scale for
+ * Structural checks on a culling profile: every level set has the same scale for
  * every dimension, and its fails/strong bands fit that scale.
  */
-import type { RecipeValidationError } from './recipe-validate.js';
-import type { RecipeDefinition, RecipeRule } from './types.js';
+import type { ProfileValidationError } from './profile-validate.js';
+import type { ProfileDefinition, ProfileRule } from './types.js';
 
 export const MIN_LEVELS_PER_SET = 2;
 
@@ -13,15 +13,15 @@ export const levelTextField = (setId: string, dimSlug: string, index: number) =>
 export const bandsField = (setId: string) => `bands|${setId}`;
 
 /**
- * `requireText` refuses empty level texts; off when creating the blank starter recipe,
+ * `requireText` refuses empty level texts; off when creating the blank starter profile,
  * on whenever a definition is saved for the model to answer.
  */
-export function validateRecipeShape(
-  definition: RecipeDefinition,
-  rule: RecipeRule,
+export function validateProfileShape(
+  definition: ProfileDefinition,
+  rule: ProfileRule,
   opts: { requireText: boolean },
-): RecipeValidationError[] {
-  const errors: RecipeValidationError[] = [];
+): ProfileValidationError[] {
+  const errors: ProfileValidationError[] = [];
   const seen = new Set<string>();
   for (const set of definition.level_sets) {
     if (seen.has(set.id)) errors.push({ field: bandsField(set.id), message: `Level set ${set.id} appears twice.` });

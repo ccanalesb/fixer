@@ -6,7 +6,7 @@ import type { Db } from '../../db/connection.js';
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import type { JobRunner } from '../runner.js';
 import {
-  filterCutPhotosFromDescribeAndScoringSelection,
+  dropFilteredPhotosFromDescribeAndScoringSelection,
   filterVoidSubstanceFromScoringSelection,
   type PassContext,
 } from './common.js';
@@ -22,8 +22,8 @@ export const CULL_STEP_LABEL = 'Culling';
 
 export interface CullHeldBackCounts {
   void: number;
-  cut_by_culling_recipe: number;
-  cut_by_score_forecast: number;
+  filtered_by_culling_profile: number;
+  filtered_by_score_forecast: number;
   pending: number;
   no_verdict: number;
   sent_by_hand_passed: number;
@@ -45,7 +45,7 @@ export interface CullStageOutcome {
 const seconds = (from: number): number => Math.round((performance.now() - from) / 10) / 100;
 
 /**
- * Frame substance → void filter → cull → frame-substance recheck → cut/void filters.
+ * Frame substance → void filter → cull → frame-substance recheck → filtered/void filters.
  * Returns `null` when the job was cancelled during the step.
  */
 export async function runCullStageBeforeDescribeAndScore(
@@ -138,29 +138,29 @@ export async function runCullStageBeforeDescribeAndScore(
   const voidHeldFinal =
     voidBeforeCull +
     (new Set(candidates.map(([k]) => k)).size - new Set(afterVoidFinal.map(([k]) => k)).size);
-  const cut = filterCutPhotosFromDescribeAndScoringSelection(db, afterVoidFinal);
-  const keep = new Set(cut.kept.map(([k]) => k));
+  const culled = dropFilteredPhotosFromDescribeAndScoringSelection(db, afterVoidFinal);
+  const keep = new Set(culled.kept.map(([k]) => k));
 
   const heldBack: CullHeldBackCounts = {
     void: voidHeldFinal,
-    cut_by_culling_recipe: cut.heldBack.cut_by_culling_recipe,
-    cut_by_score_forecast: cut.heldBack.cut_by_score_forecast,
-    pending: cut.heldBack.pending,
-    no_verdict: cut.heldBack.no_verdict,
-    sent_by_hand_passed: cut.sentByHandKept.length,
+    filtered_by_culling_profile: culled.heldBack.filtered_by_culling_profile,
+    filtered_by_score_forecast: culled.heldBack.filtered_by_score_forecast,
+    pending: culled.heldBack.pending,
+    no_verdict: culled.heldBack.no_verdict,
+    sent_by_hand_passed: culled.sentByHandKept.length,
   };
 
   runner.log(
     jobId,
     'info',
-    `${prefix}[cull] status=complete held_back void=${heldBack.void} cut_recipe=${heldBack.cut_by_culling_recipe} ` +
-      `cut_score_forecast=${heldBack.cut_by_score_forecast} pending=${heldBack.pending} ` +
+    `${prefix}[cull] status=complete held_back void=${heldBack.void} filtered_profile=${heldBack.filtered_by_culling_profile} ` +
+      `filtered_score_forecast=${heldBack.filtered_by_score_forecast} pending=${heldBack.pending} ` +
       `sent_by_hand_passed=${heldBack.sent_by_hand_passed} durations frame_substance=${frameSubstanceS} cull=${cullStep.durations_s.cull}`,
   );
 
   return {
     keep,
-    keptPairs: [...cut.kept],
+    keptPairs: [...culled.kept],
     heldBack,
     cullStep,
     durations: { frame_substance: frameSubstanceS, cull: cullStep.durations_s.cull },
@@ -183,10 +183,10 @@ export function cullStageJobResultFields(
       culled: step.culled,
       redecided: step.redecided,
       failed: step.failed,
-      cut_by_culling_recipe: step.cut_by_culling_recipe,
-      cut_by_score_forecast: step.cut_by_score_forecast,
+      filtered_by_culling_profile: step.filtered_by_culling_profile,
+      filtered_by_score_forecast: step.filtered_by_score_forecast,
       pending: step.pending,
-      sent: step.sent,
+      passed: step.passed,
       sent_by_hand_passed: step.sent_by_hand_passed,
       score_forecast: step.score_forecast,
       pipeline_setting_version: step.pipeline_setting_version,

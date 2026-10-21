@@ -8,7 +8,7 @@ import { Button } from '../ui/Button';
 import { FoldingCard } from '../ui/Card';
 import { NAV_PERSPECTIVES_HELP, PERSPECTIVES_SUMMARY } from '../../constants/strings';
 import { PerspectivesAPI, type PerspectiveSummary } from '../../services/api';
-import { CullingRecipesSection } from '../cull/CullingRecipesSection';
+import { CullingProfilesSection } from '../cull/CullingProfilesSection';
 
 const NEW_TEMPLATE = `# Perspective
 
@@ -327,7 +327,7 @@ function PerspectivesTabInner() {
         </div>
       </FoldingCard>
 
-      <CullingRecipesSection />
+      <CullingProfilesSection />
 
       {addOpen && (
         <Modal onClose={() => setAddOpen(false)} maxWidth="lg">

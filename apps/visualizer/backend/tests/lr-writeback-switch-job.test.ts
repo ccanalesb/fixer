@@ -19,7 +19,7 @@ import {
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { connectCatalog } from '../src/lightroom/writer.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
@@ -34,7 +34,7 @@ let lrcatPath: string;
 let jobsDbPath: string;
 
 beforeEach(() => {
-  fx = new LibraryFixture().addImage({ key: '2024-06-01_cut-photo', id: '1' }).activate();
+  fx = new LibraryFixture().addImage({ key: '2024-06-01_filtered-photo', id: '1' }).activate();
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-switch-'));
   cfgPath = join(dir, 'config.yaml');
   lrcatPath = join(dir, 'Test.lrcat');
@@ -155,19 +155,19 @@ describe('lr_writeback handler', () => {
   });
 
   it('writes reject to fixture catalog when run', async () => {
-    const imageKey = '2024-06-01_cut-photo';
+    const imageKey = '2024-06-01_filtered-photo';
     try {
       unlinkSync(lrcatPath);
     } catch {
       /* fresh */
     }
-    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'cut-photo', pick: 0, rating: null }]);
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
     const db = openLibraryDb(fx.dbPath);
     upsertCullVerdict(db, {
       imageKey,
-      verdict: 'cut',
-      cutBy: 'culling_recipe',
-      cutByStageKey: 'culling_recipe:recipe-7h47:7',
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: 'culling_profile:recipe-culling:7',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -183,7 +183,7 @@ describe('lr_writeback handler', () => {
     const conn = connectCatalog(lrcatPath);
     const live = conn
       .prepare(
-        `SELECT ai.pick FROM Adobe_images ai JOIN AgLibraryFile f ON f.id_local = ai.rootFile WHERE f.baseName = 'cut-photo'`,
+        `SELECT ai.pick FROM Adobe_images ai JOIN AgLibraryFile f ON f.id_local = ai.rootFile WHERE f.baseName = 'filtered-photo'`,
       )
       .get() as { pick: number };
     conn.close();

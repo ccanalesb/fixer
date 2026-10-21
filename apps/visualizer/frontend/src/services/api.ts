@@ -870,8 +870,8 @@ export type CullReviewSummary = components['schemas']['CullReviewSummaryResponse
 export type CullReviewListResponse = components['schemas']['CullReviewListResponse']
 export type CullReviewRow = components['schemas']['CullReviewRow']
 export type CullReviewDetail = components['schemas']['CullReviewDetail']
-export type CullRecipeDetail = components['schemas']['CullRecipeDetail']
-export type CullRecipeSummary = components['schemas']['CullRecipeSummary']
+export type CullProfileDetail = components['schemas']['CullProfileDetail']
+export type CullProfileSummary = components['schemas']['CullProfileSummary']
 export type PipelineSettingResponse = components['schemas']['PipelineSettingResponse']
 
 export const CullAPI = {
@@ -886,14 +886,14 @@ export const CullAPI = {
   },
   photoDetail: (imageKey: string) =>
     request<CullReviewDetail>(`/cull/photos/${encodeURIComponent(imageKey)}`),
-  recordAction: (imageKey: string, action: 'sent_by_hand' | 'agrees_with_cut' | 'should_have_been_cut') =>
+  recordAction: (imageKey: string, action: 'sent_by_hand' | 'agrees_with_filter' | 'should_have_been_filtered') =>
     request<{ ok: boolean }>(`/cull/photos/${encodeURIComponent(imageKey)}/actions`, {
       method: 'POST',
       body: JSON.stringify({ action }),
     }),
-  withdrawShouldHaveBeenCut: (imageKey: string) =>
+  withdrawShouldHaveBeenFiltered: (imageKey: string) =>
     request<{ ok: boolean; removed: number }>(
-      `/cull/photos/${encodeURIComponent(imageKey)}/actions/should_have_been_cut`,
+      `/cull/photos/${encodeURIComponent(imageKey)}/actions/should_have_been_filtered`,
       { method: 'DELETE' },
     ),
   sendPhotos: (imageKeys: string[]) =>
@@ -903,13 +903,13 @@ export const CullAPI = {
     ),
 }
 
-export const CullingRecipesAPI = {
-  list: () => request<{ recipes: CullRecipeSummary[] }>('/culling-recipes/'),
-  get: (slug: string) => request<CullRecipeDetail>(`/culling-recipes/${encodeURIComponent(slug)}`),
+export const CullingProfilesAPI = {
+  list: () => request<{ profiles: CullProfileSummary[] }>('/culling-profiles/'),
+  get: (slug: string) => request<CullProfileDetail>(`/culling-profiles/${encodeURIComponent(slug)}`),
   create: (body: unknown) =>
-    request<CullRecipeDetail>('/culling-recipes/', { method: 'POST', body: JSON.stringify(body) }),
+    request<CullProfileDetail>('/culling-profiles/', { method: 'POST', body: JSON.stringify(body) }),
   duplicate: (slug: string, body: { new_slug: string; new_name?: string }) =>
-    request<CullRecipeDetail>(`/culling-recipes/${encodeURIComponent(slug)}/duplicate`, {
+    request<CullProfileDetail>(`/culling-profiles/${encodeURIComponent(slug)}/duplicate`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -918,29 +918,29 @@ export const CullingRecipesAPI = {
     body: { definition: unknown; rule?: unknown; mode: 'save_only' | 'save_and_queue_cull' },
   ) =>
     request<{
-      recipe: CullRecipeDetail
+      profile: CullProfileDetail
       version: number
       created: boolean
       impact: { photos: number; hours_estimate: number }
       cull_job_id: string | null
     }>(
-      `/culling-recipes/${encodeURIComponent(slug)}/definition`,
+      `/culling-profiles/${encodeURIComponent(slug)}/definition`,
       { method: 'PUT', body: JSON.stringify(body) },
     ),
   saveRule: (slug: string, rule: unknown) =>
-    request<{ recipe: CullRecipeDetail; pipeline_setting_version: number | null; redecide_job_id: string | null }>(
-      `/culling-recipes/${encodeURIComponent(slug)}/rule`,
+    request<{ profile: CullProfileDetail; pipeline_setting_version: number | null; redecide_job_id: string | null }>(
+      `/culling-profiles/${encodeURIComponent(slug)}/rule`,
       { method: 'PUT', body: JSON.stringify({ rule }) },
     ),
   patch: (slug: string, body: { name?: string; model?: string; active?: boolean }) =>
-    request<CullRecipeDetail>(`/culling-recipes/${encodeURIComponent(slug)}`, {
+    request<CullProfileDetail>(`/culling-profiles/${encodeURIComponent(slug)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
-  getPipeline: () => request<PipelineSettingResponse>('/culling-recipes/pipeline'),
+  getPipeline: () => request<PipelineSettingResponse>('/culling-profiles/pipeline'),
   saveScoreForecastThreshold: (threshold: number) =>
     request<{ version: number; redecide_job_id: string | null }>(
-      '/culling-recipes/pipeline/score-forecast',
+      '/culling-profiles/pipeline/score-forecast',
       { method: 'PUT', body: JSON.stringify({ threshold }) },
     ),
 }
@@ -953,7 +953,7 @@ export const LrWritebackAPI = {
   patchSettings: (body: {
     write_stars?: boolean
     write_reject?: boolean
-    stars_recipe_slug?: string | null
+    stars_profile_slug?: string | null
   }) =>
     request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings', {
       method: 'PATCH',

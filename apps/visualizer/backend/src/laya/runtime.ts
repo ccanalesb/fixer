@@ -117,8 +117,8 @@ export interface LayaStartCheck {
 }
 
 /**
- * The cull job's start check: files present, models load, the reference photo answered — with the
- * questions the job will ask, so a recipe too long for Laya fails here rather than on every photo.
+ * The culling job's start check: files present, models load, the reference photo answered — with the
+ * questions the job will ask, so a profile too long for Laya fails here rather than on every photo.
  * Anything else throws a `LayaSetupError` naming the missing piece and the setup step.
  */
 export async function startLayaWithCheck(

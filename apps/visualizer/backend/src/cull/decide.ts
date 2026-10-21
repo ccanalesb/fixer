@@ -9,9 +9,9 @@
 import type {
   CullVerdict,
   PhotoDecision,
-  PipelineRecipe,
+  PipelineProfile,
   PipelineSettingConfig,
-  RecipeRule,
+  ProfileRule,
   ResolvedStage,
   ScoreForecastSetting,
   StageAnswers,
@@ -47,24 +47,24 @@ export function levelSetReadout(
   return out;
 }
 
-/** Whether one level set's answers cut the photo under the recipe's cut rule. */
-export function decideRecipeLevelSet(rule: RecipeRule, levelSet: string, answers: StageAnswers): StageDecision {
+/** Whether one level set's answers filter the photo under the profile's filter rule. */
+export function decideProfileLevelSet(rule: ProfileRule, levelSet: string, answers: StageAnswers): StageDecision {
   const bands = rule.level_sets[levelSet];
-  if (!bands) throw new Error(`culling recipe rule has no bands for level set ${levelSet}`);
+  if (!bands) throw new Error(`culling profile rule has no bands for level set ${levelSet}`);
   const readout = levelSetReadout(answers, bands);
   const dims = Object.values(readout);
-  const cr = rule.cut_rule;
-  let cut: boolean;
+  const cr = rule.filter_rule;
+  let filtered: boolean;
   if (cr.type === 'all_fail') {
-    cut = cr.dimensions.every((d) => readout[d]?.fails === true);
+    filtered = cr.dimensions.every((d) => readout[d]?.fails === true);
   } else if (cr.type === 'n_fail_unless_strong') {
-    cut = dims.filter((d) => d.fails).length >= cr.n && !dims.some((d) => d.strong);
+    filtered = dims.filter((d) => d.fails).length >= cr.n && !dims.some((d) => d.strong);
   } else {
-    cut = dims.length > 0 && dims.reduce((s, d) => s + d.level, 0) / dims.length <= bands.fails_at_most;
+    filtered = dims.length > 0 && dims.reduce((s, d) => s + d.level, 0) / dims.length <= bands.fails_at_most;
   }
   return {
-    verdict: cut ? 'cut' : 'sent',
-    detail: { level_set: levelSet, bands, cut_rule: cr, readout },
+    verdict: filtered ? 'filtered' : 'passed',
+    detail: { level_set: levelSet, bands, filter_rule: cr, readout },
   };
 }
 
@@ -82,7 +82,7 @@ export function scoreForecastHighestP8(answers: StageAnswers, cfg: ScoreForecast
 export function decideScoreForecast(answers: StageAnswers, cfg: ScoreForecastSetting): StageDecision {
   const p8 = scoreForecastHighestP8(answers, cfg);
   return {
-    verdict: p8 < cfg.threshold ? 'cut' : 'sent',
+    verdict: p8 < cfg.threshold ? 'filtered' : 'passed',
     detail: {
       highest_p8: p8,
       threshold: cfg.threshold,
@@ -97,35 +97,35 @@ export interface DecideOptions {
   scoreForecastAvailable?: boolean;
 }
 
-function recipeStages(stages: readonly ResolvedStage[], slug: string): ResolvedStage[] {
-  return stages.filter((s) => s.kind === 'culling_recipe' && s.recipeSlug === slug);
+function profileStages(stages: readonly ResolvedStage[], slug: string): ResolvedStage[] {
+  return stages.filter((s) => s.kind === 'culling_profile' && s.profileSlug === slug);
 }
 
 /**
- * Cut, sent, or null while a level set is unanswered: a recipe never cuts on part of its answers.
- * A cut names the recipe's first level set that cut.
+ * Filtered, passed, or null while a level set is unanswered: a profile never filters on part of its
+ * answers. A filtered verdict names the profile's first level set that filtered.
  */
-function recipeOutcome(
-  recipe: PipelineRecipe,
+function profileOutcome(
+  profile: PipelineProfile,
   stages: readonly ResolvedStage[],
   answers: Readonly<Record<string, StageAnswers>>,
   decisions: Record<string, StageDecision>,
-): { verdict: CullVerdict | null; cutStageKey: string | null } {
-  const own = recipeStages(stages, recipe.recipe_slug);
+): { verdict: CullVerdict | null; filteredStageKey: string | null } {
+  const own = profileStages(stages, profile.profile_slug);
   const verdicts: (CullVerdict | null)[] = own.map((s) => {
     const a = answers[s.stageKey];
     if (!a) return null;
-    const d = decideRecipeLevelSet(recipe.rule, s.levelSet!, a);
+    const d = decideProfileLevelSet(profile.rule, s.levelSet!, a);
     decisions[s.stageKey] = d;
     return d.verdict;
   });
-  const cutStageKey = own[verdicts.indexOf('cut')]?.stageKey ?? null;
+  const filteredStageKey = own[verdicts.indexOf('filtered')]?.stageKey ?? null;
   let verdict: CullVerdict | null;
   if (verdicts.length === 0) verdict = null;
-  else if (recipe.rule.combine === 'any' && verdicts.includes('cut')) verdict = 'cut';
+  else if (profile.rule.combine === 'any' && verdicts.includes('filtered')) verdict = 'filtered';
   else if (verdicts.includes(null)) verdict = null;
-  else verdict = verdicts.every((v) => v === 'cut') ? 'cut' : 'sent';
-  return { verdict, cutStageKey: verdict === 'cut' ? cutStageKey : null };
+  else verdict = verdicts.every((v) => v === 'filtered') ? 'filtered' : 'passed';
+  return { verdict, filteredStageKey: verdict === 'filtered' ? filteredStageKey : null };
 }
 
 interface Walk {
@@ -134,9 +134,9 @@ interface Walk {
 }
 
 /**
- * Walk the stages in pipeline order — recipes, then the Score forecast — deciding what each says and
- * which still need an answer. A stage switched off for cut photos (`run_after_cut: false`) is only
- * required while nothing before it has cut.
+ * Walk the stages in pipeline order — profiles, then the Score forecast — deciding what each says and
+ * which still need an answer. A stage switched off for filtered photos (`run_after_filtered: false`) is
+ * only required while nothing before it has filtered.
  */
 function walk(
   cfg: PipelineSettingConfig,
@@ -146,32 +146,32 @@ function walk(
 ): Walk {
   const decisions: Record<string, StageDecision> = {};
   const required: ResolvedStage[] = [];
-  let cutBy: PhotoDecision['cutBy'] = null;
-  let cutByStageKey: string | null = null;
+  let filteredBy: PhotoDecision['filteredBy'] = null;
+  let filteredByStageKey: string | null = null;
 
-  for (const recipe of cfg.culling_recipes) {
-    if (cutBy !== null && !recipe.run_after_cut) continue;
-    required.push(...recipeStages(stages, recipe.recipe_slug));
-    const outcome = recipeOutcome(recipe, stages, answers, decisions);
-    if (outcome.verdict === 'cut' && cutBy === null) {
-      cutBy = 'culling_recipe';
-      cutByStageKey = outcome.cutStageKey;
+  for (const profile of cfg.culling_profiles) {
+    if (filteredBy !== null && !profile.run_after_filtered) continue;
+    required.push(...profileStages(stages, profile.profile_slug));
+    const outcome = profileOutcome(profile, stages, answers, decisions);
+    if (outcome.verdict === 'filtered' && filteredBy === null) {
+      filteredBy = 'culling_profile';
+      filteredByStageKey = outcome.filteredStageKey;
     }
   }
 
   let scoreForecastP8: number | null = null;
   const sf = cfg.score_forecast;
   const forecastStage = stages.find((s) => s.kind === 'score_forecast');
-  if (forecastStage && sf.enabled && opts.scoreForecastAvailable !== false && (cutBy === null || sf.run_after_cut)) {
+  if (forecastStage && sf.enabled && opts.scoreForecastAvailable !== false && (filteredBy === null || sf.run_after_filtered)) {
     required.push(forecastStage);
     const a = answers[forecastStage.stageKey];
     if (a) {
       const d = decideScoreForecast(a, sf);
       decisions[forecastStage.stageKey] = d;
       scoreForecastP8 = d.detail.highest_p8 as number;
-      if (d.verdict === 'cut' && cutBy === null) {
-        cutBy = 'score_forecast';
-        cutByStageKey = forecastStage.stageKey;
+      if (d.verdict === 'filtered' && filteredBy === null) {
+        filteredBy = 'score_forecast';
+        filteredByStageKey = forecastStage.stageKey;
       }
     }
   }
@@ -179,12 +179,12 @@ function walk(
   const pendingStages = required.filter((s) => !answers[s.stageKey]).map((s) => s.stageKey);
   const sentByHand = opts.sentByHand === true;
   const decision: PhotoDecision = {
-    verdict: sentByHand ? 'sent' : cutBy !== null ? 'cut' : pendingStages.length > 0 ? 'pending' : 'sent',
-    cutBy: sentByHand ? null : cutBy,
-    cutByStageKey: sentByHand ? null : cutByStageKey,
+    verdict: sentByHand ? 'passed' : filteredBy !== null ? 'filtered' : pendingStages.length > 0 ? 'pending' : 'passed',
+    filteredBy: sentByHand ? null : filteredBy,
+    filteredByStageKey: sentByHand ? null : filteredByStageKey,
     pendingStages,
     scoreForecastP8,
-    sentByHandOverride: sentByHand && cutBy !== null,
+    sentByHandOverride: sentByHand && filteredBy !== null,
     stages: decisions,
   };
   return { required, decision };
@@ -201,8 +201,8 @@ export function requiredStages(
 }
 
 /**
- * The photo's summary: cut by a recipe (reported first), else cut by the Score forecast, else
- * pending while a required stage is unanswered (pending is never sent), else sent. Sent by hand wins
+ * The photo's summary: filtered by a profile (reported first), else filtered by the Score forecast,
+ * else pending while a required stage is unanswered (pending never passes), else passed. Sent by hand wins
  * over all of it, across versions; the stage decisions still say what the stages would have done.
  */
 export function decidePhoto(

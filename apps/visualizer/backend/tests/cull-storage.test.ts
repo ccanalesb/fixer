@@ -1,5 +1,5 @@
 /**
- * Cull storage in `library.db`: the migration and seed, recipe and stage versions, the pipeline
+ * Cull storage in `library.db`: the migration and seed, profile and stage versions, the pipeline
  * setting, stage answers and the user-action history.
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -12,12 +12,12 @@ import { initLibraryDb, LIBRARY_SCHEMA_VERSION, upgradeLibrarySchema } from '../
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import {
   CULL_DEFAULTS_SEEDED_META_KEY,
-  getCullRecipe,
-  listCullRecipes,
-  saveRecipeDefinition,
+  getCullProfile,
+  listCullProfiles,
+  saveProfileDefinition,
   seedCullingDefaults,
-  setRecipeRule,
-} from '../src/db/library/cull-recipes.js';
+  setProfileRule,
+} from '../src/db/library/cull-profiles.js';
 import {
   getOrCreateStageVersion,
   loadCurrentStageAnswers,
@@ -28,24 +28,24 @@ import { isSentByHand, listCullUserActions, recordCullUserAction } from '../src/
 import {
   getCullVerdict,
   insertCullRun,
-  isPhotoCutAndNotSentByHand,
+  isPhotoFilteredAndNotSentByHand,
   listCulledImageKeys,
   loadCullVerdictsForKeys,
   upsertCullVerdict,
 } from '../src/db/library/cull-verdicts.js';
 import { listCatalogImagesForFrameSubstance } from '../src/db/library/frame-substance.js';
 import {
-  filterCutPhotosFromDescribeAndScoringSelection,
+  dropFilteredPhotosFromDescribeAndScoringSelection,
   filterVoidSubstanceFromScoringSelection,
 } from '../src/jobs/handlers/common.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
-import type { RecipeDefinition } from '../src/cull/types.js';
+import type { ProfileDefinition } from '../src/cull/types.js';
 
 const CULL_TABLES = [
   'cull_pipeline_settings',
-  'cull_recipe_versions',
-  'cull_recipes',
+  'cull_profile_versions',
+  'cull_profiles',
   'cull_runs',
   'cull_stage_answers',
   'cull_stage_versions',
@@ -73,33 +73,33 @@ const tables = (d: Db) =>
   }[]).map((r) => r.name);
 
 describe('migration and seed', () => {
-  it('a fresh library has every cull table, recipe 7H47 and the default pipeline setting', () => {
+  it('a fresh library has every cull table, Recipe culling and the default pipeline setting', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
-    expect(LIBRARY_SCHEMA_VERSION).toBe(12);
+    expect(LIBRARY_SCHEMA_VERSION).toBe(13);
     expect(tables(db)).toEqual(CULL_TABLES);
-    const recipe = getCullRecipe(db, 'recipe-7h47')!;
-    expect(recipe).toMatchObject({ name: 'Recipe 7H47', model: 'laya-base', active: true, measured: true });
-    expect(recipe.definition.dimensions.map((d) => d.slug)).toEqual([
+    const profile = getCullProfile(db, 'recipe-culling')!;
+    expect(profile).toMatchObject({ name: 'Recipe culling', model: 'laya-base', active: true, measured: true });
+    expect(profile.definition.dimensions.map((d) => d.slug)).toEqual([
       'immediate-impact',
       'visual-structure',
       'point-of-tension',
       'connotation',
     ]);
-    expect(recipe.definition.level_sets.map((s) => s.id)).toEqual(['7', '10']);
+    expect(profile.definition.level_sets.map((s) => s.id)).toEqual(['7', '10']);
     const pipeline = getCurrentPipelineSetting(db);
     expect(pipeline.version).toBe(1);
-    expect(pipeline.config.culling_recipes).toEqual([
-      { recipe_slug: 'recipe-7h47', rule: recipe.rule, run_after_cut: true },
+    expect(pipeline.config.culling_profiles).toEqual([
+      { profile_slug: 'recipe-culling', rule: profile.rule, run_after_filtered: true },
     ]);
-    expect(recipe.rule).toEqual({
+    expect(profile.rule).toEqual({
       level_sets: { '7': { fails_at_most: 3, strong_at_least: 6 }, '10': { fails_at_most: 4, strong_at_least: 8 } },
       combine: 'every',
-      cut_rule: { type: 'all_fail', dimensions: ['point-of-tension', 'connotation'] },
+      filter_rule: { type: 'all_fail', dimensions: ['point-of-tension', 'connotation'] },
     });
     expect(pipeline.config.score_forecast).toMatchObject({ enabled: true, threshold: 0.111 });
   });
 
-  it('upgrades a version 10 library, once; a deleted recipe is not seeded again', () => {
+  it('upgrades a version 10 library, once; a deleted profile is not seeded again', () => {
     for (const t of CULL_TABLES) db.exec(`DROP TABLE ${t}`);
     db.prepare('DELETE FROM library_meta WHERE key = ?').run(CULL_DEFAULTS_SEEDED_META_KEY);
     db.pragma('user_version = 10');
@@ -107,14 +107,14 @@ describe('migration and seed', () => {
 
     db = openLibraryDb(join(dir, 'library.db'));
     upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(12);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
     expect(tables(db)).toEqual(CULL_TABLES);
-    expect(listCullRecipes(db).map((r) => r.slug)).toEqual(['recipe-7h47']);
+    expect(listCullProfiles(db).map((r) => r.slug)).toEqual(['recipe-culling']);
 
-    db.exec('DELETE FROM cull_recipe_versions; DELETE FROM cull_recipes');
+    db.exec('DELETE FROM cull_profile_versions; DELETE FROM cull_profiles');
     expect(seedCullingDefaults(db)).toBe(false);
     upgradeLibrarySchema(db);
-    expect(listCullRecipes(db)).toEqual([]);
+    expect(listCullProfiles(db)).toEqual([]);
   });
 
   it('is not marked seeded until a pipeline setting exists', () => {
@@ -126,13 +126,13 @@ describe('migration and seed', () => {
     expect(getCurrentPipelineSetting(db).version).toBeGreaterThan(0);
   });
 
-  it('the seed file is the recipe the research ran: #337’s questions, word for word', () => {
+  it('the seed file is the profile the research ran: #337’s questions, word for word', () => {
     const seed = JSON.parse(
-      readFileSync(join(REPO_ROOT, 'prompts', 'culling-recipes', 'recipe-7h47.json'), 'utf8'),
-    ) as { definition: RecipeDefinition };
+      readFileSync(join(REPO_ROOT, 'prompts', 'culling-profiles', 'recipe-culling.json'), 'utf8'),
+    ) as { definition: ProfileDefinition };
     const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
     for (const set of seed.definition.level_sets) {
-      const stage = stages.find((s) => s.stageKey === `culling_recipe:recipe-7h47:${set.id}`)!;
+      const stage = stages.find((s) => s.stageKey === `culling_profile:recipe-culling:${set.id}`)!;
       const asked = Object.values(stage.questions);
       const research = Object.entries(LAYA_QUESTIONS.base)
         .filter(([qid]) => qid.startsWith(`${set.id}|`))
@@ -145,20 +145,20 @@ describe('migration and seed', () => {
 describe('versions', () => {
   const current = () => resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
   const byKey = (key: string) => current().find((s) => s.stageKey === key)!;
-  const S7 = 'culling_recipe:recipe-7h47:7';
-  const S10 = 'culling_recipe:recipe-7h47:10';
+  const S7 = 'culling_profile:recipe-culling:7';
+  const S10 = 'culling_profile:recipe-culling:10';
 
-  function editLevels(setId: string, edit: (levels: string[]) => string[]): RecipeDefinition {
-    const def = structuredClone(getCullRecipe(db, 'recipe-7h47')!.definition);
+  function editLevels(setId: string, edit: (levels: string[]) => string[]): ProfileDefinition {
+    const def = structuredClone(getCullProfile(db, 'recipe-culling')!.definition);
     const set = def.level_sets.find((s) => s.id === setId)!;
     for (const dim of Object.keys(set.levels)) set.levels[dim] = edit(set.levels[dim]!);
     return def;
   }
 
-  it('resolves three stages: recipe 7H47 at 7 and 10 levels and the Score forecast', () => {
+  it('resolves three stages: Recipe culling at 7 and 10 levels and the Score forecast', () => {
     expect(current().map((s) => [s.stageKey, s.kind, s.model])).toEqual([
-      [S7, 'culling_recipe', 'base'],
-      [S10, 'culling_recipe', 'base'],
+      [S7, 'culling_profile', 'base'],
+      [S10, 'culling_profile', 'base'],
       ['score_forecast', 'score_forecast', 'new'],
     ]);
     expect(Object.keys(byKey('score_forecast').questions)).toEqual(Object.keys(LAYA_QUESTIONS.new));
@@ -172,34 +172,34 @@ describe('versions', () => {
       imageKey: 'a',
       stageVersionId: old7,
       answers: { connotation: [1, 0, 0, 0, 0, 0, 0] },
-      verdict: 'sent',
+      verdict: 'passed',
       decision: {},
       pipelineSettingVersion: 1,
       source: 'job',
       runId: run,
     });
 
-    const saved = saveRecipeDefinition(db, 'recipe-7h47', editLevels('7', (l) => [...l.slice(0, 6), 'unforgettable']));
+    const saved = saveProfileDefinition(db, 'recipe-culling', editLevels('7', (l) => [...l.slice(0, 6), 'unforgettable']));
     expect(saved).toMatchObject({ created: true, version: 2 });
     expect(byKey(S7).versionId).not.toBe(old7);
     expect(byKey(S10).versionId).toBe(old10);
     expect(Object.keys(loadCurrentStageAnswers(db, current(), ['a']).get('a') ?? {})).toEqual([]);
     expect(db.prepare('SELECT COUNT(*) AS n FROM cull_stage_answers WHERE stage_version_id = ?').get(old7)).toEqual({ n: 1 });
 
-    expect(saveRecipeDefinition(db, 'recipe-7h47', getCullRecipe(db, 'recipe-7h47')!.definition).created).toBe(false);
+    expect(saveProfileDefinition(db, 'recipe-culling', getCullProfile(db, 'recipe-culling')!.definition).created).toBe(false);
   });
 
   it('a level-count change makes a new version; reverting brings the old one and its rows back', () => {
     const old7 = byKey(S7).versionId;
-    const original = getCullRecipe(db, 'recipe-7h47')!.definition;
-    saveRecipeDefinition(db, 'recipe-7h47', editLevels('7', (l) => [...l, 'beyond words']));
+    const original = getCullProfile(db, 'recipe-culling')!.definition;
+    saveProfileDefinition(db, 'recipe-culling', editLevels('7', (l) => [...l, 'beyond words']));
     const seven = byKey(S7);
     expect(seven.versionId).not.toBe(old7);
     expect(Object.values(seven.questions)[0]!.criteria).toHaveLength(8);
 
-    saveRecipeDefinition(db, 'recipe-7h47', original);
+    saveProfileDefinition(db, 'recipe-culling', original);
     expect(byKey(S7).versionId).toBe(old7);
-    expect(getCullRecipe(db, 'recipe-7h47')!.version).toBe(1);
+    expect(getCullProfile(db, 'recipe-culling')!.version).toBe(1);
   });
 
   it('a new model makes a new stage version', () => {
@@ -209,18 +209,18 @@ describe('versions', () => {
   });
 
   it('getOrCreateStageVersion is idempotent per stage text and model', () => {
-    const args = { stageKey: 'x', kind: 'score_forecast' as const, recipeSlug: null, levelSet: null, modelId: 'm', questions: {} };
+    const args = { stageKey: 'x', kind: 'score_forecast' as const, profileSlug: null, levelSet: null, modelId: 'm', questions: {} };
     expect(getOrCreateStageVersion(db, args)).toBe(getOrCreateStageVersion(db, args));
   });
 
   it('a rule change is not a stage version: it makes a new pipeline-setting version', () => {
     const before = current().map((s) => s.versionId);
-    const rule = { ...getCullRecipe(db, 'recipe-7h47')!.rule, combine: 'any' as const };
-    setRecipeRule(db, 'recipe-7h47', rule);
-    expect(getCullRecipe(db, 'recipe-7h47')!.rule.combine).toBe('any');
+    const rule = { ...getCullProfile(db, 'recipe-culling')!.rule, combine: 'any' as const };
+    setProfileRule(db, 'recipe-culling', rule);
+    expect(getCullProfile(db, 'recipe-culling')!.rule.combine).toBe('any');
     const pipeline = getCurrentPipelineSetting(db);
     expect(pipeline.version).toBe(2);
-    expect(pipeline.config.culling_recipes[0]!.rule.combine).toBe('any');
+    expect(pipeline.config.culling_profiles[0]!.rule.combine).toBe('any');
     expect(current().map((s) => s.versionId)).toEqual(before);
   });
 
@@ -237,7 +237,7 @@ describe('stage answers, summaries and user actions', () => {
     const stageVersionId = getOrCreateStageVersion(db, {
       stageKey: 'score_forecast',
       kind: 'score_forecast',
-      recipeSlug: null,
+      profileSlug: null,
       levelSet: null,
       modelId: 'm',
       questions: {},
@@ -246,25 +246,25 @@ describe('stage answers, summaries and user actions', () => {
       imageKey: 'a',
       stageVersionId,
       answers: { x: [0.5, 0.5] },
-      verdict: 'sent' as const,
+      verdict: 'passed' as const,
       decision: {},
       pipelineSettingVersion: 1,
       source: 'job' as const,
       runId: run,
     };
     upsertStageAnswer(db, row);
-    upsertStageAnswer(db, { ...row, verdict: 'cut' });
-    expect(db.prepare('SELECT verdict FROM cull_stage_answers').all()).toEqual([{ verdict: 'cut' }]);
-    expect(upsertStageAnswer(db, { ...row, verdict: 'sent' }, { ifAbsent: true })).toBe(false);
-    expect(db.prepare('SELECT verdict FROM cull_stage_answers').all()).toEqual([{ verdict: 'cut' }]);
+    upsertStageAnswer(db, { ...row, verdict: 'filtered' });
+    expect(db.prepare('SELECT verdict FROM cull_stage_answers').all()).toEqual([{ verdict: 'filtered' }]);
+    expect(upsertStageAnswer(db, { ...row, verdict: 'passed' }, { ifAbsent: true })).toBe(false);
+    expect(db.prepare('SELECT verdict FROM cull_stage_answers').all()).toEqual([{ verdict: 'filtered' }]);
   });
 
   it('records each action with the verdict it answered; sent by hand sticks', () => {
     upsertCullVerdict(db, {
       imageKey: 'a',
-      verdict: 'cut',
-      cutBy: 'culling_recipe',
-      cutByStageKey: null,
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: null,
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -274,30 +274,30 @@ describe('stage answers, summaries and user actions', () => {
       stageVersionIds: [1, 2, 3],
       runId: null,
     });
-    recordCullUserAction(db, 'a', 'agrees_with_cut', '2026-10-19T10:00:00+00:00');
+    recordCullUserAction(db, 'a', 'agrees_with_filter', '2026-10-19T10:00:00+00:00');
     recordCullUserAction(db, 'a', 'sent_by_hand', '2026-10-19T11:00:00+00:00');
     expect(listCullUserActions(db, 'a')).toEqual([
-      expect.objectContaining({ action: 'agrees_with_cut', answered_verdict: 'cut', answered_cut_by: 'culling_recipe', acted_at: '2026-10-19T10:00:00+00:00' }),
-      expect.objectContaining({ action: 'sent_by_hand', answered_verdict: 'cut', answered_stage_version_ids: [1, 2, 3] }),
+      expect.objectContaining({ action: 'agrees_with_filter', answered_verdict: 'filtered', answered_filtered_by: 'culling_profile', acted_at: '2026-10-19T10:00:00+00:00' }),
+      expect.objectContaining({ action: 'sent_by_hand', answered_verdict: 'filtered', answered_stage_version_ids: [1, 2, 3] }),
     ]);
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'sent', sent_by_hand: true, cut_by: null });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed', sent_by_hand: true, filtered_by: null });
     expect(isSentByHand(db, 'a')).toBe(true);
     expect(isSentByHand(db, 'b')).toBe(false);
   });
 
   it('sending a photo with no verdict yet still sticks', () => {
     recordCullUserAction(db, 'z', 'sent_by_hand');
-    expect(getCullVerdict(db, 'z')).toMatchObject({ verdict: 'sent', sent_by_hand: true });
+    expect(getCullVerdict(db, 'z')).toMatchObject({ verdict: 'passed', sent_by_hand: true });
     expect(listCullUserActions(db, 'z')[0]).toMatchObject({ answered_verdict: 'none' });
   });
 });
 
-const summary = (imageKey: string, verdict: 'cut' | 'sent' | 'pending', cutBy: 'culling_recipe' | 'score_forecast' | null = null) =>
+const summary = (imageKey: string, verdict: 'filtered' | 'passed' | 'pending', filteredBy: 'culling_profile' | 'score_forecast' | null = null) =>
   upsertCullVerdict(db, {
     imageKey,
     verdict,
-    cutBy,
-    cutByStageKey: null,
+    filteredBy,
+    filteredByStageKey: null,
     sentByHand: false,
     pendingStages: [],
     pendingReason: '',
@@ -309,21 +309,21 @@ const summary = (imageKey: string, verdict: 'cut' | 'sent' | 'pending', cutBy: '
   });
 
 describe('what the jobs that send photos to kimi read', () => {
-  it('isPhotoCutAndNotSentByHand: only a cut nobody sent on', () => {
-    summary('cut', 'cut', 'culling_recipe');
-    summary('sent', 'sent');
+  it('isPhotoFilteredAndNotSentByHand: only a filtered photo nobody sent on', () => {
+    summary('filtered', 'filtered', 'culling_profile');
+    summary('passed', 'passed');
     summary('pending', 'pending');
-    summary('hand', 'cut', 'score_forecast');
+    summary('hand', 'filtered', 'score_forecast');
     recordCullUserAction(db, 'hand', 'sent_by_hand');
-    expect(isPhotoCutAndNotSentByHand(db, 'cut')).toBe(true);
-    for (const key of ['sent', 'pending', 'hand', 'never-culled']) expect(isPhotoCutAndNotSentByHand(db, key)).toBe(false);
+    expect(isPhotoFilteredAndNotSentByHand(db, 'filtered')).toBe(true);
+    for (const key of ['passed', 'pending', 'hand', 'never-culled']) expect(isPhotoFilteredAndNotSentByHand(db, key)).toBe(false);
   });
 
-  it('a sent-by-hand action wins even over a summary that still says cut', () => {
+  it('a sent-by-hand action wins even over a summary that still says filtered', () => {
     recordCullUserAction(db, 'a', 'sent_by_hand');
-    summary('a', 'cut', 'culling_recipe');
-    expect(isPhotoCutAndNotSentByHand(db, 'a')).toBe(false);
-    expect(loadCullVerdictsForKeys(db, ['a']).get('a')).toMatchObject({ verdict: 'cut', sentByHand: true });
+    summary('a', 'filtered', 'culling_profile');
+    expect(isPhotoFilteredAndNotSentByHand(db, 'a')).toBe(false);
+    expect(loadCullVerdictsForKeys(db, ['a']).get('a')).toMatchObject({ verdict: 'filtered', sentByHand: true });
   });
 
   it('readStoredLayaModelIds: the model ids of the current stage versions, never the files', () => {
@@ -341,14 +341,14 @@ describe('what the jobs that send photos to kimi read', () => {
   });
 
   it('listCulledImageKeys: photos with a summary or a current answer', () => {
-    summary('a', 'sent');
+    summary('a', 'passed');
     const [stage] = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
     const run = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
     upsertStageAnswer(db, {
       imageKey: 'b',
       stageVersionId: stage!.versionId,
       answers: {},
-      verdict: 'sent',
+      verdict: 'passed',
       decision: {},
       pipelineSettingVersion: 1,
       source: 'job',
@@ -372,7 +372,7 @@ describe('large selections stay under the SQLite parameter cap', () => {
       for (const k of keys) img.run(k, `${k}.jpg`, `/p/${k}.jpg`);
       fs.run(keys[N - 1], 'void');
     })();
-    summary(keys[N - 1]!, 'cut', 'culling_recipe');
+    summary(keys[N - 1]!, 'filtered', 'culling_profile');
   });
 
   it('filterVoidSubstanceFromScoringSelection', () => {
@@ -386,28 +386,28 @@ describe('large selections stay under the SQLite parameter cap', () => {
     expect(rows.at(-1)!.image_key).toBe(keys[N - 1]);
   });
 
-  it('filterCutPhotosFromDescribeAndScoringSelection', () => {
-    const { kept, heldBack } = filterCutPhotosFromDescribeAndScoringSelection(db, pairs);
+  it('dropFilteredPhotosFromDescribeAndScoringSelection', () => {
+    const { kept, heldBack } = dropFilteredPhotosFromDescribeAndScoringSelection(db, pairs);
     expect(kept).toHaveLength(0);
-    expect(heldBack).toMatchObject({ cut_by_culling_recipe: 1, no_verdict: N - 1 });
+    expect(heldBack).toMatchObject({ filtered_by_culling_profile: 1, no_verdict: N - 1 });
   });
 });
 
-describe('filterCutPhotosFromDescribeAndScoringSelection', () => {
-  it('keeps sent photos and photos sent by hand, in order; holds back the rest by reason', () => {
-    summary('recipe', 'cut', 'culling_recipe');
-    summary('forecast', 'cut', 'score_forecast');
-    summary('sent', 'sent');
+describe('dropFilteredPhotosFromDescribeAndScoringSelection', () => {
+  it('keeps passed photos and photos sent by hand, in order; holds back the rest by reason', () => {
+    summary('profile', 'filtered', 'culling_profile');
+    summary('forecast', 'filtered', 'score_forecast');
+    summary('passed', 'passed');
     summary('pending', 'pending');
-    summary('hand', 'cut', 'culling_recipe');
+    summary('hand', 'filtered', 'culling_profile');
     recordCullUserAction(db, 'hand', 'sent_by_hand');
-    const selection = ['sent', 'recipe', 'none', 'hand', 'forecast', 'pending'].map((k) => [k, 'catalog'] as const);
-    const { kept, heldBack, sentByHandKept } = filterCutPhotosFromDescribeAndScoringSelection(db, selection);
+    const selection = ['passed', 'profile', 'none', 'hand', 'forecast', 'pending'].map((k) => [k, 'catalog'] as const);
+    const { kept, heldBack, sentByHandKept } = dropFilteredPhotosFromDescribeAndScoringSelection(db, selection);
     expect(kept).toEqual([
-      ['sent', 'catalog'],
+      ['passed', 'catalog'],
       ['hand', 'catalog'],
     ]);
-    expect(heldBack).toEqual({ cut_by_culling_recipe: 1, cut_by_score_forecast: 1, pending: 1, no_verdict: 1 });
+    expect(heldBack).toEqual({ filtered_by_culling_profile: 1, filtered_by_score_forecast: 1, pending: 1, no_verdict: 1 });
     expect(sentByHandKept).toEqual(['hand']);
   });
 });

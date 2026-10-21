@@ -2,12 +2,12 @@
  * The pipeline setting → the stages a photo goes through, each at its current version, and what the
  * Laya worker is asked for them.
  *
- * Recipe stage question ids are `<level set>|<dimension>`, the ids #337 and the research used, so
- * the seeded recipe's stage versions hash the same text the research runs answered. In the worker the
- * ids are prefixed with the stage key, since two recipes may share a level set.
+ * Profile stage question ids are `<level set>|<dimension>`, the ids #337 and the research used, so
+ * the seeded profile's stage versions hash the same text the research runs answered. In the worker the
+ * ids are prefixed with the stage key, since two profiles may share a level set.
  */
 import type { Db } from '../db/connection.js';
-import { getCullRecipe } from '../db/library/cull-recipes.js';
+import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getOrCreateStageVersion } from '../db/library/cull-stages.js';
 import { libraryWrite } from '../db/library/write.js';
 import type { LayaModelIds } from '../laya/model-id.js';
@@ -18,11 +18,11 @@ import type { PipelineSettingConfig, ResolvedStage, StageAnswers } from './types
 
 export const SCORE_FORECAST_STAGE_KEY = 'score_forecast';
 
-/** The recipe "Model" field values the cull can run. */
-const RECIPE_MODELS: Record<string, 'base'> = { 'laya-base': 'base' };
+/** The profile "Model" field values culling can run. */
+const PROFILE_MODELS: Record<string, 'base'> = { 'laya-base': 'base' };
 
-export function recipeStageKey(recipeSlug: string, levelSet: string): string {
-  return `culling_recipe:${recipeSlug}:${levelSet}`;
+export function profileStageKey(profileSlug: string, levelSet: string): string {
+  return `culling_profile:${profileSlug}:${levelSet}`;
 }
 
 /**
@@ -32,23 +32,23 @@ export function recipeStageKey(recipeSlug: string, levelSet: string): string {
 export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, models: LayaModelIds): ResolvedStage[] {
   return libraryWrite(db, () => {
     const stages: ResolvedStage[] = [];
-    for (const entry of pipeline.culling_recipes) {
-      const recipe = getCullRecipe(db, entry.recipe_slug);
-      if (!recipe) throw new Error(`the cull pipeline setting names a culling recipe that does not exist: ${entry.recipe_slug}`);
-      const model = RECIPE_MODELS[recipe.model];
-      if (!model) throw new Error(`culling recipe ${recipe.slug}: model ${recipe.model} is not one the cull can run`);
-      for (const set of recipe.definition.level_sets) {
+    for (const entry of pipeline.culling_profiles) {
+      const profile = getCullProfile(db, entry.profile_slug);
+      if (!profile) throw new Error(`culling pipeline setting names a culling profile that does not exist: ${entry.profile_slug}`);
+      const model = PROFILE_MODELS[profile.model];
+      if (!model) throw new Error(`culling profile ${profile.slug}: model ${profile.model} is not one culling can run`);
+      for (const set of profile.definition.level_sets) {
         if (!entry.rule.level_sets[set.id]) {
-          throw new Error(`culling recipe ${recipe.slug}: the rule has no "fails at" / "strong at" for level set ${set.id}`);
+          throw new Error(`culling profile ${profile.slug}: the rule has no "fails at" / "strong at" for level set ${set.id}`);
         }
         const questions: Record<string, LayaQuestion> = {};
-        for (const dim of recipe.definition.dimensions) {
+        for (const dim of profile.definition.dimensions) {
           questions[`${set.id}|${dim.slug}`] = { type: 'score', instructions: dim.question, criteria: set.levels[dim.slug] };
         }
         const spec = {
-          stageKey: recipeStageKey(recipe.slug, set.id),
-          kind: 'culling_recipe' as const,
-          recipeSlug: recipe.slug,
+          stageKey: profileStageKey(profile.slug, set.id),
+          kind: 'culling_profile' as const,
+          profileSlug: profile.slug,
           levelSet: set.id,
           modelId: models.base,
           questions,
@@ -60,7 +60,7 @@ export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, mo
       const spec = {
         stageKey: SCORE_FORECAST_STAGE_KEY,
         kind: 'score_forecast' as const,
-        recipeSlug: null,
+        profileSlug: null,
         levelSet: null,
         modelId: models.new,
         questions: LAYA_QUESTIONS.new,
@@ -71,7 +71,7 @@ export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, mo
   });
 }
 
-/** What the worker loads: every recipe stage's rows for Laya base, Laya new's own rows. */
+/** What the worker loads: every profile stage's rows for Laya base, Laya new's own rows. */
 export interface LayaQuestionSet {
   base: Record<string, LayaQuestion>;
   new: Record<string, LayaQuestion>;
@@ -101,7 +101,7 @@ export function layaWant(stages: readonly ResolvedStage[]): LayaWant {
   };
 }
 
-/** The worker's answers back onto stages: recipe answers by dimension, forecast answers by question id. */
+/** The worker's answers back onto stages: profile answers by dimension, forecast answers by question id. */
 export function stageAnswersFromLaya(stages: readonly ResolvedStage[], answers: LayaAnswers): Record<string, StageAnswers> {
   const out: Record<string, StageAnswers> = {};
   for (const s of stages) {

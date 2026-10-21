@@ -13,7 +13,7 @@ import { buildScoreOpSpec } from '../analyzer/scoring.js';
 import { buildScoringUserPrompt } from '../analyzer/prompt-builder.js';
 import type { Db } from '../db/connection.js';
 import { getImage } from '../db/library/catalog.js';
-import { isPhotoCutAndNotSentByHand } from '../db/library/cull-verdicts.js';
+import { isPhotoFilteredAndNotSentByHand } from '../db/library/cull-verdicts.js';
 import {
   getFrameSubstanceVerdict,
   hasFrameSubstanceOverride,
@@ -65,8 +65,8 @@ export interface ScoreOptions {
   cancelCheck?: CancelCheck;
 }
 
-/** Why a photo the cull cut was not scored. */
-export const CULL_CUT_SCORE_SKIP_REASON = 'Cull verdict: cut (send it by hand to score it)';
+/** Why a photo culling filtered was not scored. */
+export const CULL_FILTERED_SCORE_SKIP_REASON = 'Culling verdict: filtered (send it by hand to score it)';
 
 /**
  * Score one image for one perspective.
@@ -108,10 +108,10 @@ export async function scoreImageForPerspective(
   if (substance?.verdict === 'void' && !hasFrameSubstanceOverride(db, imageKey)) {
     return new VisionOpOutcome('skipped', 'Frame substance verdict: void');
   }
-  // The cull cut it and the user did not send it on (#339). Only a cut is refused: a pending or
+  // Culling filtered it and the user did not send it on (#339). Only a filtered photo is refused: a pending or
   // never-culled photo is held back by the batch jobs, not here.
-  if (isPhotoCutAndNotSentByHand(db, imageKey)) {
-    return new VisionOpOutcome('skipped', CULL_CUT_SCORE_SKIP_REASON);
+  if (isPhotoFilteredAndNotSentByHand(db, imageKey)) {
+    return new VisionOpOutcome('skipped', CULL_FILTERED_SCORE_SKIP_REASON);
   }
 
   const perspective = getPerspectiveBySlug(db, perspectiveSlug);

@@ -21,14 +21,14 @@ import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { fingerprintBatchScore } from '../src/jobs/checkpoint.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
-import { saveRecipeDefinition, getCullRecipe } from '../src/db/library/cull-recipes.js';
+import { saveProfileDefinition, getCullProfile } from '../src/db/library/cull-profiles.js';
 import { LAYA_SETUP_COMMAND, LayaSetupError } from '../src/laya/files.js';
 
 const RUBRIC = 'RUBRIC-SENTINEL';
 
 type Script = { levels: [number, number, number, number]; p8: number };
 const PASS: Script = { levels: [5, 5, 6, 6], p8: 0.5 };
-const RECIPE_CUT: Script = { levels: [5, 5, 2, 3], p8: 0.5 };
+const PROFILE_CUT: Script = { levels: [5, 5, 2, 3], p8: 0.5 };
 const FORECAST_CUT: Script = { levels: [5, 5, 6, 6], p8: 0.05 };
 
 let fx: LibraryFixture;
@@ -151,7 +151,7 @@ function markDescribed(...keys: string[]): void {
 
 async function seedHeldBackQuartet(): Promise<void> {
   await seedCullPhoto('pass', PASS);
-  await seedCullPhoto('recipe', RECIPE_CUT);
+  await seedCullPhoto('profile', PROFILE_CUT);
   await seedCullPhoto('forecast', FORECAST_CUT);
   await seedCullPhoto('void', PASS);
   fx.addFrameSubstance('void', 'void');
@@ -199,15 +199,15 @@ afterEach(async () => {
 });
 
 describe('in-job cull step (batch_describe)', () => {
-  it('describes only PASS; held_back void and both cut reasons', async () => {
+  it('describes only PASS; held_back void and both filter reasons', async () => {
     await seedHeldBackQuartet();
     const job = await runJob('batch_describe', { max_workers: 1 });
     expect(job.status).toBe('completed');
     const r = job.result as JobCullResult;
     expect(r.held_back).toMatchObject({
       void: 1,
-      cut_by_culling_recipe: 1,
-      cut_by_score_forecast: 1,
+      filtered_by_culling_profile: 1,
+      filtered_by_score_forecast: 1,
     });
     const described = fx.query<{ image_key: string }>('SELECT image_key FROM image_descriptions').map((x) => x.image_key);
     expect(described).toEqual(['pass']);
@@ -217,14 +217,14 @@ describe('in-job cull step (batch_describe)', () => {
 });
 
 describe('in-job cull step (batch_score)', () => {
-  it('scores only PASS; cut and void photos have no score row', async () => {
+  it('scores only PASS; filtered and void photos have no score row', async () => {
     await seedHeldBackQuartet();
-    markDescribed('pass', 'recipe', 'forecast', 'void');
+    markDescribed('pass', 'profile', 'forecast', 'void');
     const job = await runJob('batch_score', { max_workers: 1, perspective_slugs: ['street'] });
     expect(job.status).toBe('completed');
     expect((job.result as JobCullResult).held_back).toMatchObject({
-      cut_by_culling_recipe: 1,
-      cut_by_score_forecast: 1,
+      filtered_by_culling_profile: 1,
+      filtered_by_score_forecast: 1,
     });
     expect(fx.query('SELECT image_key FROM image_scores WHERE is_current = 1').map((r) => r.image_key)).toEqual([
       'pass',
@@ -233,14 +233,14 @@ describe('in-job cull step (batch_score)', () => {
 });
 
 describe('in-job cull step (batch_analyze)', () => {
-  it('neither describes nor scores cut or void photos', async () => {
+  it('neither describes nor scores filtered or void photos', async () => {
     await seedHeldBackQuartet();
     const job = await runJob('batch_analyze', { max_workers: 1 });
     expect(job.status).toBe('completed');
     expect((job.result as JobCullResult).held_back).toMatchObject({
       void: 1,
-      cut_by_culling_recipe: 1,
-      cut_by_score_forecast: 1,
+      filtered_by_culling_profile: 1,
+      filtered_by_score_forecast: 1,
     });
     expect(fx.query('SELECT image_key FROM image_descriptions').map((r) => r.image_key)).toEqual(['pass']);
     expect(fx.query('SELECT image_key FROM image_scores WHERE is_current = 1').map((r) => r.image_key)).toEqual([
@@ -273,8 +273,8 @@ describe('laya before kimi ordering', () => {
 describe('score work list fixed at start', () => {
   it('checkpoint fingerprint matches kept triples; mid-job sent_by_hand does not add work', async () => {
     await seedCullPhoto('pass', PASS);
-    await seedCullPhoto('recipe', RECIPE_CUT);
-    markDescribed('pass', 'recipe');
+    await seedCullPhoto('profile', PROFILE_CUT);
+    markDescribed('pass', 'profile');
     let flipped = false;
     const metadata = { max_workers: 1, perspective_slugs: ['street'] };
     let capturedFp: string | undefined;
@@ -291,7 +291,7 @@ describe('score work list fixed at start', () => {
         if (flipped) return;
         flipped = true;
         const lib = openLibraryDb(fx.dbPath);
-        recordCullUserAction(lib, 'recipe', 'sent_by_hand');
+        recordCullUserAction(lib, 'profile', 'sent_by_hand');
         lib.close();
       };
       await tick(db, runner);
@@ -301,14 +301,14 @@ describe('score work list fixed at start', () => {
     const keptTriples: [string, string, string][] = [['pass', 'catalog', 'street']];
     expect(capturedFp).toBe(await fingerprintBatchScore(metadata, keptTriples));
     expect(jobStatus).toBe('completed');
-    expect(fx.query("SELECT image_key FROM image_scores WHERE is_current = 1 AND image_key = 'recipe'")).toEqual([]);
+    expect(fx.query("SELECT image_key FROM image_scores WHERE is_current = 1 AND image_key = 'profile'")).toEqual([]);
     expect(fx.query("SELECT image_key FROM image_scores WHERE is_current = 1").map((r) => r.image_key)).toEqual(['pass']);
   });
 });
 
 describe('sent by hand across stage versions', () => {
-  it('scores a recipe-cut photo sent by hand after recipe text changes', async () => {
-    await seedCullPhoto('hand', RECIPE_CUT);
+  it('scores a profile-filtered photo sent by hand after profile text changes', async () => {
+    await seedCullPhoto('hand', PROFILE_CUT);
     markDescribed('hand');
     const lib = openLibraryDb(fx.dbPath);
     recordCullUserAction(lib, 'hand', 'sent_by_hand');
@@ -316,13 +316,13 @@ describe('sent by hand across stage versions', () => {
     await runJob('batch_score', { max_workers: 1, perspective_slugs: ['street'] });
     laya().calls.length = 0;
     const db = openLibraryDb(fx.dbPath);
-    const def = getCullRecipe(db, 'recipe-7h47')!.definition;
-    saveRecipeDefinition(db, 'recipe-7h47', def);
+    const def = getCullProfile(db, 'recipe-culling')!.definition;
+    saveProfileDefinition(db, 'recipe-culling', def);
     db.close();
     const job = await runJob('batch_score', { force: true, max_workers: 1, perspective_slugs: ['street'] });
     expect(job.status).toBe('completed');
     expect((job.result as JobCullResult).held_back?.sent_by_hand_passed).toBe(1);
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('sent');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('passed');
     expect(fx.query("SELECT image_key FROM image_scores WHERE image_key = 'hand' AND is_current = 1")).toHaveLength(1);
   });
 });
@@ -343,14 +343,14 @@ describe('no re-cull when verdicts are current', () => {
 describe('batch_analyze force_cull', () => {
   it('asks Laya again on photos already culled and described, but not on those sent by hand', async () => {
     await seedCullPhoto('pass', PASS);
-    await seedCullPhoto('hand', RECIPE_CUT);
+    await seedCullPhoto('hand', PROFILE_CUT);
     const lib = openLibraryDb(fx.dbPath);
     recordCullUserAction(lib, 'hand', 'sent_by_hand');
     lib.close();
     await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('sent');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('passed');
 
-    laya().scripts.set('pass', RECIPE_CUT);
+    laya().scripts.set('pass', PROFILE_CUT);
     laya().calls.length = 0;
     await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
     expect(laya().calls).toHaveLength(0);
@@ -358,8 +358,8 @@ describe('batch_analyze force_cull', () => {
     const job = await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'], force_cull: true });
     expect(job.status).toBe('completed');
     expect(laya().calls.map((c) => c.file.split('/').at(-1))).toEqual(['pass.jpg']);
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('cut');
-    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('sent');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('filtered');
+    expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('passed');
   });
 });
 

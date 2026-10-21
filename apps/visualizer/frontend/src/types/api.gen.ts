@@ -2629,7 +2629,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    tab?: "all" | "culling_recipe" | "score_forecast";
+                    tab?: "all" | "culling_profile" | "score_forecast";
                     limit?: string;
                     offset?: string;
                 };
@@ -2639,7 +2639,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Cut photos for review */
+                /** @description Filtered photos for review */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2739,7 +2739,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description One cut photo */
+                /** @description One filtered or passed photo */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2798,7 +2798,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                        action: "sent_by_hand" | "agrees_with_filter" | "should_have_been_filtered";
                     };
                 };
             };
@@ -2814,7 +2814,7 @@ export interface paths {
                             ok: true;
                             verdict: string;
                             /** @enum {string} */
-                            user_action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                            user_action: "sent_by_hand" | "agrees_with_filter" | "should_have_been_filtered";
                         };
                     };
                 };
@@ -2851,7 +2851,7 @@ export interface paths {
                 header?: never;
                 path: {
                     image_key: string;
-                    action: "should_have_been_cut";
+                    action: "should_have_been_filtered";
                 };
                 cookie?: never;
             };
@@ -2886,7 +2886,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/culling-recipes/": {
+    "/api/culling-profiles/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2902,13 +2902,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description All culling recipes */
+                /** @description All culling profiles */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CullRecipeListResponse"];
+                        "application/json": components["schemas"]["CullProfileListResponse"];
                     };
                 };
                 /** @description Unprocessable Content */
@@ -2958,7 +2958,7 @@ export interface paths {
                             };
                             /** @enum {string} */
                             combine: "every" | "any";
-                            cut_rule: {
+                            filter_rule: {
                                 /** @enum {string} */
                                 type: "all_fail";
                                 dimensions: string[];
@@ -2984,7 +2984,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CullRecipeDetail"];
+                        "application/json": components["schemas"]["CullProfileDetail"];
                     };
                 };
                 /** @description Validation failed */
@@ -3022,7 +3022,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/culling-recipes/pipeline": {
+    "/api/culling-profiles/pipeline": {
         parameters: {
             query?: never;
             header?: never;
@@ -3066,7 +3066,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/culling-recipes/pipeline/score-forecast": {
+    "/api/culling-profiles/pipeline/score-forecast": {
         parameters: {
             query?: never;
             header?: never;
@@ -3088,7 +3088,7 @@ export interface paths {
                         enabled?: boolean;
                         high_from_level?: number;
                         excused_at?: number;
-                        run_after_cut?: boolean;
+                        run_after_filtered?: boolean;
                     };
                 };
             };
@@ -3123,7 +3123,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/culling-recipes/{slug}": {
+    "/api/culling-profiles/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3141,13 +3141,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description One recipe */
+                /** @description One profile */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CullRecipeDetail"];
+                        "application/json": components["schemas"]["CullProfileDetail"];
                     };
                 };
                 /** @description Not found */
@@ -3200,7 +3200,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CullRecipeDetail"];
+                        "application/json": components["schemas"]["CullProfileDetail"];
                     };
                 };
                 /** @description Not found */
@@ -3225,7 +3225,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/api/culling-recipes/{slug}/duplicate": {
+    "/api/culling-profiles/{slug}/duplicate": {
         parameters: {
             query?: never;
             header?: never;
@@ -3258,7 +3258,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CullRecipeDetail"];
+                        "application/json": components["schemas"]["CullProfileDetail"];
                     };
                 };
                 /** @description Not found */
@@ -3296,7 +3296,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/culling-recipes/{slug}/definition": {
+    "/api/culling-profiles/{slug}/definition": {
         parameters: {
             query?: never;
             header?: never;
@@ -3339,7 +3339,7 @@ export interface paths {
                             };
                             /** @enum {string} */
                             combine: "every" | "any";
-                            cut_rule: {
+                            filter_rule: {
                                 /** @enum {string} */
                                 type: "all_fail";
                                 dimensions: string[];
@@ -3367,7 +3367,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            recipe: components["schemas"]["CullRecipeDetail"];
+                            profile: components["schemas"]["CullProfileDetail"];
                             version: number;
                             created: boolean;
                             impact: {
@@ -3420,7 +3420,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/culling-recipes/{slug}/rule": {
+    "/api/culling-profiles/{slug}/rule": {
         parameters: {
             query?: never;
             header?: never;
@@ -3449,7 +3449,7 @@ export interface paths {
                             };
                             /** @enum {string} */
                             combine: "every" | "any";
-                            cut_rule: {
+                            filter_rule: {
                                 /** @enum {string} */
                                 type: "all_fail";
                                 dimensions: string[];
@@ -3475,7 +3475,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            recipe: components["schemas"]["CullRecipeDetail"];
+                            profile: components["schemas"]["CullProfileDetail"];
                             pipeline_setting_version: number | null;
                             redecide_job_id: string | null;
                         };
@@ -3576,7 +3576,7 @@ export interface paths {
                     "application/json": {
                         write_stars?: boolean;
                         write_reject?: boolean;
-                        stars_recipe_slug?: string | null;
+                        stars_profile_slug?: string | null;
                     };
                 };
             };
@@ -5304,7 +5304,7 @@ export interface components {
             sent_manually_count: number;
             tab_counts: {
                 all: number;
-                culling_recipe: number;
+                culling_profile: number;
                 score_forecast: number;
             };
             last_checked_at: string | null;
@@ -5320,9 +5320,9 @@ export interface components {
             filename: string;
             date_taken: string | null;
             /** @enum {string} */
-            cut_by: "culling_recipe" | "score_forecast";
+            filtered_by: "culling_profile" | "score_forecast";
             score_forecast_p8: number | null;
-            recipe: {
+            profile: {
                 slug: string;
                 name: string;
                 level_sets: {
@@ -5347,9 +5347,9 @@ export interface components {
             image_key: string;
             filename: string;
             /** @enum {string|null} */
-            cut_by: "culling_recipe" | "score_forecast" | null;
+            filtered_by: "culling_profile" | "score_forecast" | null;
             score_forecast_p8: number | null;
-            recipe: {
+            profile: {
                 slug: string;
                 name: string;
                 level_sets: {
@@ -5371,7 +5371,7 @@ export interface components {
             }[];
             user_actions: {
                 /** @enum {string} */
-                action: "sent_by_hand" | "agrees_with_cut" | "should_have_been_cut";
+                action: "sent_by_hand" | "agrees_with_filter" | "should_have_been_filtered";
                 acted_at: string;
             }[];
             /** @enum {string} */
@@ -5380,10 +5380,10 @@ export interface components {
             sent_by_hand: boolean;
             verdict: string;
         };
-        CullRecipeListResponse: {
-            recipes: components["schemas"]["CullRecipeSummary"][];
+        CullProfileListResponse: {
+            profiles: components["schemas"]["CullProfileSummary"][];
         };
-        CullRecipeSummary: {
+        CullProfileSummary: {
             slug: string;
             name: string;
             model: string;
@@ -5396,8 +5396,8 @@ export interface components {
         PipelineSettingResponse: {
             version: number;
             config: {
-                culling_recipes: {
-                    recipe_slug: string;
+                culling_profiles: {
+                    profile_slug: string;
                     rule: {
                         level_sets: {
                             [key: string]: {
@@ -5407,7 +5407,7 @@ export interface components {
                         };
                         /** @enum {string} */
                         combine: "every" | "any";
-                        cut_rule: {
+                        filter_rule: {
                             /** @enum {string} */
                             type: "all_fail";
                             dimensions: string[];
@@ -5422,18 +5422,18 @@ export interface components {
                         /** @enum {string} */
                         stars_strong_from?: "7" | "10" | "every" | "any";
                     };
-                    run_after_cut: boolean;
+                    run_after_filtered: boolean;
                 }[];
                 score_forecast: {
                     enabled: boolean;
                     threshold: number;
                     high_from_level: number;
                     excused_at: number;
-                    run_after_cut: boolean;
+                    run_after_filtered: boolean;
                 };
             };
         };
-        CullRecipeDetail: {
+        CullProfileDetail: {
             slug: string;
             name: string;
             model: string;
@@ -5464,7 +5464,7 @@ export interface components {
                 };
                 /** @enum {string} */
                 combine: "every" | "any";
-                cut_rule: {
+                filter_rule: {
                     /** @enum {string} */
                     type: "all_fail";
                     dimensions: string[];
@@ -5483,9 +5483,9 @@ export interface components {
         LrWritebackSettingsResponse: {
             write_stars: boolean;
             write_reject: boolean;
-            stars_recipe_slug: string | null;
-            active_recipe_slugs: string[];
-            active_recipes: {
+            stars_profile_slug: string | null;
+            active_profile_slugs: string[];
+            active_profiles: {
                 slug: string;
                 name: string;
             }[];

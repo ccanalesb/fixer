@@ -7,7 +7,7 @@ import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import { LR_WRITEBACK_JOB_TYPE } from '../src/jobs/handlers/lr-writeback.js';
-import { seedCullingDefaults } from '../src/db/library/cull-recipes.js';
+import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { createApp } from '../src/app.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';

@@ -1,5 +1,5 @@
 /**
- * The per-photo cull summary — the row jobs and the UI read — and the cull run log.
+ * The per-photo cull summary — the row jobs and the UI read — and the culling run log.
  */
 import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
@@ -8,8 +8,8 @@ import type { Db } from '../connection.js';
 export interface CullVerdictInput {
   imageKey: string;
   verdict: CullSummaryVerdict;
-  cutBy: StageKind | null;
-  cutByStageKey: string | null;
+  filteredBy: StageKind | null;
+  filteredByStageKey: string | null;
   sentByHand: boolean;
   pendingStages: string[];
   pendingReason: string;
@@ -23,8 +23,8 @@ export interface CullVerdictInput {
 export interface CullVerdictRow {
   image_key: string;
   verdict: CullSummaryVerdict;
-  cut_by: StageKind | null;
-  cut_by_stage_key: string | null;
+  filtered_by: StageKind | null;
+  filtered_by_stage_key: string | null;
   sent_by_hand: boolean;
   pending_stages: string[];
   pending_reason: string;
@@ -39,11 +39,11 @@ export interface CullVerdictRow {
 export function upsertCullVerdict(db: Db, v: CullVerdictInput): void {
   db.prepare(
     `INSERT INTO cull_verdicts
-       (image_key, verdict, cut_by, cut_by_stage_key, sent_by_hand, pending_stages, pending_reason,
+       (image_key, verdict, filtered_by, filtered_by_stage_key, sent_by_hand, pending_stages, pending_reason,
         score_forecast_off, score_forecast_p8, pipeline_setting_version, stage_version_ids, run_id, decided_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (image_key) DO UPDATE SET
-       verdict = excluded.verdict, cut_by = excluded.cut_by, cut_by_stage_key = excluded.cut_by_stage_key,
+       verdict = excluded.verdict, filtered_by = excluded.filtered_by, filtered_by_stage_key = excluded.filtered_by_stage_key,
        sent_by_hand = excluded.sent_by_hand, pending_stages = excluded.pending_stages,
        pending_reason = excluded.pending_reason, score_forecast_off = excluded.score_forecast_off,
        score_forecast_p8 = excluded.score_forecast_p8,
@@ -52,8 +52,8 @@ export function upsertCullVerdict(db: Db, v: CullVerdictInput): void {
   ).run(
     v.imageKey,
     v.verdict,
-    v.cutBy,
-    v.cutByStageKey,
+    v.filteredBy,
+    v.filteredByStageKey,
     v.sentByHand ? 1 : 0,
     JSON.stringify(v.pendingStages),
     v.pendingReason,
@@ -73,10 +73,10 @@ interface RawVerdictRow extends Omit<CullVerdictRow, 'sent_by_hand' | 'pending_s
   stage_version_ids: string;
 }
 
-/** Image keys with a decided cull verdict (cut or sent). */
+/** Image keys with a decided cull verdict (filtered or passed). */
 export function listDecidedCullImageKeys(db: Db): string[] {
   return (
-    db.prepare(`SELECT image_key FROM cull_verdicts WHERE verdict IN ('cut', 'sent')`).all() as {
+    db.prepare(`SELECT image_key FROM cull_verdicts WHERE verdict IN ('filtered', 'passed')`).all() as {
       image_key: string;
     }[]
   ).map((r) => r.image_key);
@@ -125,7 +125,7 @@ export function loadCullVerdictStamps(db: Db): Map<string, CullVerdictStamp> {
   );
 }
 
-/** The cull runs a job has started, one per attempt (a resumed job starts another). */
+/** Culling runs a job has started, one per attempt (a resumed job starts another). */
 export function listCullRunIdsForJob(db: Db, jobId: string): Set<number> {
   const rows = db.prepare('SELECT run_id FROM cull_runs WHERE job_id = ?').all(jobId) as { run_id: number }[];
   return new Set(rows.map((r) => r.run_id));
@@ -159,20 +159,20 @@ const SENT_BY_HAND_SQL =
   "(v.sent_by_hand = 1 OR EXISTS (SELECT 1 FROM cull_user_actions u WHERE u.image_key = v.image_key AND u.action = 'sent_by_hand'))";
 
 /**
- * Cut, and the user never sent it on: the last check before a photo is described or scored. Only a
- * cut is refused — a pending or never-culled photo passes (the batch jobs hold those back themselves).
+ * Filtered, and the user never sent it on: the last check before a photo is described or scored. Only a
+ * filtered photo is refused — a pending or never-culled photo passes (the batch jobs hold those back themselves).
  */
-export function isPhotoCutAndNotSentByHand(db: Db, imageKey: string): boolean {
+export function isPhotoFilteredAndNotSentByHand(db: Db, imageKey: string): boolean {
   return (
     db
-      .prepare(`SELECT 1 FROM cull_verdicts v WHERE v.image_key = ? AND v.verdict = 'cut' AND NOT ${SENT_BY_HAND_SQL}`)
+      .prepare(`SELECT 1 FROM cull_verdicts v WHERE v.image_key = ? AND v.verdict = 'filtered' AND NOT ${SENT_BY_HAND_SQL}`)
       .get(imageKey) !== undefined
   );
 }
 
 export interface CullVerdictBrief {
   verdict: CullSummaryVerdict;
-  cutBy: StageKind | null;
+  filteredBy: StageKind | null;
   /** On the summary or in the user-action history. */
   sentByHand: boolean;
 }
@@ -184,16 +184,16 @@ export function loadCullVerdictsForKeys(db: Db, imageKeys: readonly string[]): M
     const chunk = imageKeys.slice(i, i + KEYS_PER_QUERY);
     const rows = db
       .prepare(
-        `SELECT v.image_key, v.verdict, v.cut_by, ${SENT_BY_HAND_SQL} AS by_hand FROM cull_verdicts v
+        `SELECT v.image_key, v.verdict, v.filtered_by, ${SENT_BY_HAND_SQL} AS by_hand FROM cull_verdicts v
          WHERE v.image_key IN (${chunk.map(() => '?').join(',')})`,
       )
-      .all(...chunk) as { image_key: string; verdict: CullSummaryVerdict; cut_by: StageKind | null; by_hand: number }[];
-    for (const r of rows) out.set(r.image_key, { verdict: r.verdict, cutBy: r.cut_by, sentByHand: r.by_hand === 1 });
+      .all(...chunk) as { image_key: string; verdict: CullSummaryVerdict; filtered_by: StageKind | null; by_hand: number }[];
+    for (const r of rows) out.set(r.image_key, { verdict: r.verdict, filteredBy: r.filtered_by, sentByHand: r.by_hand === 1 });
   }
   return out;
 }
 
-/** Every photo the cull has touched: a summary row or an answer under a current stage version. */
+/** Every photo culling has touched: a summary row or an answer under a current stage version. */
 export function listCulledImageKeys(db: Db): string[] {
   const rows = db
     .prepare(

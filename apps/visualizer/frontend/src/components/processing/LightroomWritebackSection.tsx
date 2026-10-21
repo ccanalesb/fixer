@@ -15,7 +15,7 @@ import {
   LR_WRITEBACK_SECTION,
   LR_WRITEBACK_SECTION_LEAD,
   LR_WRITEBACK_STARS_HELP,
-  LR_WRITEBACK_STARS_RECIPE,
+  LR_WRITEBACK_STARS_PROFILE,
   LR_WRITEBACK_STARS_SWITCH,
   LR_WRITEBACK_STATUS_HELP,
   LR_WRITEBACK_STATUS_TITLE,
@@ -167,7 +167,7 @@ export function LightroomWritebackSection() {
 
   const pendingTotal = data.counts.stars.pending + data.counts.reject.pending
   const writtenTotal = data.counts.stars.written + data.counts.reject.written
-  const showRecipeSelect = data.active_recipe_slugs.length > 1
+  const showProfileSelect = data.active_profile_slugs.length > 1
   const jobRunning = writebackJobId !== null
   const switchesOn = data.write_stars || data.write_reject
   const writeDisabled =
@@ -206,15 +206,15 @@ export function LightroomWritebackSection() {
           </label>
         }
         under={
-          showRecipeSelect && data.write_stars ? (
+          showProfileSelect && data.write_stars ? (
             <label className="block text-sm max-w-md">
-              <span className="font-medium">{LR_WRITEBACK_STARS_RECIPE}</span>
+              <span className="font-medium">{LR_WRITEBACK_STARS_PROFILE}</span>
               <select
                 className="mt-1 w-full border border-border rounded-base px-2 py-1"
-                value={data.stars_recipe_slug ?? ''}
-                onChange={(e) => void patchSettings({ stars_recipe_slug: e.target.value || null })}
+                value={data.stars_profile_slug ?? ''}
+                onChange={(e) => void patchSettings({ stars_profile_slug: e.target.value || null })}
               >
-                {(data.active_recipes ?? data.active_recipe_slugs.map((slug) => ({ slug, name: slug }))).map(
+                {(data.active_profiles ?? data.active_profile_slugs.map((slug) => ({ slug, name: slug }))).map(
                   (r) => (
                     <option key={r.slug} value={r.slug}>
                       {r.name}
