@@ -5,11 +5,13 @@ import type { WritebackKind } from './writeback-types.js';
 import {
   backupCatalogIfNeeded,
   connectCatalog,
+  getImageLocalId,
   raiseIfCatalogLocked,
   readPickRating,
   undoRejectFromCatalog,
   undoStarsFromCatalog,
 } from './writer.js';
+import { closeCloudDocstore, openCloudDocstore, pushPhotoToCloud } from './cloud-sync/docstore.js';
 import { liveMatchesWritten } from './writeback-shared.js';
 
 export function undoWritebackKind(
@@ -22,7 +24,7 @@ export function undoWritebackKind(
   backupCatalogIfNeeded(catalogPath);
   const row = getWritebackState(db, imageKey, kind);
   if (!row || row.status !== 'written') return { ok: false, reason: 'Nothing to undo.' };
-  const conn = connectCatalog(catalogPath);
+  const conn = connectCatalog(catalogPath, db);
   try {
     const live = readPickRating(conn, imageKey);
     if (!live || !liveMatchesWritten(kind, live, row)) {
@@ -32,6 +34,15 @@ export function undoWritebackKind(
       undoRejectFromCatalog(conn, imageKey, row.before_pick);
     } else {
       undoStarsFromCatalog(conn, imageKey, row.before_rating);
+    }
+    const cloud = openCloudDocstore(conn, catalogPath);
+    const imageId = getImageLocalId(conn, imageKey);
+    try {
+      if (cloud && imageId !== null) {
+        pushPhotoToCloud(cloud, conn, imageId, { rating: kind === 'stars', flag: kind === 'reject' });
+      }
+    } finally {
+      closeCloudDocstore(cloud);
     }
     libraryWrite(db, () => {
       upsertWritebackState(db, {

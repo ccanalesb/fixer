@@ -55,7 +55,7 @@ export function makeFakeCatalog(
     CREATE TABLE Adobe_images (
       id_local INTEGER PRIMARY KEY, rootFile INTEGER, rating REAL, pick REAL,
       colorLabels TEXT, fileWidth INTEGER, fileHeight INTEGER, captureTime TEXT,
-      orientation TEXT
+      orientation TEXT, masterImage INTEGER
     );
     CREATE TABLE AgHarvestedExifMetadata (
       image INTEGER, aperture REAL, focalLength REAL, shutterSpeed REAL,

@@ -10,6 +10,8 @@ export interface WritebackReconcileCounts {
   catalog_updated_stars: number;
   catalog_updated_reject: number;
   catalog_cleared_reject: number;
+  /** Photos whose stars/flag this run carried to Lightroom's cloud, by outcome. */
+  cloud: { pushed: number; not_synced: number; unreadable: number };
 }
 
 export const WRITE_CHUNK_SIZE = 500;

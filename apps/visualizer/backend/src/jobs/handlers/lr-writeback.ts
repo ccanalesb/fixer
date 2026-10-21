@@ -115,7 +115,9 @@ export async function handleLrWriteback(
         `[lr_writeback] status=complete stars_written=${result.stars.written} reject_written=${result.reject.written} ` +
           `stars_pending=${result.stars.pending} reject_pending=${result.reject.pending} ` +
           `stars_skipped=${result.stars.skipped} reject_skipped=${result.reject.skipped} ` +
-          `catalog_stars=${result.catalog_updated_stars} catalog_reject=${result.catalog_updated_reject}` +
+          `catalog_stars=${result.catalog_updated_stars} catalog_reject=${result.catalog_updated_reject} ` +
+          `cloud_pushed=${result.cloud.pushed} cloud_not_synced=${result.cloud.not_synced} ` +
+          `cloud_unreadable=${result.cloud.unreadable}` +
           pendingNote,
       );
       if (pendingTotal > 0 && catalogBefore.available && !catalogAfter.available) {

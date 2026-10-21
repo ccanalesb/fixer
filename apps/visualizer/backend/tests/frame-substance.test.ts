@@ -50,7 +50,7 @@ function makeFakeCatalog(path: string, baseNames: string[]): void {
   const db = new Database(path);
   db.exec(`
     CREATE TABLE AgLibraryFile (id_local INTEGER PRIMARY KEY, baseName TEXT);
-    CREATE TABLE Adobe_images (id_local INTEGER PRIMARY KEY, rootFile INTEGER);
+    CREATE TABLE Adobe_images (id_local INTEGER PRIMARY KEY, rootFile INTEGER, captureTime TEXT, masterImage INTEGER);
     CREATE TABLE AgLibraryKeyword (
       id_local INTEGER PRIMARY KEY AUTOINCREMENT,
       id_global TEXT, name TEXT, lc_name TEXT, dateCreated TEXT, keywordType INTEGER
@@ -381,7 +381,7 @@ describe('cull keyword', () => {
   });
 
   it('adds the keyword, reports already_present on a repeat, and removes it', async () => {
-    fx.addImages('2026-01-15_L1007168');
+    fx.addImage({ key: '2026-01-15_L1007168', id: '100' });
     makeFakeCatalog(lrcatPath, ['L1007168']);
     writeConfig({ catalog_path: lrcatPath });
 
@@ -410,7 +410,7 @@ describe('cull keyword', () => {
   });
 
   it('reports not_present when removing a keyword the image never had', async () => {
-    fx.addImages('2026-01-15_L1007168');
+    fx.addImage({ key: '2026-01-15_L1007168', id: '100' });
     makeFakeCatalog(lrcatPath, ['L1007168']);
     writeConfig({ catalog_path: lrcatPath });
 
@@ -438,7 +438,7 @@ describe('cull keyword', () => {
   });
 
   it('backs the catalog up once, then reuses that backup', async () => {
-    fx.addImages('2026-01-15_L1007168', '2026-01-16_L1007169');
+    fx.addImage({ key: '2026-01-15_L1007168', id: '100' }).addImage({ key: '2026-01-16_L1007169', id: '101' });
     makeFakeCatalog(lrcatPath, ['L1007168', 'L1007169']);
     writeConfig({ catalog_path: lrcatPath });
 
@@ -454,7 +454,7 @@ describe('cull keyword', () => {
   });
 
   it('reports the keyword state in the frame-substance panel', async () => {
-    fx.addImages('2026-01-15_L1007168');
+    fx.addImage({ key: '2026-01-15_L1007168', id: '100' });
     makeFakeCatalog(lrcatPath, ['L1007168']);
     writeConfig({ catalog_path: lrcatPath });
 

@@ -2,7 +2,13 @@ import type { Db } from '../db/connection.js';
 import { getWritebackState, type LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
 import type { CullVerdictRow } from '../db/library/cull-verdicts.js';
 import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
-import { clearRejectFromCatalog, writeRejectToCatalog, type LivePickRating } from './writer.js';
+import {
+  AUTO_REJECT_KEYWORD,
+  clearRejectFromCatalog,
+  removeKeywordByKey,
+  writeRejectToCatalog,
+  type LivePickRating,
+} from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 import {
   adoptWrittenRejectState,
@@ -35,7 +41,10 @@ export function planRejectPhoto(
   }
 
   if (live && row && userChangedAfterWrite('reject', live, row)) {
-    return { ...row, status: 'skipped' };
+    if ((live.pick ?? 0) !== 0) return { ...row, status: 'skipped' };
+    // Unflagging the app's reject in Lightroom is an undo: never written again.
+    if (conn && canWrite) removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+    return { ...row, status: 'undone', written_pick: null, written_at: null };
   }
 
   if (!want) {

@@ -7,6 +7,7 @@
  */
 import { statSync } from 'node:fs';
 import { config, loadLibraryConfig } from '../config.js';
+import type { Db } from '../db/connection.js';
 import {
   addKeywordByKey,
   backupCatalogIfNeeded,
@@ -52,10 +53,10 @@ export function describeLrCatalogWriteStatus(): LrCatalogWriteStatus {
 }
 
 /** Whether `lrt-cull` is on the image, or `null` when the catalog is unavailable. */
-export function readCullKeywordPresent(imageKey: string): boolean | null {
+export function readCullKeywordPresent(library: Db, imageKey: string): boolean | null {
   const status = describeLrCatalogWriteStatus();
   if (!status.available || !status.path) return null;
-  const conn = connectCatalog(status.path);
+  const conn = connectCatalog(status.path, library);
   try {
     return imageHasKeywordByKey(conn, imageKey, CULL_KEYWORD);
   } finally {
@@ -69,14 +70,14 @@ export function readCullKeywordPresent(imageKey: string): boolean | null {
  * Lock is checked again after availability, because Lightroom can open between the
  * two calls.
  */
-export function writeCullKeyword(imageKey: string): KeywordAddResult {
+export function writeCullKeyword(library: Db, imageKey: string): KeywordAddResult {
   const status = describeLrCatalogWriteStatus();
   if (!status.available || !status.path) {
     throw new RangeError(status.reason ?? 'Lightroom catalog unavailable.');
   }
   raiseIfCatalogLocked(status.path);
   backupCatalogIfNeeded(status.path);
-  const conn = connectCatalog(status.path);
+  const conn = connectCatalog(status.path, library);
   try {
     return addKeywordByKey(conn, imageKey, CULL_KEYWORD);
   } finally {
@@ -85,14 +86,14 @@ export function writeCullKeyword(imageKey: string): KeywordAddResult {
 }
 
 /** Remove `lrt-cull` from the image in the live catalog. */
-export function removeCullKeyword(imageKey: string): KeywordRemoveResult {
+export function removeCullKeyword(library: Db, imageKey: string): KeywordRemoveResult {
   const status = describeLrCatalogWriteStatus();
   if (!status.available || !status.path) {
     throw new RangeError(status.reason ?? 'Lightroom catalog unavailable.');
   }
   raiseIfCatalogLocked(status.path);
   backupCatalogIfNeeded(status.path);
-  const conn = connectCatalog(status.path);
+  const conn = connectCatalog(status.path, library);
   try {
     return removeKeywordByKey(conn, imageKey, CULL_KEYWORD);
   } finally {
