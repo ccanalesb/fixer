@@ -69,7 +69,7 @@ export function setCullProfilePipelineActive(db: Db, slug: string, inPipeline: b
     if (inPipeline === exists) return null;
     let next = config.culling_profiles;
     if (inPipeline) {
-      next = [...next, { profile_slug: slug, rule: profile.rule, run_after_filtered: true }];
+      next = [...next, { profile_slug: slug, rule: profile.rule }];
     } else {
       next = next.filter((r) => r.profile_slug !== slug);
     }

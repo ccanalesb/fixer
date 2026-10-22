@@ -134,9 +134,9 @@ interface Walk {
 }
 
 /**
- * Walk the stages in pipeline order — profiles, then the Score forecast — deciding what each says and
- * which still need an answer. A stage switched off for filtered photos (`run_after_filtered: false`) is
- * only required while nothing before it has filtered.
+ * Every stage that is on is required on every photo: the culling profiles while they are on (stars and
+ * reject need them), the Score forecast while it is on. Only the stages that filter can hold a photo
+ * pending; a culling profile with its filter off is still asked, for Lightroom, but never holds one back.
  */
 function walk(
   cfg: PipelineSettingConfig,
@@ -146,24 +146,32 @@ function walk(
 ): Walk {
   const decisions: Record<string, StageDecision> = {};
   const required: ResolvedStage[] = [];
+  const deciding: ResolvedStage[] = [];
   let filteredBy: PhotoDecision['filteredBy'] = null;
   let filteredByStageKey: string | null = null;
 
-  for (const profile of cfg.culling_profiles) {
-    if (filteredBy !== null && !profile.run_after_filtered) continue;
-    required.push(...profileStages(stages, profile.profile_slug));
-    const outcome = profileOutcome(profile, stages, answers, decisions);
-    if (outcome.verdict === 'filtered' && filteredBy === null) {
+  let cullingProfileVerdict: CullVerdict | null = null;
+  if (cfg.culling_profiles_enabled && cfg.culling_profiles.length > 0) {
+    const outcomes = cfg.culling_profiles.map((profile) => {
+      const own = profileStages(stages, profile.profile_slug);
+      required.push(...own);
+      if (cfg.culling_profiles_filter_enabled) deciding.push(...own);
+      return profileOutcome(profile, stages, answers, decisions);
+    });
+    const filtered = outcomes.find((o) => o.verdict === 'filtered');
+    cullingProfileVerdict = filtered ? 'filtered' : outcomes.some((o) => o.verdict === null) ? null : 'passed';
+    if (filtered && cfg.culling_profiles_filter_enabled) {
       filteredBy = 'culling_profile';
-      filteredByStageKey = outcome.filteredStageKey;
+      filteredByStageKey = filtered.filteredStageKey;
     }
   }
 
   let scoreForecastP8: number | null = null;
   const sf = cfg.score_forecast;
   const forecastStage = stages.find((s) => s.kind === 'score_forecast');
-  if (forecastStage && sf.enabled && opts.scoreForecastAvailable !== false && (filteredBy === null || sf.run_after_filtered)) {
+  if (forecastStage && sf.enabled && opts.scoreForecastAvailable !== false) {
     required.push(forecastStage);
+    deciding.push(forecastStage);
     const a = answers[forecastStage.stageKey];
     if (a) {
       const d = decideScoreForecast(a, sf);
@@ -176,15 +184,18 @@ function walk(
     }
   }
 
-  const pendingStages = required.filter((s) => !answers[s.stageKey]).map((s) => s.stageKey);
+  const unanswered = (s: ResolvedStage) => !answers[s.stageKey];
+  const pendingStages = required.filter(unanswered).map((s) => s.stageKey);
+  const undecided = deciding.some(unanswered);
   const sentByHand = opts.sentByHand === true;
   const decision: PhotoDecision = {
-    verdict: sentByHand ? 'passed' : filteredBy !== null ? 'filtered' : pendingStages.length > 0 ? 'pending' : 'passed',
+    verdict: sentByHand ? 'passed' : filteredBy !== null ? 'filtered' : undecided ? 'pending' : 'passed',
     filteredBy: sentByHand ? null : filteredBy,
     filteredByStageKey: sentByHand ? null : filteredByStageKey,
     pendingStages,
     scoreForecastP8,
     sentByHandOverride: sentByHand && filteredBy !== null,
+    cullingProfileVerdict,
     stages: decisions,
   };
   return { required, decision };
@@ -201,9 +212,10 @@ export function requiredStages(
 }
 
 /**
- * The photo's summary: filtered by a profile (reported first), else filtered by the Score forecast,
- * else pending while a required stage is unanswered (pending never passes), else passed. Sent by hand wins
- * over all of it, across versions; the stage decisions still say what the stages would have done.
+ * The photo's summary: filtered by a profile while its filter is on (reported first), else filtered by
+ * the Score forecast while it is on, else pending while a stage that filters is unanswered (pending never
+ * passes), else passed. Sent by hand wins over all of it, across versions; the stage decisions still say
+ * what the stages would have done.
  */
 export function decidePhoto(
   cfg: PipelineSettingConfig,

@@ -1,6 +1,6 @@
 /**
- * One photo through culling: what is still missing is asked of Laya — in as few worker calls as the
- * pipeline's switches allow — and the photo is stored and decided (`persist.ts`).
+ * One photo through culling: what is still missing is asked of Laya in one worker call, and the photo
+ * is stored and decided (`persist.ts`).
  *
  * Takes the Laya runtime as an argument, so the culling job and the jobs that cull before describing
  * (#339) share it, and tests run it on a fake.
@@ -17,33 +17,13 @@ import { requiredStages } from './decide.js';
 import { imageSignature } from './image-signature.js';
 import { decideAndStorePhoto, WORKER_DIED_REASON, type CullContext } from './persist.js';
 import { layaWant, stageAnswersFromLaya } from './stages.js';
-import type { PhotoDecision, PipelineSettingConfig, ResolvedStage, StageAnswers } from './types.js';
+import type { PhotoDecision, ResolvedStage, StageAnswers } from './types.js';
 
 /** What culling needs of the Laya runtime. */
 export interface LayaAnswerer {
   answer(file: string, want?: LayaAnswerWant): Promise<LayaPhotoResult>;
   /** The worker died: every later answer fails too. */
   readonly broken: boolean;
-}
-
-/** Whether a stage is answered even on a photo an earlier stage already filtered. */
-export function runsAfterFiltered(cfg: PipelineSettingConfig, stage: ResolvedStage): boolean {
-  if (stage.kind === 'score_forecast') return cfg.score_forecast.run_after_filtered;
-  return cfg.culling_profiles.find((r) => r.profile_slug === stage.profileSlug)?.run_after_filtered ?? true;
-}
-
-/**
- * The missing stages to ask in one worker call. A stage switched off for filtered photos waits until the
- * stages before it are answered: whether it runs depends on what they say.
- */
-export function askNow(cfg: PipelineSettingConfig, missing: readonly ResolvedStage[]): ResolvedStage[] {
-  const out: ResolvedStage[] = [];
-  for (const s of missing) {
-    const group = s.profileSlug ?? s.stageKey;
-    if (out.length > 0 && !runsAfterFiltered(cfg, s) && out.some((o) => (o.profileSlug ?? o.stageKey) !== group)) break;
-    out.push(s);
-  }
-  return out;
 }
 
 /** Required stages with no stored answer. */
@@ -104,7 +84,7 @@ export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, ar
 
   // Forced, the stored answers still decide a photo Laya cannot be asked about.
   const known = (fresh: Record<string, StageAnswers>) => (args.force ? fresh : { ...stored, ...fresh });
-  let missing = missingStages(ctx, known({}), sentByHand);
+  const missing = missingStages(ctx, known({}), sentByHand);
   if (missing.length === 0) {
     return {
       outcome: 'redecided',
@@ -119,16 +99,12 @@ export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, ar
 
   const fresh: Record<string, StageAnswers> = {};
   try {
-    for (let round = 0; missing.length > 0 && round < ctx.stages.length; round += 1) {
-      const ask = askNow(ctx.pipeline.config, missing);
-      const r = await laya.answer(image, layaWant(ask));
-      seconds.prep += r.seconds.prep;
-      seconds.vision += r.seconds.vision;
-      seconds.base += r.seconds.base;
-      seconds.new += r.seconds.new;
-      Object.assign(fresh, stageAnswersFromLaya(ask, r.answers));
-      missing = missingStages(ctx, known(fresh), sentByHand);
-    }
+    const r = await laya.answer(image, layaWant(missing));
+    seconds.prep += r.seconds.prep;
+    seconds.vision += r.seconds.vision;
+    seconds.base += r.seconds.base;
+    seconds.new += r.seconds.new;
+    Object.assign(fresh, stageAnswersFromLaya(missing, r.answers));
   } catch (e) {
     if (e instanceof LayaSetupError) throw e;
     const error = e instanceof Error ? e : new Error(String(e));

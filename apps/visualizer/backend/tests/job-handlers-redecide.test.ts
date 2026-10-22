@@ -18,11 +18,13 @@ import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/
 import { seedCullingDefaults, getCullProfile, setProfileRule } from '../src/db/library/cull-profiles.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { enqueueRedecideCullVerdicts, BATCH_REDECIDE_JOB_TYPE } from '../src/jobs/handlers/redecide.js';
+import type { PipelineSettingConfig } from '../src/cull/types.js';
 
 type Script = { levels: [number, number, number, number]; p8: number };
 const PASS: Script = { levels: [5, 5, 6, 6], p8: 0.5 };
 const FORECAST_BORDER: Script = { levels: [5, 5, 6, 6], p8: 0.12 };
 const PROFILE_CUT: Script = { levels: [5, 5, 3, 3], p8: 0.5 };
+const FORECAST_CUT: Script = { levels: [5, 5, 6, 6], p8: 0.05 };
 
 const laya = vi.hoisted(() => ({
   scripts: new Map<string, Script>(),
@@ -159,6 +161,46 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     expect((job.result as { changed: number }).changed).toBeGreaterThanOrEqual(1);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'a'")[0]?.verdict).toBe('filtered');
     expect(laya.calls.length).toBe(0);
+  });
+
+  it('a switch change re-decides every photo from stored answers, with no model call', async () => {
+    await addPhoto('p', PROFILE_CUT);
+    await addPhoto('f', FORECAST_CUT);
+    await runCull();
+    rmSync(modelsDir, { recursive: true, force: true });
+    laya.calls.length = 0;
+    const rows = () =>
+      fx.query('SELECT image_key, verdict, filtered_by, culling_profile_verdict FROM cull_verdicts ORDER BY image_key');
+    const switchTo = async (change: Partial<PipelineSettingConfig>, forecastEnabled = true) => {
+      const lib = openLibraryDb(fx.dbPath);
+      const cfg = getCurrentPipelineSetting(lib).config;
+      createPipelineSettingVersion(lib, { ...cfg, ...change, score_forecast: { ...cfg.score_forecast, enabled: forecastEnabled } });
+      lib.close();
+      expect((await runRedecide()).status).toBe('completed');
+    };
+    expect(rows()).toEqual([
+      { image_key: 'f', verdict: 'filtered', filtered_by: 'score_forecast', culling_profile_verdict: 'passed' },
+      { image_key: 'p', verdict: 'filtered', filtered_by: 'culling_profile', culling_profile_verdict: 'filtered' },
+    ]);
+
+    await switchTo({ culling_profiles_filter_enabled: false });
+    expect(rows()).toEqual([
+      { image_key: 'f', verdict: 'filtered', filtered_by: 'score_forecast', culling_profile_verdict: 'passed' },
+      { image_key: 'p', verdict: 'passed', filtered_by: null, culling_profile_verdict: 'filtered' },
+    ]);
+
+    await switchTo({ culling_profiles_filter_enabled: true }, false);
+    expect(rows()).toEqual([
+      { image_key: 'f', verdict: 'passed', filtered_by: null, culling_profile_verdict: 'passed' },
+      { image_key: 'p', verdict: 'filtered', filtered_by: 'culling_profile', culling_profile_verdict: 'filtered' },
+    ]);
+
+    await switchTo({ culling_profiles_enabled: false });
+    expect(rows()).toEqual([
+      { image_key: 'f', verdict: 'filtered', filtered_by: 'score_forecast', culling_profile_verdict: null },
+      { image_key: 'p', verdict: 'passed', filtered_by: null, culling_profile_verdict: null },
+    ]);
+    expect(laya.calls).toEqual([]);
   });
 
   it('keeps sent-by-hand passed and preserves pending_reason', async () => {

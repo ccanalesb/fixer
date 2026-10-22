@@ -243,6 +243,64 @@ describe('PUT /api/culling-profiles/pipeline/score-forecast', () => {
     expect(body.version).toBeGreaterThan(before);
     expect(body.redecide_job_id).toBeTruthy();
   });
+
+  it('switches the Score forecast or changes its level without a threshold', async () => {
+    const res = await app.request('/api/culling-profiles/pipeline/score-forecast', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: false, high_from_level: 7 }),
+    });
+    expect(res.status).toBe(200);
+    expect(getCurrentPipelineSetting(new Database(fx.dbPath)).config.score_forecast).toMatchObject({
+      enabled: false,
+      high_from_level: 7,
+      threshold: 0.111,
+    });
+  });
+
+  it('no longer takes run_after_filtered', async () => {
+    const res = await app.request('/api/culling-profiles/pipeline/score-forecast', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ threshold: 0.2, run_after_filtered: false }),
+    });
+    expect(res.status).toBe(422);
+  });
+});
+
+describe('PUT /api/culling-profiles/pipeline/culling-profiles', () => {
+  const put = (body: unknown) =>
+    app.request('/api/culling-profiles/pipeline/culling-profiles', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('switches the culling profiles and their filter, as a new version that is re-decided', async () => {
+    const before = getCurrentPipelineSetting(new Database(fx.dbPath)).version;
+    const res = await put({ enabled: true, filter_enabled: false });
+    expect(res.status).toBe(200);
+    const body = await json<{ version: number; redecide_job_id: string | null }>(res);
+    expect(body.version).toBeGreaterThan(before);
+    expect(body.redecide_job_id).toBeTruthy();
+    expect(getCurrentPipelineSetting(new Database(fx.dbPath)).config).toMatchObject({
+      culling_profiles_enabled: true,
+      culling_profiles_filter_enabled: false,
+    });
+  });
+
+  it('changes only what it is given', async () => {
+    expect((await put({ enabled: false })).status).toBe(200);
+    expect(getCurrentPipelineSetting(new Database(fx.dbPath)).config).toMatchObject({
+      culling_profiles_enabled: false,
+      culling_profiles_filter_enabled: true,
+    });
+  });
+
+  it('refuses an empty body and unknown keys', async () => {
+    expect((await put({})).status).toBe(422);
+    expect((await put({ enabled: true, run_after_filtered: true })).status).toBe(422);
+  });
 });
 
 describe('PATCH /api/culling-profiles/{slug}', () => {

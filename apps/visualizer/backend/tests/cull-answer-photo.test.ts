@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { askNow, cullPhoto, runsAfterFiltered, type LayaAnswerer } from '../src/cull/answer-photo.js';
+import { cullPhoto, type LayaAnswerer } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import { selectPhotosToCull } from '../src/cull/select.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
@@ -41,9 +41,14 @@ function context(change?: (cfg: PipelineSettingConfig) => PipelineSettingConfig)
   return { stages: resolveCurrentStages(db, pipeline.config, MODEL_IDS), pipeline, scoreForecastAvailable: true };
 }
 
-const forecastOffForCut = (cfg: PipelineSettingConfig): PipelineSettingConfig => ({
+const forecastOff = (cfg: PipelineSettingConfig): PipelineSettingConfig => ({
   ...cfg,
-  score_forecast: { ...cfg.score_forecast, run_after_filtered: false },
+  score_forecast: { ...cfg.score_forecast, enabled: false },
+});
+const profilesOff = (cfg: PipelineSettingConfig): PipelineSettingConfig => ({
+  ...cfg,
+  culling_profiles_enabled: false,
+  score_forecast: { ...cfg.score_forecast, enabled: true },
 });
 
 /** A fake Laya: profile levels per photo on both level sets, P(≥ 8) 0.5. */
@@ -75,34 +80,32 @@ function fakeLaya(levels10: number[], opts: { fail?: 'answer' | 'worker' } = {})
 const image = async () => '/cache/a.jpg';
 const noImage = async () => null;
 
-describe('which stages to ask now', () => {
-  it('asks everything at once when every stage runs after a filter', () => {
-    const ctx = context();
-    expect(askNow(ctx.pipeline.config, ctx.stages).map((s) => s.stageKey)).toEqual(ctx.stages.map((s) => s.stageKey));
-  });
-
-  it('holds back a stage switched off for filtered photos until the stages before it are answered', () => {
-    const ctx = context(forecastOffForCut);
-    const forecast = ctx.stages.find((s) => s.kind === 'score_forecast')!;
-    expect(runsAfterFiltered(ctx.pipeline.config, forecast)).toBe(false);
-    expect(askNow(ctx.pipeline.config, ctx.stages).map((s) => s.kind)).toEqual(['culling_profile', 'culling_profile']);
-    expect(askNow(ctx.pipeline.config, [forecast])).toEqual([forecast]);
-  });
-});
-
 describe('cullPhoto', () => {
-  it('answers what is missing in as few calls as the switches allow, and stores it', async () => {
-    const ctx = context(forecastOffForCut);
+  it('answers every missing stage in one call, and stores it', async () => {
+    const ctx = context();
     const laya = fakeLaya([5, 5, 6, 6]);
     const r = await cullPhoto(db, ctx, laya, { imageKey: 'a', sentByHand: false, runId, resolveImage: image });
     expect(r.outcome).toBe('culled');
-    expect(laya.calls.map((w) => [w.base!.length, w.new])).toEqual([
-      [8, false],
-      [0, true],
-    ]);
+    expect(laya.calls.map((w) => [w.base!.length, w.new])).toEqual([[8, true]]);
     expect(r.answeredStages).toHaveLength(3);
-    expect(r.seconds).toEqual({ prep: 2, vision: 2, base: 2, new: 2 });
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed' });
+    expect(r.seconds).toEqual({ prep: 1, vision: 1, base: 1, new: 1 });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed', culling_profile_verdict: 'passed' });
+  });
+
+  it('asks only the stages that are on', async () => {
+    const noForecast = fakeLaya([5, 5, 6, 6]);
+    await cullPhoto(db, context(forecastOff), noForecast, { imageKey: 'a', sentByHand: false, runId, resolveImage: image });
+    expect(noForecast.calls.map((w) => [w.base!.length, w.new])).toEqual([[8, false]]);
+    const noProfiles = fakeLaya([5, 5, 6, 6]);
+    await cullPhoto(db, context(profilesOff), noProfiles, { imageKey: 'b', sentByHand: false, runId, resolveImage: image });
+    expect(noProfiles.calls.map((w) => [w.base!.length, w.new])).toEqual([[0, true]]);
+    expect(getCullVerdict(db, 'b')).toMatchObject({ verdict: 'passed', culling_profile_verdict: null });
+  });
+
+  it("stores what the culling profile says when its filter is off: reject follows it, the photo passes", async () => {
+    const ctx = context((cfg) => ({ ...cfg, culling_profiles_filter_enabled: false }));
+    await cullPhoto(db, ctx, fakeLaya([5, 5, 2, 3]), { imageKey: 'a', sentByHand: false, runId, resolveImage: image });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed', filtered_by: null, culling_profile_verdict: 'filtered' });
   });
 
   it('re-decides without Laya when nothing is missing', async () => {
@@ -177,11 +180,12 @@ describe('selectPhotosToCull', () => {
     expect(selectPhotosToCull(db, ctx, ['new', 'done']).keys).toEqual(['new']);
   });
 
-  it('a photo the profile filtered is not selected again for a stage switched off for filtered photos', async () => {
-    const ctx = context(forecastOffForCut);
-    await cullPhoto(db, ctx, fakeLaya([5, 5, 2, 3]), { imageKey: 'filtered', sentByHand: false, runId, resolveImage: image });
-    expect(getCullVerdict(db, 'filtered')).toMatchObject({ verdict: 'filtered' });
-    expect(selectPhotosToCull(db, ctx, ['filtered']).keys).toEqual([]);
+  it('a stage that is off is not asked for; turned on, every photo needs it', async () => {
+    const off = context(forecastOff);
+    await cullPhoto(db, off, fakeLaya([5, 5, 2, 3]), { imageKey: 'filtered', sentByHand: false, runId, resolveImage: image });
+    expect(selectPhotosToCull(db, off, ['filtered']).keys).toEqual([]);
+    const on = context((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, enabled: true } }));
+    expect([...selectPhotosToCull(db, on, ['filtered']).needsAnswers]).toEqual(['filtered']);
   });
 
   it('a summary decided under another pipeline setting is selected, to be re-decided', async () => {

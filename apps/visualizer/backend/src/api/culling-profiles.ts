@@ -5,6 +5,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { config } from '../config.js';
 import { validateProfileShape } from '../cull/profile-shape.js';
 import { validateProfileDefinitionForLaya, type ProfileValidationError } from '../cull/profile-validate.js';
+import type { PipelineSettingConfig } from '../cull/types.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import {
   countCatalogPhotosForCullEstimate,
@@ -114,6 +115,24 @@ cullingProfilesRoutes.openapi(pipelineGetRoute, (c) => {
   return c.json(pipe, 200);
 });
 
+const PipelineChangeResponse = z.object({ version: z.number().int(), redecide_job_id: z.string().nullable() });
+
+const notEmpty = (body: object) => Object.keys(body).length > 0;
+
+/** A new pipeline-setting version, and the re-decide job that applies it to every photo. */
+function savePipelineChange(db: import('../db/connection.js').Db, next: PipelineSettingConfig, note: string) {
+  const version = createPipelineSettingVersion(db, next, note);
+  const redecideJobId = withJobsDb((jobsDb) => {
+    const id = enqueueRedecideCullVerdicts(jobsDb, note);
+    if (id) {
+      const job = getJob(jobsDb, id);
+      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
+    }
+    return id;
+  });
+  return { version, redecide_job_id: redecideJobId };
+}
+
 const scoreForecastRoute = createRoute({
   method: 'put',
   path: '/culling-profiles/pipeline/score-forecast',
@@ -123,49 +142,58 @@ const scoreForecastRoute = createRoute({
       content: jsonBody(
         z
           .object({
-            threshold: z.number(),
+            threshold: z.number().optional(),
             enabled: z.boolean().optional(),
             high_from_level: z.number().int().optional(),
             excused_at: z.number().optional(),
-            run_after_filtered: z.boolean().optional(),
           })
-          .strict(),
+          .strict()
+          .refine(notEmpty, { message: 'nothing to change' }),
       ),
     },
   },
   responses: withValidationError({
-    200: {
-      description: 'Updated',
-      content: jsonBody(z.object({ version: z.number().int(), redecide_job_id: z.string().nullable() })),
-    },
+    200: { description: 'Updated', content: jsonBody(PipelineChangeResponse) },
   }),
 });
 
 cullingProfilesRoutes.openapi(scoreForecastRoute, (c) => {
   const db = c.get('libraryDb');
   const body = c.req.valid('json');
-  const { config: pipeConfig, version: _v } = getCurrentPipelineSetting(db);
+  const { config: pipeConfig } = getCurrentPipelineSetting(db);
+  const next = { ...pipeConfig, score_forecast: { ...pipeConfig.score_forecast, ...body } };
+  return c.json(savePipelineChange(db, next, 'score forecast changed'), 200);
+});
+
+const cullingProfilesSwitchRoute = createRoute({
+  method: 'put',
+  path: '/culling-profiles/pipeline/culling-profiles',
+  tags: ['culling-profiles'],
+  request: {
+    body: {
+      content: jsonBody(
+        z
+          .object({ enabled: z.boolean().optional(), filter_enabled: z.boolean().optional() })
+          .strict()
+          .refine(notEmpty, { message: 'nothing to change' }),
+      ),
+    },
+  },
+  responses: withValidationError({
+    200: { description: 'Updated', content: jsonBody(PipelineChangeResponse) },
+  }),
+});
+
+cullingProfilesRoutes.openapi(cullingProfilesSwitchRoute, (c) => {
+  const db = c.get('libraryDb');
+  const body = c.req.valid('json');
+  const { config: pipeConfig } = getCurrentPipelineSetting(db);
   const next = {
     ...pipeConfig,
-    score_forecast: {
-      ...pipeConfig.score_forecast,
-      threshold: body.threshold,
-      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
-      ...(body.high_from_level !== undefined ? { high_from_level: body.high_from_level } : {}),
-      ...(body.excused_at !== undefined ? { excused_at: body.excused_at } : {}),
-      ...(body.run_after_filtered !== undefined ? { run_after_filtered: body.run_after_filtered } : {}),
-    },
+    ...(body.enabled !== undefined ? { culling_profiles_enabled: body.enabled } : {}),
+    ...(body.filter_enabled !== undefined ? { culling_profiles_filter_enabled: body.filter_enabled } : {}),
   };
-  const version = createPipelineSettingVersion(db, next, 'score forecast threshold changed');
-  const redecideJobId = withJobsDb((jobsDb) => {
-    const id = enqueueRedecideCullVerdicts(jobsDb, 'score forecast threshold changed');
-    if (id) {
-      const job = getJob(jobsDb, id);
-      if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
-    }
-    return id;
-  });
-  return c.json({ version, redecide_job_id: redecideJobId }, 200);
+  return c.json(savePipelineChange(db, next, 'culling profile switches changed'), 200);
 });
 
 const detailRoute = createRoute({

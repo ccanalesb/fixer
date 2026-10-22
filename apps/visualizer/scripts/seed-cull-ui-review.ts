@@ -147,6 +147,7 @@ function baseVerdict(
     imageKey,
     filteredBy: null,
     filteredByStageKey: null,
+    cullingProfileVerdict: partial.filteredBy === 'culling_profile' ? 'filtered' : null,
     sentByHand: false,
     pendingStages: [],
     pendingReason: '',

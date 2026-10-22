@@ -23,7 +23,9 @@ const VIDEO_LENIENT: ProfileRule = {
 };
 
 const PIPELINE: PipelineSettingConfig = {
-  culling_profiles: [{ profile_slug: 'recipe-culling', rule: VIDEO_LENIENT, run_after_filtered: true }],
+  culling_profiles_enabled: true,
+  culling_profiles_filter_enabled: true,
+  culling_profiles: [{ profile_slug: 'recipe-culling', rule: VIDEO_LENIENT }],
   score_forecast: { ...DEFAULT_SCORE_FORECAST },
 };
 
@@ -182,13 +184,105 @@ describe('the photo summary', () => {
     expect(d).toMatchObject({ verdict: 'passed', pendingStages: [], scoreForecastP8: null });
   });
 
-  it('a stage that is switched off for filtered photos is not required once the profile filtered', () => {
-    const off: PipelineSettingConfig = { ...PIPELINE, score_forecast: { ...PIPELINE.score_forecast, run_after_filtered: false } };
+  it('every stage that is on is required, even once the profile filtered', () => {
     const cutAnswers = { [S7.stageKey]: cut7, [S10.stageKey]: cut10 };
-    expect(requiredStages(off, STAGES, cutAnswers, {}).map((s) => s.stageKey)).toEqual([S7.stageKey, S10.stageKey]);
-    expect(decidePhoto(off, STAGES, cutAnswers, {}).verdict).toBe('filtered');
-    const passAnswers = { [S7.stageKey]: pass7, [S10.stageKey]: pass10 };
-    expect(requiredStages(off, STAGES, passAnswers, {}).map((s) => s.stageKey)).toContain('score_forecast');
-    expect(requiredStages(PIPELINE, STAGES, cutAnswers, {}).map((s) => s.stageKey)).toContain('score_forecast');
+    expect(requiredStages(PIPELINE, STAGES, cutAnswers, {}).map((s) => s.stageKey)).toEqual([S7.stageKey, S10.stageKey, 'score_forecast']);
+    expect(decidePhoto(PIPELINE, STAGES, cutAnswers, {})).toMatchObject({ verdict: 'filtered', pendingStages: ['score_forecast'] });
+  });
+});
+
+describe('the switches: culling profile, its filter, Score forecast', () => {
+  const ruleFilters = { [S7.stageKey]: profile(7, [5, 5, 2, 3]), [S10.stageKey]: profile(10, [5, 5, 3, 4]) };
+  const rulePasses = { [S7.stageKey]: profile(7, [5, 5, 5, 5]), [S10.stageKey]: profile(10, [5, 5, 5, 5]) };
+  const forecastFilters = { score_forecast: forecast({ framing: 0.01 }) };
+  const forecastPasses = { score_forecast: PASSING_FORECAST };
+  const cfg = (profiles: boolean, filter: boolean, forecastOn: boolean): PipelineSettingConfig => ({
+    ...PIPELINE,
+    culling_profiles_enabled: profiles,
+    culling_profiles_filter_enabled: filter,
+    score_forecast: { ...PIPELINE.score_forecast, enabled: forecastOn },
+  });
+  const required = (c: PipelineSettingConfig) => requiredStages(c, STAGES, {}, {}).map((s) => s.stageKey);
+
+  describe('all three on', () => {
+    const on = cfg(true, true, true);
+    it('filters when the rule filters, or when the Score forecast filters', () => {
+      expect(decidePhoto(on, STAGES, { ...ruleFilters, ...forecastPasses }, {})).toMatchObject({ verdict: 'filtered', filteredBy: 'culling_profile' });
+      expect(decidePhoto(on, STAGES, { ...rulePasses, ...forecastFilters }, {})).toMatchObject({ verdict: 'filtered', filteredBy: 'score_forecast' });
+      expect(decidePhoto(on, STAGES, { ...rulePasses, ...forecastPasses }, {}).verdict).toBe('passed');
+    });
+    it('reports what the culling profile says, for stars and reject', () => {
+      expect(decidePhoto(on, STAGES, { ...ruleFilters, ...forecastPasses }, {}).cullingProfileVerdict).toBe('filtered');
+      expect(decidePhoto(on, STAGES, { ...rulePasses, ...forecastFilters }, {}).cullingProfileVerdict).toBe('passed');
+    });
+    it('requires every stage', () => expect(required(on)).toEqual([S7.stageKey, S10.stageKey, 'score_forecast']));
+  });
+
+  describe("the culling profile's filter off", () => {
+    const noFilter = cfg(true, false, true);
+    it('only the Score forecast filters', () => {
+      expect(decidePhoto(noFilter, STAGES, { ...ruleFilters, ...forecastPasses }, {})).toMatchObject({ verdict: 'passed', filteredBy: null });
+      expect(decidePhoto(noFilter, STAGES, { ...rulePasses, ...forecastFilters }, {})).toMatchObject({ verdict: 'filtered', filteredBy: 'score_forecast' });
+    });
+    it('reject still follows the rule: the culling profile says filtered on a photo that passes', () => {
+      expect(decidePhoto(noFilter, STAGES, { ...ruleFilters, ...forecastPasses }, {}).cullingProfileVerdict).toBe('filtered');
+    });
+    it('still requires the culling profile, for stars, but a missing answer does not hold the photo pending', () => {
+      expect(required(noFilter)).toEqual([S7.stageKey, S10.stageKey, 'score_forecast']);
+      expect(decidePhoto(noFilter, STAGES, forecastPasses, {})).toMatchObject({
+        verdict: 'passed',
+        pendingStages: [S7.stageKey, S10.stageKey],
+        cullingProfileVerdict: null,
+      });
+    });
+  });
+
+  describe('Score forecast off', () => {
+    const noForecast = cfg(true, true, false);
+    it('the rule decides', () => {
+      expect(decidePhoto(noForecast, STAGES, { ...ruleFilters, ...forecastFilters }, {})).toMatchObject({ verdict: 'filtered', filteredBy: 'culling_profile' });
+      expect(decidePhoto(noForecast, STAGES, { ...rulePasses, ...forecastFilters }, {})).toMatchObject({ verdict: 'passed', scoreForecastP8: null });
+    });
+    it('does not require the Score forecast', () => expect(required(noForecast)).toEqual([S7.stageKey, S10.stageKey]));
+    it('a missing profile answer holds the photo pending, as the rule needs it', () => {
+      expect(decidePhoto(noForecast, STAGES, { [S10.stageKey]: profile(10, [5, 5, 5, 5]) }, {})).toMatchObject({
+        verdict: 'pending',
+        pendingStages: [S7.stageKey],
+      });
+    });
+  });
+
+  describe('culling profile off', () => {
+    const noProfile = cfg(false, true, true);
+    it('only the Score forecast filters, whatever its filter switch says', () => {
+      expect(decidePhoto(noProfile, STAGES, { ...ruleFilters, ...forecastPasses }, {})).toMatchObject({ verdict: 'passed', filteredBy: null });
+      expect(decidePhoto(noProfile, STAGES, forecastFilters, {})).toMatchObject({ verdict: 'filtered', filteredBy: 'score_forecast' });
+    });
+    it('gives nothing for stars or reject', () => {
+      expect(decidePhoto(noProfile, STAGES, { ...ruleFilters, ...forecastPasses }, {}).cullingProfileVerdict).toBeNull();
+    });
+    it('does not require the culling profile', () => expect(required(noProfile)).toEqual(['score_forecast']));
+  });
+
+  describe('both filters off', () => {
+    it('every photo passes; the culling profile is still asked for stars and reject', () => {
+      const c = cfg(true, false, false);
+      expect(decidePhoto(c, STAGES, { ...ruleFilters, ...forecastFilters }, {})).toMatchObject({
+        verdict: 'passed',
+        filteredBy: null,
+        cullingProfileVerdict: 'filtered',
+      });
+      expect(required(c)).toEqual([S7.stageKey, S10.stageKey]);
+    });
+    it('with the culling profile off too, nothing is asked and every photo passes', () => {
+      const c = cfg(false, false, false);
+      expect(required(c)).toEqual([]);
+      expect(decidePhoto(c, STAGES, {}, {})).toMatchObject({ verdict: 'passed', pendingStages: [], cullingProfileVerdict: null });
+    });
+  });
+
+  it('sent by hand passes, and the culling profile verdict still says what the rule did', () => {
+    const d = decidePhoto(PIPELINE, STAGES, { ...ruleFilters, ...forecastPasses }, { sentByHand: true });
+    expect(d).toMatchObject({ verdict: 'passed', sentByHandOverride: true, cullingProfileVerdict: 'filtered' });
   });
 });

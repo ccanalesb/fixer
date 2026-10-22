@@ -3084,11 +3084,64 @@ export interface paths {
             requestBody?: {
                 content: {
                     "application/json": {
-                        threshold: number;
+                        threshold?: number;
                         enabled?: boolean;
                         high_from_level?: number;
                         excused_at?: number;
-                        run_after_filtered?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                            redecide_job_id: string | null;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-profiles/pipeline/culling-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        enabled?: boolean;
+                        filter_enabled?: boolean;
                     };
                 };
             };
@@ -5396,6 +5449,8 @@ export interface components {
         PipelineSettingResponse: {
             version: number;
             config: {
+                culling_profiles_enabled: boolean;
+                culling_profiles_filter_enabled: boolean;
                 culling_profiles: {
                     profile_slug: string;
                     rule: {
@@ -5422,14 +5477,12 @@ export interface components {
                         /** @enum {string} */
                         stars_strong_from?: "7" | "10" | "every" | "any";
                     };
-                    run_after_filtered: boolean;
                 }[];
                 score_forecast: {
                     enabled: boolean;
                     threshold: number;
                     high_from_level: number;
                     excused_at: number;
-                    run_after_filtered: boolean;
                 };
             };
         };

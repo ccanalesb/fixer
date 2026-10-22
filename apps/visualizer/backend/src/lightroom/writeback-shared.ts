@@ -67,11 +67,11 @@ export function userChangedAfterWrite(kind: WritebackKind, live: LivePickRating,
   return !liveMatchesWritten(kind, live, row);
 }
 
+/** Reject when the culling profile's rule says filtered, whatever decided the photo. */
 export function desiredReject(settings: LrWritebackSettings, verdict: CullVerdictRow | null): boolean {
   if (!settings.write_reject || !verdict) return false;
   if (verdict.sent_by_hand) return false;
-  if (verdict.verdict !== 'filtered') return false;
-  return verdict.filtered_by === 'culling_profile';
+  return verdict.culling_profile_verdict === 'filtered';
 }
 
 function stagesForStarsProfile(db: Db, starsSlug: string) {
@@ -90,6 +90,7 @@ export function desiredStarsRating(
   starsSlug: string | null,
 ): number | null {
   if (!settings.write_stars || !starsSlug) return null;
+  if (!getCurrentPipelineSetting(db).config.culling_profiles_enabled) return null;
   const profile = getCullProfile(db, starsSlug);
   if (!profile) return null;
   const stages = stagesForStarsProfile(db, starsSlug);

@@ -181,8 +181,7 @@ afterEach(() => {
 
 describe('library schema 13', () => {
   it('has the same cull and write-back tables, columns and indexes as a fresh library', () => {
-    expect(LIBRARY_SCHEMA_VERSION).toBe(13);
-    expect(db.pragma('user_version', { simple: true })).toBe(13);
+    expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
     const fresh = initLibraryDb(join(dir, 'fresh.db'));
     try {
       expect(schemaOf(db)).toEqual(schemaOf(fresh));
@@ -270,15 +269,17 @@ describe('library schema 13', () => {
     ]);
   });
 
-  it('keeps every pipeline-setting version, with the renamed keys', () => {
-    const v13 = (threshold: number, runAfter: boolean) => ({
-      culling_profiles: [{ profile_slug: 'recipe-culling', rule: RULE_V13, run_after_filtered: runAfter }],
-      score_forecast: { enabled: true, threshold, high_from_level: 8, excused_at: 0.5, run_after_filtered: true },
+  it('keeps every pipeline-setting version, with the renamed keys (and the switches of schema 14)', () => {
+    const current = (threshold: number) => ({
+      culling_profiles_enabled: true,
+      culling_profiles_filter_enabled: true,
+      culling_profiles: [{ profile_slug: 'recipe-culling', rule: RULE_V13 }],
+      score_forecast: { enabled: true, threshold, high_from_level: 8, excused_at: 0.5 },
     });
     const rows = all(db, 'SELECT version, config_json, is_current, created_at, note FROM cull_pipeline_settings ORDER BY version');
     expect(rows.map((r) => ({ ...r, config_json: JSON.parse(r.config_json as string) }))).toEqual([
-      { version: 1, config_json: v13(0.111, true), is_current: 0, created_at: NOW, note: 'default' },
-      { version: 2, config_json: v13(0.2, false), is_current: 1, created_at: NOW, note: 'rule of recipe-7h47 changed' },
+      { version: 1, config_json: current(0.111), is_current: 0, created_at: NOW, note: 'default' },
+      { version: 2, config_json: current(0.2), is_current: 1, created_at: NOW, note: 'rule of recipe-7h47 changed' },
     ]);
   });
 
@@ -307,7 +308,7 @@ describe('library schema 13', () => {
     db = openLibraryDb(path);
     db.pragma('user_version = 12');
     upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(13);
+    expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
     expect(all(db, 'SELECT * FROM cull_verdicts ORDER BY image_key')).toEqual(before);
   });
 });
