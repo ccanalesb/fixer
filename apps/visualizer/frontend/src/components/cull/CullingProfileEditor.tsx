@@ -22,7 +22,6 @@ import {
 import { CullingProfileDimensionsFields } from './CullingProfileDimensionsFields'
 import { CullingProfileLevelsFields } from './CullingProfileLevelsFields'
 import { CullingProfileRuleFields } from './CullingProfileRuleFields'
-import { ScoreForecastThresholdField } from './ScoreForecastThresholdField'
 import { Segmented } from './Segmented'
 import { bandProblems, emptyLevelCount } from './profileDraft'
 
@@ -139,10 +138,7 @@ export function CullingProfileEditor({
           <CullingProfileLevelsFields draft={draft} setDraft={setDraft} fieldErrors={fieldErrors} />
         ) : null}
         {tab === 'rule' ? (
-          <div className="space-y-4">
-            <CullingProfileRuleFields draft={draft} setRule={setRule} />
-            <ScoreForecastThresholdField />
-          </div>
+          <CullingProfileRuleFields draft={draft} setRule={setRule} />
         ) : null}
       </div>
 

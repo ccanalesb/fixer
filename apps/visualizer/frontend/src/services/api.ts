@@ -873,6 +873,8 @@ export type CullReviewDetail = components['schemas']['CullReviewDetail']
 export type CullProfileDetail = components['schemas']['CullProfileDetail']
 export type CullProfileSummary = components['schemas']['CullProfileSummary']
 export type PipelineSettingResponse = components['schemas']['PipelineSettingResponse']
+/** A new pipeline-setting version, and the re-decide job that applies it to every photo. */
+export type PipelineChangeResponse = { version: number; redecide_job_id: string | null }
 
 export const CullAPI = {
   summary: () => request<CullReviewSummary>('/cull/summary'),
@@ -938,11 +940,16 @@ export const CullingProfilesAPI = {
       body: JSON.stringify(body),
     }),
   getPipeline: () => request<PipelineSettingResponse>('/culling-profiles/pipeline'),
-  saveScoreForecastThreshold: (threshold: number) =>
-    request<{ version: number; redecide_job_id: string | null }>(
-      '/culling-profiles/pipeline/score-forecast',
-      { method: 'PUT', body: JSON.stringify({ threshold }) },
-    ),
+  saveCullingProfileSwitches: (body: { enabled?: boolean; filter_enabled?: boolean }) =>
+    request<PipelineChangeResponse>('/culling-profiles/pipeline/culling-profiles', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  saveScoreForecast: (body: { enabled?: boolean; threshold?: number; high_from_level?: number }) =>
+    request<PipelineChangeResponse>('/culling-profiles/pipeline/score-forecast', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 }
 
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
