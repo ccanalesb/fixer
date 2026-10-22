@@ -696,10 +696,6 @@ export const CULL_PROFILES_SECTION = 'Culling profiles'
 export const CULL_ADD_PROFILE = 'Add profile'
 export const CULL_DUPLICATE = 'Duplicate'
 export const CULL_NOT_MEASURED = 'Not measured against AI scores'
-export const CULL_ADVANCED = 'Advanced'
-export const CULL_SCORE_FORECAST_THRESHOLD = 'Score forecast threshold'
-export const CULL_THRESHOLD_NOTE =
-  'Changing this re-checks every photo from stored answers (no new model run).'
 export const CULL_SAVE = 'Save'
 export const CULL_SAVE_ONLY = 'Save only'
 export const CULL_SAVE_AND_QUEUE = 'Save and queue culling job'
@@ -826,3 +822,36 @@ export const LR_WRITEBACK_UNDO = 'Undo'
 export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
 export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom after the app wrote it.'
 export const LR_WRITEBACK_LOADING = 'Loading Lightroom write-back…'
+
+// Processing → Settings → Culling models
+export const CULLING_MODELS_SECTION = 'Culling models'
+export const CULLING_MODELS_SECTION_LEAD =
+  'The stages of culling. Every stage that is on is answered on every photo; a change re-decides every photo from stored answers, with no model call.'
+export const CULLING_MODELS_LOADING = 'Loading culling models…'
+export const CULLING_MODELS_SAVED = 'Saved · re-decide job queued ·'
+export const CULLING_MODELS_SAVED_JOB_WAITING = 'Saved · the re-decide job already queued applies it ·'
+export const CULLING_MODELS_VIEW_QUEUE = 'View in Job queue'
+export const CULLING_MODELS_SAVE = 'Save'
+export const CULLING_MODELS_CANCEL = 'Cancel'
+export const CULLING_MODELS_NOT_SAVED = 'Not saved'
+export const CULLING_PROFILE_STAGE = 'Culling profile'
+export const CULLING_PROFILE_STAGE_ON = 'On'
+export const CULLING_PROFILE_STAGE_OFF = 'Off — no stars or reject are written to Lightroom'
+export const CULLING_PROFILE_STAGE_HELP =
+  "Every photo answers the culling profile's questions. It gives the stars and reject written to Lightroom."
+export const CULLING_PROFILE_FILTER = "Filter with the culling profile's rule"
+export const CULLING_PROFILE_FILTER_ON = 'On — a photo its rule filters is not described or scored.'
+export const CULLING_PROFILE_FILTER_OFF =
+  'Off — the rule still gives the reject written to Lightroom, but filters nothing.'
+export const CULLING_PROFILE_FILTER_UNAVAILABLE = 'Available while the culling profile is on.'
+export const SCORE_FORECAST_STAGE = 'Score forecast'
+export const SCORE_FORECAST_STAGE_ON = (level: number, threshold: number) =>
+  `On — passes at P(AI score ≥ ${level}) ≥ ${threshold}`
+export const SCORE_FORECAST_STAGE_OFF = 'Off'
+export const SCORE_FORECAST_STAGE_HELP =
+  'When on, every photo answers it, and a photo below the threshold is not described or scored. Stars and reject do not change.'
+export const SCORE_FORECAST_LEVEL = 'Score forecast level'
+export const SCORE_FORECAST_LEVEL_LABEL = 'Passes when the chance of an AI score ≥'
+export const SCORE_FORECAST_THRESHOLD = 'Score forecast threshold'
+export const SCORE_FORECAST_THRESHOLD_LABEL = 'is at least'
+export const SCORE_FORECAST_THRESHOLD_INVALID = 'A number from 0 to 1'

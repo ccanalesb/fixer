@@ -7,10 +7,12 @@ import {
   CULL_PROFILE_ADD_LEVEL_SET_BUTTON,
   CULL_PROFILE_ADD_LEVEL_TOP,
   CULL_PROFILE_CREATE,
+  CULL_PROFILE_FILTER_RULE,
   CULL_PROFILE_QUESTION,
   CULL_PROFILE_REMOVE,
   CULL_PROFILE_REMOVE_SET,
   CULL_PROFILE_TAB_LEVELS,
+  CULL_PROFILE_TAB_RULE,
   CULL_PROFILE_TEXT_SAVE_IMPACT,
   CULL_SAVE,
   CULL_SAVE_ONLY,
@@ -29,7 +31,6 @@ vi.mock('../../../services/api', async (importOriginal) => {
       saveDefinition: (...args: unknown[]) => saveDefinition(...args),
       saveRule: (...args: unknown[]) => saveRule(...args),
       patch: (...args: unknown[]) => patch(...args),
-      getPipeline: () => Promise.resolve({ version: 1, config: { score_forecast: { threshold: 0.1 } } }),
     },
   }
 })
@@ -92,6 +93,14 @@ describe('CullingProfileEditor', () => {
       expect(screen.getByText(CULL_PROFILE_TEXT_SAVE_IMPACT(40, 0.02))).toBeInTheDocument()
     })
     expect(saveDefinition.mock.calls[0]![1]).not.toHaveProperty('rule')
+  })
+
+  it('the Rule tab has no Score forecast threshold: it lives in Settings → Culling models', () => {
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    fireEvent.click(screen.getByRole('tab', { name: CULL_PROFILE_TAB_RULE }))
+    expect(screen.getByText(CULL_PROFILE_FILTER_RULE)).toBeInTheDocument()
+    expect(screen.queryByText(/score forecast/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /advanced/i })).not.toBeInTheDocument()
   })
 
   it('surfaces validation_errors on fields', async () => {
