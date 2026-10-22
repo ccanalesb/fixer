@@ -1,5 +1,5 @@
 /**
- * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/profile changes, no Laya.
+ * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/profile changes, no model call.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { LibraryFixture } from './helpers/library-fixture.js';
-import type { LayaAnswerWant } from '../src/laya/sessions.js';
-import { fakeLayaRuntimeModule, writeFakeLayaModels } from './helpers/fake-laya.js';
+import { fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto } from './helpers/fake-laya.js';
+import { closeAppModels } from '../src/laya/app-models.js';
 import { createJob, getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
@@ -26,19 +26,7 @@ const FORECAST_BORDER: Script = { levels: [5, 5, 6, 6], p8: 0.12 };
 const PROFILE_CUT: Script = { levels: [5, 5, 3, 3], p8: 0.5 };
 const FORECAST_CUT: Script = { levels: [5, 5, 6, 6], p8: 0.05 };
 
-const laya = vi.hoisted(() => ({
-  scripts: new Map<string, Script>(),
-  calls: [] as { file: string; want: LayaAnswerWant | undefined }[],
-  starts: 0,
-  closed: 0,
-  forecastOn: true,
-  failOn: null as null | string,
-  dieOn: null as null | string,
-  broken: false,
-  startError: null as null | Error,
-  cancelAfter: null as null | (() => void),
-  sequence: [] as string[],
-}));
+const laya = vi.hoisted(() => ({}) as import('./helpers/fake-laya.js').FakeLayaState);
 
 vi.mock('../src/laya/runtime.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/laya/runtime.js')>();
@@ -61,11 +49,7 @@ async function withJobsDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 
 async function addPhoto(key: string, script: Script): Promise<void> {
   const path = join(dir, 'vision', `${key}.jpg`);
-  await sharp({
-    create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } },
-  })
-    .jpeg()
-    .toFile(path);
+  await writeFakePhoto(path, key);
   fx.addImage({ key, filepath: `/missing/${key}.NEF` }).addVisionCache(key, path);
   laya.scripts.set(key, script);
 }
@@ -102,12 +86,11 @@ beforeEach(async () => {
     `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n`,
   );
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
-  laya.scripts.clear();
-  laya.calls.length = 0;
-  laya.starts = 0;
+  Object.assign(laya, fakeLayaState());
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await closeAppModels();
   delete process.env.DATABASE_PATH;
   delete process.env.LT_CONFIG_YAML;
   fx.cleanup();
@@ -215,7 +198,7 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     const pendingReason = fx.query<{ pending_reason: string }>(
       "SELECT pending_reason FROM cull_verdicts WHERE image_key = 'pend'",
     )[0]!.pending_reason;
-    expect(pendingReason).toContain('laya_failed');
+    expect(pendingReason).toContain('model_failed: Culling profile:');
 
     const lib2 = openLibraryDb(fx.dbPath);
     createPipelineSettingVersion(lib2, getCurrentPipelineSetting(lib2).config);

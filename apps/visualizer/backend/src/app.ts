@@ -21,6 +21,7 @@ import { lrWritebackRoutes } from './api/lr-writeback.js';
 import { providersRoutes } from './api/providers.js';
 import { scoresRoutes } from './api/scores.js';
 import { systemRoutes } from './api/system.js';
+import { systemOneRoutes } from './api/systemone.js';
 
 export function createApp() {
   const app = createOpenApiApp();
@@ -52,6 +53,7 @@ export function createApp() {
   app.route('/api', providersRoutes);
   app.route('/api', identityRoutes);
   app.route('/api/scores', scoresRoutes);
+  app.route('/', systemOneRoutes);
 
   /**
    * `/api/images/<bad_type>/<key>` for a family that is not mounted.

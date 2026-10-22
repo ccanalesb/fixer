@@ -14,7 +14,7 @@ import { SCORE_FORECAST_STAGE_KEY, resolveCurrentStages } from '../cull/stages.j
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
 import { getCullReviewSummary, listCullReviewPhotos } from '../db/library/cull-review.js';
-import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
+import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
 import {
   listCullUserActions,
   recordCullUserAction,
@@ -119,9 +119,9 @@ cullReviewRoutes.openapi(listRoute, (c) => {
   const tab = (c.req.query('tab') ?? 'all') as 'all' | 'culling_profile' | 'score_forecast';
   const { limit, offset } = clampPagination(c.req.query('limit'), c.req.query('offset'), 50);
   const { rows, total } = listCullReviewPhotos(db, tab, limit, offset);
-  const modelIds = readStoredLayaModelIds(db);
+  const modelIds = readStoredStageModelIds(db);
   const pipe = getCurrentPipelineSetting(db);
-  const stages = modelIds ? resolveCurrentStages(db, pipe.config, modelIds) : [];
+  const stages = resolveCurrentStages(db, pipe.config, modelIds);
   const keys = rows.map((r) => r.image_key);
   const answers = loadCurrentStageAnswers(db, stages, keys);
   const completionByKey = batchDescribeScoreCompletion(db, keys);
@@ -214,9 +214,9 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
     return errorNotFound(c, 'image');
   }
   const image = db.prepare('SELECT filename FROM images WHERE key = ?').get(imageKey) as { filename: string } | undefined;
-  const modelIds = readStoredLayaModelIds(db);
+  const modelIds = readStoredStageModelIds(db);
   const pipe = getCurrentPipelineSetting(db);
-  const stages = modelIds ? resolveCurrentStages(db, pipe.config, modelIds) : [];
+  const stages = resolveCurrentStages(db, pipe.config, modelIds);
   const answers = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
   const profile = resolveFilteringProfile(db, v.filtered_by_stage_key, pipelineFallbackProfile(db));
   const profileBlock = profile

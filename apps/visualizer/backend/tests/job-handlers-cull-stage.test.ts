@@ -9,11 +9,13 @@ import {
 } from './helpers/kimi-job-laya.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { LibraryFixture } from './helpers/library-fixture.js';
+import { writeFakePhoto } from './helpers/fake-laya.js';
+import { closeAppModels } from '../src/laya/app-models.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
 import { openLibraryDb } from '../src/db/connection.js';
@@ -22,7 +24,7 @@ import { tick } from '../src/jobs/processor.js';
 import { fingerprintBatchScore } from '../src/jobs/checkpoint.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { saveProfileDefinition, getCullProfile } from '../src/db/library/cull-profiles.js';
-import { LAYA_SETUP_COMMAND, LayaSetupError } from '../src/laya/files.js';
+import { LAYA_SETUP_COMMAND } from '../src/laya/files.js';
 
 const RUBRIC = 'RUBRIC-SENTINEL';
 
@@ -121,12 +123,7 @@ async function runJob(type: string, metadata: Record<string, unknown> = {}) {
 
 async function seedCullPhoto(key: string, script: Script): Promise<void> {
   const path = join(dir, 'vision', `${key}.jpg`);
-  mkdirSync(join(dir, 'vision'), { recursive: true });
-  await sharp({
-    create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } },
-  })
-    .jpeg()
-    .toFile(path);
+  await writeFakePhoto(path, key);
   fx.addImage({ key, filepath: `/missing/${key}.NEF`, date_taken: '2024-01-01' }).addVisionCache(key, path);
   laya().scripts.set(key, script);
 }
@@ -190,6 +187,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await closeAppModels();
   delete process.env.DATABASE_PATH;
   delete process.env.LT_PROVIDERS_JSON;
   delete process.env.LT_CONFIG_YAML;
@@ -357,13 +355,13 @@ describe('batch_analyze force_cull', () => {
 
     const job = await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'], force_cull: true });
     expect(job.status).toBe('completed');
-    expect(laya().calls.map((c) => c.file.split('/').at(-1))).toEqual(['pass.jpg']);
+    expect([...new Set(laya().calls.map((c) => c.file.split('/').at(-1)))]).toEqual(['pass.jpg']);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('filtered');
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('passed');
   });
 });
 
-describe('Laya setup failures fail the job', () => {
+describe('culling stage setup failures fail the job', () => {
   it('batch_describe fails with warning when models are missing', async () => {
     await seedCullPhoto('pass', PASS);
     rmSync(modelsDir, { recursive: true, force: true });
@@ -386,14 +384,14 @@ describe('Laya setup failures fail the job', () => {
 
   it('start check failure fails describe with no provider call', async () => {
     await seedCullPhoto('pass', PASS);
-    laya().startError = new LayaSetupError('start failed');
+    laya().startError = new Error('start failed');
     const job = await runJob('batch_describe', { max_workers: 1 });
     expect(job.status).toBe('failed');
     expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
   });
 });
 
-describe('Laya per-photo failure', () => {
+describe('per-photo model failure', () => {
   it('stays pending, held back, retried on the next job', async () => {
     await seedCullPhoto('pass', PASS);
     await seedCullPhoto('bad', PASS);
@@ -454,7 +452,7 @@ describe('job result shape', () => {
 });
 
 describe('cancel during cull step', () => {
-  it('closes Laya, no kimi, checkpoint keeps failed_keys', async () => {
+  it('no kimi, checkpoint keeps failed_keys', async () => {
     await seedCullPhoto('a', PASS);
     await seedCullPhoto('b', PASS);
     await withJobsDb(async (db) => {
@@ -464,7 +462,6 @@ describe('cancel during cull step', () => {
       await tick(db, runner);
       const job = getJob(db, jobId)!;
       expect(job.status).toBe('cancelled');
-      expect(laya().closed).toBeGreaterThanOrEqual(1);
       expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
       expect((job.metadata.checkpoint as Record<string, unknown> | null)?.['cull']).toBeTruthy();
     });

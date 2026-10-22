@@ -1,11 +1,11 @@
 /**
- * Re-decide every culled photo from stored answers — no Laya, no model files (#339).
+ * Re-decide every culled photo from stored answers — no model call, no endpoint (#339).
  */
 import { performance } from 'node:perf_hooks';
 import type { Db } from '../db/connection.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../db/library/cull-profiles.js';
-import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
+import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCulledImageKeys } from '../db/library/cull-verdicts.js';
 import { libraryWrite } from '../db/library/write.js';
@@ -39,8 +39,8 @@ export async function redecideAllPhotos(
   const t0 = performance.now();
   seedCullingDefaults(db);
   const pipeline = getCurrentPipelineSetting(db);
-  const ids = readStoredLayaModelIds(db);
-  if (ids === null) {
+  const ids = readStoredStageModelIds(db);
+  if (ids.culling_profile === null && ids.score_forecast === null) {
     return {
       total: 0,
       changed: 0,
@@ -56,7 +56,7 @@ export async function redecideAllPhotos(
   }
 
   const stages = resolveCurrentStages(db, pipeline.config, ids);
-  const scoreForecastAvailable = ids.new !== null;
+  const scoreForecastAvailable = ids.score_forecast !== null;
   const ctx: CullContext = { stages, pipeline, scoreForecastAvailable };
   const stageVersions = Object.fromEntries(stages.map((s) => [s.stageKey, s.versionId]));
   const keys = listCulledImageKeys(db);

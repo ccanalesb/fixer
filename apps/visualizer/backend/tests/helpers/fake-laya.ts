@@ -1,10 +1,14 @@
 /**
  * Shared fake Laya runtime for job-handler tests: call log, start/close counts, and
- * `vi.mock('../src/laya/runtime.js', …)` wiring. Never loads real models.
+ * `vi.mock('../src/laya/runtime.js', …)` wiring. Never loads real models; everything above the worker —
+ * the System One client, this app's endpoint and its model list — is real.
+ *
+ * The runtime sees image bytes only, so test photos carry their key in EXIF (`writeFakePhoto`).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import type { LayaAnswerWant } from '../../src/laya/sessions.js';
+import { dirname, join } from 'node:path';
+import sharp from 'sharp';
+import type { LayaQuestion } from '../../src/laya/rows.js';
 
 /** Per photo file: profile levels and highest P(≥ 8) for the forecast stage. */
 export interface FakeLayaScript {
@@ -12,12 +16,21 @@ export interface FakeLayaScript {
   p8: number;
 }
 
+export interface FakeLayaCall {
+  /** `/<key>.jpg`, the photo the bytes came from. */
+  file: string;
+  model: 'base' | 'new';
+  /** Question ids asked, `<stage key>#<question id>`. */
+  questions: string[];
+}
+
 export interface FakeLayaState {
   scripts: Map<string, FakeLayaScript>;
-  calls: { file: string; want: LayaAnswerWant | undefined }[];
+  calls: FakeLayaCall[];
+  /** Start checks: images with no photo key. */
+  checks: number;
   starts: number;
   closed: number;
-  forecastOn: boolean;
   failOn: null | string;
   dieOn: null | string;
   broken: boolean;
@@ -31,9 +44,9 @@ export function fakeLayaState(): FakeLayaState {
   return {
     scripts: new Map(),
     calls: [],
+    checks: 0,
     starts: 0,
     closed: 0,
-    forecastOn: true,
     failOn: null,
     dieOn: null,
     broken: false,
@@ -41,6 +54,22 @@ export function fakeLayaState(): FakeLayaState {
     cancelAfter: null,
     sequence: [],
   };
+}
+
+const MARK = /fake-photo:([^;]+);/;
+
+/** The photo key `writeFakePhoto` put in the image; null for any other image (a start check). */
+export function fakePhotoKey(image: Uint8Array): string | null {
+  return MARK.exec(Buffer.from(image).toString('latin1'))?.[1] ?? null;
+}
+
+/** The 8×8 JPEG the tests always wrote, with the photo's key in EXIF. */
+export async function writeFakePhoto(path: string, key: string): Promise<void> {
+  mkdirSync(dirname(path), { recursive: true });
+  await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } } })
+    .jpeg()
+    .withExif({ IFD0: { ImageDescription: `fake-photo:${key};` } })
+    .toFile(path);
 }
 
 function writeMinimalLayaTokenizer(dir: string): void {
@@ -82,74 +111,75 @@ export function writeFakeLayaModels(modelsDir: string, opts: { withNew?: boolean
   writeFileSync(join(neu, 'model.json'), JSON.stringify({ source: '/somewhere/best', revision: null }));
 }
 
+const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
+
+/** Level `l` (1-based) as a one-hot over `n` levels. */
+const at = (level: number, n: number) => Array.from({ length: n }, (_, i) => (i === level - 1 ? 1 : 0));
+/** Level `l` of 10 lands on 7 levels at the same position on the scale, as the research maps them. */
+const on7 = (l: number) => Math.round(1 + ((l - 1) * 6) / 9);
+
+const DEFAULT_SCRIPT: FakeLayaScript = { levels: [5, 5, 5, 5], p8: 0.5 };
+
+/** What the fake answers for photo `key`: its script, level 5 everywhere when it has none. */
+export function scriptedAnswers(
+  state: FakeLayaState,
+  key: string | null,
+  questions: Record<string, LayaQuestion>,
+): Record<string, number[]> {
+  const s = (key !== null && state.scripts.get(key)) || DEFAULT_SCRIPT;
+  return Object.fromEntries(Object.entries(questions).map(([qid, q]) => [qid, scriptedAnswer(s, qid, q)]));
+}
+
+function scriptedAnswer(s: FakeLayaScript, qid: string, q: LayaQuestion): number[] {
+  const own = qid.slice(qid.indexOf('#') + 1);
+  if (own.includes('|')) {
+    const [set, dim] = own.split('|');
+    const l = s.levels[DIMS.indexOf(dim!)]!;
+    return set === '7' ? at(on7(l), 7) : at(l, 10);
+  }
+  if (own === 'framing-excusal') return [0.9, 0.1];
+  if (own === 'framing') return [0, 0, 0, 0, 0, 0, 0, 0.99, 0, 0];
+  if (own === 'intensity-suggestion') return [1 - s.p8, 0, 0, 0, 0, 0, 0, s.p8, 0, 0];
+  const k = q.type === 'noul' ? 2 : Array.isArray(q.criteria) ? q.criteria.length : Object.keys(q.criteria ?? {}).length;
+  return at(1, k);
+}
+
 /** Vitest mock factory for `src/laya/runtime.js`. */
 export function fakeLayaRuntimeModule(
   actual: typeof import('../../src/laya/runtime.js'),
   state: FakeLayaState,
 ): typeof import('../../src/laya/runtime.js') {
-  const at = (level: number, n: number) => Array.from({ length: n }, (_, i) => (i === level - 1 ? 1 : 0));
-  const on7 = (l: number) => Math.round(1 + ((l - 1) * 6) / 9);
-  const runtime = {
-    get scoreForecastOn() {
-      return state.forecastOn;
-    },
-    get broken() {
-      return state.broken;
-    },
-    async answer(file: string, want?: LayaAnswerWant) {
-      const key = [...state.scripts.keys()].find((k) => file.endsWith(`/${k}.jpg`));
-      if (key) state.sequence.push(`laya:${key}`);
-      state.calls.push({ file, want });
-      if (state.broken) throw new Error('Laya worker exited (code 1)');
-      if (state.dieOn && file.endsWith(`/${state.dieOn}.jpg`)) {
-        state.broken = true;
-        throw new Error('Laya worker exited (code 1)');
-      }
-      if (state.failOn && file.endsWith(`/${state.failOn}.jpg`)) throw new Error('decode failed');
-      const s = [...state.scripts.entries()].find(([k]) => file.endsWith(`/${k}.jpg`))?.[1] ?? {
-        levels: [5, 5, 5, 5] as [number, number, number, number],
-        p8: 0.5,
-      };
-      const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
-      const base: Record<string, number[]> = {};
-      for (const qid of want?.base ?? []) {
-        const [, rest] = qid.split('#');
-        const [set, dim] = rest!.split('|');
-        const l = s.levels[dims.indexOf(dim!)]!;
-        base[qid] = set === '7' ? at(on7(l), 7) : at(l, 10);
-      }
-      const neu =
-        want?.new && state.forecastOn
-          ? {
-              'framing-excusal': [0.9, 0.1],
-              framing: [0, 0, 0, 0, 0, 0, 0, 0.99, 0, 0],
-              'intensity-suggestion': [1 - s.p8, 0, 0, 0, 0, 0, 0, s.p8, 0, 0],
-            }
-          : null;
-      state.cancelAfter?.();
-      return {
-        answers: { base, new: neu },
-        seconds: { prep: 0.1, vision: 0.2, base: 0.3, new: 0.4, total: 1 },
-      };
-    },
-    async close() {
-      state.closed += 1;
-    },
-  };
   return {
     ...actual,
-    startLayaWithCheck: async () => {
+    startLayaRuntime: async (files) => {
       state.starts += 1;
       if (state.startError) throw state.startError;
       return {
-        runtime: runtime as unknown as import('../../src/laya/runtime.js').LayaRuntime,
-        loadSeconds: 0.5,
-        testPhoto: {
-          answers: { base: {}, new: null },
-          seconds: { prep: 0, vision: 0, base: 0, new: 0, total: 0 },
+        files,
+        get broken() {
+          return state.broken;
+        },
+        async answer(model, image, questions) {
+          const key = fakePhotoKey(image);
+          if (key === null) state.checks += 1;
+          else {
+            state.sequence.push(`laya:${key}`);
+            state.calls.push({ file: `/${key}.jpg`, model, questions: Object.keys(questions) });
+          }
+          if (state.broken) throw new Error('Laya worker exited (code 1)');
+          if (key !== null && state.dieOn === key) {
+            state.broken = true;
+            throw new Error('Laya worker exited (code 1)');
+          }
+          if (key !== null && state.failOn === key) throw new Error('decode failed');
+          const answers = scriptedAnswers(state, key, questions);
+          if (key !== null) state.cancelAfter?.();
+          return { answers, seconds: { prep: 0.1, vision: 0.2, decoder: 0.3, total: 0.6 }, inputTokens: 1 };
+        },
+        async close() {
+          state.closed += 1;
         },
       };
     },
   };
 }
-

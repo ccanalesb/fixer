@@ -1,7 +1,15 @@
 # ADR-0020: Laya runs in Node through ONNX, in a worker thread, from git-ignored files
 
-**Status:** Accepted (2026-10-19)
+**Status:** Accepted (2026-10-19), amended by ADR-0021 (2026-10-22)
 **Date:** 2026-10-19
+
+> **Amended by ADR-0021.** Culling no longer calls the worker: it asks this app's
+> System One endpoint, which owns the worker. The worker starts on the endpoint's
+> first request and closes after two idle minutes, not at a job's start and end
+> (Decision 3). The start check is per stage, through the endpoint, on a test image
+> (Decision 5). Without `laya-new/` this app does not list `laya-new`, and a
+> Score forecast that is on fails the job instead of turning itself off
+> (Decision 2).
 
 ## Context
 

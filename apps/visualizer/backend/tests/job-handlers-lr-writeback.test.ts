@@ -13,26 +13,14 @@ import { createJob, getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jo
 import { LR_WRITEBACK_JOB_TYPE } from '../src/jobs/handlers/lr-writeback.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
-import type { LayaAnswerWant } from '../src/laya/sessions.js';
-import { writeFakeLayaModels } from './helpers/fake-laya.js';
+import { fakeLayaState, writeFakeLayaModels } from './helpers/fake-laya.js';
+import { closeAppModels } from '../src/laya/app-models.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
 
 type LayaScript = { levels: [number, number, number, number]; p8: number };
 
-const laya = vi.hoisted(() => ({
-  scripts: new Map<string, LayaScript>(),
-  calls: [] as { file: string; want: LayaAnswerWant | undefined }[],
-  starts: 0,
-  closed: 0,
-  forecastOn: true,
-  failOn: null as null | string,
-  dieOn: null as null | string,
-  broken: false,
-  startError: null as null | Error,
-  cancelAfter: null as null | (() => void),
-  sequence: [] as string[],
-}));
+const laya = vi.hoisted(() => ({}) as import('./helpers/fake-laya.js').FakeLayaState);
 
 vi.mock('../src/laya/runtime.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/laya/runtime.js')>();
@@ -68,20 +56,12 @@ beforeEach(() => {
   seedCullingDefaults(db);
   patchLrWritebackSettings(db, { write_reject: true });
   db.close();
-  laya.scripts.clear();
-  laya.calls.length = 0;
-  laya.starts = 0;
-  laya.closed = 0;
-  laya.forecastOn = true;
-  laya.failOn = null;
-  laya.dieOn = null;
-  laya.broken = false;
-  laya.startError = null;
-  laya.cancelAfter = null;
+  Object.assign(laya, fakeLayaState());
   laya.sequence.length = 0;
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await closeAppModels();
   fx.cleanup();
   delete process.env.DATABASE_PATH;
   delete process.env.LT_CONFIG_YAML;

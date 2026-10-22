@@ -81,7 +81,7 @@ afterEach(() => {
 function seedFailingProfileAnswers(fx: LibraryFixture, imageKey: string, levelIndex: number): void {
   const db = new Database(fx.dbPath);
   const pipe = getCurrentPipelineSetting(db);
-  const stages = resolveCurrentStages(db, pipe.config, { base: 'laya-base', new: 'laya-new' });
+  const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'laya-base', score_forecast: 'laya-new' });
   const stage = stages.find((s) => s.stageKey === 'culling_profile:recipe-culling:7');
   if (!stage) throw new Error('expected profile 7 stage');
   const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;

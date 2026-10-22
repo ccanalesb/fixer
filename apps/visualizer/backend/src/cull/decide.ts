@@ -93,7 +93,7 @@ export function decideScoreForecast(answers: StageAnswers, cfg: ScoreForecastSet
 
 export interface DecideOptions {
   sentByHand?: boolean;
-  /** False when Laya new is not set up: the Score forecast stage is off. */
+  /** False when the Score forecast has no model identity: the stage is off. */
   scoreForecastAvailable?: boolean;
 }
 

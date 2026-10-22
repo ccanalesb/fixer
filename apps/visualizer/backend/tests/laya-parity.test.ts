@@ -1,21 +1,23 @@
 /**
  * Laya in Node vs the PyTorch reference the setup step wrote next to the models
- * (`<model>/reference/`): token rows, pixel values, probabilities; and the event loop while it answers.
+ * (`<model>/reference/`): token rows, pixel values, probabilities through this app's System One
+ * endpoint; and the event loop while it answers.
  *
  * Needs the exported models, so it skips unless LT_LAYA_PARITY=1:
  *
  *   uv run scripts/laya/export_onnx.py --laya-new <checkpoint>   # once, from the repo root
  *   LT_LAYA_PARITY=1 npx vitest run tests/laya-parity.test.ts
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { config, loadLibraryConfig } from '../src/config.js';
 import { referencePhotoPath, resolveLayaModelFiles } from '../src/laya/files.js';
-import { startLayaWithCheck } from '../src/laya/runtime.js';
-import type { LayaModelName } from '../src/laya/questions.js';
+import { closeAppModels } from '../src/laya/app-models.js';
+import { LAYA_QUESTIONS, type LayaModelName } from '../src/laya/questions.js';
 import { buildModelRows, loadLayaPixelValues } from '../src/laya/sessions.js';
+import { askSystemOne, systemOneEndpoint } from '../src/systemone/client.js';
 
 const modelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir;
 const enabled = process.env.LT_LAYA_PARITY === '1' && existsSync(join(modelsDir, 'laya-base'));
@@ -54,25 +56,25 @@ describeMaybe('Laya parity with the PyTorch reference', () => {
     expect(max).toBeLessThanOrEqual(1.01);
   });
 
+  afterAll(() => closeAppModels());
+
   it('answers in a worker thread, within 0.01 of PyTorch, without holding the main event loop', async () => {
     const lag = monitorEventLoopDelay({ resolution: 5 });
-    const { runtime, testPhoto } = await startLayaWithCheck(modelsDir);
-    try {
-      lag.enable();
-      const again = await runtime.answer(referencePhotoPath(files));
-      lag.disable();
-      for (const [name, dir] of models) {
-        const ref = readJson<Record<string, number[]>>(join(dir, 'reference', 'probabilities.json'));
-        const got = testPhoto.answers[name]!;
-        for (const [qid, p] of Object.entries(ref)) {
-          const diff = Math.max(...p.map((v, i) => Math.abs(v - got[qid]![i]!)));
-          expect(diff, `${name} ${qid}`).toBeLessThan(0.01);
-        }
-        expect(again.answers[name]).toEqual(got);
+    const ep = systemOneEndpoint({ endpoint: 'this_app', model: '', apiKey: '' });
+    const image = new Uint8Array(readFileSync(referencePhotoPath(files)));
+    const ask = (name: LayaModelName) => askSystemOne(ep, { model: `laya-${name}`, image, questions: LAYA_QUESTIONS[name] });
+    // One window for every call, the worker's start included: a histogram enabled twice counts the gap.
+    lag.enable();
+    for (const [name, dir] of models) {
+      const got = await ask(name);
+      const ref = readJson<Record<string, number[]>>(join(dir, 'reference', 'probabilities.json'));
+      for (const [qid, p] of Object.entries(ref)) {
+        const diff = Math.max(...p.map((v, i) => Math.abs(v - got[qid]![i]!)));
+        expect(diff, `${name} ${qid}`).toBeLessThan(0.01);
       }
-      expect(lag.max / 1e6).toBeLessThan(200);
-    } finally {
-      await runtime.close();
+      expect(await ask(name)).toEqual(got);
     }
+    lag.disable();
+    expect(lag.max / 1e6).toBeLessThan(200);
   }, 60_000);
 });

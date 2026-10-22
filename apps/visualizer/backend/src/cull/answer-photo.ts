@@ -1,30 +1,20 @@
 /**
- * One photo through culling: what is still missing is asked of Laya in one worker call, and the photo
- * is stored and decided (`persist.ts`).
+ * One photo through culling: what is still missing is asked of each stage's model, and the photo is
+ * stored and decided (`persist.ts`).
  *
- * Takes the Laya runtime as an argument, so the culling job and the jobs that cull before describing
- * (#339) share it, and tests run it on a fake.
+ * Takes the stages' models as an argument, so the culling job and the jobs that cull before describing
+ * (#339) share them, and tests run it on a fake.
  */
 import type { Db } from '../db/connection.js';
 import { getImage } from '../db/library/catalog.js';
 import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
-import type { LayaPhotoResult } from '../laya/runtime.js';
-import { LayaSetupError } from '../laya/files.js';
-import type { LayaAnswerWant } from '../laya/sessions.js';
 import { resolveFilepath } from '../utils/path-resolve.js';
 import { resolveVisionImage } from '../vision/vision-cache.js';
 import { requiredStages } from './decide.js';
 import { imageSignature } from './image-signature.js';
-import { decideAndStorePhoto, WORKER_DIED_REASON, type CullContext } from './persist.js';
-import { layaWant, stageAnswersFromLaya } from './stages.js';
-import type { PhotoDecision, ResolvedStage, StageAnswers } from './types.js';
-
-/** What culling needs of the Laya runtime. */
-export interface LayaAnswerer {
-  answer(file: string, want?: LayaAnswerWant): Promise<LayaPhotoResult>;
-  /** The worker died: every later answer fails too. */
-  readonly broken: boolean;
-}
+import { decideAndStorePhoto, ENDPOINT_DOWN_REASON, type CullContext } from './persist.js';
+import { CullingStageError, type StageAnswerer } from './stage-models.js';
+import type { PhotoDecision, ResolvedStage, StageAnswers, StageKind } from './types.js';
 
 /** Required stages with no stored answer. */
 export function missingStages(
@@ -45,15 +35,16 @@ export async function resolveCullImage(db: Db, key: string): Promise<string | nu
   return path;
 }
 
-export type CullPhotoOutcome = 'culled' | 'redecided' | 'no_image' | 'laya_failed' | 'worker_died';
+export type CullPhotoOutcome = 'culled' | 'redecided' | 'no_image' | 'model_failed' | 'endpoint_down';
 
 export interface CullPhotoResult {
   outcome: CullPhotoOutcome;
   decision: PhotoDecision;
-  /** Stages Laya answered for this photo now. */
+  /** Stages answered for this photo now. */
   answeredStages: string[];
-  seconds: { prep: number; vision: number; base: number; new: number };
-  /** Set with `worker_died`: the caller stops the job with it. */
+  /** Wall seconds per stage's call. */
+  seconds: Partial<Record<StageKind, number>>;
+  /** Set with `endpoint_down`: the caller stops the job with it. */
   error?: Error;
 }
 
@@ -61,28 +52,28 @@ export interface CullPhotoArgs {
   imageKey: string;
   sentByHand: boolean;
   runId: number;
-  /** Ask Laya every required stage again, as if nothing were stored. */
+  /** Ask every required stage again, as if nothing were stored. */
   force?: boolean;
   resolveImage?: (db: Db, key: string) => Promise<string | null>;
 }
 
 /**
- * Cull one photo. A photo Laya fails on stays pending (retried by the next job); when the worker
- * itself died, the photo is stored as pending for that reason and the error is handed back.
+ * Cull one photo. A photo a model fails on stays pending (retried by the next job); when a stage's
+ * endpoint stopped answering, the photo is stored as pending for that reason and the error is handed
+ * back. A stage that cannot start (`CullingStageError`) is thrown.
  */
-export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, args: CullPhotoArgs): Promise<CullPhotoResult> {
+export async function cullPhoto(db: Db, ctx: CullContext, models: StageAnswerer, args: CullPhotoArgs): Promise<CullPhotoResult> {
   const { imageKey, sentByHand, runId } = args;
-  const seconds = { prep: 0, vision: 0, base: 0, new: 0 };
   const stored = loadCurrentStageAnswers(db, ctx.stages, [imageKey]).get(imageKey) ?? {};
   const pending = (outcome: CullPhotoOutcome, reason: string, error?: Error): CullPhotoResult => ({
     outcome,
     decision: decideAndStorePhoto(db, ctx, { imageKey, stored, sentByHand, runId, pendingReason: reason }),
     answeredStages: [],
-    seconds,
+    seconds: {},
     error,
   });
 
-  // Forced, the stored answers still decide a photo Laya cannot be asked about.
+  // Forced, the stored answers still decide a photo no model can be asked about.
   const known = (fresh: Record<string, StageAnswers>) => (args.force ? fresh : { ...stored, ...fresh });
   const missing = missingStages(ctx, known({}), sentByHand);
   if (missing.length === 0) {
@@ -90,26 +81,21 @@ export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, ar
       outcome: 'redecided',
       decision: decideAndStorePhoto(db, ctx, { imageKey, stored, sentByHand, runId }),
       answeredStages: [],
-      seconds,
+      seconds: {},
     };
   }
 
   const image = await (args.resolveImage ?? resolveCullImage)(db, imageKey);
   if (image === null) return pending('no_image', 'no_image');
 
-  const fresh: Record<string, StageAnswers> = {};
+  let r;
   try {
-    const r = await laya.answer(image, layaWant(missing));
-    seconds.prep += r.seconds.prep;
-    seconds.vision += r.seconds.vision;
-    seconds.base += r.seconds.base;
-    seconds.new += r.seconds.new;
-    Object.assign(fresh, stageAnswersFromLaya(missing, r.answers));
+    r = await models.answer(image, missing);
   } catch (e) {
-    if (e instanceof LayaSetupError) throw e;
+    if (e instanceof CullingStageError) throw e;
     const error = e instanceof Error ? e : new Error(String(e));
-    if (laya.broken) return pending('worker_died', WORKER_DIED_REASON, error);
-    return pending('laya_failed', `laya_failed: ${error.message}`, error);
+    if (models.broken) return pending('endpoint_down', ENDPOINT_DOWN_REASON, error);
+    return pending('model_failed', `model_failed: ${error.message}`, error);
   }
 
   return {
@@ -117,11 +103,11 @@ export async function cullPhoto(db: Db, ctx: CullContext, laya: LayaAnswerer, ar
     decision: decideAndStorePhoto(db, ctx, {
       imageKey,
       stored,
-      fresh: { answers: fresh, source: 'job', producedBy: 'onnx-cpu', imagePath: image, imageSignature: imageSignature(image) },
+      fresh: { answers: r.answers, source: 'job', producedBy: r.producedBy, imagePath: image, imageSignature: imageSignature(image) },
       sentByHand,
       runId,
     }),
-    answeredStages: Object.keys(fresh),
-    seconds,
+    answeredStages: Object.keys(r.answers),
+    seconds: r.seconds,
   };
 }

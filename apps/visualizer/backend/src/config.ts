@@ -103,6 +103,37 @@ export interface LibraryConfig {
   stackBurstDeltaMs: number;
   /** Where `scripts/laya/export_onnx.py` writes `laya-base/` and `laya-new/`. */
   layaModelsDir: string;
+  /** The System One endpoint and model each culling stage calls (`culling_models`). */
+  cullingModels: CullingModelsConfig;
+}
+
+/** One stage's System One endpoint: `this_app` or a URL, the model, and an API key (`''` for none). */
+export interface CullingModelConfig {
+  endpoint: string;
+  model: string;
+  apiKey: string;
+}
+
+export interface CullingModelsConfig {
+  culling_profile: CullingModelConfig;
+  score_forecast: CullingModelConfig;
+}
+
+/** The app's own endpoint, with the models the setup step exports, so a library culled before keeps working. */
+export const CULLING_MODELS_DEFAULTS: CullingModelsConfig = {
+  culling_profile: { endpoint: 'this_app', model: 'laya-base', apiKey: '' },
+  score_forecast: { endpoint: 'this_app', model: 'laya-new', apiKey: '' },
+};
+
+function cullingModelsField(raw: unknown): CullingModelsConfig {
+  const block = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const stage = (key: keyof CullingModelsConfig): CullingModelConfig => {
+    const v = block[key] && typeof block[key] === 'object' ? (block[key] as Record<string, unknown>) : {};
+    const str = (k: string, fallback: string) => (typeof v[k] === 'string' && v[k] ? (v[k] as string) : fallback);
+    const d = CULLING_MODELS_DEFAULTS[key];
+    return { endpoint: str('endpoint', d.endpoint), model: str('model', d.model), apiKey: str('api_key', d.apiKey) };
+  };
+  return { culling_profile: stage('culling_profile'), score_forecast: stage('score_forecast') };
 }
 
 const CONFIG_DEFAULTS = {
@@ -158,6 +189,7 @@ export function loadLibraryConfig(configPath = join(REPO_ROOT, 'config.yaml')): 
         ? Math.trunc(raw.stack_burst_delta_ms)
         : CONFIG_DEFAULTS.stackBurstDeltaMs,
     layaModelsDir: pathField('laya_models_dir') ?? resolvePath(CONFIG_DEFAULTS.layaModelsDir),
+    cullingModels: cullingModelsField(raw.culling_models),
   };
 }
 

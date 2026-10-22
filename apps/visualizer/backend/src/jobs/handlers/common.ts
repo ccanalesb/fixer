@@ -5,7 +5,7 @@ import { openLibraryDb, type Db } from '../../db/connection.js';
 import type { JobLogLevel } from '../../db/jobs/jobs.js';
 import { upgradeLibrarySchema } from '../../db/library/bootstrap.js';
 import { loadCullVerdictsForKeys } from '../../db/library/cull-verdicts.js';
-import { LayaSetupError } from '../../laya/files.js';
+import { CullingStageError } from '../../cull/stage-models.js';
 import { AuthenticationError, InvalidRequestError } from '../../providers/errors.js';
 import type { AnalyzeStage } from '../checkpoint.js';
 import { requireLibraryDb } from '../library-db.js';
@@ -45,13 +45,13 @@ export async function withLibraryDb<T>(path: string, fn: (db: Db) => Promise<T>)
 /**
  * How loudly the UI should report a failure.
  *
- * `warning` is for the user's own inputs — a bad key, an expired token or cull
- * models that were never set up is not a defect. `critical` is for the two cases where continuing would be unsafe: the
+ * `warning` is for the user's own inputs — a bad key, an expired token, or a culling stage whose
+ * model or endpoint is not set up, is not a defect. `critical` is for the two cases where continuing would be unsafe: the
  * filesystem refusing the process, and a write attempted against a catalog
  * Lightroom still holds open.
  */
 export function failureSeverityFromError(e: unknown): ErrorSeverity {
-  if (e instanceof AuthenticationError || e instanceof InvalidRequestError || e instanceof LayaSetupError) {
+  if (e instanceof AuthenticationError || e instanceof InvalidRequestError || e instanceof CullingStageError) {
     return 'warning';
   }
   // Node reports filesystem and permission failures with both `errno` and `code`.

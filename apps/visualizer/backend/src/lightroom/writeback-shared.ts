@@ -4,7 +4,7 @@ import { resolveCurrentStages } from '../cull/stages.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getCullVerdict, listDecidedCullImageKeys, type CullVerdictRow } from '../db/library/cull-verdicts.js';
-import { loadCurrentStageAnswers, readStoredLayaModelIds } from '../db/library/cull-stages.js';
+import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
 import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import type { Db } from '../db/connection.js';
@@ -75,8 +75,7 @@ export function desiredReject(settings: LrWritebackSettings, verdict: CullVerdic
 }
 
 function stagesForStarsProfile(db: Db, starsSlug: string) {
-  const modelIds = readStoredLayaModelIds(db);
-  if (!modelIds) return [];
+  const modelIds = readStoredStageModelIds(db);
   const pipe = getCurrentPipelineSetting(db);
   return resolveCurrentStages(db, pipe.config, modelIds).filter(
     (s) => s.profileSlug === starsSlug && s.kind === 'culling_profile',

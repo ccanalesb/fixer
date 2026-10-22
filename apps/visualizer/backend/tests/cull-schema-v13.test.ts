@@ -15,7 +15,7 @@ import { resolveCurrentStages } from '../src/cull/stages.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 
 const V12_SQL = readFileSync(join(import.meta.dirname, 'fixtures', 'cull', 'schema-v12.sql'), 'utf8');
-const MODEL_IDS = { base: 'thaitea/laya-vision@8b318c9', new: 'laya-new@sha256:abc' };
+const MODEL_IDS = { culling_profile: 'thaitea/laya-vision@8b318c9', score_forecast: 'laya-new@sha256:abc' };
 const NOW = '2026-10-20T00:00:00Z';
 
 const DEFINITION = {
@@ -54,9 +54,9 @@ const PROFILE_QUESTIONS = Object.fromEntries(
     { type: 'score', instructions: d.question, criteria: DEFINITION.level_sets[0]!.levels[d.slug as 'connotation'] },
   ]),
 );
-const PROFILE_HASH = stageContentHash({ modelId: MODEL_IDS.base, questions: PROFILE_QUESTIONS as never });
+const PROFILE_HASH = stageContentHash({ modelId: MODEL_IDS.culling_profile, questions: PROFILE_QUESTIONS as never });
 const OLD_PROFILE_HASH = stageContentHash({ modelId: 'old-model', questions: PROFILE_QUESTIONS as never });
-const FORECAST_HASH = stageContentHash({ modelId: MODEL_IDS.new, questions: LAYA_QUESTIONS.new });
+const FORECAST_HASH = stageContentHash({ modelId: MODEL_IDS.score_forecast, questions: LAYA_QUESTIONS.new });
 
 const ANSWERS_A = '{"point-of-tension":[0.7,0.2,0.1],"connotation":[0.6,0.3,0.1]}';
 const ANSWERS_B = '{"point-of-tension":[0.1,0.2,0.7],"connotation":[0.1,0.3,0.6]}';
@@ -100,9 +100,9 @@ function writeV12Library(path: string): void {
   const stage = `INSERT INTO cull_stage_versions
     (id, stage_key, kind, recipe_slug, level_set, model_id, questions_json, content_hash, is_current, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-  run(stage, 1, 'culling_recipe:recipe-7h47:7', 'culling_recipe', 'recipe-7h47', '7', MODEL_IDS.base, JSON.stringify(PROFILE_QUESTIONS), PROFILE_HASH, 1, NOW);
+  run(stage, 1, 'culling_recipe:recipe-7h47:7', 'culling_recipe', 'recipe-7h47', '7', MODEL_IDS.culling_profile, JSON.stringify(PROFILE_QUESTIONS), PROFILE_HASH, 1, NOW);
   run(stage, 2, 'culling_recipe:recipe-7h47:7', 'culling_recipe', 'recipe-7h47', '7', 'old-model', JSON.stringify(PROFILE_QUESTIONS), OLD_PROFILE_HASH, 0, NOW);
-  run(stage, 3, 'score_forecast', 'score_forecast', null, null, MODEL_IDS.new, JSON.stringify(LAYA_QUESTIONS.new), FORECAST_HASH, 1, NOW);
+  run(stage, 3, 'score_forecast', 'score_forecast', null, null, MODEL_IDS.score_forecast, JSON.stringify(LAYA_QUESTIONS.new), FORECAST_HASH, 1, NOW);
   run(
     `INSERT INTO cull_runs (run_id, kind, job_id, started_at, finished_at, pipeline_setting_version, detail_json)
      VALUES (1, 'job', 'j1', ?, ?, 2, '{"cut_by_culling_recipe":1,"sent":2}')`,
@@ -218,9 +218,9 @@ describe('library schema 13', () => {
 
   it('keeps every stage version and content hash, under culling_profile stage keys', () => {
     expect(all(db, 'SELECT id, stage_key, kind, profile_slug, level_set, model_id, content_hash, is_current FROM cull_stage_versions ORDER BY id')).toEqual([
-      { id: 1, stage_key: 'culling_profile:recipe-culling:7', kind: 'culling_profile', profile_slug: 'recipe-culling', level_set: '7', model_id: MODEL_IDS.base, content_hash: PROFILE_HASH, is_current: 1 },
+      { id: 1, stage_key: 'culling_profile:recipe-culling:7', kind: 'culling_profile', profile_slug: 'recipe-culling', level_set: '7', model_id: MODEL_IDS.culling_profile, content_hash: PROFILE_HASH, is_current: 1 },
       { id: 2, stage_key: 'culling_profile:recipe-culling:7', kind: 'culling_profile', profile_slug: 'recipe-culling', level_set: '7', model_id: 'old-model', content_hash: OLD_PROFILE_HASH, is_current: 0 },
-      { id: 3, stage_key: 'score_forecast', kind: 'score_forecast', profile_slug: null, level_set: null, model_id: MODEL_IDS.new, content_hash: FORECAST_HASH, is_current: 1 },
+      { id: 3, stage_key: 'score_forecast', kind: 'score_forecast', profile_slug: null, level_set: null, model_id: MODEL_IDS.score_forecast, content_hash: FORECAST_HASH, is_current: 1 },
     ]);
   });
 

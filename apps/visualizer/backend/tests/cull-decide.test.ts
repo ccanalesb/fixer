@@ -33,7 +33,6 @@ const stage = (stageKey: string, extra: Partial<ResolvedStage> = {}): ResolvedSt
   stageKey,
   kind: 'culling_profile',
   versionId: 1,
-  model: 'base',
   modelId: 'base@1',
   profileSlug: 'recipe-culling',
   levelSet: stageKey.split(':')[2] ?? null,
@@ -43,7 +42,7 @@ const stage = (stageKey: string, extra: Partial<ResolvedStage> = {}): ResolvedSt
 
 const S7 = stage('culling_profile:recipe-culling:7');
 const S10 = stage('culling_profile:recipe-culling:10');
-const SF = stage('score_forecast', { kind: 'score_forecast', model: 'new', profileSlug: null, levelSet: null });
+const SF = stage('score_forecast', { kind: 'score_forecast', profileSlug: null, levelSet: null });
 const STAGES = [S7, S10, SF];
 
 /** A one-hot answer at `level` (1-based) out of `n`. */

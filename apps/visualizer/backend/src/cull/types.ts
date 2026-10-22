@@ -1,8 +1,8 @@
 /**
  * Culling's shapes: culling profiles, the pipeline setting, stages and their answers.
  *
- * A **stage** is one thing Laya answers per photo: a culling profile at one level set (Laya base), or
- * the Score forecast (Laya new). Stages are what get versioned and stored; the pipeline setting says
+ * A **stage** is one thing a model answers per photo, through its System One endpoint: a culling
+ * profile at one level set, or the Score forecast. Stages are what get versioned and stored; the pipeline setting says
  * how their answers become a verdict.
  */
 import type { LayaQuestion } from '../laya/rows.js';
@@ -11,7 +11,7 @@ export type CullVerdict = 'filtered' | 'passed';
 export type CullSummaryVerdict = CullVerdict | 'pending';
 export type StageKind = 'culling_profile' | 'score_forecast';
 
-/** The text Laya is asked: versioned, so a change makes a new stage version. */
+/** The text a culling profile's model is asked: versioned, so a change makes a new stage version. */
 export interface ProfileDefinition {
   dimensions: { slug: string; name: string; question: string }[];
   /** Levels per dimension, lowest first; every dimension has the same count within a set. */
@@ -66,17 +66,17 @@ export interface PipelineSettingConfig {
   score_forecast: ScoreForecastSetting;
 }
 
-/** A stage at its current version, with exactly what Laya is asked for it. */
+/** A stage at its current version, with exactly what its model is asked. */
 export interface ResolvedStage {
   stageKey: string;
   kind: StageKind;
   versionId: number;
-  model: 'base' | 'new';
+  /** The model's identity on its System One endpoint. */
   modelId: string;
   /** Profile stages only. */
   profileSlug: string | null;
   levelSet: string | null;
-  /** Laya question id → question. Profile ids are `<stage key>|<dimension>`; forecast ids are Laya new's own. */
+  /** Question id → question. Profile ids are `<level set>|<dimension>`; forecast ids are the Score forecast's own. */
   questions: Record<string, LayaQuestion>;
 }
 
