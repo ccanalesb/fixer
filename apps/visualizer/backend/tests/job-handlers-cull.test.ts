@@ -367,25 +367,29 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(fx.query('SELECT score_forecast_off FROM cull_verdicts')).toEqual([{ score_forecast_off: 1 }]);
   });
 
-  it('a stage switched off for filtered photos is not asked for a photo the profile filtered', async () => {
+  it('asks every stage that is on in one call, even on a photo the profile filters', async () => {
     await addPhoto('b', PROFILE_CUT);
-    await addPhoto('a', PASS);
+    await runCull();
+    expect(laya.calls.map((c) => [c.want!.base!.length, c.want!.new])).toEqual([[8, true]]);
+    expect(verdicts().map((v) => [v.image_key, v.verdict])).toEqual([['b', 'filtered']]);
+  });
+
+  it('with the culling profiles off, only the Score forecast is asked, and it alone filters', async () => {
+    await addPhoto('b', PROFILE_CUT);
+    await addPhoto('c', FORECAST_CUT);
     const lib = openLibraryDb(fx.dbPath);
     seedCullingDefaults(lib);
     const cfg = getCurrentPipelineSetting(lib).config;
-    createPipelineSettingVersion(lib, { ...cfg, score_forecast: { ...cfg.score_forecast, run_after_filtered: false } });
+    createPipelineSettingVersion(lib, { ...cfg, culling_profiles_enabled: false });
     lib.close();
     await runCull();
-    const forB = laya.calls.filter((c) => c.file.includes('/b.jpg'));
-    expect(forB.map((c) => c.want!.new)).toEqual([false]);
-    const forA = laya.calls.filter((c) => c.file.includes('/a.jpg'));
-    expect(forA.map((c) => [c.want!.base!.length, c.want!.new])).toEqual([
-      [8, false],
+    expect(laya.calls.map((c) => [c.want!.base!.length, c.want!.new])).toEqual([
+      [0, true],
       [0, true],
     ]);
     expect(verdicts().map((v) => [v.image_key, v.verdict])).toEqual([
-      ['a', 'passed'],
-      ['b', 'filtered'],
+      ['b', 'passed'],
+      ['c', 'filtered'],
     ]);
   });
 

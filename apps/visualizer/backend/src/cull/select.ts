@@ -3,9 +3,9 @@
  * summary was decided under other stage or pipeline-setting versions (re-decided, no model call).
  */
 import type { Db } from '../db/connection.js';
-import { loadAnsweredStageKeys, loadCurrentStageAnswers } from '../db/library/cull-stages.js';
+import { loadAnsweredStageKeys } from '../db/library/cull-stages.js';
 import { loadCullVerdictStamps } from '../db/library/cull-verdicts.js';
-import { missingStages, runsAfterFiltered } from './answer-photo.js';
+import { requiredStages } from './decide.js';
 import { stageVersionIds, WORKER_DIED_REASON, type CullContext } from './persist.js';
 
 const sameIds = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -35,27 +35,15 @@ export function selectPhotosToCull(
   opts: SelectPhotosToCullOptions = {},
 ): SelectPhotosToCullResult {
   if (opts.force) return selectAllPhotosToCull(db, keys, opts.force.doneByRuns);
-  const cfg = ctx.pipeline.config;
-  const forecastOn = ctx.scoreForecastAvailable && cfg.score_forecast.enabled;
-  const active = ctx.stages.filter((s) => s.kind !== 'score_forecast' || forecastOn);
-  // With every stage answered even on filtered photos, a stage missing is a stage required: no need to
-  // read the answers to know.
-  const everyStageRuns = active.every((s) => runsAfterFiltered(cfg, s));
+  // Every stage that is on is required on every photo, so a stage missing is a stage to ask.
+  const active = requiredStages(ctx.pipeline.config, ctx.stages, {}, { scoreForecastAvailable: ctx.scoreForecastAvailable });
   const answered = loadAnsweredStageKeys(db, active);
   const stamps = loadCullVerdictStamps(db);
   const currentIds = stageVersionIds(ctx);
 
-  const missingAny = (key: string): boolean => {
+  const needsAnswers = (key: string): boolean => {
     const has = answered.get(key);
     return active.some((s) => !has?.has(s.stageKey));
-  };
-  // A stage switched off for filtered photos may be missing on purpose: read those photos' answers, in bulk.
-  const toCheck = everyStageRuns ? [] : keys.filter(missingAny);
-  const storedAnswers = loadCurrentStageAnswers(db, ctx.stages, toCheck);
-  const needsAnswers = (key: string): boolean => {
-    if (!missingAny(key)) return false;
-    if (everyStageRuns) return true;
-    return missingStages(ctx, storedAnswers.get(key) ?? {}, false).length > 0;
   };
 
   const work: string[] = [];

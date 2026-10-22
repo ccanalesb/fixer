@@ -59,7 +59,6 @@ export const ScoreForecastSettingSchema = z
     threshold: z.number(),
     high_from_level: z.number().int(),
     excused_at: z.number(),
-    run_after_filtered: z.boolean(),
   })
   .strict();
 
@@ -67,11 +66,12 @@ export const PipelineSettingResponse = z
   .object({
     version: z.number().int(),
     config: z.object({
+      culling_profiles_enabled: z.boolean(),
+      culling_profiles_filter_enabled: z.boolean(),
       culling_profiles: z.array(
         z.object({
           profile_slug: z.string(),
           rule: ProfileRuleSchema,
-          run_after_filtered: z.boolean(),
         }),
       ),
       score_forecast: ScoreForecastSettingSchema,

@@ -75,7 +75,7 @@ const tables = (d: Db) =>
 describe('migration and seed', () => {
   it('a fresh library has every cull table, Recipe culling and the default pipeline setting', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
-    expect(LIBRARY_SCHEMA_VERSION).toBe(13);
+    expect(LIBRARY_SCHEMA_VERSION).toBe(14);
     expect(tables(db)).toEqual(CULL_TABLES);
     const profile = getCullProfile(db, 'recipe-culling')!;
     expect(profile).toMatchObject({ name: 'Recipe culling', model: 'laya-base', active: true, measured: true });
@@ -88,9 +88,8 @@ describe('migration and seed', () => {
     expect(profile.definition.level_sets.map((s) => s.id)).toEqual(['7', '10']);
     const pipeline = getCurrentPipelineSetting(db);
     expect(pipeline.version).toBe(1);
-    expect(pipeline.config.culling_profiles).toEqual([
-      { profile_slug: 'recipe-culling', rule: profile.rule, run_after_filtered: true },
-    ]);
+    expect(pipeline.config).toMatchObject({ culling_profiles_enabled: true, culling_profiles_filter_enabled: true });
+    expect(pipeline.config.culling_profiles).toEqual([{ profile_slug: 'recipe-culling', rule: profile.rule }]);
     expect(profile.rule).toEqual({
       level_sets: { '7': { fails_at_most: 3, strong_at_least: 6 }, '10': { fails_at_most: 4, strong_at_least: 8 } },
       combine: 'every',
@@ -107,7 +106,7 @@ describe('migration and seed', () => {
 
     db = openLibraryDb(join(dir, 'library.db'));
     upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(13);
+    expect(db.pragma('user_version', { simple: true })).toBe(14);
     expect(tables(db)).toEqual(CULL_TABLES);
     expect(listCullProfiles(db).map((r) => r.slug)).toEqual(['recipe-culling']);
 
@@ -265,6 +264,7 @@ describe('stage answers, summaries and user actions', () => {
       verdict: 'filtered',
       filteredBy: 'culling_profile',
       filteredByStageKey: null,
+      cullingProfileVerdict: 'filtered',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',
@@ -298,6 +298,7 @@ const summary = (imageKey: string, verdict: 'filtered' | 'passed' | 'pending', f
     verdict,
     filteredBy,
     filteredByStageKey: null,
+    cullingProfileVerdict: filteredBy === 'culling_profile' ? 'filtered' : null,
     sentByHand: false,
     pendingStages: [],
     pendingReason: '',

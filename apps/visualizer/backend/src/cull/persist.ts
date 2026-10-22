@@ -91,6 +91,7 @@ export function decideAndStorePhoto(db: Db, ctx: CullContext, args: StorePhotoAr
       verdict: decision.verdict,
       filteredBy: decision.filteredBy,
       filteredByStageKey: decision.filteredByStageKey,
+      cullingProfileVerdict: decision.cullingProfileVerdict,
       sentByHand: args.sentByHand,
       pendingStages: decision.pendingStages,
       pendingReason:

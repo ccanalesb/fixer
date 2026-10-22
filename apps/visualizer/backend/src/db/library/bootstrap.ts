@@ -15,10 +15,11 @@ import { REPO_ROOT } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { seedCullingDefaults } from './cull-profiles.js';
 import { renameCullVocabulary } from './cull-rename-v13.js';
+import { addCullingSwitches } from './cull-switches-v14.js';
 import { markdownMarksOptional } from './scores.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 13;
+export const LIBRARY_SCHEMA_VERSION = 14;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 8;
@@ -154,7 +155,9 @@ CREATE TABLE IF NOT EXISTS cull_verdicts (
     pipeline_setting_version INTEGER NOT NULL,
     stage_version_ids TEXT NOT NULL DEFAULT '[]',
     run_id INTEGER,
-    decided_at TEXT NOT NULL
+    decided_at TEXT NOT NULL,
+    -- What the culling profiles' rules say, whether or not they filter; Lightroom reject follows it.
+    culling_profile_verdict TEXT CHECK (culling_profile_verdict IN ('filtered','passed'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_cull_verdicts_verdict ON cull_verdicts(verdict, filtered_by);
@@ -542,6 +545,9 @@ export function upgradeLibrarySchema(db: Db): void {
     }
     if (version < 13) {
       renameCullVocabulary(db, CULL_SQL);
+    }
+    if (version < 14) {
+      addCullingSwitches(db);
     }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   })();

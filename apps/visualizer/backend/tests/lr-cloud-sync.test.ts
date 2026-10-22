@@ -217,6 +217,7 @@ describe('write-back carries stars and flags to the cloud', () => {
       verdict: 'filtered',
       filteredBy: 'culling_profile',
       filteredByStageKey: 'culling_profile:recipe-culling:7',
+      cullingProfileVerdict: 'filtered',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',

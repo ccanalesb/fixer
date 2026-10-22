@@ -42,8 +42,6 @@ export interface PipelineProfile {
   profile_slug: string;
   /** Snapshot of the profile's rule, so a pipeline-setting version says exactly how a photo was decided. */
   rule: ProfileRule;
-  /** Answer this profile even on a photo an earlier stage already filtered. */
-  run_after_filtered: boolean;
 }
 
 export interface ScoreForecastSetting {
@@ -53,11 +51,17 @@ export interface ScoreForecastSetting {
   high_from_level: number;
   /** Framing is left out of the highest when P(no framing device) is at least this. */
   excused_at: number;
-  run_after_filtered: boolean;
 }
 
-/** Stored, versioned, in `cull_pipeline_settings`. Profiles run first, in order, then the Score forecast. */
+/**
+ * Stored, versioned, in `cull_pipeline_settings`. Every stage that is on is answered on every photo, so
+ * a switch change re-decides from stored answers.
+ */
 export interface PipelineSettingConfig {
+  /** Every photo answers the culling profiles; they give Lightroom stars and reject. */
+  culling_profiles_enabled: boolean;
+  /** A photo a culling profile's rule filters is not described or scored. */
+  culling_profiles_filter_enabled: boolean;
   culling_profiles: PipelineProfile[];
   score_forecast: ScoreForecastSetting;
 }
@@ -98,5 +102,10 @@ export interface PhotoDecision {
   scoreForecastP8: number | null;
   /** Passed only because the user sent it by hand: the stages alone would have filtered it. */
   sentByHandOverride: boolean;
+  /**
+   * What the culling profiles' rules say, whether or not they filter: Lightroom reject follows it.
+   * Null while a profile is unanswered, and with the culling profiles off.
+   */
+  cullingProfileVerdict: CullVerdict | null;
   stages: Record<string, StageDecision>;
 }

@@ -168,6 +168,7 @@ describe('lr_writeback handler', () => {
       verdict: 'filtered',
       filteredBy: 'culling_profile',
       filteredByStageKey: 'culling_profile:recipe-culling:7',
+      cullingProfileVerdict: 'filtered',
       sentByHand: false,
       pendingStages: [],
       pendingReason: '',

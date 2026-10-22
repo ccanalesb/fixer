@@ -34,6 +34,8 @@ const PHOTOS = Number(process.env.LT_CULL_PARITY_PHOTOS ?? 6);
 
 const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
 const PIPELINE: PipelineSettingConfig = {
+  culling_profiles_enabled: true,
+  culling_profiles_filter_enabled: true,
   culling_profiles: [
     {
       profile_slug: 'recipe-culling',
@@ -42,7 +44,6 @@ const PIPELINE: PipelineSettingConfig = {
         combine: 'every',
         filter_rule: { type: 'all_fail', dimensions: ['point-of-tension', 'connotation'] },
       },
-      run_after_filtered: true,
     },
   ],
   score_forecast: DEFAULT_SCORE_FORECAST,

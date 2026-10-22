@@ -1,7 +1,7 @@
 /**
  * The per-photo cull summary — the row jobs and the UI read — and the culling run log.
  */
-import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
+import type { CullSummaryVerdict, CullVerdict, StageKind } from '../../cull/types.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import type { Db } from '../connection.js';
 
@@ -10,6 +10,7 @@ export interface CullVerdictInput {
   verdict: CullSummaryVerdict;
   filteredBy: StageKind | null;
   filteredByStageKey: string | null;
+  cullingProfileVerdict: CullVerdict | null;
   sentByHand: boolean;
   pendingStages: string[];
   pendingReason: string;
@@ -25,6 +26,8 @@ export interface CullVerdictRow {
   verdict: CullSummaryVerdict;
   filtered_by: StageKind | null;
   filtered_by_stage_key: string | null;
+  /** What the culling profiles' rules say, whether or not they filter: Lightroom reject follows it. */
+  culling_profile_verdict: CullVerdict | null;
   sent_by_hand: boolean;
   pending_stages: string[];
   pending_reason: string;
@@ -40,10 +43,12 @@ export function upsertCullVerdict(db: Db, v: CullVerdictInput): void {
   db.prepare(
     `INSERT INTO cull_verdicts
        (image_key, verdict, filtered_by, filtered_by_stage_key, sent_by_hand, pending_stages, pending_reason,
-        score_forecast_off, score_forecast_p8, pipeline_setting_version, stage_version_ids, run_id, decided_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        score_forecast_off, score_forecast_p8, pipeline_setting_version, stage_version_ids, run_id, decided_at,
+        culling_profile_verdict)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (image_key) DO UPDATE SET
        verdict = excluded.verdict, filtered_by = excluded.filtered_by, filtered_by_stage_key = excluded.filtered_by_stage_key,
+       culling_profile_verdict = excluded.culling_profile_verdict,
        sent_by_hand = excluded.sent_by_hand, pending_stages = excluded.pending_stages,
        pending_reason = excluded.pending_reason, score_forecast_off = excluded.score_forecast_off,
        score_forecast_p8 = excluded.score_forecast_p8,
@@ -63,6 +68,7 @@ export function upsertCullVerdict(db: Db, v: CullVerdictInput): void {
     JSON.stringify(v.stageVersionIds),
     v.runId,
     nowIsoUtc(),
+    v.cullingProfileVerdict,
   );
 }
 

@@ -49,7 +49,12 @@ describe('CullingProfilesSection', () => {
     })
     apiMocks.getPipeline.mockResolvedValue({
       version: 1,
-      config: { score_forecast: { threshold: 0.111, enabled: true, high_from_level: 8, excused_at: 1, run_after_filtered: true }, culling_profiles: [] },
+      config: {
+        culling_profiles_enabled: true,
+        culling_profiles_filter_enabled: true,
+        score_forecast: { threshold: 0.111, enabled: true, high_from_level: 8, excused_at: 1 },
+        culling_profiles: [],
+      },
     })
     apiMocks.get.mockResolvedValue({
       slug: 'recipe-culling',
