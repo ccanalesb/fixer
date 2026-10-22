@@ -37,13 +37,15 @@ called after this change decides whether those answers stay current.
    URL; a non-empty `api_key` is sent as `Authorization: Bearer`, and is ignored for
    `this_app`. Culling ignores a culling profile's own `model` field.
 3. **This app serves its own endpoint**, `GET /v1/models` and `POST /v1/systemone`
-   (`src/api/systemone.ts`), over the Laya worker of ADR-0020, as `laya-base` and
-   `laya-new`. Culling reaches it in-process, through the route group's own
+   (`src/api/systemone.ts`), over the Laya worker of ADR-0020, listing every model
+   installed in `models/` (`laya-base`, `laya-new`, and any added since #365).
+   Culling reaches it in-process, through the route group's own
    `request`: the same HTTP requests and validation, with no socket.
 4. **Model identity.** A listed model may carry `x_model_id`; this app's give the
    ids the stage versions already hash (Laya base's Hugging Face revision, Laya new's
    decoder SHA-256), so this library's stored answers stay current with no
-   migration. A model without one is `<model>@<endpoint>`. The client reads both
+   migration. Since #365 that is the rule for every installed model: `source@revision`
+   when its `model.json` records both, else `<name>@sha256:<decoder hash>`. A model without one is `<model>@<endpoint>`. The client reads both
    `models[].name` and OpenAI-style `data[].id` lists.
 5. **Answers keep today's shape.** Scores are read from `probabilities` by level
    (`"0"`…`"k-1"`), choices by criteria order. For `noul` answers this app adds

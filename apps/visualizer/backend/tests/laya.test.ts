@@ -9,11 +9,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadLibraryConfig } from '../src/config.js';
 import { run } from '../src/cli/main.js';
-import { LAYA_SETUP_COMMAND, LayaSetupError, resolveLayaModelFiles } from '../src/laya/files.js';
+import {
+  LAYA_SETUP_COMMAND,
+  LayaSetupError,
+  installedModels,
+  resolveInstalledModel,
+  type InstalledModel,
+} from '../src/laya/files.js';
 import { rescaleToMaxLen, thumbnailSize } from '../src/laya/image.js';
 import { buildRow, renderOptions, softmax, tempBucket, type LayaModelMeta } from '../src/laya/rows.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
-import { layaBaseModelId, layaNewModelId } from '../src/laya/model-id.js';
+import { installedModelId, layaNewModelId } from '../src/laya/model-id.js';
 
 describe('image sizes', () => {
   // [width, height, thumbnail w, h, Idefics3 resize w, h], from PIL 12.3 and transformers 5.17.
@@ -135,31 +141,56 @@ describe('model files', () => {
     mkdirSync(join(dir, rel, '..'), { recursive: true });
     writeFileSync(join(dir, rel), '');
   };
-  const base = () =>
-    [
-      'vision.onnx',
-      'decoder.onnx',
-      'model.json',
-      'tokenizer/tokenizer.json',
-      'tokenizer/tokenizer_config.json',
-      'reference/photo.png',
-    ].forEach((f) => touch(`laya-base/${f}`));
+  const DECODER_FILES = ['decoder.onnx', 'tokenizer/tokenizer.json', 'tokenizer/tokenizer_config.json'];
+  const model = (name: string, meta: Record<string, unknown>, files = DECODER_FILES) => {
+    files.forEach((f) => touch(`${name}/${f}`));
+    writeFileSync(join(dir, name, 'model.json'), JSON.stringify(meta));
+  };
+  const base = () => {
+    model('laya-base', { source: 'thaitea/laya-vision', revision: 'abc' }, [...DECODER_FILES, 'vision.onnx']);
+  };
+  const names = () => installedModels(dir).map((m) => [m.name, m.visionDir]);
 
-  it('names every missing file and the setup step', () => {
-    expect(() => resolveLayaModelFiles(dir)).toThrow(LayaSetupError);
-    expect(() => resolveLayaModelFiles(dir)).toThrow(join(dir, 'laya-base', 'vision.onnx'));
-    expect(() => resolveLayaModelFiles(dir)).toThrow(LAYA_SETUP_COMMAND);
+  it('lists nothing before any model is installed, and a model asked for names the setup step', () => {
+    expect(installedModels(dir)).toEqual([]);
+    expect(installedModels(join(dir, 'nowhere'))).toEqual([]);
+    expect(() => resolveInstalledModel(dir, 'laya-base')).toThrow(LayaSetupError);
+    expect(() => resolveInstalledModel(dir, 'laya-base')).toThrow(LAYA_SETUP_COMMAND);
   });
 
-  it('turns the Score forecast off when Laya new was not exported', () => {
+  it('lists every complete model with the vision graph it reads', () => {
     base();
-    expect(resolveLayaModelFiles(dir)).toEqual({ baseDir: join(dir, 'laya-base'), newDir: null });
+    model('laya-run-best', { source: '/x/laya-run/best', revision: null, vision: 'laya-base' });
+    model('other', { source: 'someone/other', revision: 'def' }, [...DECODER_FILES, 'vision.onnx']);
+    expect(names()).toEqual([
+      ['laya-base', join(dir, 'laya-base')],
+      ['laya-run-best', join(dir, 'laya-base')],
+      ['other', join(dir, 'other')],
+    ]);
+    expect(resolveInstalledModel(dir, 'laya-run-best')).toMatchObject({
+      dir: join(dir, 'laya-run-best'),
+      source: '/x/laya-run/best',
+      revision: null,
+    });
   });
 
-  it('refuses a Laya new directory with files missing', () => {
+  it('reads the setup step’s earlier layout: Laya new without vision.onnx uses Laya base’s', () => {
     base();
+    model('laya-new', { source: '/x/best', revision: null });
+    expect(names()).toEqual([
+      ['laya-base', join(dir, 'laya-base')],
+      ['laya-new', join(dir, 'laya-base')],
+    ]);
+  });
+
+  it('leaves out installs in progress and incomplete models; asking one names its missing files', () => {
+    base();
+    model('.install-laya-new', { source: '/x/best', revision: null, vision: 'laya-base' });
     touch('laya-new/decoder.onnx');
-    expect(() => resolveLayaModelFiles(dir)).toThrow(join(dir, 'laya-new', 'model.json'));
+    model('orphan', { source: '/x/o', revision: null, vision: 'gone' });
+    expect(names()).toEqual([['laya-base', join(dir, 'laya-base')]]);
+    expect(() => resolveInstalledModel(dir, 'laya-new')).toThrow(join(dir, 'laya-new', 'model.json'));
+    expect(() => resolveInstalledModel(dir, 'orphan')).toThrow(join(dir, 'gone', 'vision.onnx'));
   });
 
   it('cull-check exits 1 with the setup step when nothing is exported', async () => {
@@ -185,18 +216,29 @@ describe('model ids', () => {
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('names Laya base by its Hugging Face revision', () => {
-    writeFileSync(join(dir, 'model.json'), JSON.stringify({ source: 'thaitea/laya-vision', revision: 'abc' }));
-    expect(layaBaseModelId(dir)).toBe('thaitea/laya-vision@abc');
+  const installed = (name: string, source: string | null, revision: string | null): InstalledModel => ({
+    name,
+    dir,
+    visionDir: dir,
+    source,
+    revision,
+    jobId: null,
   });
 
-  it('names Laya new by its decoder’s SHA-256, kept beside it until the file changes', async () => {
+  it('names a model from Hugging Face by its id and revision', async () => {
+    expect(await installedModelId(installed('laya-base', 'thaitea/laya-vision', 'abc'))).toBe('thaitea/laya-vision@abc');
+  });
+
+  it('names a model from a folder by its name and decoder’s SHA-256, kept beside it until the file changes', async () => {
     writeFileSync(join(dir, 'decoder.onnx'), 'one');
-    const first = await layaNewModelId(dir);
+    const m = installed('laya-new', '/x/best', null);
+    const first = await installedModelId(m);
     expect(first).toBe(`laya-new@sha256:${createHash('sha256').update('one').digest('hex')}`);
     expect(existsSync(join(dir, 'decoder.onnx.sha256.json'))).toBe(true);
+    expect(await installedModelId(m)).toBe(first);
     expect(await layaNewModelId(dir)).toBe(first);
     writeFileSync(join(dir, 'decoder.onnx'), 'two, longer');
-    expect(await layaNewModelId(dir)).not.toBe(first);
+    expect(await installedModelId(m)).not.toBe(first);
+    expect(await installedModelId(installed('laya-run-best', '/x/best', null))).toMatch(/^laya-run-best@sha256:/);
   });
 });

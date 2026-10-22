@@ -22,7 +22,9 @@ import {
 } from './handlers/describe.js';
 import { BATCH_EMBED_IMAGE_CHECKPOINT_MISMATCH, handleBatchEmbedImage } from './handlers/embed.js';
 import { handleBatchFrameSubstance } from './handlers/frame-substance.js';
+import { handleLayaModelInstall } from './handlers/laya-install.js';
 import { LR_WRITEBACK_JOB_TYPE, handleLrWriteback } from './handlers/lr-writeback.js';
+import { LAYA_INSTALL_JOB_TYPE } from '../laya/install.js';
 import {
   BATCH_REDECIDE_JOB_TYPE,
   handleBatchRedecideCullVerdicts,
@@ -148,6 +150,13 @@ export const JOB_TYPES: readonly JobType[] = [
     name: 'catalog_cache_build',
     handler: handleCatalogCacheBuild,
     requiresCatalog: true,
+    checkpointMismatchMessage: null,
+  },
+  {
+    name: LAYA_INSTALL_JOB_TYPE,
+    handler: handleLayaModelInstall,
+    // Converts into `laya_models_dir`; reads neither library.db nor the catalog.
+    requiresCatalog: false,
     checkpointMismatchMessage: null,
   },
 ];

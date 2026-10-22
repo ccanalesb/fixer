@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
 import type { CullingModelsConfig } from '../config.js';
-import { LAYA_SETUP_COMMAND } from '../laya/files.js';
+import { setupErrorMessage } from '../laya/files.js';
 import type { LayaQuestion } from '../laya/rows.js';
 import {
   askSystemOne,
@@ -84,9 +84,8 @@ export function stagesOn(cfg: PipelineSettingConfig): Record<StageKind, boolean>
 const named = (kind: StageKind, message: string) => `${STAGE_NAMES[kind]}: ${message}`;
 
 function notListedMessage(kind: StageKind, m: StageModel): string {
-  const where = m.endpoint.label;
-  const setup = m.endpoint.id === THIS_APP_ENDPOINT ? `. Run the setup step from the repo root: ${LAYA_SETUP_COMMAND}` : '';
-  return named(kind, `${m.model} is not listed by ${where}${setup}`);
+  const problem = `${m.model} is not listed by ${m.endpoint.label}`;
+  return named(kind, m.endpoint.id === THIS_APP_ENDPOINT ? setupErrorMessage(problem) : problem);
 }
 
 /**

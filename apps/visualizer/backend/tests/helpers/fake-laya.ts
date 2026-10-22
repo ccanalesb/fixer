@@ -19,7 +19,8 @@ export interface FakeLayaScript {
 export interface FakeLayaCall {
   /** `/<key>.jpg`, the photo the bytes came from. */
   file: string;
-  model: 'base' | 'new';
+  /** The installed model's name (`laya-base`, `laya-new`). */
+  model: string;
   /** Question ids asked, `<stage key>#<question id>`. */
   questions: string[];
 }
@@ -151,11 +152,10 @@ export function fakeLayaRuntimeModule(
 ): typeof import('../../src/laya/runtime.js') {
   return {
     ...actual,
-    startLayaRuntime: async (files) => {
+    startLayaRuntime: async () => {
       state.starts += 1;
       if (state.startError) throw state.startError;
       return {
-        files,
         get broken() {
           return state.broken;
         },
@@ -164,7 +164,7 @@ export function fakeLayaRuntimeModule(
           if (key === null) state.checks += 1;
           else {
             state.sequence.push(`laya:${key}`);
-            state.calls.push({ file: `/${key}.jpg`, model, questions: Object.keys(questions) });
+            state.calls.push({ file: `/${key}.jpg`, model: model.name, questions: Object.keys(questions) });
           }
           if (state.broken) throw new Error('Laya worker exited (code 1)');
           if (key !== null && state.dieOn === key) {

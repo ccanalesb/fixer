@@ -1,10 +1,10 @@
 /**
- * Laya base and Laya new as ONNX sessions. Runs inside the Laya worker thread (`worker.ts`):
- * `session.run` holds the thread for up to ~0.8 s per pass (ADR-0020).
+ * The installed models as ONNX sessions, each loaded on its first question. Runs inside the Laya worker
+ * thread (`worker.ts`): `session.run` holds the thread for up to ~0.8 s per pass (ADR-0020).
  *
- * Both models read the same vision features, since Laya new's vision tower is Laya base's; the last
- * image's features are kept, so asking the second model about the same photo does not encode it
- * again. One decoder pass per question, as the research runs answered them.
+ * Models with the same vision tower read one vision graph (Laya new reads Laya base's); the last
+ * image's features are kept per graph, so asking a second model about the same photo does not encode
+ * it again. One decoder pass per question, as the research runs answered them.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -14,9 +14,8 @@ import { PreTrainedTokenizer } from '@huggingface/transformers';
 import * as ort from 'onnxruntime-node';
 import { decodePlaneFromFile } from '../imaging/decode-plane.js';
 import { canonicalJson } from '../utils/canonical-json.js';
-import type { LayaModelFiles } from './files.js';
+import type { InstalledModel } from './files.js';
 import { LAYA_PIXEL_VALUES_SHAPE, layaPixelValues } from './image.js';
-import { LAYA_QUESTIONS, type LayaModelName } from './questions.js';
 import {
   IMAGE_PREFIX_TEXT,
   buildRow,
@@ -69,23 +68,22 @@ function loadTokenizer(dir: string): PreTrainedTokenizer {
   );
 }
 
-function loadMetaAndEncode(dir: string, name: LayaModelName): { meta: LayaModelMeta; encode: Encode } {
+function loadMetaAndEncode(dir: string): { meta: LayaModelMeta; encode: Encode } {
   const meta = readJson<LayaModelMeta>(join(dir, 'model.json'));
   const tok = loadTokenizer(dir);
   const encode = (s: string): number[] => tok.encode(s, { add_special_tokens: false });
   if (encode(IMAGE_PREFIX_TEXT).join(',') !== meta.prefix_ids.join(',')) {
-    throw new Error(`Laya ${name}: the tokenizer's image prefix differs from model.json`);
+    throw new Error(`${dir}: the tokenizer's image prefix differs from model.json`);
   }
   return { meta, encode };
 }
 
-/** The rows the setup step's reference checks (`questions.json` by default). */
+/** The rows the setup step's reference checks. */
 export function buildModelRows(
   dir: string,
-  name: LayaModelName,
-  questions: Record<string, LayaQuestion> = LAYA_QUESTIONS[name],
+  questions: Record<string, LayaQuestion>,
 ): { meta: LayaModelMeta; rows: LayaRow[] } {
-  const { meta, encode } = loadMetaAndEncode(dir, name);
+  const { meta, encode } = loadMetaAndEncode(dir);
   return { meta, rows: Object.entries(questions).map(([qid, q]) => buildRow(encode, meta, qid, q)) };
 }
 
@@ -94,48 +92,69 @@ export async function loadLayaPixelValues(file: string | Uint8Array): Promise<Fl
   return layaPixelValues(await decodePlaneFromFile(input, { colourspace: 'srgb', removeAlpha: true }));
 }
 
+interface Vision {
+  session: ort.InferenceSession;
+  lastImage: { hash: string; features: ort.Tensor } | null;
+}
+
+/** Where one model's files are: what the worker needs of an installed model. */
+export type LayaModelRef = Pick<InstalledModel, 'name' | 'dir' | 'visionDir'>;
+
 export class LayaSessions {
-  private lastImage: { hash: string; features: ort.Tensor } | null = null;
+  /** By directory: a model is loaded once, whatever it is called. */
+  private readonly decoders = new Map<string, Promise<Decoder>>();
+  private readonly visions = new Map<string, Promise<Vision>>();
 
-  private constructor(
-    private readonly vision: ort.InferenceSession,
-    private readonly decoders: { base: Decoder; new: Decoder | null },
-  ) {}
-
-  static async load(files: LayaModelFiles): Promise<LayaSessions> {
-    const vision = await ort.InferenceSession.create(join(files.baseDir, 'vision.onnx'), SESSION_OPTIONS);
-    const decoder = async (dir: string, name: LayaModelName): Promise<Decoder> => ({
-      ...loadMetaAndEncode(dir, name),
-      rows: new Map(),
-      session: await ort.InferenceSession.create(join(dir, 'decoder.onnx'), SESSION_OPTIONS),
-    });
-    return new LayaSessions(vision, {
-      base: await decoder(files.baseDir, 'base'),
-      new: files.newDir ? await decoder(files.newDir, 'new') : null,
-    });
+  private decoder(dir: string): Promise<Decoder> {
+    let d = this.decoders.get(dir);
+    if (!d) {
+      d = (async () => ({
+        ...loadMetaAndEncode(dir),
+        rows: new Map(),
+        session: await ort.InferenceSession.create(join(dir, 'decoder.onnx'), SESSION_OPTIONS),
+      }))();
+      this.decoders.set(dir, d);
+      d.catch(() => this.decoders.delete(dir));
+    }
+    return d;
   }
 
-  get models(): LayaModelName[] {
-    return this.decoders.new ? ['base', 'new'] : ['base'];
+  private vision(dir: string): Promise<Vision> {
+    let v = this.visions.get(dir);
+    if (!v) {
+      v = (async () => ({
+        session: await ort.InferenceSession.create(join(dir, 'vision.onnx'), SESSION_OPTIONS),
+        lastImage: null,
+      }))();
+      this.visions.set(dir, v);
+      v.catch(() => this.visions.delete(dir));
+    }
+    return v;
   }
 
   /** Every question about one image, asked of one model. */
-  async answerImage(name: LayaModelName, image: Uint8Array, questions: Record<string, LayaQuestion>): Promise<LayaImageAnswer> {
-    const d = this.decoders[name];
-    if (!d) throw new Error(`Laya ${name} is not loaded`);
+  async answerImage(model: LayaModelRef, image: Uint8Array, questions: Record<string, LayaQuestion>): Promise<LayaImageAnswer> {
+    let d: Decoder;
+    let vision: Vision;
+    try {
+      [d, vision] = await Promise.all([this.decoder(model.dir), this.vision(model.visionDir)]);
+    } catch (e) {
+      throw new Error(`${model.name} failed to load (${e instanceof Error ? e.message : String(e)})`);
+    }
     const rows = Object.entries(questions).map(([qid, q]) => this.row(d, qid, q));
     const t0 = performance.now();
     const hash = createHash('sha256').update(image).digest('hex');
     let prep = 0;
-    if (this.lastImage?.hash !== hash) {
+    if (vision.lastImage?.hash !== hash) {
       const pv = await loadLayaPixelValues(image);
       prep = (performance.now() - t0) / 1000;
-      const out = await this.vision.run({ pixel_values: new ort.Tensor('float32', pv, [...LAYA_PIXEL_VALUES_SHAPE]) });
-      this.lastImage = { hash, features: out.image_features! };
+      const out = await vision.session.run({ pixel_values: new ort.Tensor('float32', pv, [...LAYA_PIXEL_VALUES_SHAPE]) });
+      vision.lastImage = { hash, features: out.image_features! };
     }
+    const features = vision.lastImage.features;
     const t1 = performance.now();
     const answers: LayaModelAnswers = {};
-    for (const r of rows) answers[r.qid] = await this.answerRow(d, r, this.lastImage.features);
+    for (const r of rows) answers[r.qid] = await this.answerRow(d, r, features);
     const t2 = performance.now();
     return {
       answers,
@@ -172,8 +191,7 @@ export class LayaSessions {
   }
 
   async release(): Promise<void> {
-    await this.vision.release();
-    await this.decoders.base.session.release();
-    await this.decoders.new?.session.release();
+    const loaded = await Promise.allSettled([...this.visions.values(), ...this.decoders.values()]);
+    for (const r of loaded) if (r.status === 'fulfilled') await r.value.session.release();
   }
 }

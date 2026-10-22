@@ -101,7 +101,7 @@ export interface LibraryConfig {
   visionCacheEnabled: boolean;
   ollamaHost: string;
   stackBurstDeltaMs: number;
-  /** Where `scripts/laya/export_onnx.py` writes `laya-base/` and `laya-new/`. */
+  /** The models installed in this app, one directory each, written by `scripts/laya/export_onnx.py`. */
   layaModelsDir: string;
   /** The System One endpoint and model each culling stage calls (`culling_models`). */
   cullingModels: CullingModelsConfig;

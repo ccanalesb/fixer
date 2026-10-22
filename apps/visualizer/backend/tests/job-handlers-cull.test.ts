@@ -129,12 +129,12 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(job.status).toBe('completed');
     expect(laya.checks).toBe(2);
     expect(calls()).toEqual([
-      ['c', 'base', 8],
-      ['c', 'new', FORECAST_QUESTIONS],
-      ['b', 'base', 8],
-      ['b', 'new', FORECAST_QUESTIONS],
-      ['a', 'base', 8],
-      ['a', 'new', FORECAST_QUESTIONS],
+      ['c', 'laya-base', 8],
+      ['c', 'laya-new', FORECAST_QUESTIONS],
+      ['b', 'laya-base', 8],
+      ['b', 'laya-new', FORECAST_QUESTIONS],
+      ['a', 'laya-base', 8],
+      ['a', 'laya-new', FORECAST_QUESTIONS],
     ]);
     expect(verdicts()).toEqual([
       { image_key: 'a', verdict: 'passed', filtered_by: null, pending_reason: '', pipeline_setting_version: 1 },
@@ -199,7 +199,7 @@ describe('batch_cull_photos_before_scoring', () => {
          (SELECT id FROM cull_stage_versions WHERE stage_key = 'culling_profile:recipe-culling:7')`,
     );
     await runCull();
-    expect(calls()).toEqual([['a', 'base', 4]]);
+    expect(calls()).toEqual([['a', 'laya-base', 4]]);
     expect(laya.calls[0]!.questions.every((q) => q.startsWith('culling_profile:recipe-culling:7#7|'))).toBe(true);
   });
 
@@ -314,7 +314,7 @@ describe('batch_cull_photos_before_scoring', () => {
     await addPhoto('c', FORECAST_CUT);
     const job = await runCull();
     expect(result(job)).toMatchObject({ score_forecast: 'off', passed: 1, culled: 1 });
-    expect(calls()).toEqual([['c', 'base', 8]]);
+    expect(calls()).toEqual([['c', 'laya-base', 8]]);
     expect(fx.query("SELECT COUNT(*) AS n FROM cull_stage_versions WHERE stage_key = 'score_forecast'")).toEqual([{ n: 0 }]);
     expect(fx.query('SELECT score_forecast_off FROM cull_verdicts')).toEqual([{ score_forecast_off: 1 }]);
   });
@@ -333,8 +333,8 @@ describe('batch_cull_photos_before_scoring', () => {
     await addPhoto('b', PROFILE_CUT);
     await runCull();
     expect(calls()).toEqual([
-      ['b', 'base', 8],
-      ['b', 'new', FORECAST_QUESTIONS],
+      ['b', 'laya-base', 8],
+      ['b', 'laya-new', FORECAST_QUESTIONS],
     ]);
     expect(verdicts().map((v) => [v.image_key, v.verdict])).toEqual([['b', 'filtered']]);
   });
@@ -345,8 +345,8 @@ describe('batch_cull_photos_before_scoring', () => {
     changePipeline((cfg) => ({ ...cfg, culling_profiles_enabled: false }));
     await runCull();
     expect(calls()).toEqual([
-      ['c', 'new', FORECAST_QUESTIONS],
-      ['b', 'new', FORECAST_QUESTIONS],
+      ['c', 'laya-new', FORECAST_QUESTIONS],
+      ['b', 'laya-new', FORECAST_QUESTIONS],
     ]);
     expect(verdicts().map((v) => [v.image_key, v.verdict])).toEqual([
       ['b', 'passed'],
@@ -354,13 +354,13 @@ describe('batch_cull_photos_before_scoring', () => {
     ]);
   });
 
-  it("with the culling profiles off, this app's Score forecast still needs Laya base", async () => {
-    rmSync(join(modelsDir, 'laya-base', 'decoder.onnx'));
+  it("with the culling profiles off, this app's Score forecast still needs Laya base's vision graph", async () => {
+    rmSync(join(modelsDir, 'laya-base', 'vision.onnx'));
     changePipeline((cfg) => ({ ...cfg, culling_profiles_enabled: false }));
     await addPhoto('c', FORECAST_CUT);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    // Laya new reuses Laya base's vision encoder: this app lists nothing without Laya base.
+    // Laya new reuses Laya base's vision graph: without it, this app does not list Laya new.
     expect(job.error).toContain('Score forecast: laya-new is not listed by this app');
   });
 
@@ -421,7 +421,7 @@ describe('batch_cull_photos_before_scoring', () => {
     });
     lib.close();
     const job = await runCull();
-    expect(calls()).toEqual([['fx-004-no7', 'base', 4]]);
+    expect(calls()).toEqual([['fx-004-no7', 'laya-base', 4]]);
     expect(result(job)).toMatchObject({ culled: 1, redecided: 0 });
   });
 
@@ -538,7 +538,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('completed');
-    expect(calls()).toEqual([['a', 'base', 8]]);
+    expect(calls()).toEqual([['a', 'laya-base', 8]]);
     expect(server.requests.map((r) => [r.key, r.model])).toEqual([
       [null, 'clef-forecast'],
       ['a', 'clef-forecast'],

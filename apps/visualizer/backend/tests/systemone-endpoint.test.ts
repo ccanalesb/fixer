@@ -104,13 +104,13 @@ describe('POST /v1/systemone', () => {
       noul: 0.1,
       probabilities: { false: 0.9, true: 0.1 },
     });
-    expect(laya.calls).toEqual([{ file: '/a.jpg', model: 'base', questions: Object.keys(QUESTIONS) }]);
+    expect(laya.calls).toEqual([{ file: '/a.jpg', model: 'laya-base', questions: Object.keys(QUESTIONS) }]);
   });
 
   it('takes the image as a data: URL too, and the state left out', async () => {
     const res = await post({ model: 'laya-new', images: [`data:image/jpeg;base64,${b64()}`], questions: QUESTIONS });
     expect(res.status).toBe(200);
-    expect(laya.calls[0]).toMatchObject({ file: '/a.jpg', model: 'new' });
+    expect(laya.calls[0]).toMatchObject({ file: '/a.jpg', model: 'laya-new' });
   });
 
   it('refuses state text and anything but one image', async () => {

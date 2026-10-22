@@ -22,19 +22,22 @@ commands below as `npm run cli -- <command>` from `apps/visualizer/backend`.
 
 ### Culling models (Laya)
 
-Culling before scoring runs Laya base and Laya new locally through ONNX
-([ADR-0020](docs/adr/0020-laya-in-node-through-onnx.md)). Their files are
-converted on your machine once, with [uv](https://docs.astral.sh/uv/), into the
-git-ignored `models/` (about 1.25 GB):
+Culling's stages can run Laya-family models in this app, locally through ONNX
+([ADR-0020](docs/adr/0020-laya-in-node-through-onnx.md)). A model is added in
+Processing → Settings → Culling models → "Add a model", from a folder in Hugging
+Face format or a Hugging Face id; a job converts it once, with
+[uv](https://docs.astral.sh/uv/), into the git-ignored `models/` (about 800 MB for
+the first model, 430 MB for one that shares its vision tower). The same script by
+hand:
 
 ```bash
-uv run scripts/laya/export_onnx.py --laya-new /path/to/laya-new-checkpoint
+uv run scripts/laya/export_onnx.py thaitea/laya-vision --name laya-base
+uv run scripts/laya/export_onnx.py /path/to/laya-new-checkpoint --name laya-new
 lightroom-tagger cull-check
 ```
 
-The script downloads Laya base from Hugging Face at a fixed revision. Without
-`--laya-new` the Score forecast stage stays off. Nothing is uploaded, and no model
-file belongs in git.
+Without a revision (`id@revision`), the commit recorded is the last one that
+changed the model's files. Nothing is uploaded, and no model file belongs in git.
 
 Culling itself is the job `batch_cull_photos_before_scoring` (whole catalog, or
 `image_keys`); until it has a screen, start it through the jobs API:
