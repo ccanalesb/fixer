@@ -130,8 +130,8 @@ export const COMMANDS: readonly CliCommand[] = [
   },
   {
     name: 'cull-check',
-    help: 'Check that Laya is set up for culling: files, load, one test photo',
-    flags: [{ name: 'photo', kind: 'string', help: 'Also answer this photo and print the probabilities' }],
+    help: "Check culling's stages: each endpoint and model from config.yaml, one test image",
+    flags: [{ name: 'photo', kind: 'string', help: "Also answer this photo and print each stage's probabilities" }],
     handler: cmdCullCheck,
   },
   {

@@ -38,7 +38,7 @@ export interface BatchAnalyzeResult {
   score_succeeded: number;
   score_failed: number;
   skip_reason_counts: Record<string, number>;
-  cull?: Omit<BatchCullResult, 'total' | 'durations_s' | 'laya_seconds' | 'stage_versions'>;
+  cull?: Omit<BatchCullResult, 'total' | 'durations_s' | 'stage_seconds' | 'stage_versions'>;
   held_back?: CullHeldBackCounts;
   durations_s?: { frame_substance: number; cull: number; describe: number; score: number; total: number };
 }

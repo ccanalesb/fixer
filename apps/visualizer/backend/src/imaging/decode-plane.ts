@@ -18,8 +18,9 @@ export interface DecodePlaneOptions {
   limitInputPixels?: boolean;
 }
 
+/** `path` may be the file's bytes: sharp decodes them the same way. */
 export async function decodePlaneFromFile(
-  path: string,
+  path: string | Buffer,
   options: DecodePlaneOptions = {},
 ): Promise<Plane> {
   const { colourspace = 'auto', removeAlpha = false, limitInputPixels = true } = options;

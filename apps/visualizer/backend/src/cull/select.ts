@@ -6,23 +6,23 @@ import type { Db } from '../db/connection.js';
 import { loadAnsweredStageKeys } from '../db/library/cull-stages.js';
 import { loadCullVerdictStamps } from '../db/library/cull-verdicts.js';
 import { requiredStages } from './decide.js';
-import { stageVersionIds, WORKER_DIED_REASON, type CullContext } from './persist.js';
+import { asksLast, stageVersionIds, type CullContext } from './persist.js';
 
 const sameIds = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 /**
- * `keys` in order, minus photos with nothing to do. Photos the Laya worker died on go last, so one
+ * `keys` in order, minus photos with nothing to do. Photos a stage's endpoint stopped answering on go last, so one
  * bad photo cannot stop every run before it does any work.
  */
 export interface SelectPhotosToCullResult {
   keys: string[];
-  /** Photos that would call Laya (not re-decide-only). */
+  /** Photos that would call a stage's model (not re-decide-only). */
   needsAnswers: Set<string>;
 }
 
 export interface SelectPhotosToCullOptions {
   /**
-   * Re-ask Laya on every photo, except those one of these cull runs already decided — the forced
+   * Re-ask the models on every photo, except those one of these cull runs already decided — the forced
    * job's earlier attempts, so a resumed job does not start over.
    */
   force?: { doneByRuns: ReadonlySet<number> };
@@ -57,7 +57,7 @@ export function selectPhotosToCull(
       !sameIds(stamp.stageVersionIds, currentIds);
     if (!stale && !needsAnswers(key)) continue;
     if (needsAnswers(key)) needsLaya.add(key);
-    (stamp?.pendingReason === WORKER_DIED_REASON ? diedOn : work).push(key);
+    (asksLast(stamp?.pendingReason) ? diedOn : work).push(key);
   }
   return { keys: [...work, ...diedOn], needsAnswers: needsLaya };
 }
@@ -70,7 +70,7 @@ function selectAllPhotosToCull(db: Db, keys: readonly string[], doneByRuns: Read
     const stamp = stamps.get(key);
     // Left pending by an earlier attempt: taken again, so the resumed run counts its failures.
     if (stamp?.runId != null && doneByRuns.has(stamp.runId) && stamp.pendingReason === '') continue;
-    (stamp?.pendingReason === WORKER_DIED_REASON ? diedOn : work).push(key);
+    (asksLast(stamp?.pendingReason) ? diedOn : work).push(key);
   }
   const selected = [...work, ...diedOn];
   return { keys: selected, needsAnswers: new Set(selected) };

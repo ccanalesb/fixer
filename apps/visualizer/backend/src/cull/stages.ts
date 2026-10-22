@@ -1,42 +1,39 @@
 /**
- * The pipeline setting → the stages a photo goes through, each at its current version, and what the
- * Laya worker is asked for them.
+ * The pipeline setting → the stages a photo goes through, each at the version its questions and model
+ * identity make (`stage-models.ts` says what a model's identity is).
  *
  * Profile stage question ids are `<level set>|<dimension>`, the ids #337 and the research used, so
- * the seeded profile's stage versions hash the same text the research runs answered. In the worker the
- * ids are prefixed with the stage key, since two profiles may share a level set.
+ * the seeded profile's stage versions hash the same text the research runs answered.
  */
 import type { Db } from '../db/connection.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getOrCreateStageVersion } from '../db/library/cull-stages.js';
 import { libraryWrite } from '../db/library/write.js';
-import type { LayaModelIds } from '../laya/model-id.js';
-import type { LayaAnswers } from '../laya/sessions.js';
 import { LAYA_QUESTIONS } from '../laya/questions.js';
 import type { LayaQuestion } from '../laya/rows.js';
-import type { PipelineSettingConfig, ResolvedStage, StageAnswers } from './types.js';
+import type { StageModelIds } from './stage-models.js';
+import type { PipelineSettingConfig, ResolvedStage } from './types.js';
 
 export const SCORE_FORECAST_STAGE_KEY = 'score_forecast';
 
-/** The profile "Model" field values culling can run. */
-const PROFILE_MODELS: Record<string, 'base'> = { 'laya-base': 'base' };
+/** The Score forecast's questions: the rows Laya new was trained on. */
+export const SCORE_FORECAST_QUESTIONS: Record<string, LayaQuestion> = LAYA_QUESTIONS.new;
 
 export function profileStageKey(profileSlug: string, levelSet: string): string {
   return `culling_profile:${profileSlug}:${levelSet}`;
 }
 
 /**
- * Every stage of the current pipeline, at the version its text and model make, created and marked
- * current as needed. The Score forecast is left out when Laya new is not set up.
+ * Every stage of the current pipeline, at the version its questions and model make, created and marked
+ * current as needed. A stage kind with no model identity is left out.
  */
-export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, models: LayaModelIds): ResolvedStage[] {
+export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, models: StageModelIds): ResolvedStage[] {
   return libraryWrite(db, () => {
     const stages: ResolvedStage[] = [];
-    for (const entry of pipeline.culling_profiles) {
+    const profileModel = models.culling_profile;
+    for (const entry of profileModel === null ? [] : pipeline.culling_profiles) {
       const profile = getCullProfile(db, entry.profile_slug);
       if (!profile) throw new Error(`culling pipeline setting names a culling profile that does not exist: ${entry.profile_slug}`);
-      const model = PROFILE_MODELS[profile.model];
-      if (!model) throw new Error(`culling profile ${profile.slug}: model ${profile.model} is not one culling can run`);
       for (const set of profile.definition.level_sets) {
         if (!entry.rule.level_sets[set.id]) {
           throw new Error(`culling profile ${profile.slug}: the rule has no "fails at" / "strong at" for level set ${set.id}`);
@@ -50,72 +47,23 @@ export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, mo
           kind: 'culling_profile' as const,
           profileSlug: profile.slug,
           levelSet: set.id,
-          modelId: models.base,
+          modelId: profileModel!,
           questions,
         };
-        stages.push({ ...spec, model, versionId: getOrCreateStageVersion(db, spec) });
+        stages.push({ ...spec, versionId: getOrCreateStageVersion(db, spec) });
       }
     }
-    if (models.new !== null) {
+    if (models.score_forecast !== null) {
       const spec = {
         stageKey: SCORE_FORECAST_STAGE_KEY,
         kind: 'score_forecast' as const,
         profileSlug: null,
         levelSet: null,
-        modelId: models.new,
-        questions: LAYA_QUESTIONS.new,
+        modelId: models.score_forecast,
+        questions: SCORE_FORECAST_QUESTIONS,
       };
-      stages.push({ ...spec, model: 'new', versionId: getOrCreateStageVersion(db, spec) });
+      stages.push({ ...spec, versionId: getOrCreateStageVersion(db, spec) });
     }
     return stages;
   });
-}
-
-/** What the worker loads: every profile stage's rows for Laya base, Laya new's own rows. */
-export interface LayaQuestionSet {
-  base: Record<string, LayaQuestion>;
-  new: Record<string, LayaQuestion>;
-}
-
-/** What one worker call answers: Laya base rows by worker question id, and whether Laya new runs. */
-export interface LayaWant {
-  base: string[];
-  new: boolean;
-}
-
-const workerQid = (stage: ResolvedStage, qid: string): string => `${stage.stageKey}#${qid}`;
-
-export function layaQuestionSet(stages: readonly ResolvedStage[]): LayaQuestionSet {
-  const base: Record<string, LayaQuestion> = {};
-  for (const s of stages) {
-    if (s.model !== 'base') continue;
-    for (const [qid, q] of Object.entries(s.questions)) base[workerQid(s, qid)] = q;
-  }
-  return { base, new: LAYA_QUESTIONS.new };
-}
-
-export function layaWant(stages: readonly ResolvedStage[]): LayaWant {
-  return {
-    base: stages.filter((s) => s.model === 'base').flatMap((s) => Object.keys(s.questions).map((q) => workerQid(s, q))),
-    new: stages.some((s) => s.model === 'new'),
-  };
-}
-
-/** The worker's answers back onto stages: profile answers by dimension, forecast answers by question id. */
-export function stageAnswersFromLaya(stages: readonly ResolvedStage[], answers: LayaAnswers): Record<string, StageAnswers> {
-  const out: Record<string, StageAnswers> = {};
-  for (const s of stages) {
-    if (s.model === 'new') {
-      if (answers.new) out[s.stageKey] = answers.new;
-      continue;
-    }
-    const byDim: StageAnswers = {};
-    for (const qid of Object.keys(s.questions)) {
-      const probs = answers.base[workerQid(s, qid)];
-      if (!probs) break;
-      byDim[qid.slice(qid.indexOf('|') + 1)] = probs;
-    }
-    if (Object.keys(byDim).length === Object.keys(s.questions).length) out[s.stageKey] = byDim;
-  }
-  return out;
 }

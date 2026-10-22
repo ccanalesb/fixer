@@ -17,8 +17,9 @@ import { config, loadLibraryConfig } from '../src/config.js';
 import { decidePhoto } from '../src/cull/decide.js';
 import { DEFAULT_SCORE_FORECAST } from '../src/cull/default-pipeline.js';
 import type { PipelineSettingConfig, ResolvedStage, StageAnswers } from '../src/cull/types.js';
-import { startLayaWithCheck } from '../src/laya/runtime.js';
+import { closeAppModels } from '../src/laya/app-models.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
+import { askSystemOne, systemOneEndpoint } from '../src/systemone/client.js';
 
 const bench = process.env.LT_CULL_RESEARCH_DIR ?? join(homedir(), 'lightroom-research', 'bench');
 const profileFile = join(bench, 'laya-gate', 'laya_cull_catalog_all.jsonl');
@@ -52,7 +53,6 @@ const stage = (stageKey: string, kind: ResolvedStage['kind'], levelSet: string |
   stageKey,
   kind,
   versionId: 0,
-  model: kind === 'score_forecast' ? 'new' : 'base',
   modelId: '',
   profileSlug: levelSet ? 'recipe-culling' : null,
   levelSet,
@@ -116,17 +116,17 @@ describeMaybe('a new cull run agrees with the research runs', () => {
   it('same verdict per stage and per photo, probabilities close', { timeout: 600_000 }, async () => {
     const photos = sample();
     expect(photos.length).toBeGreaterThan(0);
-    const { runtime } = await startLayaWithCheck(modelsDir);
+    const ep = systemOneEndpoint({ endpoint: 'this_app', model: '', apiKey: '' });
     try {
       for (const p of photos) {
-        const { answers } = await runtime.answer(p.image);
+        const image = new Uint8Array(readFileSync(p.image));
+        const profileQuestions = Object.fromEntries(Object.keys(p.profile).map((q) => [q, LAYA_QUESTIONS.base[q]!]));
+        const base = await askSystemOne(ep, { model: 'laya-base', image, questions: profileQuestions });
+        const neu = await askSystemOne(ep, { model: 'laya-new', image, questions: LAYA_QUESTIONS.new });
         const research = stageAnswers(p.profile, p.layaNew);
-        const fresh = stageAnswers(
-          Object.fromEntries(Object.keys(p.profile).map((q) => [q, answers.base[q]!])),
-          Object.fromEntries(Object.keys(LAYA_QUESTIONS.new).map((q) => [q, answers.new![q]!])),
-        );
+        const fresh = stageAnswers(base, neu);
         for (const [q, probs] of Object.entries(p.profile)) {
-          answers.base[q]!.forEach((v, i) => expect(Math.abs(v - probs[i]!), `${p.key} ${q}`).toBeLessThan(0.02));
+          base[q]!.forEach((v, i) => expect(Math.abs(v - probs[i]!), `${p.key} ${q}`).toBeLessThan(0.02));
         }
         const a = decidePhoto(PIPELINE, research.stages, research.answers, {});
         const b = decidePhoto(PIPELINE, fresh.stages, fresh.answers, {});
@@ -134,7 +134,7 @@ describeMaybe('a new cull run agrees with the research runs', () => {
         for (const s of Object.keys(a.stages)) expect(b.stages[s]!.verdict, `${p.key} ${s}`).toBe(a.stages[s]!.verdict);
       }
     } finally {
-      await runtime.close();
+      await closeAppModels();
     }
   });
 });

@@ -1,102 +1,38 @@
 /**
- * `batch_cull_photos_before_scoring` through the processor. Laya's runtime is faked — no model is ever
- * loaded here — but the model files' presence check, model ids, library.db, the vision cache and the
- * JPEGs are real.
+ * `batch_cull_photos_before_scoring` through the processor. The Laya worker is faked — no model is ever
+ * loaded here — but the System One client, this app's endpoint, its model list and model ids,
+ * library.db, the vision cache and the JPEGs are real. An external endpoint is a local fake server.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import sharp from 'sharp';
 import { LibraryFixture } from './helpers/library-fixture.js';
+import { fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto, type FakeLayaScript } from './helpers/fake-laya.js';
+import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { JOB_TYPES_BY_NAME } from '../src/jobs/registry.js';
-import { LazyLaya } from '../src/cull/lazy-laya.js';
-import { LAYA_SETUP_COMMAND, LayaSetupError } from '../src/laya/files.js';
+import { LAYA_SETUP_COMMAND } from '../src/laya/files.js';
+import { closeAppModels } from '../src/laya/app-models.js';
 import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
-import type { LayaAnswerWant } from '../src/laya/sessions.js';
+import { SCORE_FORECAST_QUESTIONS } from '../src/cull/stages.js';
+import type { PipelineSettingConfig } from '../src/cull/types.js';
 import { importResearchRuns } from '../src/cull/import-research.js';
 import { LAYA_BASE_RESEARCH_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
 import { computePromptVersion } from '../src/vision/scoring-service.js';
 import { getPerspectiveBySlug } from '../src/db/library/scores.js';
 
-/** Per photo file: the profile levels (impact, structure, tension, connotation) and the highest P(≥ 8). */
-interface Script {
-  levels: [number, number, number, number];
-  p8: number;
-}
-
-const laya = vi.hoisted(() => ({
-  scripts: new Map<string, Script>(),
-  calls: [] as { file: string; want: LayaAnswerWant | undefined }[],
-  starts: 0,
-  closed: 0,
-  forecastOn: true,
-  failOn: null as null | string,
-  /** The worker dies on this photo: the answer is rejected and every later one fails too. */
-  dieOn: null as null | string,
-  broken: false,
-  startError: null as null | Error,
-  cancelAfter: null as null | (() => void),
-}));
+const laya = vi.hoisted(() => ({}) as import('./helpers/fake-laya.js').FakeLayaState);
 
 vi.mock('../src/laya/runtime.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/laya/runtime.js')>();
-  const at = (level: number, n: number) => Array.from({ length: n }, (_, i) => (i === level - 1 ? 1 : 0));
-  /** Level `l` of 10 lands on 7 levels at the same position on the scale, as the research maps them. */
-  const on7 = (l: number) => Math.round(1 + ((l - 1) * 6) / 9);
-  const runtime = {
-    get scoreForecastOn() {
-      return laya.forecastOn;
-    },
-    get broken() {
-      return laya.broken;
-    },
-    async answer(file: string, want?: LayaAnswerWant) {
-      laya.calls.push({ file, want });
-      if (laya.broken) throw new Error('Laya worker exited (code 1)');
-      if (laya.dieOn && file.endsWith(`/${laya.dieOn}.jpg`)) {
-        laya.broken = true;
-        throw new Error('Laya worker exited (code 1)');
-      }
-      if (laya.failOn && file.endsWith(`/${laya.failOn}.jpg`)) throw new Error('decode failed');
-      const s = [...laya.scripts.entries()].find(([k]) => file.endsWith(`/${k}.jpg`))?.[1] ?? { levels: [5, 5, 5, 5], p8: 0.5 };
-      const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
-      const base: Record<string, number[]> = {};
-      for (const qid of want?.base ?? []) {
-        const [, rest] = qid.split('#');
-        const [set, dim] = rest!.split('|');
-        const l = s.levels[dims.indexOf(dim!)]!;
-        base[qid] = set === '7' ? at(on7(l), 7) : at(l, 10);
-      }
-      const neu = want?.new && laya.forecastOn
-        ? {
-            'framing-excusal': [0.9, 0.1],
-            framing: [0, 0, 0, 0, 0, 0, 0, 0.99, 0, 0],
-            'intensity-suggestion': [1 - s.p8, 0, 0, 0, 0, 0, 0, s.p8, 0, 0],
-          }
-        : null;
-      laya.cancelAfter?.();
-      return { answers: { base, new: neu }, seconds: { prep: 0.1, vision: 0.2, base: 0.3, new: 0.4, total: 1 } };
-    },
-    async close() {
-      laya.closed += 1;
-    },
-  };
-  return {
-    ...actual,
-    startLayaWithCheck: async () => {
-      laya.starts += 1;
-      if (laya.startError) throw laya.startError;
-      return { runtime, loadSeconds: 0.5, testPhoto: { answers: { base: {}, new: null }, seconds: {} } };
-    },
-  };
+  return fakeLayaRuntimeModule(actual, laya);
 });
 
 let fx: LibraryFixture;
@@ -122,27 +58,27 @@ async function runCull(metadata: Record<string, unknown> = {}, before?: (db: Db,
   });
 }
 
-function writeModels(withNew: boolean): void {
-  const base = join(modelsDir, 'laya-base');
-  for (const d of ['tokenizer', 'reference']) mkdirSync(join(base, d), { recursive: true });
-  for (const f of ['vision.onnx', 'decoder.onnx', 'tokenizer/tokenizer.json', 'tokenizer/tokenizer_config.json', 'reference/photo.png']) {
-    writeFileSync(join(base, f), '');
-  }
-  writeFileSync(join(base, 'model.json'), JSON.stringify({ source: 'thaitea/laya-vision', revision: '8b318c99d7ad3ce19c24369263463882eada9d1e' }));
-  if (!withNew) return;
-  const neu = join(modelsDir, 'laya-new');
-  mkdirSync(join(neu, 'tokenizer'), { recursive: true });
-  for (const f of ['decoder.onnx', 'tokenizer/tokenizer.json', 'tokenizer/tokenizer_config.json']) writeFileSync(join(neu, f), 'x');
-  writeFileSync(join(neu, 'model.json'), JSON.stringify({ source: '/somewhere/best', revision: null }));
+/** config.yaml with the given `culling_models` block (YAML lines, already indented). */
+function writeConfig(cullingModels = ''): void {
+  writeFileSync(
+    join(dir, 'config.yaml'),
+    `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n${cullingModels ? `culling_models:\n${cullingModels}` : ''}`,
+  );
 }
 
 /** A catalog photo whose original is gone and whose vision-cache JPEG exists. */
-async function addPhoto(key: string, script?: Script): Promise<void> {
+async function addPhoto(key: string, script?: FakeLayaScript): Promise<void> {
   const path = join(dir, 'vision', `${key}.jpg`);
-  mkdirSync(join(dir, 'vision'), { recursive: true });
-  await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } } }).jpeg().toFile(path);
+  await writeFakePhoto(path, key);
   fx.addImage({ key, filepath: `/missing/${key}.NEF`, date_taken: '2024-01-01' }).addVisionCache(key, path);
   if (script) laya.scripts.set(key, script);
+}
+
+function changePipeline(change: (cfg: PipelineSettingConfig) => PipelineSettingConfig): void {
+  const lib = openLibraryDb(fx.dbPath);
+  seedCullingDefaults(lib);
+  createPipelineSettingVersion(lib, change(getCurrentPipelineSetting(lib).config));
+  lib.close();
 }
 
 const verdicts = () =>
@@ -151,35 +87,29 @@ const verdicts = () =>
   );
 const result = (job: { result: unknown }) => job.result as Record<string, unknown>;
 const logs = (job: { logs: { message: string }[] }) => job.logs.map((l) => l.message);
+/** Calls as `[photo key, model, number of questions]`. */
+const calls = () => laya.calls.map((c) => [c.file.slice(1, -4), c.model, c.questions.length]);
+const photosAsked = () => [...new Set(laya.calls.map((c) => c.file.slice(1, -4)))];
 
-const PASS: Script = { levels: [5, 5, 6, 6], p8: 0.5 };
-const PROFILE_CUT: Script = { levels: [5, 5, 2, 3], p8: 0.5 };
-const FORECAST_CUT: Script = { levels: [5, 5, 6, 6], p8: 0.05 };
+const PASS: FakeLayaScript = { levels: [5, 5, 6, 6], p8: 0.5 };
+const PROFILE_CUT: FakeLayaScript = { levels: [5, 5, 2, 3], p8: 0.5 };
+const FORECAST_CUT: FakeLayaScript = { levels: [5, 5, 6, 6], p8: 0.05 };
+const FORECAST_QUESTIONS = Object.keys(SCORE_FORECAST_QUESTIONS).length;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');
   fx = new LibraryFixture().activate();
-  Object.assign(laya, {
-    calls: [],
-    starts: 0,
-    closed: 0,
-    forecastOn: true,
-    failOn: null,
-    dieOn: null,
-    broken: false,
-    startError: null,
-    cancelAfter: null,
-  });
-  laya.scripts.clear();
+  Object.assign(laya, fakeLayaState());
   process.env.DATABASE_PATH = jobsDbPath;
-  writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n`);
+  writeConfig();
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
-  writeModels(true);
+  writeFakeLayaModels(modelsDir);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await closeAppModels();
   delete process.env.DATABASE_PATH;
   delete process.env.LT_CONFIG_YAML;
   fx.cleanup();
@@ -197,22 +127,28 @@ describe('batch_cull_photos_before_scoring', () => {
     await addPhoto('c', FORECAST_CUT);
     const job = await runCull();
     expect(job.status).toBe('completed');
-    expect(laya.calls).toHaveLength(3);
-    expect(laya.calls[0]!.want).toMatchObject({ new: true });
-    expect(laya.calls[0]!.want!.base).toHaveLength(8);
+    expect(laya.checks).toBe(2);
+    expect(calls()).toEqual([
+      ['c', 'base', 8],
+      ['c', 'new', FORECAST_QUESTIONS],
+      ['b', 'base', 8],
+      ['b', 'new', FORECAST_QUESTIONS],
+      ['a', 'base', 8],
+      ['a', 'new', FORECAST_QUESTIONS],
+    ]);
     expect(verdicts()).toEqual([
       { image_key: 'a', verdict: 'passed', filtered_by: null, pending_reason: '', pipeline_setting_version: 1 },
       { image_key: 'b', verdict: 'filtered', filtered_by: 'culling_profile', pending_reason: '', pipeline_setting_version: 1 },
       { image_key: 'c', verdict: 'filtered', filtered_by: 'score_forecast', pending_reason: '', pipeline_setting_version: 1 },
     ]);
-    const rows = fx.query<{ image_key: string; stage_key: string; verdict: string; answers_json: string; source: string }>(
-      `SELECT a.image_key, v.stage_key, a.verdict, a.answers_json, a.source FROM cull_stage_answers a
+    const rows = fx.query<{ stage_key: string; verdict: string; answers_json: string; source: string; produced_by: string }>(
+      `SELECT v.stage_key, a.verdict, a.answers_json, a.source, a.produced_by FROM cull_stage_answers a
        JOIN cull_stage_versions v ON v.id = a.stage_version_id WHERE a.image_key = 'b' ORDER BY v.stage_key`,
     );
-    expect(rows.map((r) => [r.stage_key, r.verdict])).toEqual([
-      ['culling_profile:recipe-culling:10', 'filtered'],
-      ['culling_profile:recipe-culling:7', 'filtered'],
-      ['score_forecast', 'passed'],
+    expect(rows.map((r) => [r.stage_key, r.verdict, r.produced_by])).toEqual([
+      ['culling_profile:recipe-culling:10', 'filtered', 'this_app'],
+      ['culling_profile:recipe-culling:7', 'filtered', 'this_app'],
+      ['score_forecast', 'passed', 'this_app'],
     ]);
     expect(JSON.parse(rows[0]!.answers_json)['connotation']).toHaveLength(10);
     expect(JSON.parse(rows[1]!.answers_json)['connotation']).toHaveLength(7);
@@ -228,16 +164,26 @@ describe('batch_cull_photos_before_scoring', () => {
       sent_by_hand_passed: 0,
       score_forecast: 'on',
       pipeline_setting_version: 1,
+      models_started: true,
     });
     expect(result(job).durations_s).toEqual(
       expect.objectContaining({ start_check: expect.any(Number), select: expect.any(Number), cull: expect.any(Number) }),
     );
-    expect(result(job).laya_seconds).toEqual({ prep: 0.3, vision: 0.6, base: 0.9, new: 1.2 });
+    expect(result(job).stage_seconds).toEqual({ culling_profile: expect.any(Number), score_forecast: expect.any(Number) });
     expect(logs(job).some((m) => m.startsWith('[cull] status=complete photos=3 culled=3'))).toBe(true);
     expect(fx.query('SELECT kind, job_id IS NOT NULL AS has_job, finished_at IS NOT NULL AS finished FROM cull_runs')).toEqual([
       { kind: 'job', has_job: 1, finished: 1 },
     ]);
-    expect(laya.closed).toBe(1);
+  });
+
+  it("names this app's models by the ids they had before System One, so stored versions stay current", async () => {
+    await addPhoto('a', PASS);
+    await runCull();
+    expect(fx.query('SELECT stage_key, model_id FROM cull_stage_versions ORDER BY id')).toEqual([
+      { stage_key: 'culling_profile:recipe-culling:7', model_id: 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e' },
+      { stage_key: 'culling_profile:recipe-culling:10', model_id: 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e' },
+      { stage_key: 'score_forecast', model_id: await layaNewModelId(join(modelsDir, 'laya-new')) },
+    ]);
   });
 
   it('asks only what is missing, and nothing for photos already decided', async () => {
@@ -246,27 +192,22 @@ describe('batch_cull_photos_before_scoring', () => {
     laya.calls = [];
     const again = await runCull();
     expect(laya.calls).toEqual([]);
-    expect(result(again)).toMatchObject({ culled: 0, redecided: 0 });
+    expect(result(again)).toMatchObject({ culled: 0, redecided: 0, models_started: false });
 
     fx.exec(
       `DELETE FROM cull_stage_answers WHERE stage_version_id =
          (SELECT id FROM cull_stage_versions WHERE stage_key = 'culling_profile:recipe-culling:7')`,
     );
     await runCull();
-    expect(laya.calls).toHaveLength(1);
-    expect(laya.calls[0]!.want!.base).toHaveLength(4);
-    expect(laya.calls[0]!.want!.base!.every((q) => q.startsWith('culling_profile:recipe-culling:7#7|'))).toBe(true);
-    expect(laya.calls[0]!.want!.new).toBe(false);
+    expect(calls()).toEqual([['a', 'base', 4]]);
+    expect(laya.calls[0]!.questions.every((q) => q.startsWith('culling_profile:recipe-culling:7#7|'))).toBe(true);
   });
 
   it('a new pipeline-setting version re-decides from stored answers, no model call', async () => {
     await addPhoto('c', FORECAST_CUT);
     await runCull();
     laya.calls = [];
-    const db = openLibraryDb(fx.dbPath);
-    const cfg = getCurrentPipelineSetting(db).config;
-    createPipelineSettingVersion(db, { ...cfg, score_forecast: { ...cfg.score_forecast, threshold: 0.01 } });
-    db.close();
+    changePipeline((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, threshold: 0.01 } }));
     const job = await runCull();
     expect(laya.calls).toEqual([]);
     expect(result(job)).toMatchObject({ redecided: 1, passed: 1 });
@@ -284,28 +225,31 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(verdicts().map((v) => v.image_key)).toEqual(['ill', 'void-ok']);
   });
 
-  it('a photo Laya fails on stays pending, is counted and is retried by the next job', async () => {
+  it('a photo a model fails on stays pending, naming the stage, is counted and is retried by the next job', async () => {
     await addPhoto('a', PASS);
     await addPhoto('bad', PASS);
     laya.failOn = 'bad';
     const job = await runCull();
     expect(job.status).toBe('completed');
     expect(result(job)).toMatchObject({ culled: 1, failed: 1, pending: 1 });
-    expect(verdicts().find((v) => v.image_key === 'bad')).toMatchObject({ verdict: 'pending', pending_reason: 'laya_failed: decode failed' });
+    expect(verdicts().find((v) => v.image_key === 'bad')).toMatchObject({
+      verdict: 'pending',
+      pending_reason: 'model_failed: Culling profile: this app answered HTTP 422: decode failed',
+    });
+    expect(logs(job)).toContain('[cull] bad left pending: Culling profile: this app answered HTTP 422: decode failed');
     expect(fx.query("SELECT COUNT(*) AS n FROM cull_stage_answers WHERE image_key = 'bad'")).toEqual([{ n: 0 }]);
 
     laya.failOn = null;
     laya.calls = [];
     await runCull();
-    expect(laya.calls.map((c) => c.file.endsWith('/bad.jpg'))).toEqual([true]);
+    expect(photosAsked()).toEqual(['bad']);
     expect(verdicts().find((v) => v.image_key === 'bad')!.verdict).toBe('passed');
   });
 
-  it('a photo with no image to read stays pending', async () => {
+  it('a photo with no image to read stays pending, and no model is started', async () => {
     fx.addImage({ key: 'gone', filepath: '/missing/gone.NEF' });
-    laya.starts = 0;
     const job = await runCull();
-    expect(result(job)).toMatchObject({ failed: 1, pending: 1 });
+    expect(result(job)).toMatchObject({ failed: 1, pending: 1, models_started: false });
     expect(verdicts()[0]).toMatchObject({ verdict: 'pending', pending_reason: 'no_image' });
     expect(laya.starts).toBe(0);
   });
@@ -317,9 +261,8 @@ describe('batch_cull_photos_before_scoring', () => {
       `INSERT INTO image_descriptions (image_key, image_type, summary, model_used, described_at)
        VALUES ('done', 'catalog', 'x', 'local:vision-1', datetime('now'))`,
     );
-    laya.calls = [];
     await runCull({ scope_job_type: 'batch_describe' });
-    expect(laya.calls.map((c) => (c.file.match(/\/(\w+)\.jpg$/) ?? [])[1])).toEqual(['todo']);
+    expect(photosAsked()).toEqual(['todo']);
   });
 
   it('scope_job_type batch_score culls only photos with unscored work', async () => {
@@ -339,58 +282,86 @@ describe('batch_cull_photos_before_scoring', () => {
        VALUES ('done', 'catalog', 'street', 7, ?, 'local:vision-1', 1, datetime('now'))`,
       promptVersion,
     );
-    laya.calls = [];
     await runCull({ scope_job_type: 'batch_score', perspective_slugs: ['street'] });
-    expect(laya.calls.map((c) => (c.file.match(/\/(\w+)\.jpg$/) ?? [])[1])).toEqual(['todo']);
+    expect(photosAsked()).toEqual(['todo']);
   });
 
-  it('missing models fail the job at the start, naming the missing piece and the setup step', async () => {
+  it('missing models fail the job at the start, naming the stage, the model and the setup step', async () => {
     rmSync(modelsDir, { recursive: true, force: true });
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toContain('laya-base');
+    expect(job.error).toContain('Culling profile: laya-base is not listed by this app');
     expect(job.error).toContain(LAYA_SETUP_COMMAND);
     expect(job.error_severity).toBe('warning');
     expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
     expect(laya.calls).toEqual([]);
   });
 
-  it('without Laya new the profile still runs and the Score forecast is off', async () => {
+  it('without Laya new and the Score forecast on, the job fails naming the Score forecast', async () => {
     rmSync(join(modelsDir, 'laya-new'), { recursive: true, force: true });
-    laya.forecastOn = false;
+    await addPhoto('c', FORECAST_CUT);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toContain('Score forecast: laya-new is not listed by this app');
+    expect(job.error_severity).toBe('warning');
+    expect(laya.calls).toEqual([]);
+  });
+
+  it('without Laya new and the Score forecast off, the profile runs alone', async () => {
+    rmSync(join(modelsDir, 'laya-new'), { recursive: true, force: true });
+    changePipeline((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, enabled: false } }));
     await addPhoto('c', FORECAST_CUT);
     const job = await runCull();
     expect(result(job)).toMatchObject({ score_forecast: 'off', passed: 1, culled: 1 });
-    expect(laya.calls[0]!.want!.new).toBe(false);
+    expect(calls()).toEqual([['c', 'base', 8]]);
     expect(fx.query("SELECT COUNT(*) AS n FROM cull_stage_versions WHERE stage_key = 'score_forecast'")).toEqual([{ n: 0 }]);
     expect(fx.query('SELECT score_forecast_off FROM cull_verdicts')).toEqual([{ score_forecast_off: 1 }]);
   });
 
-  it('asks every stage that is on in one call, even on a photo the profile filters', async () => {
+  it('a start check that fails stops the job before any photo, naming the stage', async () => {
+    await addPhoto('a', PASS);
+    laya.startError = new Error('Laya models failed to load (bad onnx)');
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toMatch(/^Culling profile: the start check failed: .*bad onnx/);
+    expect(job.error_severity).toBe('warning');
+    expect(verdicts()).toEqual([]);
+  });
+
+  it('asks every stage that is on, even on a photo the profile filters', async () => {
     await addPhoto('b', PROFILE_CUT);
     await runCull();
-    expect(laya.calls.map((c) => [c.want!.base!.length, c.want!.new])).toEqual([[8, true]]);
+    expect(calls()).toEqual([
+      ['b', 'base', 8],
+      ['b', 'new', FORECAST_QUESTIONS],
+    ]);
     expect(verdicts().map((v) => [v.image_key, v.verdict])).toEqual([['b', 'filtered']]);
   });
 
   it('with the culling profiles off, only the Score forecast is asked, and it alone filters', async () => {
     await addPhoto('b', PROFILE_CUT);
     await addPhoto('c', FORECAST_CUT);
-    const lib = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(lib);
-    const cfg = getCurrentPipelineSetting(lib).config;
-    createPipelineSettingVersion(lib, { ...cfg, culling_profiles_enabled: false });
-    lib.close();
+    changePipeline((cfg) => ({ ...cfg, culling_profiles_enabled: false }));
     await runCull();
-    expect(laya.calls.map((c) => [c.want!.base!.length, c.want!.new])).toEqual([
-      [0, true],
-      [0, true],
+    expect(calls()).toEqual([
+      ['c', 'new', FORECAST_QUESTIONS],
+      ['b', 'new', FORECAST_QUESTIONS],
     ]);
     expect(verdicts().map((v) => [v.image_key, v.verdict])).toEqual([
       ['b', 'passed'],
       ['c', 'filtered'],
     ]);
+  });
+
+  it("with the culling profiles off, this app's Score forecast still needs Laya base", async () => {
+    rmSync(join(modelsDir, 'laya-base', 'decoder.onnx'));
+    changePipeline((cfg) => ({ ...cfg, culling_profiles_enabled: false }));
+    await addPhoto('c', FORECAST_CUT);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    // Laya new reuses Laya base's vision encoder: this app lists nothing without Laya base.
+    expect(job.error).toContain('Score forecast: laya-new is not listed by this app');
   });
 
   it('sent by hand: passed whatever the stages say, and counted', async () => {
@@ -405,7 +376,7 @@ describe('batch_cull_photos_before_scoring', () => {
     ]);
   });
 
-  it('cancelling keeps what was stored and closes the models', async () => {
+  it('cancelling keeps what was stored', async () => {
     await addPhoto('a', PASS);
     await addPhoto('b', PASS);
     const job = await withJobsDb(async (db) => {
@@ -416,9 +387,8 @@ describe('batch_cull_photos_before_scoring', () => {
       return getJob(db, jobId)!;
     });
     expect(job.status).toBe('cancelled');
-    expect(laya.calls).toHaveLength(1);
+    expect(photosAsked()).toEqual(['b']);
     expect(verdicts()).toHaveLength(1);
-    expect(laya.closed).toBe(1);
   });
 
   it('resumes past photos it failed on; a pipeline-setting change starts over', async () => {
@@ -427,39 +397,20 @@ describe('batch_cull_photos_before_scoring', () => {
     laya.failOn = 'bad';
     // A checkpoint that says `bad` already failed in this run, under the current versions.
     await runCull();
-    const stages = fx.query<{ stage_key: string; id: number }>('SELECT stage_key, id FROM cull_stage_versions WHERE is_current = 1');
-    const { fingerprintBatchCull } = await import('../src/jobs/checkpoint.js');
-    const fingerprint = await fingerprintBatchCull({
-      stageVersions: Object.fromEntries(stages.map((s) => [s.stage_key, s.id])),
-      pipelineSettingVersion: 1,
-      imageKeys: null,
-      resolvedMonths: null,
-      resolvedYear: null,
-      minRating: null,
-    });
-    const checkpoint = {
-      checkpoint_version: 1,
-      job_type: 'batch_cull_photos_before_scoring',
-      fingerprint,
-      processed_by_stage: {},
-      failed_keys: ['bad'],
-      total_at_start: 2,
-    };
+    const checkpoint = await cullCheckpoint(['bad'], 2);
     laya.calls = [];
     const resumed = await runCull({ checkpoint });
     expect(laya.calls).toEqual([]);
     // The photo skipped through the checkpoint is still in the counts, from its stored summary.
     expect(result(resumed)).toMatchObject({ failed: 1, pending: 1, culled: 0 });
 
-    const lib = openLibraryDb(fx.dbPath);
-    createPipelineSettingVersion(lib, getCurrentPipelineSetting(lib).config, 'changed');
-    lib.close();
+    changePipeline((cfg) => cfg);
     const job = await runCull({ checkpoint });
     expect(logs(job)).toContain('checkpoint mismatch: batch_cull_photos_before_scoring stage or pipeline-setting version changed, starting fresh');
-    expect(laya.calls.map((c) => c.file.endsWith('/bad.jpg'))).toEqual([true]);
+    expect(photosAsked()).toEqual(['bad']);
   });
 
-  it('after the research import a job asks Laya only what the research left out', async () => {
+  it('after the research import a job asks only what the research left out', async () => {
     for (const key of ['fx-001-pass', 'fx-002-profile', 'fx-003-forecast', 'fx-004-no7']) await addPhoto(key);
     const fixtures = join(import.meta.dirname, 'fixtures', 'cull');
     const lib = openLibraryDb(fx.dbPath);
@@ -470,9 +421,7 @@ describe('batch_cull_photos_before_scoring', () => {
     });
     lib.close();
     const job = await runCull();
-    expect(laya.calls.map((c) => [c.file.endsWith('/fx-004-no7.jpg'), c.want!.base!.length, c.want!.new])).toEqual([
-      [true, 4, false],
-    ]);
+    expect(calls()).toEqual([['fx-004-no7', 'base', 4]]);
     expect(result(job)).toMatchObject({ culled: 1, redecided: 0 });
   });
 
@@ -483,18 +432,17 @@ describe('batch_cull_photos_before_scoring', () => {
     laya.dieOn = 'c';
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toContain('Laya worker exited');
+    expect(job.error).toBe('Culling profile: this app cannot answer now (this app answered HTTP 503: Laya worker exited (code 1))');
     const [run] = fx.query<{ detail_json: string }>('SELECT detail_json FROM cull_runs');
     expect(JSON.parse(run!.detail_json)).toMatchObject({ status: 'failed' });
-    expect(verdicts().find((v) => v.image_key === 'c')).toMatchObject({ verdict: 'pending', pending_reason: 'laya_worker_died' });
+    expect(verdicts().find((v) => v.image_key === 'c')).toMatchObject({ verdict: 'pending', pending_reason: 'endpoint_down' });
     expect(job.metadata.checkpoint).toMatchObject({ failed_keys: ['c'] });
-    expect(laya.closed).toBe(1);
 
     // Selection is newest first, by key descending: c would come first. Now it comes last.
     await addPhoto('d', PASS);
     Object.assign(laya, { dieOn: null, broken: false, calls: [] });
     await runCull();
-    expect(laya.calls.map((x) => x.file.split('/').at(-1))).toEqual(['d.jpg', 'b.jpg', 'a.jpg', 'c.jpg']);
+    expect(photosAsked()).toEqual(['d', 'b', 'a', 'c']);
   });
 
   async function cullCheckpoint(failedKeys: string[], totalAtStart: number, pipelineSettingVersion = 1) {
@@ -522,9 +470,7 @@ describe('batch_cull_photos_before_scoring', () => {
     await addPhoto('a', PASS);
     await addPhoto('b', PASS);
     await runCull();
-    const lib = openLibraryDb(fx.dbPath);
-    createPipelineSettingVersion(lib, getCurrentPipelineSetting(lib).config);
-    lib.close();
+    changePipeline((cfg) => cfg);
     laya.dieOn = 'a';
     fx.exec("DELETE FROM cull_stage_answers WHERE image_key = 'a'");
     const job = await runCull({ checkpoint: await cullCheckpoint(['b'], 7, 2) });
@@ -546,24 +492,169 @@ describe('batch_cull_photos_before_scoring', () => {
   });
 });
 
-describe('LazyLaya', () => {
-  it('does not start until the first answer()', async () => {
-    const lazy = new LazyLaya(modelsDir);
-    expect(lazy.started).toBe(false);
-    await lazy.close();
-    expect(laya.starts).toBe(0);
+describe('batch_cull_photos_before_scoring on an external System One endpoint', () => {
+  let server: FakeSystemOneServer;
+
+  beforeEach(async () => {
+    server = await startFakeSystemOneServer(laya, ['clef-cull', 'clef-forecast']);
+  });
+  afterEach(() => server.close());
+
+  const both = () =>
+    `  culling_profile: {endpoint: "${server.url}/", model: clef-cull, api_key: k1}\n` +
+    `  score_forecast: {endpoint: "${server.url}", model: clef-forecast, api_key: k1}\n`;
+
+  it('asks each stage of the endpoint config.yaml names, with its API key, and files answers under it', async () => {
+    writeConfig(both());
+    server.apiKey = 'k1';
+    await addPhoto('b', PROFILE_CUT);
+    await addPhoto('c', FORECAST_CUT);
+    const job = await runCull();
+    expect(job.status).toBe('completed');
+    expect(laya.calls).toEqual([]);
+    expect(server.requests.map((r) => [r.key, r.model, r.questions.length])).toEqual([
+      [null, 'clef-cull', 8],
+      [null, 'clef-forecast', FORECAST_QUESTIONS],
+      ['c', 'clef-cull', 8],
+      ['c', 'clef-forecast', FORECAST_QUESTIONS],
+      ['b', 'clef-cull', 8],
+      ['b', 'clef-forecast', FORECAST_QUESTIONS],
+    ]);
+    expect(server.requests.every((r) => r.authorization === 'Bearer k1' && r.state === '')).toBe(true);
+    expect(verdicts().map((v) => [v.image_key, v.verdict, v.filtered_by])).toEqual([
+      ['b', 'filtered', 'culling_profile'],
+      ['c', 'filtered', 'score_forecast'],
+    ]);
+    expect(fx.query('SELECT stage_key, model_id FROM cull_stage_versions ORDER BY id')).toEqual([
+      { stage_key: 'culling_profile:recipe-culling:7', model_id: `clef-cull@${server.url}` },
+      { stage_key: 'culling_profile:recipe-culling:10', model_id: `clef-cull@${server.url}` },
+      { stage_key: 'score_forecast', model_id: `clef-forecast@${server.url}` },
+    ]);
+    expect(fx.query('SELECT DISTINCT produced_by FROM cull_stage_answers')).toEqual([{ produced_by: server.url }]);
   });
 
-  it('starts once on first answer and surfaces start errors', async () => {
-    laya.startError = new LayaSetupError('missing');
-    const bad = new LazyLaya(modelsDir);
-    await expect(bad.answer('/x/a.jpg')).rejects.toBeInstanceOf(LayaSetupError);
-    laya.startError = null;
-    laya.starts = 0;
-    const lazy = new LazyLaya(modelsDir);
-    await lazy.answer('/x/a.jpg');
-    await lazy.answer('/x/b.jpg');
-    expect(laya.starts).toBe(1);
+  it('one stage on this app and one elsewhere', async () => {
+    writeConfig(`  score_forecast: {endpoint: "${server.url}", model: clef-forecast, api_key: ""}\n`);
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('completed');
+    expect(calls()).toEqual([['a', 'base', 8]]);
+    expect(server.requests.map((r) => [r.key, r.model])).toEqual([
+      [null, 'clef-forecast'],
+      ['a', 'clef-forecast'],
+    ]);
+    expect(
+      fx.query(
+        `SELECT v.stage_key, a.produced_by FROM cull_stage_answers a JOIN cull_stage_versions v ON v.id = a.stage_version_id ORDER BY v.id`,
+      ),
+    ).toEqual([
+      { stage_key: 'culling_profile:recipe-culling:7', produced_by: 'this_app' },
+      { stage_key: 'culling_profile:recipe-culling:10', produced_by: 'this_app' },
+      { stage_key: 'score_forecast', produced_by: server.url },
+    ]);
+  });
+
+  it("another model's answers never read as current; switching back makes the earlier answers current again", async () => {
+    await addPhoto('a', PASS);
+    await runCull();
+    writeConfig(`  score_forecast: {endpoint: "${server.url}", model: clef-forecast, api_key: ""}\n`);
+    laya.calls = [];
+    await runCull();
+    expect(laya.calls).toEqual([]);
+    expect(server.requests.map((r) => r.key)).toEqual([null, 'a']);
+    writeConfig();
+    server.requests = [];
+    const back = await runCull();
+    expect(laya.calls).toEqual([]);
+    expect(server.requests).toEqual([]);
+    expect(result(back)).toMatchObject({ culled: 0, redecided: 1 });
+    expect(fx.query("SELECT model_id, is_current FROM cull_stage_versions WHERE kind = 'score_forecast' ORDER BY id")).toEqual([
+      { model_id: await layaNewModelId(join(modelsDir, 'laya-new')), is_current: 1 },
+      { model_id: `clef-forecast@${server.url}`, is_current: 0 },
+    ]);
+  });
+
+  it('an endpoint that wants a data URL gets one from the first request', async () => {
+    writeConfig(both());
+    await addPhoto('a', PASS);
+    expect((await runCull()).status).toBe('completed');
+    expect(server.requests.map((r) => r.encoding)).toEqual(['data_url', 'data_url', 'data_url', 'data_url']);
+  });
+
+  it('an endpoint that wants raw base64: the start check finds out, and every photo goes that way', async () => {
+    writeConfig(both());
+    server.accepts = 'base64';
+    await addPhoto('a', PASS);
+    await addPhoto('b', PROFILE_CUT);
+    const job = await runCull();
+    expect(job.status).toBe('completed');
+    expect(server.requests.map((r) => [r.key, r.model, r.encoding])).toEqual([
+      [null, 'clef-cull', 'data_url'],
+      [null, 'clef-cull', 'base64'],
+      [null, 'clef-forecast', 'data_url'],
+      [null, 'clef-forecast', 'base64'],
+      ['b', 'clef-cull', 'base64'],
+      ['b', 'clef-forecast', 'base64'],
+      ['a', 'clef-cull', 'base64'],
+      ['a', 'clef-forecast', 'base64'],
+    ]);
+    expect(verdicts().map((v) => [v.image_key, v.verdict])).toEqual([
+      ['a', 'passed'],
+      ['b', 'filtered'],
+    ]);
+  });
+
+  it('a start check refused in both encodings fails the job, naming the stage and what the endpoint said', async () => {
+    writeConfig(both());
+    server.badRequest = true;
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(`Culling profile: the start check failed: ${server.url} answered HTTP 400: question too long`);
+    expect(server.requests.map((r) => r.encoding)).toEqual(['data_url', 'base64']);
+  });
+
+  it('a refused API key fails the job at the start, naming the stage', async () => {
+    writeConfig(both());
+    server.apiKey = 'other';
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(`Culling profile: ${server.url} refused the API key (${server.url} answered HTTP 401: invalid api key)`);
+    expect(job.error_severity).toBe('warning');
+  });
+
+  it('a model the endpoint does not list fails the job at the start, naming the stage and the model', async () => {
+    writeConfig(`  score_forecast: {endpoint: "${server.url}", model: nope, api_key: ""}\n`);
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(`Score forecast: nope is not listed by ${server.url}`);
+  });
+
+  it('an endpoint that does not answer fails the job at the start, naming the stage', async () => {
+    await server.close();
+    writeConfig(both());
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toContain(`Culling profile: ${server.url} does not answer`);
+  });
+
+  it('an HTTP error on one photo leaves it pending; the endpoint going away mid-job stops the job', async () => {
+    writeConfig(both());
+    await addPhoto('a', PASS);
+    await addPhoto('b', PASS);
+    await addPhoto('c', PASS);
+    server.failOn = 'c';
+    server.dieOn = 'a';
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toContain(`Culling profile: ${server.url} does not answer`);
+    expect(verdicts().map((v) => [v.image_key, v.verdict, v.pending_reason])).toEqual([
+      ['a', 'pending', 'endpoint_down'],
+      ['b', 'passed', ''],
+      ['c', 'pending', `model_failed: Culling profile: ${server.url} answered HTTP 500: out of memory`],
+    ]);
   });
 });
-

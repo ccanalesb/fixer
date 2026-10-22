@@ -4766,6 +4766,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Models this app serves */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SystemOneModels"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/systemone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SystemOneRequest"];
+                };
+            };
+            responses: {
+                /** @description Answers by question id */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SystemOneResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5793,6 +5885,92 @@ export interface components {
             /** @enum {string} */
             image_type: "catalog";
             current: components["schemas"]["ImageScoreRow"][];
+        };
+        SystemOneModels: {
+            models: {
+                name: string;
+                description: string;
+                release_date: string;
+                /** @description What answers under this name: a revision or a file hash */
+                x_model_id: string;
+            }[];
+        };
+        SystemOneResponse: {
+            model: string;
+            answers: {
+                [key: string]: components["schemas"]["SystemOneAnswer"];
+            };
+            usage: {
+                input_tokens: number;
+                output_tokens: number;
+            };
+        };
+        SystemOneAnswer: {
+            /** @enum {string} */
+            type: "score";
+            /** @description Expected level, from 0 */
+            score: number;
+            confidence: number;
+            legend: {
+                [key: string]: string;
+            };
+            /** @description By level, "0" first */
+            probabilities: {
+                [key: string]: number;
+            };
+        } | {
+            /** @enum {string} */
+            type: "choice";
+            choice: string;
+            confidence: number;
+            probabilities: {
+                [key: string]: number;
+            };
+        } | {
+            /** @enum {string} */
+            type: "noul";
+            /** @description P(true) */
+            noul: number;
+            probabilities: {
+                false: number;
+                true: number;
+            };
+        };
+        SystemOneRequest: {
+            /** @description A name from GET /v1/models */
+            model: string;
+            /**
+             * @description Empty: this endpoint answers about the image alone, as its models were trained
+             * @enum {string}
+             */
+            state?: "";
+            /** @description One image, base64 or a data: URL */
+            images: string[];
+            questions: {
+                [key: string]: components["schemas"]["SystemOneQuestion"];
+            };
+        };
+        SystemOneQuestion: {
+            /** @enum {string} */
+            type: "score";
+            instructions: string;
+            /** @description Levels, lowest first */
+            criteria: string[];
+        } | {
+            /** @enum {string} */
+            type: "choice";
+            instructions: string;
+            criteria: string[] | {
+                [key: string]: string | null;
+            };
+        } | {
+            /** @enum {string} */
+            type: "noul";
+            instructions: string;
+            criteria?: {
+                true?: string | null;
+                false?: string | null;
+            } | null;
         };
     };
     responses: never;

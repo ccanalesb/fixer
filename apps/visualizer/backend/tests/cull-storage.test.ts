@@ -21,7 +21,7 @@ import {
 import {
   getOrCreateStageVersion,
   loadCurrentStageAnswers,
-  readStoredLayaModelIds,
+  readStoredStageModelIds,
   upsertStageAnswer,
 } from '../src/db/library/cull-stages.js';
 import { isSentByHand, listCullUserActions, recordCullUserAction } from '../src/db/library/cull-user-actions.js';
@@ -52,7 +52,7 @@ const CULL_TABLES = [
   'cull_user_actions',
   'cull_verdicts',
 ];
-const MODEL_IDS = { base: 'thaitea/laya-vision@8b318c9', new: 'laya-new@sha256:abc' };
+const MODEL_IDS = { culling_profile: 'thaitea/laya-vision@8b318c9', score_forecast: 'laya-new@sha256:abc' };
 
 let dir: string;
 let db: Db;
@@ -155,10 +155,10 @@ describe('versions', () => {
   }
 
   it('resolves three stages: Recipe culling at 7 and 10 levels and the Score forecast', () => {
-    expect(current().map((s) => [s.stageKey, s.kind, s.model])).toEqual([
-      [S7, 'culling_profile', 'base'],
-      [S10, 'culling_profile', 'base'],
-      ['score_forecast', 'score_forecast', 'new'],
+    expect(current().map((s) => [s.stageKey, s.kind, s.modelId])).toEqual([
+      [S7, 'culling_profile', MODEL_IDS.culling_profile],
+      [S10, 'culling_profile', MODEL_IDS.culling_profile],
+      ['score_forecast', 'score_forecast', MODEL_IDS.score_forecast],
     ]);
     expect(Object.keys(byKey('score_forecast').questions)).toEqual(Object.keys(LAYA_QUESTIONS.new));
   });
@@ -203,7 +203,7 @@ describe('versions', () => {
 
   it('a new model makes a new stage version', () => {
     const old = byKey('score_forecast').versionId;
-    const other = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, new: 'laya-new@other' });
+    const other = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, score_forecast: 'laya-new@other' });
     expect(other.find((s) => s.stageKey === 'score_forecast')!.versionId).not.toBe(old);
   });
 
@@ -327,18 +327,23 @@ describe('what the jobs that send photos to kimi read', () => {
     expect(loadCullVerdictsForKeys(db, ['a']).get('a')).toMatchObject({ verdict: 'filtered', sentByHand: true });
   });
 
-  it('readStoredLayaModelIds: the model ids of the current stage versions, never the files', () => {
-    expect(readStoredLayaModelIds(db)).toBeNull();
+  it('readStoredStageModelIds: the model identities of the current stage versions, never an endpoint', () => {
+    expect(readStoredStageModelIds(db)).toEqual({ culling_profile: null, score_forecast: null });
     resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
-    expect(readStoredLayaModelIds(db)).toEqual(MODEL_IDS);
-    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { base: 'other-base', new: null });
-    // Laya new left out of a later run keeps its current version: the forecast is still on (G8).
-    expect(readStoredLayaModelIds(db)).toEqual({ base: 'other-base', new: MODEL_IDS.new });
+    expect(readStoredStageModelIds(db)).toEqual(MODEL_IDS);
+    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { culling_profile: 'other-base', score_forecast: null });
+    // A stage left out of a later run keeps its current version (G8).
+    expect(readStoredStageModelIds(db)).toEqual({ culling_profile: 'other-base', score_forecast: MODEL_IDS.score_forecast });
   });
 
-  it('readStoredLayaModelIds: no Laya new without a Score forecast version', () => {
-    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { base: MODEL_IDS.base, new: null });
-    expect(readStoredLayaModelIds(db)).toEqual({ base: MODEL_IDS.base, new: null });
+  it('readStoredStageModelIds: no Score forecast identity without a Score forecast version', () => {
+    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, score_forecast: null });
+    expect(readStoredStageModelIds(db)).toEqual({ culling_profile: MODEL_IDS.culling_profile, score_forecast: null });
+  });
+
+  it('resolveCurrentStages: no culling profile stages without a culling profile identity', () => {
+    const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, culling_profile: null });
+    expect(stages.map((s) => s.stageKey)).toEqual(['score_forecast']);
   });
 
   it('listCulledImageKeys: photos with a summary or a current answer', () => {

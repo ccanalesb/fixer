@@ -1,25 +1,23 @@
 /**
- * Shared cull pass: lazy Laya, checkpoints, and per-photo work. Used by the standalone cull job
+ * Shared cull pass: each stage's model through System One, checkpoints, and per-photo work. Used by the standalone cull job
  * and the in-job cull step (#339).
  */
 import { performance } from 'node:perf_hooks';
 import { config, loadLibraryConfig } from '../../config.js';
 import { cullPhoto } from '../../cull/answer-photo.js';
 import { decidePhoto } from '../../cull/decide.js';
-import { LazyLaya } from '../../cull/lazy-laya.js';
 import { decideAndStorePhoto, type CullContext } from '../../cull/persist.js';
 import { selectPhotosToCull } from '../../cull/select.js';
-import { layaQuestionSet, resolveCurrentStages } from '../../cull/stages.js';
+import { CullingModels, resolveStageModelIds, stageModelsFromConfig, stagesOn } from '../../cull/stage-models.js';
+import { resolveCurrentStages } from '../../cull/stages.js';
 import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-profiles.js';
-import { loadCurrentStageAnswers } from '../../db/library/cull-stages.js';
+import { loadCurrentStageAnswers, readStoredStageModelIds } from '../../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
-import { resolveLayaModelFiles } from '../../laya/files.js';
-import { readLayaModelIds } from '../../laya/model-id.js';
 import { createEventLoopYieldState, pollCancelAndYield } from '../../utils/yield.js';
 import {
   buildBatchCullCheckpointBody,
@@ -57,9 +55,10 @@ export interface BatchCullResult {
   pipeline_setting_version: number;
   stage_versions: Record<string, number>;
   durations_s: { start_check: number; select: number; cull: number; total: number };
-  laya_seconds: { prep: number; vision: number; base: number; new: number };
+  /** Wall seconds spent on each stage's model calls. */
+  stage_seconds: Record<StageKind, number>;
   seconds_per_photo: number | null;
-  laya_started: boolean;
+  models_started: boolean;
 }
 
 function readImageKeys(raw: unknown): string[] | null {
@@ -74,7 +73,7 @@ export async function runCullPass(
   metadata: Record<string, unknown>,
   db: Db,
   ctx: PassContext,
-  opts: { imageKeys?: readonly string[]; skipLayaFor?: ReadonlySet<string>; force?: boolean } = {},
+  opts: { imageKeys?: readonly string[]; skipModelsFor?: ReadonlySet<string>; force?: boolean } = {},
 ): Promise<BatchCullResult | null> {
   const t0 = performance.now();
   const prefix = ctx.logPrefix;
@@ -85,11 +84,9 @@ export async function runCullPass(
 
   seedCullingDefaults(db);
   const pipeline = getCurrentPipelineSetting(db);
-  const modelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir;
-  const files = resolveLayaModelFiles(modelsDir);
-  const stages = resolveCurrentStages(db, pipeline.config, await readLayaModelIds(files));
-  const questions = layaQuestionSet(stages);
-  const lazy = new LazyLaya(modelsDir, questions);
+  const stageModels = stageModelsFromConfig(loadLibraryConfig(config.LT_CONFIG_YAML).cullingModels);
+  const modelIds = await resolveStageModelIds(stageModels, stagesOn(pipeline.config), readStoredStageModelIds(db));
+  const stages = resolveCurrentStages(db, pipeline.config, modelIds);
 
   const tSelect = performance.now();
   const { months, year } = resolveDateWindow(metadata);
@@ -127,10 +124,12 @@ export async function runCullPass(
         })
       : { doneByStage: {}, failed: new Set(), totalAtStart: null };
 
-  const scoreForecastAvailable = files.newDir !== null;
+  const scoreForecastAvailable = modelIds.score_forecast !== null;
   const cullCtx: CullContext = { stages, pipeline, scoreForecastAvailable };
-  const scoreForecast = scoreForecastAvailable && pipeline.config.score_forecast.enabled;
-  const activeStages = stages.filter((s) => s.kind !== 'score_forecast' || scoreForecast);
+  const on = stagesOn(pipeline.config);
+  const scoreForecast = on.score_forecast;
+  const activeStages = stages.filter((s) => on[s.kind]);
+  const models = new CullingModels(stageModels, activeStages);
   const selected = selectPhotosToCull(db, cullCtx, keys, {
     force: opts.force ? { doneByRuns: listCullRunIdsForJob(db, jobId) } : undefined,
   });
@@ -161,8 +160,8 @@ export async function runCullPass(
   };
 
   const sentByHand = listSentByHandKeys(db);
-  const skipLaya = opts.skipLayaFor ?? new Set<string>();
-  const layaSec = { prep: 0, vision: 0, base: 0, new: 0 };
+  const skipModels = opts.skipModelsFor ?? new Set<string>();
+  const stageSec: Record<StageKind, number> = { culling_profile: 0, score_forecast: 0 };
   const counts = {
     culled: 0,
     redecided: 0,
@@ -205,7 +204,7 @@ export async function runCullPass(
       }
 
       let r;
-      if (skipLaya.has(key)) {
+      if (skipModels.has(key)) {
         const stored = loadCurrentStageAnswers(db, stages, [key]).get(key) ?? {};
         const decision = decideAndStorePhoto(db, cullCtx, {
           imageKey: key,
@@ -218,24 +217,24 @@ export async function runCullPass(
           outcome: 'redecided' as const,
           decision,
           answeredStages: [] as string[],
-          seconds: { prep: 0, vision: 0, base: 0, new: 0 },
+          seconds: {},
           error: undefined,
         };
       } else {
-        r = await cullPhoto(db, cullCtx, lazy, { imageKey: key, sentByHand: sentByHand.has(key), runId, force: opts.force });
+        r = await cullPhoto(db, cullCtx, models, { imageKey: key, sentByHand: sentByHand.has(key), runId, force: opts.force });
       }
 
-      for (const k of Object.keys(layaSec) as (keyof typeof layaSec)[]) layaSec[k] += r.seconds[k];
+      for (const [kind, s] of Object.entries(r.seconds) as [StageKind, number][]) stageSec[kind] += s;
       for (const stage of r.answeredStages) resume.doneByStage[stage] = (resume.doneByStage[stage] ?? 0) + 1;
       if (r.outcome === 'culled') counts.culled += 1;
       else if (r.outcome === 'redecided') counts.redecided += 1;
       else {
         counts.failed += 1;
         resume.failed.add(key);
-        if (r.outcome === 'laya_failed') log(`${key} left pending, Laya failed on it: ${r.error!.message}`, 'warning');
+        if (r.outcome === 'model_failed') log(`${key} left pending: ${r.error!.message}`, 'warning');
       }
       tally(r.decision.verdict, r.decision.filteredBy, r.decision.sentByHandOverride);
-      if (r.outcome === 'worker_died') throw r.error!;
+      if (r.outcome === 'endpoint_down') throw r.error!;
       if ((i + 1) % CHECKPOINT_EVERY === 0) persist();
       progress(3 + Math.trunc(((i + 1) / Math.max(work.length, 1)) * 97), `Culled ${i + 1}/${work.length}`);
     }
@@ -245,19 +244,17 @@ export async function runCullPass(
       finishCullRun(db, runId, { status: 'failed', error: e instanceof Error ? e.message : String(e), ...counts }),
     );
     throw e;
-  } finally {
-    await lazy.close();
   }
 
-  if (lazy.started) {
+  if (models.started) {
     log(
       `stages=${activeStages.map((s) => `${s.stageKey}@v${s.versionId}`).join(',')} ` +
         `pipeline_setting=v${pipeline.version} score_forecast=${scoreForecast ? 'on' : 'off'} ` +
-        `models_loaded_s=${lazy.loadSeconds.toFixed(1)}`,
+        `start_check_s=${models.loadSeconds.toFixed(1)}`,
     );
   }
 
-  const startCheckS = lazy.started ? lazy.loadSeconds : 0;
+  const startCheckS = models.started ? models.loadSeconds : 0;
   const cullS = seconds(tCull);
   const result: BatchCullResult = {
     total: keys.length,
@@ -266,14 +263,12 @@ export async function runCullPass(
     pipeline_setting_version: pipeline.version,
     stage_versions: stageVersions,
     durations_s: { start_check: startCheckS, select: selectS, cull: cullS, total: seconds(t0) },
-    laya_seconds: {
-      prep: Math.round(layaSec.prep * 100) / 100,
-      vision: Math.round(layaSec.vision * 100) / 100,
-      base: Math.round(layaSec.base * 100) / 100,
-      new: Math.round(layaSec.new * 100) / 100,
+    stage_seconds: {
+      culling_profile: Math.round(stageSec.culling_profile * 100) / 100,
+      score_forecast: Math.round(stageSec.score_forecast * 100) / 100,
     },
     seconds_per_photo: counts.culled > 0 ? Math.round((cullS / counts.culled) * 100) / 100 : null,
-    laya_started: lazy.started,
+    models_started: models.started,
   };
   libraryWrite(db, () => finishCullRun(db, runId, { status: 'complete', ...result }));
   log(

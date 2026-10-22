@@ -14,16 +14,22 @@ import { decidePhoto } from './decide.js';
 import type { PhotoDecision, ResolvedStage, StageAnswers } from './types.js';
 
 /**
- * Pending reason of a photo the Laya worker died on. Kept whatever the verdict (a photo sent by hand
- * is `passed` and still killed the worker), so the next fresh job asks it last.
+ * Pending reason of a photo a stage's endpoint stopped answering on. Kept whatever the verdict (a photo
+ * sent by hand is `passed` and still stopped it), so the next fresh job asks it last. Photos culled
+ * before System One carry the older `laya_worker_died`, read the same way.
  */
-export const WORKER_DIED_REASON = 'laya_worker_died';
+export const ENDPOINT_DOWN_REASON = 'endpoint_down';
+const ASK_LAST_REASONS = new Set([ENDPOINT_DOWN_REASON, 'laya_worker_died']);
+
+export function asksLast(pendingReason: string | undefined): boolean {
+  return pendingReason !== undefined && ASK_LAST_REASONS.has(pendingReason);
+}
 
 /** Everything a decision depends on, resolved once per run. */
 export interface CullContext {
   stages: ResolvedStage[];
   pipeline: PipelineSetting;
-  /** False without Laya new: the Score forecast is off and the profile decides alone. */
+  /** False when the Score forecast has no model identity (off, never answered): the profile decides alone. */
   scoreForecastAvailable: boolean;
 }
 
@@ -35,7 +41,8 @@ export function stageVersionIds(ctx: CullContext): number[] {
 export interface FreshAnswers {
   answers: Record<string, StageAnswers>;
   source: 'job' | 'research_import';
-  producedBy: string;
+  /** The endpoint that answered (`this_app` or its URL), one for all or by stage key. */
+  producedBy: string | Readonly<Record<string, string>>;
   imagePath: string;
   imageSignature: string | null;
   /** Keep a row already stored for that stage version (the import never overwrites a job's). */
@@ -75,7 +82,8 @@ export function decideAndStorePhoto(db: Db, ctx: CullContext, args: StorePhotoAr
             decision: d.detail,
             pipelineSettingVersion: ctx.pipeline.version,
             source: args.fresh.source,
-            producedBy: args.fresh.producedBy,
+            producedBy:
+              typeof args.fresh.producedBy === 'string' ? args.fresh.producedBy : (args.fresh.producedBy[stage.stageKey] ?? ''),
             imagePath: args.fresh.imagePath,
             imageSignature: args.fresh.imageSignature,
             runId: args.runId,
@@ -97,8 +105,8 @@ export function decideAndStorePhoto(db: Db, ctx: CullContext, args: StorePhotoAr
       pendingReason:
         decision.verdict === 'pending'
           ? (args.pendingReason ?? '')
-          : args.pendingReason === WORKER_DIED_REASON
-            ? args.pendingReason
+          : asksLast(args.pendingReason)
+            ? args.pendingReason!
             : '',
       scoreForecastOff: !ctx.scoreForecastAvailable || !ctx.pipeline.config.score_forecast.enabled,
       scoreForecastP8: decision.scoreForecastP8,

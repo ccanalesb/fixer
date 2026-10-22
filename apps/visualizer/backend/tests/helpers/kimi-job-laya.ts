@@ -19,9 +19,9 @@ const kimiJobLaya = vi.hoisted(
   (): FakeLayaState => ({
     scripts: new Map(),
     calls: [],
+    checks: 0,
     starts: 0,
     closed: 0,
-    forecastOn: true,
     failOn: null,
     dieOn: null,
     broken: false,

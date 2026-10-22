@@ -15,7 +15,7 @@ import { runFrameSubstanceDetection, type FrameSubstanceRunResult } from './fram
 
 export type JobResultCullSummary = Omit<
   BatchCullResult,
-  'total' | 'durations_s' | 'laya_seconds' | 'stage_versions'
+  'total' | 'durations_s' | 'stage_seconds' | 'stage_versions'
 >;
 
 export const CULL_STEP_LABEL = 'Culling';
@@ -110,7 +110,7 @@ export async function runCullStageBeforeDescribeAndScore(
     (await runCullPass(runner, jobId, metadata, db, ctx, {
       // Forced, the whole window is culled again, not only the photos this job will describe or score.
       imageKeys: opts.forceCull ? undefined : candidateKeys,
-      skipLayaFor: sentByHand,
+      skipModelsFor: sentByHand,
       force: opts.forceCull,
     })) ?? null;
   if (cullStep === null) return null;
@@ -191,7 +191,7 @@ export function cullStageJobResultFields(
       score_forecast: step.score_forecast,
       pipeline_setting_version: step.pipeline_setting_version,
       seconds_per_photo: step.seconds_per_photo,
-      laya_started: step.laya_started,
+      models_started: step.models_started,
     },
     held_back: stage.heldBack,
     durations_s: {

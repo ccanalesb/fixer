@@ -24,7 +24,6 @@ import { canonicalJson } from '../utils/canonical-json.js';
 import { FRAMING_EXCUSAL_QID } from './decide.js';
 import { imageSignature } from './image-signature.js';
 import { decideAndStorePhoto, type CullContext } from './persist.js';
-import type { LayaModelIds } from '../laya/model-id.js';
 import { profileStageKey, resolveCurrentStages, SCORE_FORECAST_STAGE_KEY } from './stages.js';
 import type { ResolvedStage, StageAnswers } from './types.js';
 
@@ -187,8 +186,10 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
   try {
     seedCullingDefaults(db);
     const pipeline = getCurrentPipelineSetting(db);
-    const models: LayaModelIds = { base: opts.modelIds.base, new: opts.modelIds.new };
-    const stages = resolveCurrentStages(db, pipeline.config, models);
+    const stages = resolveCurrentStages(db, pipeline.config, {
+      culling_profile: opts.modelIds.base,
+      score_forecast: opts.modelIds.new,
+    });
     const profileStages = ['7', '10'].map((set) => {
       const s = stages.find((st) => st.stageKey === profileStageKey(DEFAULT_CULLING_PROFILE_SLUG, set));
       if (!s) throw new Error(`the pipeline setting does not run Recipe culling at ${set} levels; nothing to import into`);

@@ -3,6 +3,7 @@
  * level probability. Old versions and their rows stay as history; only current versions are read.
  */
 import { createHash } from 'node:crypto';
+import type { StageModelIds } from '../../cull/stage-models.js';
 import type { CullVerdict, ResolvedStage, StageAnswers, StageKind } from '../../cull/types.js';
 import type { LayaQuestion } from '../../laya/rows.js';
 import { canonicalJson } from '../../utils/canonical-json.js';
@@ -179,18 +180,15 @@ export function loadAnsweredStageKeys(db: Db, stages: readonly ResolvedStage[]):
 }
 
 /**
- * The model ids the current stage versions were made with: Laya base from a profile stage, Laya new
- * from the Score forecast. What re-decide resolves stages with, so it never reads a model file. Null
- * when nothing was ever culled. (The shape of `laya/model-id.ts`'s `LayaModelIds`.)
+ * The model identity each stage kind's current versions were made with; null for a kind never
+ * answered. What re-decide resolves stages with, so it never calls an endpoint.
  */
-export function readStoredLayaModelIds(db: Db): { base: string; new: string | null } | null {
+export function readStoredStageModelIds(db: Db): StageModelIds {
   const modelOf = (kind: StageKind) =>
     (
       db
         .prepare('SELECT model_id FROM cull_stage_versions WHERE kind = ? AND is_current = 1 ORDER BY id DESC LIMIT 1')
         .get(kind) as { model_id: string } | undefined
     )?.model_id ?? null;
-  const base = modelOf('culling_profile');
-  if (base === null) return null;
-  return { base, new: modelOf('score_forecast') };
+  return { culling_profile: modelOf('culling_profile'), score_forecast: modelOf('score_forecast') };
 }

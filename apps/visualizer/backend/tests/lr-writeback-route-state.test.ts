@@ -41,7 +41,7 @@ let lrcatPath: string;
 let jobsDbPath: string;
 const imageKey = '2024-06-01_filtered-photo';
 const starsKey = '2024-06-01_star-photo';
-const MODEL_IDS = { base: 'test-laya-base', new: 'test-laya-new' };
+const MODEL_IDS = { culling_profile: 'test-laya-base', score_forecast: 'test-laya-new' };
 const STAR_DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
 
 function levelPick(levelSet: '7' | '10', dim: string, levelIndex: number): Record<string, number[]> {
