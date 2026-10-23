@@ -5,8 +5,6 @@ import { useQuery } from '../../data'
 import { Spinner } from '../ui/Spinner'
 import {
   FRAME_SUBSTANCE_ADVISORY_LABEL,
-  FRAME_SUBSTANCE_CULL_MARK,
-  FRAME_SUBSTANCE_CULL_UNMARK,
   FRAME_SUBSTANCE_DECODE_FAILED,
   FRAME_SUBSTANCE_LABEL,
   FRAME_SUBSTANCE_MOUNT_SHARE,
@@ -19,7 +17,6 @@ import {
   FRAME_SUBSTANCE_STALE,
   FRAME_SUBSTANCE_OK,
   FRAME_SUBSTANCE_UNKNOWN_UNSPECIFIED,
-  FRAME_SUBSTANCE_CATALOG_UNAVAILABLE,
 } from '../../constants/strings'
 
 interface FrameSubstanceSectionProps {
@@ -66,9 +63,14 @@ function verdictSummary(data: FrameSubstanceResponse): string {
   return data.verdict
 }
 
+/** A frame the detector read and found OK, with nothing else to report, needs no panel. */
+function saysNothing(data: FrameSubstanceResponse): boolean {
+  return data.verdict === 'ok' && !data.is_stale && !data.has_override && data.instrument == null
+}
+
 function FrameSubstanceSectionLoaded({ imageKey, onDataChanged }: FrameSubstanceSectionProps) {
   const [actionError, setActionError] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'override' | 'cull' | null>(null)
+  const [busy, setBusy] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
 
   const data = useQuery(
@@ -84,7 +86,7 @@ function FrameSubstanceSectionLoaded({ imageKey, onDataChanged }: FrameSubstance
 
   async function handleOverrideToggle() {
     setActionError(null)
-    setBusy('override')
+    setBusy(true)
     try {
       if (data.has_override) {
         await FrameSubstanceAPI.deleteOverride(imageKey)
@@ -95,28 +97,12 @@ function FrameSubstanceSectionLoaded({ imageKey, onDataChanged }: FrameSubstance
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Failed to update override')
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
-  async function handleCullToggle() {
-    setActionError(null)
-    setBusy('cull')
-    try {
-      if (data.has_cull_keyword) {
-        await FrameSubstanceAPI.removeCullKeyword(imageKey)
-      } else {
-        await FrameSubstanceAPI.addCullKeyword(imageKey)
-      }
-      refresh()
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Failed to update cull keyword')
-    } finally {
-      setBusy(null)
-    }
-  }
+  if (saysNothing(data)) return null
 
-  const catalogDisabled = !data.catalog_write_available
   const showRestore = data.flagged || data.has_override
   const restoreWarn =
     !data.has_override && data.restore_tier === 'A' ? FRAME_SUBSTANCE_OVERRIDE_RESCORE_WARN : null
@@ -140,36 +126,18 @@ function FrameSubstanceSectionLoaded({ imageKey, onDataChanged }: FrameSubstance
         <p className="text-xs text-text-tertiary">{FRAME_SUBSTANCE_RESTORED}</p>
       ) : null}
       {restoreWarn ? <p className="text-xs text-text-tertiary">{restoreWarn}</p> : null}
-      {catalogDisabled && data.catalog_write_unavailable_reason ? (
-        <p className="text-xs text-text-tertiary">
-          {FRAME_SUBSTANCE_CATALOG_UNAVAILABLE}: {data.catalog_write_unavailable_reason}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        {showRestore ? (
+      {showRestore ? (
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className="rounded-base border border-border px-3 py-1.5 text-sm disabled:opacity-50"
-            disabled={busy !== null || (!data.flagged && !data.has_override)}
+            disabled={busy || (!data.flagged && !data.has_override)}
             onClick={() => void handleOverrideToggle()}
           >
-            {busy === 'override' ? '…' : data.has_override ? 'Undo restore' : FRAME_SUBSTANCE_OVERRIDE_RESTORE}
+            {busy ? '…' : data.has_override ? 'Undo restore' : FRAME_SUBSTANCE_OVERRIDE_RESTORE}
           </button>
-        ) : null}
-        <button
-          type="button"
-          className="rounded-base border border-border px-3 py-1.5 text-sm disabled:opacity-50"
-          disabled={busy !== null || catalogDisabled}
-          title={catalogDisabled ? data.catalog_write_unavailable_reason ?? undefined : undefined}
-          onClick={() => void handleCullToggle()}
-        >
-          {busy === 'cull'
-            ? '…'
-            : data.has_cull_keyword
-              ? FRAME_SUBSTANCE_CULL_UNMARK
-              : FRAME_SUBSTANCE_CULL_MARK}
-        </button>
-      </div>
+        </div>
+      ) : null}
       {actionError ? (
         <p className="text-sm text-error" role="alert">
           {actionError}

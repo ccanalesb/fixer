@@ -27,12 +27,10 @@ import type {
   ImageDescriptionTechnical,
 } from '../types/descriptions'
 import type {
-  CullKeywordMutationResponse,
   FrameSubstanceOverrideResponse,
   FrameSubstanceResponse,
 } from '../types/frameSubstance'
 export type {
-  CullKeywordMutationResponse,
   FrameSubstanceInstrument,
   FrameSubstanceOverrideResponse,
   FrameSubstanceResponse,
@@ -672,18 +670,6 @@ export const FrameSubstanceAPI = {
   deleteOverride: (imageKey: string) =>
     request<FrameSubstanceOverrideResponse>(
       `/images/catalog/${encodeURIComponent(imageKey)}/frame-substance/override`,
-      { method: 'DELETE' },
-    ),
-
-  addCullKeyword: (imageKey: string) =>
-    request<CullKeywordMutationResponse>(
-      `/images/catalog/${encodeURIComponent(imageKey)}/cull-keyword`,
-      { method: 'POST' },
-    ),
-
-  removeCullKeyword: (imageKey: string) =>
-    request<CullKeywordMutationResponse>(
-      `/images/catalog/${encodeURIComponent(imageKey)}/cull-keyword`,
       { method: 'DELETE' },
     ),
 }

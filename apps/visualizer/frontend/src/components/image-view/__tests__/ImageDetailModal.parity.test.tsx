@@ -146,11 +146,8 @@ describe('ImageDetailModal — cross-entry parity', () => {
       is_stale: false,
       has_override: false,
       flagged: false,
-      has_cull_keyword: null,
       instrument: null,
       restore_tier: null,
-      catalog_write_available: true,
-      catalog_write_unavailable_reason: null,
     })
   })
 

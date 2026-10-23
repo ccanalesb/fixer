@@ -954,118 +954,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/images/catalog/{image_key}/cull-keyword": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    image_key: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["CullKeywordMutationResponse"];
-                    };
-                };
-                /** @description Bad Request */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorBody"];
-                    };
-                };
-                /** @description Not Found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorBody"];
-                    };
-                };
-                /** @description Unprocessable Content */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ValidationError"];
-                    };
-                };
-            };
-        };
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    image_key: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["CullKeywordMutationResponse"];
-                    };
-                };
-                /** @description Bad Request */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorBody"];
-                    };
-                };
-                /** @description Not Found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorBody"];
-                    };
-                };
-                /** @description Unprocessable Content */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ValidationError"];
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/images/stacks/suggestions": {
         parameters: {
             query?: never;
@@ -5658,12 +5546,9 @@ export interface components {
             has_override: boolean;
             /** @default false */
             flagged: boolean;
-            has_cull_keyword?: boolean | null;
             instrument?: components["schemas"]["FrameSubstanceInstrument"];
             /** @enum {string|null} */
             restore_tier?: "A" | "B" | null;
-            catalog_write_available: boolean;
-            catalog_write_unavailable_reason?: string | null;
         };
         FrameSubstanceInstrument: {
             /** @enum {string} */
@@ -5678,14 +5563,6 @@ export interface components {
         FrameSubstanceOverrideResponse: {
             image_key: string;
             has_override: boolean;
-        };
-        CullKeywordMutationResponse: {
-            image_key: string;
-            /**
-             * @description Three-way writer outcome; never collapsed into a boolean.
-             * @enum {string}
-             */
-            result: "added" | "already_present" | "image_not_found" | "removed" | "not_present";
         };
         StackSuggestionsResponse: {
             items: components["schemas"]["StackSuggestion"][];

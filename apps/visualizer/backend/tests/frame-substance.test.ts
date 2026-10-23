@@ -1,26 +1,14 @@
 /**
- * Frame substance route tests.
- *
- * The cull-keyword routes write to a live Lightroom `.lrcat`, so every test here
- * builds a **fake catalog** with the three tables the writer touches and points
- * `config.yaml` at it. Nothing in this file can reach the user's real catalog: the
- * config path is overridden per test, and a test that forgot to would get the
- * "No Lightroom catalog configured." branch rather than a real write.
+ * Frame substance route tests. The panel and its override read and write only
+ * `library.db`; nothing here touches a Lightroom catalog.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { stringify as stringifyYaml } from 'yaml';
 import { createApp } from '../src/app.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { nowIsoLocal, storedInstantMs } from '../src/utils/datetime.js';
 
 let fx: LibraryFixture;
-let dir: string;
-let cfgPath: string;
-let lrcatPath: string;
 const app = createApp();
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 
@@ -34,71 +22,16 @@ interface FrameSubstanceBody {
   is_stale: boolean;
   has_override: boolean;
   flagged: boolean;
-  has_cull_keyword: boolean | null;
   instrument: { kind: string; verdict: string | null; tier: string | null; advisory: boolean } | null;
   restore_tier: string | null;
-  catalog_write_available: boolean;
-  catalog_write_unavailable_reason: string | null;
 }
-
-/**
- * The minimum Lightroom schema the keyword writer touches. `Adobe_images.rootFile`
- * pointing at `AgLibraryFile.id_local` is the join the writer depends on, and using
- * the file id directly would attach keywords to the wrong photo.
- */
-function makeFakeCatalog(path: string, baseNames: string[]): void {
-  const db = new Database(path);
-  db.exec(`
-    CREATE TABLE AgLibraryFile (id_local INTEGER PRIMARY KEY, baseName TEXT);
-    CREATE TABLE Adobe_images (id_local INTEGER PRIMARY KEY, rootFile INTEGER, captureTime TEXT, masterImage INTEGER);
-    CREATE TABLE AgLibraryKeyword (
-      id_local INTEGER PRIMARY KEY AUTOINCREMENT,
-      id_global TEXT, name TEXT, lc_name TEXT, dateCreated TEXT, keywordType INTEGER
-    );
-    CREATE TABLE AgLibraryKeywordImage (image INTEGER, tag INTEGER);
-  `);
-  const file = db.prepare('INSERT INTO AgLibraryFile (id_local, baseName) VALUES (?, ?)');
-  const image = db.prepare('INSERT INTO Adobe_images (id_local, rootFile) VALUES (?, ?)');
-  baseNames.forEach((name, i) => {
-    // Deliberately different id ranges so a file-vs-image id mix-up cannot pass.
-    file.run(100 + i, name);
-    image.run(900 + i, 100 + i);
-  });
-  db.close();
-}
-
-function writeConfig(overrides: Record<string, unknown> = {}): void {
-  writeFileSync(cfgPath, stringifyYaml({ workers: 4, ...overrides }));
-}
-
-const catalogKeywords = (): { image: number; name: string }[] => {
-  const db = new Database(lrcatPath, { readonly: true });
-  try {
-    return db
-      .prepare(
-        `SELECT ki.image AS image, k.name AS name
-         FROM AgLibraryKeywordImage ki
-         JOIN AgLibraryKeyword k ON k.id_local = ki.tag`,
-      )
-      .all() as { image: number; name: string }[];
-  } finally {
-    db.close();
-  }
-};
 
 beforeEach(() => {
   fx = new LibraryFixture().activate();
-  dir = mkdtempSync(join(tmpdir(), 'lt-fs-'));
-  cfgPath = join(dir, 'config.yaml');
-  lrcatPath = join(dir, 'Test Catalog.lrcat');
-  process.env.LT_CONFIG_YAML = cfgPath;
-  writeConfig();
 });
 
 afterEach(() => {
   fx.cleanup();
-  delete process.env.LT_CONFIG_YAML;
-  rmSync(dir, { recursive: true, force: true });
 });
 
 describe('GET /api/images/catalog/{image_key}/frame-substance', () => {
@@ -117,11 +50,15 @@ describe('GET /api/images/catalog/{image_key}/frame-substance', () => {
       flagged: false,
       instrument: null,
       restore_tier: null,
-      catalog_write_available: false,
-      catalog_write_unavailable_reason: 'No Lightroom catalog configured.',
     });
-    // Not false: the catalog cannot be read, so the keyword state is unknown.
-    expect(body.has_cull_keyword).toBeNull();
+  });
+
+  it('says nothing about the Lightroom catalog: no keyword to mark, no catalog to check', async () => {
+    fx.addImages('a');
+    const body = await json<Record<string, unknown>>(await app.request('/api/images/catalog/a/frame-substance'));
+    expect(Object.keys(body)).not.toContain('has_cull_keyword');
+    expect(Object.keys(body)).not.toContain('catalog_write_available');
+    expect((await app.request('/api/images/catalog/a/cull-keyword', { method: 'POST' })).status).toBe(404);
   });
 
   it('reports tier A for a void verdict and tier B for illegible', async () => {
@@ -344,144 +281,5 @@ describe('frame-substance override', () => {
   it('404s for an unknown image, without writing', async () => {
     expect((await call('POST', 'nope')).status).toBe(404);
     expect(fx.query('SELECT COUNT(*) AS c FROM frame_substance_overrides')).toEqual([{ c: 0 }]);
-  });
-});
-
-describe('cull keyword', () => {
-  const call = (method: 'POST' | 'DELETE', key: string) =>
-    app.request(`/api/images/catalog/${key}/cull-keyword`, { method });
-
-  it('400s when no catalog is configured', async () => {
-    fx.addImages('a');
-    const res = await call('POST', 'a');
-    expect(res.status).toBe(400);
-    expect(await json(res)).toEqual({ error: 'No Lightroom catalog configured.' });
-  });
-
-  it('400s when the configured catalog file is missing', async () => {
-    fx.addImages('a');
-    writeConfig({ catalog_path: join(dir, 'gone.lrcat') });
-    const res = await call('POST', 'a');
-    expect(res.status).toBe(400);
-    expect(await json(res)).toEqual({ error: 'Lightroom catalog file not found.' });
-  });
-
-  it('400s while Lightroom holds the catalog open', async () => {
-    fx.addImages('2026-01-15_L1007168');
-    makeFakeCatalog(lrcatPath, ['L1007168']);
-    writeConfig({ catalog_path: lrcatPath });
-    // Lightroom's lock file next to the catalog.
-    writeFileSync(join(dir, 'Test Catalog.lrcat-lock'), '');
-
-    const res = await call('POST', '2026-01-15_L1007168');
-    expect(res.status).toBe(400);
-    expect(await json(res)).toEqual({ error: 'Close Lightroom before writing to catalog.' });
-    // Nothing was written, and no backup was taken either.
-    expect(catalogKeywords()).toEqual([]);
-  });
-
-  it('adds the keyword, reports already_present on a repeat, and removes it', async () => {
-    fx.addImage({ key: '2026-01-15_L1007168', id: '100' });
-    makeFakeCatalog(lrcatPath, ['L1007168']);
-    writeConfig({ catalog_path: lrcatPath });
-
-    const added = await call('POST', '2026-01-15_L1007168');
-    expect(added.status).toBe(200);
-    expect(await json(added)).toEqual({
-      image_key: '2026-01-15_L1007168',
-      result: 'added',
-    });
-    // Linked to the Adobe_images id (900), not the AgLibraryFile id (100).
-    expect(catalogKeywords()).toEqual([{ image: 900, name: 'lrt-cull' }]);
-
-    const again = await call('POST', '2026-01-15_L1007168');
-    expect(await json(again)).toEqual({
-      image_key: '2026-01-15_L1007168',
-      result: 'already_present',
-    });
-    expect(catalogKeywords()).toHaveLength(1);
-
-    const removed = await call('DELETE', '2026-01-15_L1007168');
-    expect(await json(removed)).toEqual({
-      image_key: '2026-01-15_L1007168',
-      result: 'removed',
-    });
-    expect(catalogKeywords()).toEqual([]);
-  });
-
-  it('reports not_present when removing a keyword the image never had', async () => {
-    fx.addImage({ key: '2026-01-15_L1007168', id: '100' });
-    makeFakeCatalog(lrcatPath, ['L1007168']);
-    writeConfig({ catalog_path: lrcatPath });
-
-    const res = await call('DELETE', '2026-01-15_L1007168');
-    expect(await json(res)).toEqual({
-      image_key: '2026-01-15_L1007168',
-      result: 'not_present',
-    });
-  });
-
-  it('reports image_not_found when the key is absent from the Lightroom catalog', async () => {
-    // Present in library.db but not in the .lrcat — the catalogs have drifted.
-    fx.addImages('2026-01-15_MISSING');
-    makeFakeCatalog(lrcatPath, ['L1007168']);
-    writeConfig({ catalog_path: lrcatPath });
-
-    const res = await call('POST', '2026-01-15_MISSING');
-    expect(res.status).toBe(200);
-    // A 200 with a three-way outcome, not a 404: the request was understood and the
-    // answer is "that photo is not in your catalog".
-    expect(await json(res)).toEqual({
-      image_key: '2026-01-15_MISSING',
-      result: 'image_not_found',
-    });
-  });
-
-  it('backs the catalog up once, then reuses that backup', async () => {
-    fx.addImage({ key: '2026-01-15_L1007168', id: '100' }).addImage({ key: '2026-01-16_L1007169', id: '101' });
-    makeFakeCatalog(lrcatPath, ['L1007168', 'L1007169']);
-    writeConfig({ catalog_path: lrcatPath });
-
-    await call('POST', '2026-01-15_L1007168');
-    const afterFirst = readdirSync(dir).filter((f) => f.includes('.backup-'));
-    expect(afterFirst).toHaveLength(1);
-
-    await call('POST', '2026-01-16_L1007169');
-    const afterSecond = readdirSync(dir).filter((f) => f.includes('.backup-'));
-    // A per-write copy would evict the only snapshot predating our writes, so
-    // backing up more often would leave less to recover from.
-    expect(afterSecond).toEqual(afterFirst);
-  });
-
-  it('reports the keyword state in the frame-substance panel', async () => {
-    fx.addImage({ key: '2026-01-15_L1007168', id: '100' });
-    makeFakeCatalog(lrcatPath, ['L1007168']);
-    writeConfig({ catalog_path: lrcatPath });
-
-    const before = await json<FrameSubstanceBody>(
-      await app.request('/api/images/catalog/2026-01-15_L1007168/frame-substance'),
-    );
-    expect(before.catalog_write_available).toBe(true);
-    expect(before.catalog_write_unavailable_reason).toBeNull();
-    expect(before.has_cull_keyword).toBe(false);
-
-    await call('POST', '2026-01-15_L1007168');
-
-    const after = await json<FrameSubstanceBody>(
-      await app.request('/api/images/catalog/2026-01-15_L1007168/frame-substance'),
-    );
-    expect(after.has_cull_keyword).toBe(true);
-  });
-
-  it('404s for an image that is not in library.db, before touching the catalog', async () => {
-    makeFakeCatalog(lrcatPath, ['L1007168']);
-    writeConfig({ catalog_path: lrcatPath });
-
-    const res = await call('POST', '2026-01-15_L1007168');
-    expect(res.status).toBe(404);
-    expect(await json(res)).toEqual({ error: 'Image not found' });
-    // No backup, no write: the guard runs first.
-    expect(readdirSync(dir).filter((f) => f.includes('.backup-'))).toEqual([]);
-    expect(existsSync(lrcatPath)).toBe(true);
   });
 });

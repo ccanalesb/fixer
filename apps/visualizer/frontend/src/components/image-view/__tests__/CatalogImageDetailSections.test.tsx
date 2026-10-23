@@ -28,8 +28,6 @@ vi.mock('../../../services/api', () => ({
     get: (...args: unknown[]) => mockGetFrameSubstance(...args),
     createOverride: vi.fn(),
     deleteOverride: vi.fn(),
-    addCullKeyword: vi.fn(),
-    removeCullKeyword: vi.fn(),
   },
   JobsAPI: {
     create: (...args: unknown[]) => mockCreate(...args),
@@ -94,7 +92,6 @@ describe('CatalogImageDetailSections — modal two-section layout', () => {
       is_stale: false,
       has_override: false,
       flagged: false,
-      catalog_write_available: true,
     })
 
     mockGetDefaults.mockResolvedValue({
@@ -185,7 +182,6 @@ describe('CatalogImageDetailSections — scoring regenerate control', () => {
       is_stale: false,
       has_override: false,
       flagged: false,
-      catalog_write_available: true,
     })
 
     mockGetDefaults.mockResolvedValue({

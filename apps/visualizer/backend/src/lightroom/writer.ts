@@ -26,7 +26,6 @@ import { parseCatalogDate } from './reader.js';
 export type KeywordAddResult = 'added' | 'already_present' | 'image_not_found';
 export type KeywordRemoveResult = 'removed' | 'not_present' | 'image_not_found';
 
-export const CULL_KEYWORD = 'lrt-cull';
 export const AUTO_STARS_KEYWORD = 'lrt-auto-stars';
 export const AUTO_REJECT_KEYWORD = 'lrt-auto-reject';
 

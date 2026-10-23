@@ -8,6 +8,3 @@ export type FrameSubstanceInstrument =
 
 export type FrameSubstanceOverrideResponse =
   components['schemas']['FrameSubstanceOverrideResponse']
-
-export type CullKeywordMutationResponse =
-  components['schemas']['CullKeywordMutationResponse']
