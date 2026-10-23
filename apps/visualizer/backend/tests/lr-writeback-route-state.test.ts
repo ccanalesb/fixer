@@ -375,6 +375,94 @@ describe('switch job stars state', () => {
     expect(again.catalog_updated_stars).toBe(0);
     expect(liveOf('star-photo')).toEqual({ pick: 0, rating: null, keyword: false });
   });
+
+  const starsRow = () =>
+    fx.query<{ status: string; before_rating: number | null; written_rating: number | null }>(
+      "SELECT status, before_rating, written_rating FROM lr_writeback_state WHERE image_key = ? AND kind = 'stars'",
+      starsKey,
+    )[0];
+
+  it('replaces its own stars when the rule now asks for others', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    seedStarsEligible(db, starsKey, 3);
+    const second = await reconcileLrWriteback(db, { trigger: 'redecide_complete', catalogPath: lrcatPath });
+    db.close();
+
+    expect(second.catalog_updated_stars).toBe(1);
+    expect(liveOf('star-photo')).toEqual({ pick: 0, rating: 3, keyword: true });
+    expect(starsRow()).toEqual({ status: 'written', before_rating: null, written_rating: 3 });
+  });
+
+  it('leaves stars the user changed in Lightroom when the rule asks for others', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    editCatalog('UPDATE Adobe_images SET rating = 2');
+    seedStarsEligible(db, starsKey, 3);
+    await reconcileLrWriteback(db, { trigger: 'redecide_complete', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo').rating).toBe(2);
+    expect(starsRow()?.status).toBe('skipped');
+  });
+
+  it('keeps stars the user already had under the app keyword when the rule asks for others', async () => {
+    editCatalog('UPDATE Adobe_images SET rating = 1');
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    seedStarsEligible(db, starsKey, 3);
+    await reconcileLrWriteback(db, { trigger: 'redecide_complete', catalogPath: lrcatPath });
+    await reconcileLrWriteback(db, { trigger: 'redecide_complete', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo').rating).toBe(1);
+    expect(starsRow()).toMatchObject({ status: 'skipped', before_rating: 1 });
+  });
+
+  it('keeps the rating from before its write when the user later changes the stars', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    editCatalog('UPDATE Adobe_images SET rating = 2');
+    seedStarsEligible(db, starsKey, 3);
+    await reconcileLrWriteback(db, { trigger: 'redecide_complete', catalogPath: lrcatPath });
+    await reconcileLrWriteback(db, { trigger: 'redecide_complete', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo').rating).toBe(2);
+    expect(starsRow()).toMatchObject({ status: 'skipped', before_rating: null });
+  });
+
+  it('takes back its own stars from a row marked skipped, and undo then clears them', async () => {
+    const conn = connectCatalog(lrcatPath);
+    writeStarsToCatalog(conn, starsKey, 1);
+    conn.close();
+    const db = openLibraryDb(fx.dbPath);
+    upsertWritebackState(db, {
+      image_key: starsKey,
+      kind: 'stars',
+      status: 'skipped',
+      before_pick: null,
+      before_rating: null,
+      written_pick: null,
+      written_rating: 1,
+      stars_profile_version_id: 1,
+      written_at: '2026-10-21T15:12:03Z',
+    });
+    seedStarsEligible(db, starsKey, 3);
+    await reconcileLrWriteback(db, { trigger: 'redecide_complete', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo')).toEqual({ pick: 0, rating: 3, keyword: true });
+    expect(starsRow()).toEqual({ status: 'written', before_rating: null, written_rating: 3 });
+
+    const undo = await app.request(`/api/cull/lightroom-writeback/photos/${starsKey}/undo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'stars' }),
+    });
+    expect(undo.status).toBe(200);
+    expect(liveOf('star-photo')).toEqual({ pick: 0, rating: null, keyword: false });
+  });
 });
 
 describe('locked catalog', () => {
