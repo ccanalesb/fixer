@@ -22,7 +22,7 @@ import { LAYA_INSTALL_JOB_TYPE } from '../src/laya/install.js';
 import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
-import { SCORE_FORECAST_QUESTIONS } from '../src/cull/stages.js';
+import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import type { PipelineSettingConfig } from '../src/cull/types.js';
 import { importResearchRuns } from '../src/cull/import-research.js';
 import { LAYA_BASE_RESEARCH_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
@@ -102,13 +102,13 @@ const photosAsked = () => [...new Set(laya.calls.map((c) => c.file.slice(1, -4))
 const PASS: FakeLayaScript = { levels: [5, 5, 6, 6], p8: 0.5 };
 const PROFILE_CUT: FakeLayaScript = { levels: [5, 5, 2, 3], p8: 0.5 };
 const FORECAST_CUT: FakeLayaScript = { levels: [5, 5, 6, 6], p8: 0.05 };
-const FORECAST_QUESTIONS = Object.keys(SCORE_FORECAST_QUESTIONS).length;
+const FORECAST_QUESTIONS = Object.keys(LAYA_QUESTIONS.new).length;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');
-  fx = new LibraryFixture().activate();
+  fx = new LibraryFixture().addForecastQuestions().activate();
   Object.assign(laya, fakeLayaState());
   process.env.DATABASE_PATH = jobsDbPath;
   writeConfig();
@@ -343,6 +343,18 @@ describe('batch_cull_photos_before_scoring', () => {
     });
     expect(job.status).toBe('failed');
     expect(job.error).toBe('Culling profile: laya-x is still converting. It can be used once its conversion job finishes');
+    expect(laya.calls).toEqual([]);
+  });
+
+  it('the Score forecast on with no questions fails the job naming the stage, before any photo', async () => {
+    fx.exec('DELETE FROM score_forecast_question_versions');
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(
+      'Score forecast: no questions yet. Create them in Perspectives → Score forecast questions, or turn the Score forecast off',
+    );
+    expect(job.error_severity).toBe('warning');
     expect(laya.calls).toEqual([]);
   });
 

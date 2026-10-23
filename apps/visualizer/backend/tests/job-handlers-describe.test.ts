@@ -119,7 +119,7 @@ function storedDescription(key: string): Record<string, unknown> | undefined {
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-desc-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
-  fx = new LibraryFixture().activate();
+  fx = new LibraryFixture().addForecastQuestions().activate();
   resetKimiJobLaya();
   onRequest = null;
   process.env.DATABASE_PATH = jobsDbPath;

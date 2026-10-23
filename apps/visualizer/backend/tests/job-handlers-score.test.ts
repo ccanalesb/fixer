@@ -161,7 +161,7 @@ const emptySkipCounts = {
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-score-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
-  fx = new LibraryFixture().activate();
+  fx = new LibraryFixture().addForecastQuestions().activate();
   resetKimiJobLaya();
   replies = [completion(scoreJson('street', 7))];
   requestBodies = [];

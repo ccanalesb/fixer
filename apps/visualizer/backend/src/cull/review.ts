@@ -1,9 +1,8 @@
 /**
  * Cull review read helpers: highlights, sort keys, describe/score completion for send labels.
  */
-import { FRAMING_EXCUSAL_QID, levelSetReadout, scoreForecastHighestP8 } from './decide.js';
-import { DEFAULT_SCORE_FORECAST } from './default-pipeline.js';
-import { LAYA_QUESTIONS } from '../laya/questions.js';
+import { excusedQuestions, levelSetReadout, pAtLeast } from './decide.js';
+import type { ScoreForecastQuestion } from './forecast-questions.js';
 import type { ScoreForecastSetting, StageAnswers } from './types.js';
 import { profileStageKey } from './stages.js';
 import type { ProfileDefinition, ProfileRule } from './types.js';
@@ -111,25 +110,29 @@ export function resolveFilteringProfile(db: Db, filteredByStageKey: string | nul
   return getCullProfile(db, slug);
 }
 
-const FRAMING_QID = 'framing';
+export interface ForecastByQuestion {
+  name: string;
+  /** Null when the photo is excused from the question: its "applies?" said no. */
+  p8: number | null;
+  excused: boolean;
+}
 
-/** Per-perspective P(≥ high_from_level) for the detail modal (F3: one decimal in UI). */
-export function scoreForecastByPerspective(
+/**
+ * P(≥ `high_from_level`) per Score forecast question for the detail modal (one decimal in the UI), named
+ * by the question's perspective when it has one. An excused question is listed as not applying.
+ */
+export function scoreForecastByQuestion(
   answers: StageAnswers,
-  cfg: ScoreForecastSetting = DEFAULT_SCORE_FORECAST,
-): { name: string; p8: number }[] {
-  const excused = (answers[FRAMING_EXCUSAL_QID]?.[0] ?? 0) >= cfg.excused_at;
-  const out: { name: string; p8: number }[] = [];
-  for (const [qid, q] of Object.entries(LAYA_QUESTIONS.new)) {
-    if (qid === FRAMING_EXCUSAL_QID || (qid === FRAMING_QID && excused)) continue;
-    const probs = answers[qid];
-    if (!probs?.length) continue;
-    const p8 = probs.slice(cfg.high_from_level - 1).reduce((s, p) => s + p, 0);
-    const label = q.instructions.split(':')[0]?.trim() ?? qid;
-    out.push({ name: label, p8 });
-  }
-  if (out.length === 0 && Object.keys(answers).length > 0) {
-    return [{ name: 'Score forecast', p8: scoreForecastHighestP8(answers, cfg) }];
-  }
-  return out;
+  cfg: ScoreForecastSetting,
+  questions: readonly ScoreForecastQuestion[],
+  perspectiveNames: Readonly<Record<string, string>>,
+): ForecastByQuestion[] {
+  const excused = new Set(excusedQuestions(answers, cfg));
+  return questions
+    .filter((q) => answers[q.id]?.length)
+    .map((q) => ({
+      name: (q.perspective_slug && perspectiveNames[q.perspective_slug]) || q.name,
+      p8: excused.has(q.id) ? null : pAtLeast(answers[q.id]!, cfg),
+      excused: excused.has(q.id),
+    }));
 }

@@ -111,8 +111,7 @@ afterEach(() => {
 
 describe('library schema 14', () => {
   it('has the same cull_verdicts columns as a fresh library', () => {
-    expect(LIBRARY_SCHEMA_VERSION).toBe(14);
-    expect(db.pragma('user_version', { simple: true })).toBe(14);
+    expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
     const fresh = initLibraryDb(join(dir, 'fresh.db'));
     try {
       expect(columns(db, 'cull_verdicts')).toEqual(columns(fresh, 'cull_verdicts'));
@@ -156,7 +155,7 @@ describe('library schema 14', () => {
     const settings = all(db, 'SELECT * FROM cull_pipeline_settings ORDER BY version');
     db.pragma('user_version = 13');
     upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(14);
+    expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
     expect(all(db, 'SELECT * FROM cull_verdicts ORDER BY image_key')).toEqual(verdicts);
     expect(all(db, 'SELECT * FROM cull_pipeline_settings ORDER BY version')).toEqual(settings);
   });

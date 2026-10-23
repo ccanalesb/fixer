@@ -21,7 +21,12 @@ import { finishCullRun, insertCullRun } from '../db/library/cull-verdicts.js';
 import { libraryWrite } from '../db/library/write.js';
 import { LAYA_QUESTIONS } from '../laya/questions.js';
 import { canonicalJson } from '../utils/canonical-json.js';
-import { FRAMING_EXCUSAL_QID } from './decide.js';
+import { excusalId } from './forecast-questions.js';
+import {
+  getForecastQuestions,
+  layaNewForecastQuestions,
+  saveForecastQuestions,
+} from '../db/library/score-forecast-questions.js';
 import { imageSignature } from './image-signature.js';
 import { decideAndStorePhoto, type CullContext } from './persist.js';
 import { profileStageKey, resolveCurrentStages, SCORE_FORECAST_STAGE_KEY } from './stages.js';
@@ -103,6 +108,8 @@ interface LayaNewLine {
   rows: { slug: string; probs: number[]; p_excused?: number | null; not_attempted?: boolean | null }[];
 }
 
+const FRAMING_EXCUSAL_QID = excusalId('framing');
+
 /**
  * Laya new's stored rows back into the answers Node gives: one per perspective, and the framing
  * excusal as `[P(no framing device), P(framing device)]`. Rounded to 4 decimals, a P of exactly 0.5
@@ -117,6 +124,15 @@ function layaNewAnswers(line: LayaNewLine): StageAnswers | null {
   out[FRAMING_EXCUSAL_QID] = [pExcused, 1 - pExcused];
   const want = Object.keys(LAYA_QUESTIONS.new);
   return want.every((q) => out[q]) ? Object.fromEntries(want.map((q) => [q, out[q]!])) : null;
+}
+
+/** The research asked Laya new's questions; refuse to file its answers under other Score forecast questions. */
+function assertResearchForecastText(stage: ResolvedStage | undefined): void {
+  if (stage && canonicalJson(stage.questions) === canonicalJson(LAYA_QUESTIONS.new)) return;
+  throw new Error(
+    'score_forecast: the Score forecast questions are no longer the ones the research runs answered; ' +
+      'the research answers cannot be imported under them',
+  );
 }
 
 /** The research asked the seeded profile; refuse to file its answers under text it was not asked. */
@@ -185,6 +201,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
   if (opts.dryRun) db.exec('BEGIN IMMEDIATE');
   try {
     seedCullingDefaults(db);
+    if (getForecastQuestions(db).questions.length === 0) saveForecastQuestions(db, layaNewForecastQuestions(db));
     const pipeline = getCurrentPipelineSetting(db);
     const stages = resolveCurrentStages(db, pipeline.config, {
       culling_profile: opts.modelIds.base,
@@ -196,6 +213,7 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
       assertResearchText(s);
       return s;
     });
+    assertResearchForecastText(stages.find((s) => s.stageKey === SCORE_FORECAST_STAGE_KEY));
     const ctx: CullContext = { stages, pipeline, scoreForecastAvailable: true };
     const runId = libraryWrite(db, () =>
       insertCullRun(db, {

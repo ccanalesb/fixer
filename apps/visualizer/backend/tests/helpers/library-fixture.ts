@@ -11,6 +11,9 @@ import { join } from 'node:path';
 import * as sqliteVec from 'sqlite-vec';
 import { serializeFloat32 } from '../../src/db/connection.js';
 import { createLibrarySchema } from '../../src/db/library/bootstrap.js';
+import { saveForecastQuestions } from '../../src/db/library/score-forecast-questions.js';
+import { questionsFromLaya } from '../../src/cull/forecast-questions.js';
+import { LAYA_QUESTIONS } from '../../src/laya/questions.js';
 import { nowIsoLocal, nowIsoUtc } from '../../src/utils/datetime.js';
 
 export interface PerspectiveSeed {
@@ -294,6 +297,17 @@ export class LibraryFixture {
     } finally {
       db.close();
     }
+  }
+
+  /** The Score forecast questions Laya new was trained on, as this library has them. */
+  addForecastQuestions(): this {
+    const db = this.open();
+    try {
+      saveForecastQuestions(db, questionsFromLaya(LAYA_QUESTIONS.new, {}));
+    } finally {
+      db.close();
+    }
+    return this;
   }
 
   /** Point the app at this database for the duration of a test. */

@@ -8,24 +8,28 @@
 import type { Db } from '../db/connection.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getOrCreateStageVersion } from '../db/library/cull-stages.js';
+import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
 import { libraryWrite } from '../db/library/write.js';
-import { LAYA_QUESTIONS } from '../laya/questions.js';
 import type { LayaQuestion } from '../laya/rows.js';
+import { forecastStageQuestions } from './forecast-questions.js';
 import type { StageModelIds } from './stage-models.js';
 import type { PipelineSettingConfig, ResolvedStage } from './types.js';
 
 export const SCORE_FORECAST_STAGE_KEY = 'score_forecast';
 
-/** The Score forecast's questions: the rows Laya new was trained on. */
-export const SCORE_FORECAST_QUESTIONS: Record<string, LayaQuestion> = LAYA_QUESTIONS.new;
-
 export function profileStageKey(profileSlug: string, levelSet: string): string {
   return `culling_profile:${profileSlug}:${levelSet}`;
 }
 
+/** What the Score forecast's model is asked now: the current Score forecast questions. */
+export function currentForecastStageQuestions(db: Db): Record<string, LayaQuestion> {
+  return forecastStageQuestions(getForecastQuestions(db).questions);
+}
+
 /**
  * Every stage of the current pipeline, at the version its questions and model make, created and marked
- * current as needed. A stage kind with no model identity is left out.
+ * current as needed. A stage kind with no model identity is left out, and so is the Score forecast with
+ * no questions.
  */
 export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, models: StageModelIds): ResolvedStage[] {
   return libraryWrite(db, () => {
@@ -53,14 +57,15 @@ export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, mo
         stages.push({ ...spec, versionId: getOrCreateStageVersion(db, spec) });
       }
     }
-    if (models.score_forecast !== null) {
+    const forecastQuestions = currentForecastStageQuestions(db);
+    if (models.score_forecast !== null && Object.keys(forecastQuestions).length > 0) {
       const spec = {
         stageKey: SCORE_FORECAST_STAGE_KEY,
         kind: 'score_forecast' as const,
         profileSlug: null,
         levelSet: null,
         modelId: models.score_forecast,
-        questions: SCORE_FORECAST_QUESTIONS,
+        questions: forecastQuestions,
       };
       stages.push({ ...spec, versionId: getOrCreateStageVersion(db, spec) });
     }

@@ -34,7 +34,7 @@ let jobsDbPath: string;
 let modelsDir: string;
 
 beforeEach(() => {
-  fx = new LibraryFixture().activate();
+  fx = new LibraryFixture().addForecastQuestions().activate();
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');

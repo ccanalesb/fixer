@@ -8,13 +8,15 @@ import {
   buildProfileRowReadout,
   describeScoreCompletion,
   resolveFilteringProfile,
-  scoreForecastByPerspective,
+  scoreForecastByQuestion,
 } from '../cull/review.js';
 import { SCORE_FORECAST_STAGE_KEY, resolveCurrentStages } from '../cull/stages.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
 import { getCullReviewSummary, listCullReviewPhotos } from '../db/library/cull-review.js';
 import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
+import { listPerspectives } from '../db/library/scores.js';
 import {
   listCullUserActions,
   recordCullUserAction,
@@ -233,7 +235,12 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
       filtered_by: v.filtered_by,
       score_forecast_p8: v.score_forecast_p8,
       profile: profileBlock,
-      score_forecast: scoreForecastByPerspective(sfAnswers, pipe.config.score_forecast),
+      score_forecast: scoreForecastByQuestion(
+        sfAnswers,
+        pipe.config.score_forecast,
+        getForecastQuestions(db).questions,
+        Object.fromEntries(listPerspectives(db).map((p) => [p.slug, p.display_name])),
+      ),
       user_actions: actions,
       completion: describeScoreCompletion(db, imageKey),
       needs_send_work,

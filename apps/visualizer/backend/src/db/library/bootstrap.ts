@@ -17,9 +17,10 @@ import { seedCullingDefaults } from './cull-profiles.js';
 import { renameCullVocabulary } from './cull-rename-v13.js';
 import { addCullingSwitches } from './cull-switches-v14.js';
 import { markdownMarksOptional } from './scores.js';
+import { prepopulateForecastQuestions, SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 14;
+export const LIBRARY_SCHEMA_VERSION = 15;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 8;
@@ -436,6 +437,8 @@ CREATE TABLE IF NOT EXISTS library_meta (
 ${CULL_SQL}
 
 ${LR_WRITEBACK_SQL}
+
+${SCORE_FORECAST_QUESTIONS_SQL}
 `;
 
 /**
@@ -548,6 +551,10 @@ export function upgradeLibrarySchema(db: Db): void {
     }
     if (version < 14) {
       addCullingSwitches(db);
+    }
+    if (version < 15) {
+      db.exec(SCORE_FORECAST_QUESTIONS_SQL);
+      prepopulateForecastQuestions(db);
     }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   })();

@@ -847,6 +847,49 @@ export const CULLING_PROFILE_FILTER_UNAVAILABLE = 'Available while the culling p
 export const SCORE_FORECAST_STAGE = 'Score forecast'
 export const SCORE_FORECAST_STAGE_HELP =
   'When on, every photo answers it, and a photo below the threshold is not described or scored. Stars and reject do not change.'
+export const SCORE_FORECAST_HOW_TITLE = 'How the Score forecast works'
+export const SCORE_FORECAST_HOW = (level: number) =>
+  `Before the big model, the forecast model answers the Score forecast questions (usually one per perspective): how likely is an AI score of ${level} or more? A photo passes when any answer reaches the threshold; the rest are filtered and not described or scored. Culling still gives stars and reject.`
+export const SCORE_FORECAST_NO_QUESTIONS_HOW =
+  'You have no Score forecast questions yet. They can be created from your active perspectives (a script, no model involved): one question per perspective, plus an "applies?" question for each optional one. You can change them freely afterwards.'
+export const SCORE_FORECAST_CREATE_FROM_PERSPECTIVES = 'Create questions from my perspectives'
+export const SCORE_FORECAST_WRITE_THEM = 'Write them myself'
+export const SCORE_FORECAST_QUESTION_COUNT = (count: number, fromPerspectives: boolean) =>
+  `${count} Score forecast question${count === 1 ? '' : 's'}${fromPerspectives ? ' created from your perspectives' : ''}.`
+export const SCORE_FORECAST_EDIT_QUESTIONS = 'Edit them in Perspectives → Score forecast questions'
+export const SCORE_FORECAST_SKIPPED = (names: string[]) =>
+  `Not created, their scoring bands could not be read: ${names.join(', ')}.`
+export const STAGE_NO_QUESTIONS = 'no Score forecast questions yet'
+/** Processing → Perspectives, opened at the Score forecast questions. */
+export const SCORE_FORECAST_QUESTIONS_ID = 'score-forecast-questions'
+export const SCORE_FORECAST_QUESTIONS_ROUTE = `/processing?tab=perspectives#${SCORE_FORECAST_QUESTIONS_ID}`
+
+// Perspectives → Score forecast questions
+export const SFQ_SECTION = 'Score forecast questions'
+export const SFQ_SUMMARY = (count: number, optional: number, version: number) =>
+  count === 0
+    ? 'No questions yet'
+    : `${count} question${count === 1 ? '' : 's'} · ${optional} ask${optional === 1 ? 's' : ''} whether ${optional === 1 ? 'it applies' : 'they apply'} · v${version}`
+export const SFQ_HELP =
+  "What the Score forecast's model answers before the big model: how likely is an AI score of the level set in Settings or more. A photo passes when any question reaches the threshold."
+export const SFQ_TAB_QUESTIONS = 'Questions'
+export const SFQ_TAB_LEVELS = 'Levels'
+export const SFQ_NAME = 'Name'
+export const SFQ_REMOVE = 'Remove'
+export const SFQ_REMOVE_TITLE = 'Remove question'
+export const SFQ_PERSPECTIVE = 'Perspective'
+export const SFQ_PERSPECTIVE_NONE = 'None'
+export const SFQ_PERSPECTIVE_HINT = 'Recommended, not required'
+export const SFQ_QUESTION = 'Question'
+export const SFQ_OPTIONAL = 'Optional — ask first whether it applies; when it does not, the question is left out'
+export const SFQ_APPLIES = 'Applies?'
+export const SFQ_ADD = 'Add question'
+export const SFQ_NEW_NAME = 'New question'
+export const SFQ_NONE = 'No questions yet.'
+export const SFQ_LEVEL = (n: number, name: string) => `Level ${n} · ${name}`
+export const SFQ_VERSION_NOTE =
+  "Changing a question's text makes a new version. Photos answered with the earlier text keep those answers; going back to it reuses them."
+export const SCORE_FORECAST_DOES_NOT_APPLY = 'does not apply'
 /** How a sentence names a stage: "turn the culling profile off". */
 export const STAGE_IN_SENTENCE = { culling_profile: 'the culling profile', score_forecast: 'the Score forecast' } as const
 export const STAGE_ENDPOINT = 'Endpoint'

@@ -7,13 +7,13 @@ import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig, updateConfigYamlCullingModel, type CullingModelConfig } from '../config.js';
 import { stagesOn } from '../cull/stage-models.js';
 import { stageUsability } from '../cull/stage-usable.js';
-import { SCORE_FORECAST_QUESTIONS } from '../cull/stages.js';
 import type { StageKind } from '../cull/types.js';
 import type { Db } from '../db/connection.js';
 import { initJobsDb } from '../db/jobs/jobs.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { countCatalogPhotosForCullEstimate } from '../db/library/cull-profiles-mutations.js';
 import { countPhotosAnsweredByCurrentStage, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
 import { listAppModels } from '../laya/install.js';
 import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
 import { errorBadRequest } from '../utils/responses.js';
@@ -167,7 +167,9 @@ const usableRoute = createRoute({
 });
 
 cullingModelsRoutes.openapi(usableRoute, async (c) => {
-  const { config: pipeline } = getCurrentPipelineSetting(c.get('libraryDb'));
+  const libDb = c.get('libraryDb');
+  const { config: pipeline } = getCurrentPipelineSetting(libDb);
+  const questionCount = getForecastQuestions(libDb).questions.length;
   const on = stagesOn(pipeline);
   const cfg = stagesConfig();
   const appModels = withJobsDb((db) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir, db));
@@ -175,7 +177,7 @@ cullingModelsRoutes.openapi(usableRoute, async (c) => {
     on: on[kind],
     cfg: cfg[kind],
     appModels,
-    questionCount: Object.keys(SCORE_FORECAST_QUESTIONS).length,
+    questionCount,
     timeoutMs: CHECK_TIMEOUT_MS,
   });
   const [cullingProfile, scoreForecast] = await Promise.all([
