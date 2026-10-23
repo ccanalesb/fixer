@@ -307,17 +307,31 @@ describe('PUT /api/culling-profiles/pipeline/culling-profiles', () => {
 });
 
 describe('PATCH /api/culling-profiles/{slug}', () => {
-  it('deactivate enqueues re-decide', async () => {
-    const res = await app.request('/api/culling-profiles/default', {
+  const patchProfile = (body: object) =>
+    app.request('/api/culling-profiles/default', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ active: false }),
+      body: JSON.stringify(body),
     });
+
+  it('deactivate enqueues re-decide and says which job', async () => {
+    const res = await patchProfile({ active: false });
     expect(res.status).toBe(200);
+    const body = await json<{ profile: { slug: string }; pipeline_setting_version: number | null; redecide_job_id: string | null }>(res);
+    expect(body.profile.slug).toBe('default');
+    expect(body.pipeline_setting_version).toEqual(expect.any(Number));
     const jobsDb = initJobsDb(jobsDbPath);
     const pending = getPendingJobs(jobsDb).filter((j) => j.type === BATCH_REDECIDE_JOB_TYPE);
     jobsDb.close();
-    expect(pending.length).toBeGreaterThan(0);
+    expect(pending.map((j) => j.id)).toEqual([body.redecide_job_id]);
+  });
+
+  it('a change that leaves the pipeline as it is queues nothing', async () => {
+    await patchProfile({ active: false });
+    const body = await json<{ pipeline_setting_version: number | null; redecide_job_id: string | null }>(
+      await patchProfile({ name: 'Renamed' }),
+    );
+    expect(body).toMatchObject({ pipeline_setting_version: null, redecide_job_id: null });
   });
 });
 

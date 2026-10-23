@@ -3139,7 +3139,11 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CullProfileDetail"];
+                        "application/json": {
+                            profile: components["schemas"]["CullProfileDetail"];
+                            pipeline_setting_version: number | null;
+                            redecide_job_id: string | null;
+                        };
                     };
                 };
                 /** @description Not found */

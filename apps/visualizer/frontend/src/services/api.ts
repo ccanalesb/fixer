@@ -940,10 +940,13 @@ export const CullingProfilesAPI = {
       { method: 'PUT', body: JSON.stringify({ rule }) },
     ),
   patch: (slug: string, body: { name?: string; model?: string; active?: boolean }) =>
-    request<CullProfileDetail>(`/culling-profiles/${encodeURIComponent(slug)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
+    request<{ profile: CullProfileDetail; pipeline_setting_version: number | null; redecide_job_id: string | null }>(
+      `/culling-profiles/${encodeURIComponent(slug)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      },
+    ),
   getPipeline: () => request<PipelineSettingResponse>('/culling-profiles/pipeline'),
   saveCullingProfileSwitches: (body: { enabled?: boolean; filter_enabled?: boolean }) =>
     request<PipelineChangeResponse>('/culling-profiles/pipeline/culling-profiles', {

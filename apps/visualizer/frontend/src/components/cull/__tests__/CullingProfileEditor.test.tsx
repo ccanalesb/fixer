@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { CullingProfileEditor } from '../CullingProfileEditor'
 import { ApiRequestError } from '../../../services/api'
@@ -6,7 +7,11 @@ import {
   CULL_PROFILE_ADD_LEVEL,
   CULL_PROFILE_ADD_LEVEL_SET_BUTTON,
   CULL_PROFILE_ADD_LEVEL_TOP,
+  CULL_PROFILE_ACTIVATE,
   CULL_PROFILE_CREATE,
+  CULL_PROFILE_DEACTIVATE,
+  CULL_PROFILE_DEACTIVATE_CONFIRM,
+  CULL_PROFILE_DEACTIVATE_CONFIRM_TITLE,
   CULL_PROFILE_FILTER_RULE,
   CULL_PROFILE_QUESTION,
   CULL_PROFILE_REMOVE,
@@ -15,7 +20,13 @@ import {
   CULL_PROFILE_TAB_RULE,
   CULL_PROFILE_TEXT_SAVE_IMPACT,
   CULL_SAVE,
+  CULL_RULE_SAVE_CONFIRM,
+  CULL_RULE_SAVE_CONFIRM_TITLE,
   CULL_SAVE_ONLY,
+  CULLING_CANCEL,
+  CULLING_MODELS_SAVED,
+  CULLING_MODELS_SAVED_JOB_WAITING,
+  CULLING_MODELS_VIEW_QUEUE,
 } from '../../../constants/strings'
 
 const saveDefinition = vi.fn()
@@ -70,8 +81,8 @@ const openLevels = () => fireEvent.click(screen.getByRole('tab', { name: CULL_PR
 describe('CullingProfileEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    patch.mockResolvedValue(baseProfile)
-    saveRule.mockResolvedValue({ profile: baseProfile })
+    patch.mockResolvedValue({ profile: baseProfile, pipeline_setting_version: 3, redecide_job_id: 'job-1' })
+    saveRule.mockResolvedValue({ profile: baseProfile, pipeline_setting_version: 3, redecide_job_id: 'job-1' })
     saveDefinition.mockResolvedValue({
       profile: baseProfile,
       version: 2,
@@ -183,5 +194,48 @@ describe('CullingProfileEditor', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: CULL_PROFILE_REMOVE }))
     expect(screen.getByRole('status')).toHaveTextContent('Removed level set 2.')
     expect(screen.getByRole('button', { name: CULL_PROFILE_REMOVE_SET('5') })).toBeDisabled()
+  })
+
+  const renderInRouter = () =>
+    render(
+      <MemoryRouter>
+        <CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />
+      </MemoryRouter>,
+    )
+  const dialog = () => screen.getByRole('dialog')
+
+  it('asks before saving the rule; Cancel saves nothing', () => {
+    renderInRouter()
+    fireEvent.click(screen.getByRole('button', { name: CULL_SAVE }))
+    expect(within(dialog()).getByText(CULL_RULE_SAVE_CONFIRM_TITLE)).toBeInTheDocument()
+    fireEvent.click(within(dialog()).getByRole('button', { name: CULLING_CANCEL }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(saveRule).not.toHaveBeenCalled()
+  })
+
+  it('saves the rule on confirm and says the re-decide job is queued', async () => {
+    renderInRouter()
+    fireEvent.click(screen.getByRole('button', { name: CULL_SAVE }))
+    await act(async () => {
+      fireEvent.click(within(dialog()).getByRole('button', { name: CULL_RULE_SAVE_CONFIRM }))
+    })
+    expect(saveRule).toHaveBeenCalledWith('default', baseProfile.rule)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByText(CULLING_MODELS_SAVED)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: CULLING_MODELS_VIEW_QUEUE })).toBeInTheDocument()
+  })
+
+  it('asks before deactivating; a job already queued applies it', async () => {
+    patch.mockResolvedValue({ profile: { ...baseProfile, active: false }, pipeline_setting_version: 3, redecide_job_id: null })
+    renderInRouter()
+    fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_DEACTIVATE }))
+    expect(patch).not.toHaveBeenCalled()
+    expect(within(dialog()).getByText(CULL_PROFILE_DEACTIVATE_CONFIRM_TITLE)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(dialog()).getByRole('button', { name: CULL_PROFILE_DEACTIVATE_CONFIRM }))
+    })
+    expect(patch).toHaveBeenCalledWith('default', { active: false })
+    expect(screen.getByText(CULLING_MODELS_SAVED_JOB_WAITING)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: CULL_PROFILE_ACTIVATE })).toBeInTheDocument()
   })
 })

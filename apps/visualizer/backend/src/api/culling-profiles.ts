@@ -440,7 +440,16 @@ const patchRoute = createRoute({
     },
   },
   responses: withValidationError({
-    200: { description: 'Updated', content: jsonBody(CullProfileDetail) },
+    200: {
+      description: 'Updated',
+      content: jsonBody(
+        z.object({
+          profile: CullProfileDetail,
+          pipeline_setting_version: z.number().int().nullable(),
+          redecide_job_id: z.string().nullable(),
+        }),
+      ),
+    },
     404: { description: 'Not found', content: jsonBody(ErrorBody) },
   }),
 });
@@ -451,20 +460,22 @@ cullingProfilesRoutes.openapi(patchRoute, (c) => {
   if (!getCullProfile(db, slug)) return errorNotFound(c, 'image');
   const body = c.req.valid('json');
   updateCullProfileMeta(db, slug, body);
-  if (body.active !== undefined) {
-    const version = setCullProfilePipelineActive(db, slug, body.active);
-    if (version !== null) {
-      withJobsDb((jobsDb) => {
-        const id = enqueueRedecideCullVerdicts(jobsDb, `${slug} active=${body.active}`);
-        if (id) {
-          const job = getJob(jobsDb, id);
-          if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
-        }
-        return id;
-      });
-    }
+  const version = body.active === undefined ? null : setCullProfilePipelineActive(db, slug, body.active);
+  let redecideJobId: string | null = null;
+  if (version !== null) {
+    redecideJobId = withJobsDb((jobsDb) => {
+      const id = enqueueRedecideCullVerdicts(jobsDb, `${slug} active=${body.active}`);
+      if (id) {
+        const job = getJob(jobsDb, id);
+        if (job) emitJobEvent('job_created', compactJobPayload(job as unknown as Record<string, unknown>) as never);
+      }
+      return id;
+    });
   }
-  return c.json(profileDetail(db, slug)!, 200);
+  return c.json(
+    { profile: profileDetail(db, slug)!, pipeline_setting_version: version, redecide_job_id: redecideJobId },
+    200,
+  );
 });
 
 /** Default body for POST when the client sends a minimal create. */
