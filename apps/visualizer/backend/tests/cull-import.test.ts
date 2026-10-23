@@ -1,5 +1,5 @@
 /**
- * Importing the research runs (`cull-import`), on small fixtures in the research files' line format:
+ * `cull-import`, on small fixtures in the answer files' line format:
  * synthetic keys and paths, real-shaped probabilities, a 7-level run appended after the 10-level one
  * and still being written.
  */
@@ -57,7 +57,7 @@ const verdicts = () =>
   );
 
 describe('cull-import', () => {
-  it('stores both research runs under the stages a job would use, and decides every photo', async () => {
+  it('stores both files under the stages a job would use, and decides every photo', async () => {
     const r = await importAll();
     expect(r).toMatchObject({
       photos: 4,
@@ -82,7 +82,7 @@ describe('cull-import', () => {
     expect(fx.query("SELECT COUNT(*) AS n FROM cull_stage_answers WHERE image_key = 'fx-999-not-in-db'")).toEqual([{ n: 0 }]);
   });
 
-  it('rebuilds the framing excusal and marks the rows as imported from research', async () => {
+  it('rebuilds the framing excusal and marks the rows as imported', async () => {
     await importAll();
     const [row] = fx.query<{ answers_json: string; source: string; produced_by: string; model_id: string; image_path: string }>(
       `SELECT a.answers_json, a.source, a.produced_by, v.model_id, a.image_path FROM cull_stage_answers a
@@ -200,7 +200,7 @@ describe('cull-import', () => {
     }
   });
 
-  it('refuses when the profile text is no longer what the research asked', async () => {
+  it('refuses when the profile text is no longer the one the answers were asked', async () => {
     await withDb(async (db) => {
       const { seedCullingDefaults, getCullProfile, saveProfileDefinition } = await import('../src/db/library/cull-profiles.js');
       seedCullingDefaults(db);
@@ -208,17 +208,17 @@ describe('cull-import', () => {
       def.dimensions[0]!.question = 'Something else';
       saveProfileDefinition(db, 'recipe-culling', def);
     });
-    await expect(importAll()).rejects.toThrow(/no longer the one the research runs answered/);
+    await expect(importAll()).rejects.toThrow(/profile's text is no longer the one these answers were asked/);
   });
 
-  it('into a library with no Score forecast questions it stores the ones the research asked', async () => {
+  it('into a library with no Score forecast questions it stores the ones the answers were asked', async () => {
     await importAll();
     const { getForecastQuestions } = await import('../src/db/library/score-forecast-questions.js');
     const ids = await withDb(async (db) => getForecastQuestions(db).questions.map((q) => q.id));
     expect(ids).toEqual(['framing', 'compositional-cleanliness', 'environmental-context-legibility', 'intensity-suggestion']);
   });
 
-  it('refuses when the Score forecast questions are no longer the ones the research asked', async () => {
+  it('refuses when the Score forecast questions are no longer the ones the answers were asked', async () => {
     await withDb(async (db) => {
       const { saveForecastQuestions, layaNewForecastQuestions } = await import('../src/db/library/score-forecast-questions.js');
       saveForecastQuestions(
@@ -226,7 +226,7 @@ describe('cull-import', () => {
         layaNewForecastQuestions(db).map((q) => (q.id === 'framing' ? { ...q, instructions: 'Something else' } : q)),
       );
     });
-    await expect(importAll()).rejects.toThrow(/Score forecast questions are no longer the ones the research runs answered/);
+    await expect(importAll()).rejects.toThrow(/Score forecast questions are no longer the ones these answers were asked/);
     expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
   });
 

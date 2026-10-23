@@ -127,7 +127,7 @@ describe('migration and seed', () => {
     expect(getCurrentPipelineSetting(db).version).toBeGreaterThan(0);
   });
 
-  it('the seed file is the profile the research ran: #337’s questions, word for word', () => {
+  it('the seed file asks the Default culling profile questions in questions.json, word for word', () => {
     const seed = JSON.parse(
       readFileSync(join(REPO_ROOT, 'prompts', 'culling-profiles', 'recipe-culling.json'), 'utf8'),
     ) as { definition: ProfileDefinition };

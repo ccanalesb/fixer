@@ -116,7 +116,7 @@ const CATALOG_NOT_VIDEO_SQL = [
   .join(' AND ');
 
 /**
- * Keep condemned frames out of a scoring selection (#298).
+ * Keep condemned frames out of a scoring selection.
  *
  * `void` only, not the `illegible` half of the flagged pair: an illegible frame
  * still has a subject to judge, while a void one is a lens cap. An override row is

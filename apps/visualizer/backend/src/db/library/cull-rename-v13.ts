@@ -1,5 +1,5 @@
 /**
- * Library schema 13 (#362): the cull vocabulary renamed in stored tables and values. Culling recipes
+ * Library schema 13: the cull vocabulary renamed in stored tables and values. Culling recipes
  * become culling profiles, verdicts `cut` / `sent` become `filtered` / `passed`, and the factory
  * profile `recipe-7h47` becomes `recipe-culling`.
  *

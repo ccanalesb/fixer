@@ -35,7 +35,7 @@ function normalizeScoreRow(row: DbScoreRow): z.infer<typeof ImageScoreRow> {
 
 /**
  * `image_type` is accepted but only `catalog` is valid — the Instagram scope was
- * removed (#218). Kept as a parameter so existing callers get a clear 400 rather
+ * removed. Kept as a parameter so existing callers get a clear 400 rather
  * than silently different data.
  */
 function readImageType(raw: string | undefined): { ok: true; value: 'catalog' } | { ok: false } {

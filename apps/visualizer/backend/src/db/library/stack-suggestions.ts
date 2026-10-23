@@ -1,5 +1,5 @@
 /**
- * Catalog similarity pairs reframed as stack suggestions (#226 / #231).
+ * Catalog similarity pairs reframed as stack suggestions.
  */
 import type { Db } from '../connection.js';
 import { prepareCached } from '../prepare-cached.js';

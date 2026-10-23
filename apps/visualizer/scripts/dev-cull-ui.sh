@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UI review for cull screens (#340) — isolated temp data only; never the user's
+# UI review for culling screens — isolated temp data only; never the user's
 # library.db, jobs DB, thumbnails, providers, or vision cache.
 #
 # From repo root:

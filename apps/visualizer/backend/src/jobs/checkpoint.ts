@@ -193,8 +193,8 @@ export function fingerprintCatalogCacheBuild(
 }
 
 /**
- * Identity of a cull run: the stage versions and the pipeline-setting version (a change starts over,
- * ticket 16), plus the scope. Not the work list: it shrinks as answers are stored, and the stored
+ * Identity of a cull run: the stage versions and the pipeline-setting version (a change starts over),
+ * plus the scope. Not the work list: it shrinks as answers are stored, and the stored
  * answers are what make a restart skip finished photos.
  */
 export function fingerprintBatchCull(args: {

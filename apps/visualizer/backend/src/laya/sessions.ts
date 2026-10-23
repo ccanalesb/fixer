@@ -4,7 +4,7 @@
  *
  * Models with the same vision tower read one vision graph (Laya new reads Laya base's); the last
  * image's features are kept per graph, so asking a second model about the same photo does not encode
- * it again. One decoder pass per question, as the research runs answered them.
+ * it again. One decoder pass per question, so answers match the imported ones.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';

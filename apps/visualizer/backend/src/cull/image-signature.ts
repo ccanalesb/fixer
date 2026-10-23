@@ -4,7 +4,7 @@
  */
 import { statSync } from 'node:fs';
 
-/** Null when the file is gone, or was changed after `notAfterMs` (the research import's files). */
+/** Null when the file is gone, or was changed after `notAfterMs` (`cull-import`'s files). */
 export function imageSignature(path: string, notAfterMs?: number): string | null {
   try {
     const st = statSync(path);

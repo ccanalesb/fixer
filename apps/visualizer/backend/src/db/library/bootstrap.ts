@@ -191,7 +191,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cull_pipeline_settings_current
     ON cull_pipeline_settings(is_current) WHERE is_current = 1;
 `;
 
-/** Lightroom write-back switches and per-photo state (schema 12, #341). */
+/** Lightroom write-back switches and per-photo state (schema 12). */
 const LR_WRITEBACK_SQL = `
 CREATE TABLE IF NOT EXISTS lr_writeback_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),

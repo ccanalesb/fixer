@@ -1,5 +1,5 @@
 /**
- * Score forecast questions, stored and versioned like a culling profile's text (#368): one set, a new
+ * Score forecast questions, stored and versioned like a culling profile's text: one set, a new
  * version when anything in it changes, and text a past version already had makes that version current
  * again. What the model is asked comes from the current version (`cull/forecast-questions.ts`), so the
  * stage version follows the text and going back reuses the answers stored under it.

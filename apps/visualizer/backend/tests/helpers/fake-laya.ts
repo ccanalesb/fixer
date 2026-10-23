@@ -122,7 +122,7 @@ const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'conno
 
 /** Level `l` (1-based) as a one-hot over `n` levels. */
 const at = (level: number, n: number) => Array.from({ length: n }, (_, i) => (i === level - 1 ? 1 : 0));
-/** Level `l` of 10 lands on 7 levels at the same position on the scale, as the research maps them. */
+/** Level `l` of 10 lands on 7 levels at the same position on the scale. */
 const on7 = (l: number) => Math.round(1 + ((l - 1) * 6) / 9);
 
 const DEFAULT_SCRIPT: FakeLayaScript = { levels: [5, 5, 5, 5], p8: 0.5 };

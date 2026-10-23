@@ -673,7 +673,7 @@ export const ANALYZE_SCORE_JOB_STARTED =
   'Batch scoring job started (1–10 scores + short rationale per perspective). Check Job Queue for progress.'
 export const ANALYZE_JOB_FAILED_PREFIX = 'Failed to start job:'
 
-// Cull UI (#340)
+// Culling UI
 export const CULL_HEADING = (n: number) =>
   n === 1 ? '1 photo filtered' : `${n} photos filtered`
 export const CULL_SUB_MANUAL = (m: number) => `${m} already sent manually.`
@@ -782,7 +782,7 @@ export const CULL_PROFILE_COMBINE = 'Combine level sets'
 export const CULL_PROFILE_DEFINITION_CHANGED =
   'Text or levels changed: the model has to answer again, so only “Save only” / “Save and queue culling job” apply.'
 
-// Lightroom write-back (#341)
+// Lightroom write-back
 export const LR_WRITEBACK_SECTION = 'Lightroom write-back'
 export const LR_WRITEBACK_SECTION_LEAD =
   'What culling writes back to your Lightroom catalog. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'

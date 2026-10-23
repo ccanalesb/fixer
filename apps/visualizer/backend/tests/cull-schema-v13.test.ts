@@ -1,5 +1,5 @@
 /**
- * Library schema 13 (#362): the cull vocabulary renamed in `library.db` — culling profile,
+ * Library schema 13: the cull vocabulary renamed in `library.db` — culling profile,
  * filtered / passed — keeping every verdict, answer, pipeline setting, Lightroom write-back row and
  * content hash, so no stage version reads as stale.
  */

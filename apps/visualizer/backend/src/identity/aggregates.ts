@@ -12,7 +12,7 @@ import { EN_STOPWORDS } from '../constants/text.js';
  * superseded scores out, `image_type = 'catalog'` excludes the retired Instagram
  * scope (D-40), `not_attempted = 0` drops the excusable-dimension placeholders so
  * they cannot drag a mean down, and the frame-substance clause removes condemned
- * frames from identity entirely (#301).
+ * frames from identity entirely.
  */
 export const SCORES_BASE_SQL = `
     SELECT

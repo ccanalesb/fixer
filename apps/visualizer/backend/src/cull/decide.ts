@@ -1,10 +1,10 @@
 /**
  * Stored answers → verdicts. Pure: no database, no Laya, so a rule or threshold change re-decides
- * every photo from what is stored (ticket 15).
+ * every photo from what is stored.
  *
- * Readout as the research ran it (ticket 09): a dimension's answer is its top level, the **first**
- * maximum as numpy's argmax takes it; the imported answers are rounded to 4 decimals and tie often
- * enough (382 of 183k) that the last maximum would change verdicts.
+ * A dimension's answer is its top level, the **first** maximum as numpy's argmax takes it; the
+ * imported answers are rounded to 4 decimals and tie often enough that the last maximum would change
+ * verdicts.
  */
 import { EXCUSAL_SUFFIX, excusalId } from './forecast-questions.js';
 import type {

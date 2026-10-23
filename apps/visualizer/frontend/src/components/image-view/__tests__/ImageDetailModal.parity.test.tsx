@@ -19,7 +19,7 @@ import {
 } from '../adapters'
 
 /**
- * Cross-cutting modal parity (plan Task 12).
+ * Cross-cutting modal parity.
  *
  * Opening the same image from any catalog-backed surface — the catalog
  * grid or the identity Best/Top photos — must produce the same modal

@@ -1,5 +1,5 @@
 /**
- * In-job cull step before kimi (plan #339 F.5): describe, score, and analyze handlers.
+ * In-job cull step before kimi: describe, score, and analyze handlers.
  */
 import {
   getKimiJobLaya,

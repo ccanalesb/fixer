@@ -1,12 +1,12 @@
 /**
- * The research runs as the first stored cull answers (ticket 15): Laya new on the whole catalog
- * (`laya_new_catalog.jsonl`) and the research's recipe 7H47 (seeded as the Default culling profile) on Laya base at 10 and 7 levels
- * (`laya_cull_catalog_all.jsonl`), marked imported from research with their model revision.
+ * `cull-import`: culling answers from two JSONL files, one line per photo — the Score forecast's (Laya
+ * new) and the Default culling profile's at 10 and 7 levels (Laya base) — stored as imported, with
+ * their model revision.
  *
- * The rows land in the very stage versions a cull job resolves — the seeded profile's text is checked
- * against what the research asked — so the next job finds them current and asks Laya nothing.
- * Re-runnable: a row already stored (imported or answered by a job) is never overwritten, so a second
- * run after the 7-level run finishes adds only the new answers.
+ * The rows land in the very stage versions a culling job resolves — the profile's text is checked
+ * against the one the answers were asked — so the next job finds them current and asks Laya nothing.
+ * Re-runnable: a row already stored (imported or answered by a job) is never overwritten, so importing
+ * a longer file again adds only the new answers.
  *
  * Photos kimi already scored get verdicts like any other: review only, nothing is described or scored.
  */
@@ -113,7 +113,7 @@ const FRAMING_EXCUSAL_QID = excusalId('framing');
 /**
  * Laya new's stored rows back into the answers Node gives: one per perspective, and the framing
  * excusal as `[P(no framing device), P(framing device)]`. Rounded to 4 decimals, a P of exactly 0.5
- * takes the side the research's `not_attempted` took.
+ * takes the side its `not_attempted` took.
  */
 function layaNewAnswers(line: LayaNewLine): StageAnswers | null {
   const out: StageAnswers = {};
@@ -126,7 +126,7 @@ function layaNewAnswers(line: LayaNewLine): StageAnswers | null {
   return want.every((q) => out[q]) ? Object.fromEntries(want.map((q) => [q, out[q]!])) : null;
 }
 
-/** The research answered both stages; importing while one is off would decide every photo without it. */
+/** The files answer both stages; importing while one is off would decide every photo without it. */
 function assertStagesOn(pipeline: PipelineSettingConfig): void {
   const off = [
     !pipeline.culling_profiles_enabled && 'the culling profile',
@@ -137,24 +137,24 @@ function assertStagesOn(pipeline: PipelineSettingConfig): void {
   throw new Error(`${off.join(' and ')} ${verb} off; turn ${them} on in Processing → Settings → Culling models, then import`);
 }
 
-/** The research asked Laya new's questions; refuse to file its answers under other Score forecast questions. */
+/** The answers were asked Laya new's questions; refuse to file them under other Score forecast questions. */
 function assertResearchForecastText(stage: ResolvedStage | undefined): void {
   if (stage && canonicalJson(stage.questions) === canonicalJson(LAYA_QUESTIONS.new)) return;
   throw new Error(
-    'score_forecast: the Score forecast questions are no longer the ones the research runs answered; ' +
-      'the research answers cannot be imported under them',
+    'score_forecast: the Score forecast questions are no longer the ones these answers were asked; ' +
+      'they cannot be imported under them',
   );
 }
 
-/** The research asked the seeded profile; refuse to file its answers under text it was not asked. */
+/** The answers were asked the Default culling profile's text; refuse to file them under other text. */
 function assertResearchText(stage: ResolvedStage): void {
   const research = Object.fromEntries(
     Object.entries(LAYA_QUESTIONS.base).filter(([qid]) => qid.startsWith(`${stage.levelSet}|`)),
   );
   if (canonicalJson(research) !== canonicalJson(stage.questions)) {
     throw new Error(
-      `${stage.stageKey}: the profile's text is no longer the one the research runs answered; ` +
-        'the research answers cannot be imported under it',
+      `${stage.stageKey}: the profile's text is no longer the one these answers were asked; ` +
+        'they cannot be imported under it',
     );
   }
 }

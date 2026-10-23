@@ -1,5 +1,5 @@
 /**
- * Library schema 15 (#368): Score forecast questions stored and versioned. A library that has answered
+ * Library schema 15: Score forecast questions stored and versioned. A library that has answered
  * the Score forecast gets the questions it was asked (questions.json "new"), so its stage version does
  * not change and no answer becomes stale; any other library starts with none.
  */

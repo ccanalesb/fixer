@@ -1,5 +1,5 @@
 /**
- * Job hooks enqueue Lightroom write-back (#341).
+ * Job hooks enqueue Lightroom write-back.
  * Hermetic: temp config, fake Laya models + mocked runtime, temp library.db — never repo models/.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

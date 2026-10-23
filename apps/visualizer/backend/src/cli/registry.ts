@@ -136,11 +136,11 @@ export const COMMANDS: readonly CliCommand[] = [
   },
   {
     name: 'cull-import',
-    help: 'Import the research culling runs as the first stored culling answers',
+    help: 'Import culling answers from JSONL files, one line per photo',
     flags: [
       DB_FLAG,
-      { name: 'laya-new', kind: 'string', help: 'Laya new on the catalog: laya_new_catalog.jsonl' },
-      { name: 'culling-profile', kind: 'string', help: 'The culling profile on Laya base: laya_cull_catalog_all.jsonl' },
+      { name: 'laya-new', kind: 'string', help: 'Score forecast answers (Laya new): key, image, rows of slug and probs' },
+      { name: 'culling-profile', kind: 'string', help: 'Culling profile answers (Laya base): key, image, answers by <levels>|<dimension>' },
       { name: 'laya-new-model-id', kind: 'string', help: 'Name Laya new by hand instead of by its export' },
       { name: 'dry-run', kind: 'boolean', help: 'Report what would be imported, write nothing' },
     ],

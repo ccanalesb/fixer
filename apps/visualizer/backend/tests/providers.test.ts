@@ -252,7 +252,7 @@ describe('defaults', () => {
       defaults: { description: { provider: 'local', model: null }, retired_kind: { provider: 'local' } },
     });
     const body = await json<Record<string, unknown>>(await send('GET', '/api/providers/defaults'));
-    // Ignored in memory (#245) …
+    // Ignored in memory …
     expect(Object.keys(body)).toEqual(['description']);
     // … but the user's file is left intact, so nothing is destroyed on load.
     expect(Object.keys(readProviders().defaults as object)).toContain('retired_kind');

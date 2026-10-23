@@ -7,8 +7,7 @@ import { ConfigAPI } from '../services/api'
  * A browser cannot hand JavaScript a filesystem path, so the picker is the
  * backend's: it opens a macOS dialog on its own machine and answers with what
  * was chosen. Typing a path stays as the fallback for the machines and browsers
- * that leaves out. An Electron shell would replace the transport
- * ([#328](https://github.com/ccanalesb/lightroom-tagger/issues/328)) without
+ * that leaves out. An Electron shell would replace the transport without
  * touching anything above this hook.
  */
 

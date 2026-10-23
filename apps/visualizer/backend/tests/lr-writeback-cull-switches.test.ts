@@ -1,5 +1,5 @@
 /**
- * Lightroom write-back under the pipeline setting's switches (#363): reject follows the culling
+ * Lightroom write-back under the pipeline setting's switches: reject follows the culling
  * profile's rule whatever decided the photo; with the culling profile off, no stars and no reject.
  */
 import { mkdtempSync, rmSync } from 'node:fs';

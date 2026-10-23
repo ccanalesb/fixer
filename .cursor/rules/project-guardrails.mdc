@@ -33,3 +33,7 @@ The ONLY acceptable triggers for destructive/reverting operations are:
 2. The user selecting a revert option from a list you offered.
 
 When unsure: STOP and ASK. Do not guess. Do not be proactive. A one-line question costs far less than recreating lost work.
+
+# No provenance in code
+
+Code, tests, scripts and the text they show say what is true now, not where it came from. No issue or PR numbers (`#339`), no research tickets (`ticket 15`), no research recipe names, run files or numbers. A comment states a constraint the code cannot show; a test title states the behaviour. Provenance goes in the commit message and the PR. ADR references (`ADR-0018`) are fine: they are current docs in this repo.

@@ -165,7 +165,7 @@ const CONFIG_DEFAULTS = {
 /**
  * Read `config.yaml` from the repo root. Unknown keys are ignored rather than
  * rejected — the file is user-owned and may still carry keys from retired
- * features (#245).
+ * features.
  */
 export function loadLibraryConfig(configPath = join(REPO_ROOT, 'config.yaml')): LibraryConfig {
   let raw: Record<string, unknown> = {};

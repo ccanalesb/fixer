@@ -1,5 +1,5 @@
 /**
- * In-job cull step before describe/score/analyze send photos to kimi (#339).
+ * In-job cull step before describe/score/analyze send photos to kimi.
  */
 import { performance } from 'node:perf_hooks';
 import type { Db } from '../../db/connection.js';

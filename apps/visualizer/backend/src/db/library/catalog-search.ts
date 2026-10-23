@@ -23,7 +23,7 @@ export function getAllImages(db: Db): Row[] {
  * A term too short for FTS still searches the metadata half: the builder's
  * minimum length is the web API's rule, where it answers 400, and here it only
  * means "this term has no FTS half" — a one-character keyword stays a legitimate
- * query (#261).
+ * query.
  */
 export function searchByKeyword(db: Db, keyword: string): Row[] {
   const pattern = `%${keyword}%`;

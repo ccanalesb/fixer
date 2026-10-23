@@ -1,9 +1,8 @@
 /**
  * The pipeline setting a library starts with, and the check that a stored one still has its shape.
  *
- * Default (ticket 15): the research's recipe 7H47 (seeded as the Default culling profile) at 7 and 10 levels, *video
- * lenient* on each, filtered only when both level sets filter; the Score forecast filters when the highest P(≥ 8) is
- * below 0.111. A new library has no models, so both stages start off (#361); the culling profile's filter starts on, so
+ * Default: the Default culling profile at 7 and 10 levels, *video lenient* on each, filtered only when both level sets filter; the Score forecast filters when the highest P(≥ 8) is
+ * below 0.111. A new library has no models, so both stages start off; the culling profile's filter starts on, so
  * turning the culling profile on filters with its rule.
  */
 import type { PipelineSettingConfig, ProfileRule, ScoreForecastSetting } from './types.js';

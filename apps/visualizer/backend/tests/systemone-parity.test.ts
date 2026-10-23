@@ -1,6 +1,6 @@
 /**
- * This app's System One endpoint answers exactly what the direct Laya calls answered before it
- * (#364): every level probability, equal, for the photos a master-code run dumped; and the event loop
+ * This app's System One endpoint answers exactly what the direct Laya calls answered before it:
+ * every level probability, equal, for the photos a master-code run dumped; and the event loop
  * stays free while it answers (ADR-0018).
  *
  * Needs the exported models and that dump, so it skips unless LT_SYSTEMONE_PARITY names the dump:

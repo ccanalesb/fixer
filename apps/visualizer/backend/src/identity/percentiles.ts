@@ -120,7 +120,7 @@ export interface CorroborationFields {
 }
 
 /**
- * The corroboration veto (#292): one flattering lens cannot crown a photo.
+ * The corroboration veto: one flattering lens cannot crown a photo.
  *
  * If any lens scored the image a 1, ranking falls back from the peak percentile to
  * the *second*-highest. The intent is that a photo another lens considers a total

@@ -1,5 +1,5 @@
 /**
- * Review fixes for #341: state sync, catalog transactions, sent-by-hand errors, undo, lock, not-found.
+ * Lightroom write-back edge cases: state sync, catalog transactions, sent-by-hand errors, undo, lock, not-found.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';

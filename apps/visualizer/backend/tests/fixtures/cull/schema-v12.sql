@@ -1,4 +1,4 @@
--- The cull and Lightroom write-back tables at library schema 12, before #362 renamed them. Frozen: the v13 migration test builds a v12 library from it.
+-- The cull and Lightroom write-back tables at library schema 12, before the v13 rename. Frozen: the v13 migration test builds a v12 library from it.
 CREATE TABLE IF NOT EXISTS cull_recipes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slug TEXT NOT NULL UNIQUE,

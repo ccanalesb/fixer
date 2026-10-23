@@ -301,7 +301,7 @@ describe('the batch_analyze handler', () => {
     expect(Math.min(...scoreProgress)).toBeGreaterThanOrEqual(65);
   });
 
-  /** Void frames are not described or scored (#339); only non-void work reaches kimi. */
+  /** Void frames are not described or scored; only non-void work reaches kimi. */
   it('describes a condemned frame but leaves it out of the scoring selection', async () => {
     await seedPhotos('good');
     await seedVoidPhoto('void');

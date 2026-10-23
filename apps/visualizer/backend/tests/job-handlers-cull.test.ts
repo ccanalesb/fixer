@@ -470,7 +470,7 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(photosAsked()).toEqual(['bad']);
   });
 
-  it('after the research import a job asks only what the research left out', async () => {
+  it('after cull-import a job asks only what the files left out', async () => {
     for (const key of ['fx-001-pass', 'fx-002-profile', 'fx-003-forecast', 'fx-004-no7']) await addPhoto(key);
     const fixtures = join(import.meta.dirname, 'fixtures', 'cull');
     const lib = openLibraryDb(fx.dbPath);

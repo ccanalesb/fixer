@@ -1,6 +1,6 @@
 /**
  * Score forecast questions: what the Score forecast's model answers, edited by the user like a culling
- * profile's text (#368). Pure: no database.
+ * profile's text. Pure: no database.
  *
  * Each question is asked as a 10-level `score` question under its own id. An optional question is also
  * asked "applies?" as a `noul` under `<id>-excusal`; when the photo is excused the question is left out

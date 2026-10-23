@@ -3,7 +3,7 @@
  * its model identity, and the default pipeline setting's questions answered on a test image. With
  * `--photo`, also prints each stage's level probabilities for that photo.
  *
- * `cull-import` — the research runs as the first stored cull answers (`cull/import-research.ts`).
+ * `cull-import` — culling answers from JSONL files, stored as answered (`cull/import-research.ts`).
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -77,7 +77,7 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
 }
 
 /**
- * Laya new has no revision: the research answers are filed under the exported decoder's hash, which
+ * Laya new has no revision: imported answers are filed under the exported decoder's hash, which
  * says they came from the same checkpoint the culling job runs. `--laya-new-model-id` names it by hand.
  */
 async function researchLayaNewModelId(ctx: CommandContext): Promise<string> {
@@ -97,14 +97,14 @@ export async function cmdCullImport(ctx: CommandContext): Promise<number> {
   const profilePath = stringFlag(ctx.args, 'culling-profile');
   if (!layaNewPath || !profilePath) {
     throw new CliError(
-      'cull-import needs --laya-new <laya_new_catalog.jsonl> and --culling-profile <laya_cull_catalog_all.jsonl>',
+      'cull-import needs --laya-new <file.jsonl> and --culling-profile <file.jsonl>',
     );
   }
   for (const p of [layaNewPath, profilePath]) if (!existsSync(p)) throw new CliError(`File not found: ${p}`);
   const modelIds = { base: LAYA_BASE_RESEARCH_MODEL_ID, new: await researchLayaNewModelId(ctx) };
   const dryRun = boolFlag(ctx.args, 'dry-run');
   return withLibraryDbAsync(ctx, { mustExist: true }, async (db, dbPath) => {
-    ctx.out(`${dryRun ? 'Dry run: nothing is written. ' : ''}Importing the research runs into ${dbPath}`);
+    ctx.out(`${dryRun ? 'Dry run: nothing is written. ' : ''}Importing culling answers into ${dbPath}`);
     ctx.out(`Laya base: ${modelIds.base}`);
     ctx.out(`Laya new: ${modelIds.new}`);
     const r = await importResearchRuns(db, { layaNewPath, profilePath, modelIds, dryRun });

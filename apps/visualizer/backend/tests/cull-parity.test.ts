@@ -1,12 +1,12 @@
 /**
- * A new cull run on photos the research runs answered, with the same image, gives the same verdicts
- * (#338). Reads the research files and the images they name; never `library.db`.
+ * A new culling run on photos with imported answers, with the same image, gives the same verdicts.
+ * Reads the answer files and the images they name; never `library.db`.
  *
- * Needs the exported models and the research files, so it skips unless LT_LAYA_PARITY=1:
+ * Needs the exported models and the answer files, so it skips unless LT_LAYA_PARITY=1:
  *
  *   LT_LAYA_PARITY=1 npx vitest run tests/cull-parity.test.ts
  *
- * LT_CULL_RESEARCH_DIR points at the research bench (default ~/lightroom-research/bench);
+ * LT_CULL_RESEARCH_DIR points at the answer files (default ~/lightroom-research/bench);
  * LT_CULL_PARITY_PHOTOS sets how many photos to answer (default 6, about 2.5 s each).
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -66,7 +66,7 @@ interface Research {
   layaNew: StageAnswers;
 }
 
-/** The first photos whose research image is still there and unchanged since the run. */
+/** The first photos whose image is still there and unchanged since the answer files were written. */
 function sample(): Research[] {
   const profileMtime = statSync(profileFile).mtimeMs;
   const profile = new Map<string, { image: string; answers: Record<string, number[]> }>();
@@ -112,7 +112,7 @@ function stageAnswers(profile: Record<string, number[]>, layaNew: StageAnswers |
   return { stages, answers };
 }
 
-describeMaybe('a new cull run agrees with the research runs', () => {
+describeMaybe('a new culling run agrees with the imported answers', () => {
   it('same verdict per stage and per photo, probabilities close', { timeout: 600_000 }, async () => {
     const photos = sample();
     expect(photos.length).toBeGreaterThan(0);

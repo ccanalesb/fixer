@@ -1,5 +1,5 @@
 /**
- * The one SQL phrasing of "this frame is condemned" (#301).
+ * The one SQL phrasing of "this frame is condemned".
  *
  * A leaf module on purpose: the identity ranking, stack suggestions and the catalog
  * listing all need this fragment and sit on both sides of `frame_substance`'s own

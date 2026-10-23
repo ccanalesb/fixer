@@ -1,5 +1,5 @@
 /**
- * Re-decide every culled photo from stored answers — no model call, no endpoint (#339).
+ * Re-decide every culled photo from stored answers — no model call, no endpoint.
  */
 import { performance } from 'node:perf_hooks';
 import type { Db } from '../db/connection.js';

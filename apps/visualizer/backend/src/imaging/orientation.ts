@@ -8,8 +8,8 @@
  * `CB` is a transpose and `AD` a transverse. Lightroom's code is relative to the
  * stored pixels, camera orientation tag included.
  *
- * The mapping was checked against a contact sheet of the real catalog (masters
- * distillation research, ticket 15), including the rare mirrored codes.
+ * The mapping was checked against a contact sheet of the real catalog, including
+ * the rare mirrored codes.
  */
 import type { Sharp } from 'sharp';
 

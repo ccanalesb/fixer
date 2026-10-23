@@ -2,8 +2,8 @@
  * The pipeline setting → the stages a photo goes through, each at the version its questions and model
  * identity make (`stage-models.ts` says what a model's identity is).
  *
- * Profile stage question ids are `<level set>|<dimension>`, the ids #337 and the research used, so
- * the seeded profile's stage versions hash the same text the research runs answered.
+ * Profile stage question ids are `<level set>|<dimension>`, the ids imported answers carry, so the
+ * Default culling profile's stage versions hash the same text those answers were asked.
  */
 import type { Db } from '../db/connection.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';

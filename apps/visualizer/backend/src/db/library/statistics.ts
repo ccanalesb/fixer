@@ -18,7 +18,7 @@ export function getImageCount(db: Db): number {
  * Count catalog images marked as posted to Instagram.
  *
  * Reads the `instagram_posted` column only — it is set manually by the user and is
- * never derived from the retired Instagram dump rows (#218).
+ * never derived from the retired Instagram dump rows.
  */
 export function getPostedImagesCount(db: Db): number {
   return scalarCount(db, 'SELECT COUNT(*) AS cnt FROM images WHERE instagram_posted = 1');

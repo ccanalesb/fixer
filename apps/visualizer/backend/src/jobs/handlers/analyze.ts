@@ -1,5 +1,5 @@
 /**
- * The unified analyze job: cull, describe, then score over one selection (#339).
+ * The unified analyze job: cull, describe, then score over one selection.
  */
 import { performance } from 'node:perf_hooks';
 import type { Db } from '../../db/connection.js';

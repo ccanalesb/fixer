@@ -1,5 +1,5 @@
 /**
- * Where job handlers find `library.db` (#344). Tests point `LT_CONFIG_YAML` at a temp
+ * Where job handlers find `library.db`. Tests point `LT_CONFIG_YAML` at a temp
  * file; if the resolver read the repo's `config.yaml` instead, a test that drops
  * `LIBRARY_DB` would run its job against the user's real library.
  */
