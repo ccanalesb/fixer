@@ -8,8 +8,6 @@ import type { FrameSubstanceResponse } from '../../../services/api'
 const mockGet = vi.fn()
 const mockCreateOverride = vi.fn()
 const mockDeleteOverride = vi.fn()
-const mockAddCull = vi.fn()
-const mockRemoveCull = vi.fn()
 
 vi.mock('../../../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/api')>()
@@ -19,8 +17,6 @@ vi.mock('../../../services/api', async (importOriginal) => {
       get: (...args: unknown[]) => mockGet(...args),
       createOverride: (...args: unknown[]) => mockCreateOverride(...args),
       deleteOverride: (...args: unknown[]) => mockDeleteOverride(...args),
-      addCullKeyword: (...args: unknown[]) => mockAddCull(...args),
-      removeCullKeyword: (...args: unknown[]) => mockRemoveCull(...args),
     },
   }
 })
@@ -36,7 +32,6 @@ function basePayload(overrides: Partial<FrameSubstanceResponse> = {}): FrameSubs
     is_stale: false,
     has_override: false,
     flagged: true,
-    has_cull_keyword: false,
     instrument: {
       kind: 'pixel_detector',
       verdict: 'void',
@@ -44,8 +39,6 @@ function basePayload(overrides: Partial<FrameSubstanceResponse> = {}): FrameSubs
       advisory: false,
     },
     restore_tier: 'A',
-    catalog_write_available: true,
-    catalog_write_unavailable_reason: null,
     ...overrides,
   }
 }
@@ -64,8 +57,6 @@ describe('FrameSubstanceSection', () => {
     mockGet.mockReset()
     mockCreateOverride.mockReset()
     mockDeleteOverride.mockReset()
-    mockAddCull.mockReset()
-    mockRemoveCull.mockReset()
   })
 
   afterEach(() => {
@@ -179,17 +170,29 @@ describe('FrameSubstanceSection', () => {
     ).toBeInTheDocument()
   })
 
-  it('disables cull controls when catalog unavailable', async () => {
+  it('shows nothing when the detector judged the frame OK', async () => {
     mockGet.mockResolvedValue(
-      basePayload({
-        catalog_write_available: false,
-        catalog_write_unavailable_reason: 'Close Lightroom before writing to catalog.',
-      }),
+      basePayload({ verdict: 'ok', flagged: false, instrument: null, restore_tier: null }),
+    )
+    const { container } = renderSection()
+    await waitFor(() => expect(mockGet).toHaveBeenCalled())
+    await waitFor(() => expect(container.textContent).toBe(''))
+  })
+
+  it('still shows an OK verdict judged against an older preview', async () => {
+    mockGet.mockResolvedValue(
+      basePayload({ verdict: 'ok', flagged: false, instrument: null, restore_tier: null, is_stale: true }),
     )
     renderSection()
-    const button = await screen.findByRole('button', { name: /Mark for cull/i })
-    expect(button).toBeDisabled()
-    expect(screen.getByText(/Close Lightroom/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Judged OK/i)).toBeInTheDocument()
+    expect(screen.getByText(/older preview/i)).toBeInTheDocument()
+  })
+
+  it('offers no way to mark the photo in Lightroom', async () => {
+    mockGet.mockResolvedValue(basePayload())
+    renderSection()
+    await screen.findByRole('button', { name: /Restore to ranking/i })
+    expect(screen.getAllByRole('button')).toHaveLength(1)
   })
 
   it('calls override API on restore', async () => {

@@ -68,8 +68,8 @@ export const catalogRoutes = createOpenApiApp<LibraryEnv>();
  * does not match a path with nothing after the prefix.
  */
 catalogRoutes.use('/images/catalog', libraryDb());
-// PATCH is instagram-posted; POST and DELETE are the frame-substance override and
-// the cull keyword, registered onto this group by `registerFrameSubstanceRoutes`.
+// PATCH is instagram-posted; POST and DELETE are the frame-substance override,
+// registered onto this group by `registerFrameSubstanceRoutes`.
 catalogRoutes.use(
   '/images/catalog/*',
   libraryDb({ writeForMethods: ['PATCH', 'POST', 'DELETE'] }),

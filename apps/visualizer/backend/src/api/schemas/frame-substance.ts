@@ -30,12 +30,8 @@ export const FrameSubstanceResponse = z
     is_stale: z.boolean().default(false),
     has_override: z.boolean().default(false),
     flagged: z.boolean().default(false),
-    /** `null` — not `false` — when the Lightroom catalog cannot be read. */
-    has_cull_keyword: z.boolean().nullish(),
     instrument: FrameSubstanceInstrument.nullish(),
     restore_tier: z.enum(['A', 'B']).nullish(),
-    catalog_write_available: z.boolean(),
-    catalog_write_unavailable_reason: z.string().nullish(),
   })
   .strict()
   .openapi('FrameSubstanceResponse');
@@ -44,15 +40,3 @@ export const FrameSubstanceOverrideResponse = z
   .object({ image_key: z.string(), has_override: z.boolean() })
   .strict()
   .openapi('FrameSubstanceOverrideResponse');
-
-export const CullKeywordMutationResponse = z
-  .object({
-    image_key: z.string(),
-    // The writer's three-way outcome, never collapsed into a boolean: "already
-    // present" and "image not found" are different things for the user to see.
-    result: z
-      .enum(['added', 'already_present', 'image_not_found', 'removed', 'not_present'])
-      .describe('Three-way writer outcome; never collapsed into a boolean.'),
-  })
-  .strict()
-  .openapi('CullKeywordMutationResponse');
