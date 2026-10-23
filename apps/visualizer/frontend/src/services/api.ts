@@ -905,6 +905,25 @@ export const CullAPI = {
     ),
 }
 
+export type ScoreForecastQuestion = components['schemas']['ScoreForecastQuestion']
+export type ScoreForecastQuestionsResponse = components['schemas']['ScoreForecastQuestionsResponse']
+export type SaveScoreForecastQuestionsResponse = components['schemas']['SaveScoreForecastQuestionsResponse']
+export type ScoreForecastQuestionsFromPerspectivesResponse =
+  components['schemas']['ScoreForecastQuestionsFromPerspectivesResponse']
+
+export const ScoreForecastQuestionsAPI = {
+  get: () => request<ScoreForecastQuestionsResponse>('/score-forecast-questions'),
+  save: (questions: ScoreForecastQuestion[], mode: 'save_only' | 'save_and_queue_cull') =>
+    request<SaveScoreForecastQuestionsResponse>('/score-forecast-questions', {
+      method: 'PUT',
+      body: JSON.stringify({ questions, mode }),
+    }),
+  fromPerspectives: () =>
+    request<ScoreForecastQuestionsFromPerspectivesResponse>('/score-forecast-questions/from-perspectives', {
+      method: 'POST',
+    }),
+}
+
 export const CullingProfilesAPI = {
   list: () => request<{ profiles: CullProfileSummary[] }>('/culling-profiles/'),
   get: (slug: string) => request<CullProfileDetail>(`/culling-profiles/${encodeURIComponent(slug)}`),

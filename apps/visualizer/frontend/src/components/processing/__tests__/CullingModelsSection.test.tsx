@@ -7,12 +7,14 @@ import {
   CullingModelsAPI,
   CullingProfilesAPI,
   JobsAPI,
+  ScoreForecastQuestionsAPI,
   type AppModel,
   type CullingModelsResponse,
   type CullingModelsUsable,
   type CullingStageModel,
   type CullingStageUsability,
   type PipelineSettingResponse,
+  type ScoreForecastQuestion,
 } from '../../../services/api'
 import {
   CULLING_MODELS_SAVED,
@@ -24,6 +26,14 @@ import {
   MODEL_CHANGE_LATER,
   MODEL_CHANGE_PROCESS,
   PROCESSING_JOB_QUEUE_ROUTE,
+  SCORE_FORECAST_CREATE_FROM_PERSPECTIVES,
+  SCORE_FORECAST_EDIT_QUESTIONS,
+  SCORE_FORECAST_HOW_TITLE,
+  SCORE_FORECAST_NO_QUESTIONS_HOW,
+  SCORE_FORECAST_QUESTION_COUNT,
+  SCORE_FORECAST_QUESTIONS_ROUTE,
+  SCORE_FORECAST_SKIPPED,
+  SCORE_FORECAST_WRITE_THEM,
   SCORE_FORECAST_LEVEL,
   SCORE_FORECAST_STAGE,
   SCORE_FORECAST_THRESHOLD,
@@ -34,6 +44,7 @@ import {
   STAGE_CHECK,
   STAGE_ENDPOINT_OTHER,
   STAGE_ENDPOINT_THIS_APP,
+  STAGE_NO_QUESTIONS,
 } from '../../../constants/strings'
 import type { Job } from '../../../types/job'
 
@@ -87,6 +98,22 @@ const usableStage = (over: Partial<CullingStageUsability> = {}): CullingStageUsa
 })
 /** What `GET /api/culling-models/usable` answers. */
 let usable: CullingModelsUsable
+/** How many Score forecast questions the library has. */
+let questionCount: number
+const question = (id: string): ScoreForecastQuestion => ({
+  id,
+  name: id,
+  perspective_slug: id,
+  instructions: `How ${id}?`,
+  levels: Array.from({ length: 10 }, (_, i) => `level ${i + 1}`),
+  optional: false,
+  applies: null,
+})
+const questionsResponse = () => ({
+  questions: Array.from({ length: questionCount }, (_, i) => question(`q${i}`)),
+  version: questionCount ? 1 : 0,
+  perspectives: [],
+})
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -96,6 +123,8 @@ beforeEach(() => {
   stages = { culling_profile: stage(), score_forecast: stage(), total_photos: 3 }
   appModels = [ready('laya-base'), ready('laya-new')]
   endpoints = { [OLLAMA]: ['intern-decision-2b', 'clef-flash'] }
+  questionCount = 4
+  vi.spyOn(ScoreForecastQuestionsAPI, 'get').mockImplementation(async () => questionsResponse())
   vi.spyOn(CullingModelsAPI, 'get').mockImplementation(async () => stages)
   vi.spyOn(CullingModelsAPI, 'save').mockImplementation(async (k: Stage, body) => {
     const s = stages[k]
@@ -482,5 +511,51 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     const cull = await row('culling_profile')
     expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_THIS_APP })).toBeInTheDocument()
     expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_OTHER })).toBeInTheDocument()
+  })
+})
+
+describe('CullingModelsSection — Score forecast questions', () => {
+  beforeEach(() => {
+    stages = { ...stages, score_forecast: stage({ model: 'laya-new' }) }
+  })
+
+  it('with the Score forecast on and no questions: says so, explains it, and offers both ways to create them', async () => {
+    questionCount = 0
+    renderSection()
+    expect(await screen.findByText(STAGE_NO_QUESTIONS)).toHaveClass('text-error')
+    expect(screen.getByText(SCORE_FORECAST_HOW_TITLE)).toBeInTheDocument()
+    expect(screen.getByText(SCORE_FORECAST_NO_QUESTIONS_HOW)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: SCORE_FORECAST_CREATE_FROM_PERSPECTIVES })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: SCORE_FORECAST_WRITE_THEM })).toHaveAttribute('href', SCORE_FORECAST_QUESTIONS_ROUTE)
+  })
+
+  it('"Create questions from my perspectives" creates them once and links to where they are edited', async () => {
+    questionCount = 0
+    vi.spyOn(ScoreForecastQuestionsAPI, 'fromPerspectives').mockImplementation(async () => {
+      questionCount = 5
+      return { ...questionsResponse(), skipped: ['Street'] }
+    })
+    renderSection()
+    fireEvent.click(await screen.findByRole('button', { name: SCORE_FORECAST_CREATE_FROM_PERSPECTIVES }))
+    expect(await screen.findByText(SCORE_FORECAST_QUESTION_COUNT(5, true), { exact: false })).toBeInTheDocument()
+    expect(ScoreForecastQuestionsAPI.fromPerspectives).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('link', { name: SCORE_FORECAST_EDIT_QUESTIONS })).toHaveAttribute(
+      'href',
+      SCORE_FORECAST_QUESTIONS_ROUTE,
+    )
+    expect(screen.getByText(SCORE_FORECAST_SKIPPED(['Street']))).toBeInTheDocument()
+    expect(screen.queryByText(STAGE_NO_QUESTIONS)).not.toBeInTheDocument()
+  })
+
+  it('with questions: only how many there are, until the Score forecast is turned on', async () => {
+    renderSection()
+    expect(await screen.findByText(SCORE_FORECAST_QUESTION_COUNT(4, false), { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText(SCORE_FORECAST_HOW_TITLE)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: SCORE_FORECAST_STAGE }))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: SCORE_FORECAST_STAGE })).not.toBeChecked())
+    expect(screen.queryByText(SCORE_FORECAST_QUESTION_COUNT(4, false), { exact: false })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: SCORE_FORECAST_STAGE }))
+    expect(await screen.findByText(SCORE_FORECAST_HOW_TITLE)).toBeInTheDocument()
+    expect(screen.queryByText(SCORE_FORECAST_NO_QUESTIONS_HOW)).not.toBeInTheDocument()
   })
 })

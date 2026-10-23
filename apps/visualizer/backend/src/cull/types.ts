@@ -49,7 +49,7 @@ export interface ScoreForecastSetting {
   /** Filter when the highest P(AI score ≥ `high_from_level`) is below this. */
   threshold: number;
   high_from_level: number;
-  /** Framing is left out of the highest when P(no framing device) is at least this. */
+  /** An optional question is left out of the highest when its "applies?" P(no) is at least this. */
   excused_at: number;
 }
 
@@ -82,7 +82,7 @@ export interface ResolvedStage {
 
 /**
  * One stage's answers: level probabilities, lowest first, by dimension slug (profile stages) or by
- * Laya new question id (Score forecast).
+ * Score forecast question id.
  */
 export type StageAnswers = Record<string, number[]>;
 
@@ -98,7 +98,7 @@ export interface PhotoDecision {
   filteredByStageKey: string | null;
   /** Stages this photo still needs answered. */
   pendingStages: string[];
-  /** Highest P(≥ 8) over Laya new's perspectives; null without a forecast answer. */
+  /** Highest P(≥ 8) over the Score forecast questions; null without a forecast answer. */
   scoreForecastP8: number | null;
   /** Passed only because the user sent it by hand: the stages alone would have filtered it. */
   sentByHandOverride: boolean;

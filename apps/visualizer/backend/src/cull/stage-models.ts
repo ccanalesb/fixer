@@ -40,7 +40,7 @@ export class CullingStageError extends Error {
   override readonly name = 'CullingStageError';
   constructor(
     readonly stage: StageKind,
-    readonly failure: SystemOneFailure | 'no_model',
+    readonly failure: SystemOneFailure | 'no_model' | 'no_questions',
     message: string,
   ) {
     super(message);
@@ -124,6 +124,16 @@ export async function resolveStageModelIds(
     ids[kind] = modelIdentity(m.endpoint, entry);
   }
   return ids;
+}
+
+/** The Score forecast on with no Score forecast questions cannot run. */
+export function assertForecastHasQuestions(on: Record<StageKind, boolean>, questionCount: number): void {
+  if (!on.score_forecast || questionCount > 0) return;
+  throw new CullingStageError(
+    'score_forecast',
+    'no_questions',
+    named('score_forecast', 'no questions yet. Create them in Perspectives → Score forecast questions, or turn the Score forecast off'),
+  );
 }
 
 /** Question ids sent to a model: prefixed with the stage key, since two profiles may share a level set. */

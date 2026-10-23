@@ -16,6 +16,7 @@ import {
   CULL_MANUALLY_CULL_NOTE,
   CULL_PASSED,
   CULL_SCORE_FORECAST,
+  SCORE_FORECAST_DOES_NOT_APPLY,
   CULL_PASS_HINT,
   CULL_PASS_NO,
   CULL_PASS_QUESTION,
@@ -119,8 +120,9 @@ describe('Cull catalog modal cull section', () => {
       completion: 'none',
       needs_send_work: true,
       score_forecast: [
-        { name: 'Natural framing device', p8: 0.1704 },
-        { name: 'Clean composition', p8: 0.0208 },
+        { name: 'Natural framing device', p8: 0.1704, excused: false },
+        { name: 'Clean composition', p8: 0.0208, excused: false },
+        { name: 'Framing', p8: null, excused: true },
       ],
       profile: {
         slug: 'recipe-culling',
@@ -157,6 +159,8 @@ describe('Cull catalog modal cull section', () => {
     expect(screen.getByText(CULL_SCORE_FORECAST)).toBeInTheDocument()
     expect(screen.getByText('17.0%')).toBeInTheDocument()
     expect(screen.getByText('2.1%')).toBeInTheDocument()
+    expect(screen.getByText('Framing').parentElement).toHaveTextContent(SCORE_FORECAST_DOES_NOT_APPLY)
+    expect(screen.getByText('17.0%').parentElement).toHaveClass('font-semibold')
     expect(screen.getByRole('button', { name: CULL_PASS_NO })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: CULL_AGREE })).not.toBeInTheDocument()
   })

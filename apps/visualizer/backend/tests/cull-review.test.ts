@@ -11,6 +11,7 @@ import { resolveCurrentStages } from '../src/cull/stages.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
+import { layaNewForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import { getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { getCullVerdict, upsertCullVerdict, type CullVerdictInput } from '../src/db/library/cull-verdicts.js';
 import { listCullUserActions, recordCullUserAction } from '../src/db/library/cull-user-actions.js';
@@ -270,6 +271,44 @@ describe('GET /api/cull/photos/{image_key}', () => {
     expect(res.status).toBe(200);
     const body = await json<{ verdict: string }>(res);
     expect(body.verdict).toBe('passed');
+  });
+
+  it("lists the Score forecast per question, named by its perspective, an excused one as not applying", async () => {
+    const db = new Database(fx.dbPath);
+    saveForecastQuestions(db, [
+      ...layaNewForecastQuestions(db).filter((q) => q.id === 'framing' || q.id === 'compositional-cleanliness'),
+      {
+        id: 'own',
+        name: 'My own question',
+        perspective_slug: null,
+        instructions: 'Is it good?',
+        levels: Array.from({ length: 10 }, (_, i) => `level ${i + 1}`),
+        optional: false,
+        applies: null,
+      },
+    ]);
+    const pipe = getCurrentPipelineSetting(db);
+    const stage = resolveCurrentStages(db, pipe.config, { culling_profile: 'laya-base', score_forecast: 'laya-new' }).find(
+      (s) => s.kind === 'score_forecast',
+    )!;
+    const tenth = (i: number) => Array.from({ length: 10 }, (_, k) => (k === i ? 1 : 0));
+    upsertStageAnswer(db, {
+      imageKey: 'filtered-low',
+      stageVersionId: stage.versionId,
+      answers: { 'framing-excusal': [0.9, 0.1], framing: tenth(9), 'compositional-cleanliness': tenth(8), own: tenth(2) },
+      verdict: 'filtered',
+      decision: {},
+      pipelineSettingVersion: pipe.version,
+      source: 'job',
+      runId: 1,
+    });
+    db.close();
+    const body = await json<{ score_forecast: unknown[] }>(await app.request('/api/cull/photos/filtered-low'));
+    expect(body.score_forecast).toEqual([
+      { name: 'Framing', p8: null, excused: true },
+      { name: 'Compositional-Cleanliness', p8: 1, excused: false },
+      { name: 'My own question', p8: 0, excused: false },
+    ]);
   });
 });
 

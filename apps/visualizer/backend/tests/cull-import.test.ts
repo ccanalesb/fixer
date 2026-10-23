@@ -186,6 +186,25 @@ describe('cull-import', () => {
     await expect(importAll()).rejects.toThrow(/no longer the one the research runs answered/);
   });
 
+  it('into a library with no Score forecast questions it stores the ones the research asked', async () => {
+    await importAll();
+    const { getForecastQuestions } = await import('../src/db/library/score-forecast-questions.js');
+    const ids = await withDb(async (db) => getForecastQuestions(db).questions.map((q) => q.id));
+    expect(ids).toEqual(['framing', 'compositional-cleanliness', 'environmental-context-legibility', 'intensity-suggestion']);
+  });
+
+  it('refuses when the Score forecast questions are no longer the ones the research asked', async () => {
+    await withDb(async (db) => {
+      const { saveForecastQuestions, layaNewForecastQuestions } = await import('../src/db/library/score-forecast-questions.js');
+      saveForecastQuestions(
+        db,
+        layaNewForecastQuestions(db).map((q) => (q.id === 'framing' ? { ...q, instructions: 'Something else' } : q)),
+      );
+    });
+    await expect(importAll()).rejects.toThrow(/Score forecast questions are no longer the ones the research runs answered/);
+    expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
+  });
+
   it('the CLI prints the counts', async () => {
     const lines: string[] = [];
     const config = loadLibraryConfig('/nonexistent/config.yaml');

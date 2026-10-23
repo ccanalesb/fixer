@@ -4169,6 +4169,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/score-forecast-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The current Score forecast questions */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScoreForecastQuestionsResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        questions: components["schemas"]["ScoreForecastQuestion"][];
+                        /** @enum {string} */
+                        mode: "save_only" | "save_and_queue_cull";
+                    };
+                };
+            };
+            responses: {
+                /** @description Saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SaveScoreForecastQuestionsResponse"];
+                    };
+                };
+                /** @description Validation failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: string;
+                            validation_errors: {
+                                field: string;
+                                message: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/score-forecast-questions/from-perspectives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Questions created */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScoreForecastQuestionsFromPerspectivesResponse"];
+                    };
+                };
+                /** @description There are questions already */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/": {
         parameters: {
             query?: never;
@@ -5869,8 +6017,12 @@ export interface components {
                 }[];
             };
             score_forecast: {
+                /** @description The question's perspective's name, else the question's own */
                 name: string;
-                p8: number;
+                /** @description Null when excused */
+                p8: number | null;
+                /** @description Its "applies?" question said it does not apply */
+                excused: boolean;
             }[];
             user_actions: {
                 /** @enum {string} */
@@ -6085,6 +6237,41 @@ export interface components {
             answers: boolean;
             models: string[];
             error: string | null;
+        };
+        ScoreForecastQuestionsResponse: {
+            questions: components["schemas"]["ScoreForecastQuestion"][];
+            /** @description 0 before any is saved */
+            version: number;
+            perspectives: {
+                slug: string;
+                name: string;
+                active: boolean;
+            }[];
+        };
+        ScoreForecastQuestion: {
+            /** @description Fixed when the question is made; its answers are stored under it */
+            id: string;
+            name: string;
+            perspective_slug: string | null;
+            instructions: string;
+            /** @description Lowest first; 10 of them */
+            levels: string[];
+            /** @description Asked "applies?" first; left out when it does not apply */
+            optional: boolean;
+            /** @description The "applies?" question; null unless optional */
+            applies: string | null;
+        };
+        SaveScoreForecastQuestionsResponse: components["schemas"]["ScoreForecastQuestionsResponse"] & {
+            created: boolean;
+            impact: {
+                photos: number;
+                hours_estimate: number;
+            };
+            cull_job_id: string | null;
+        };
+        ScoreForecastQuestionsFromPerspectivesResponse: components["schemas"]["ScoreForecastQuestionsResponse"] & {
+            /** @description Perspectives whose scoring bands could not be read */
+            skipped: string[];
         };
         ProviderListResponse: components["schemas"]["Provider"][];
         Provider: {

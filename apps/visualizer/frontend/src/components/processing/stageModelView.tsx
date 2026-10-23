@@ -9,6 +9,7 @@ import {
   STAGE_GONE,
   STAGE_IN_SENTENCE,
   STAGE_NO_MODEL,
+  STAGE_NO_QUESTIONS,
   STAGE_OFF,
   STAGE_OFF_WITH,
   STAGE_RUNS,
@@ -26,7 +27,7 @@ export interface EndpointDraft {
   key: string
 }
 
-export type StageProblem = 'down' | 'gone' | 'nomodel' | 'converting'
+export type StageProblem = 'down' | 'gone' | 'nomodel' | 'converting' | 'noquestions'
 
 export interface StageView {
   on: boolean
@@ -34,6 +35,8 @@ export interface StageView {
   draft: EndpointDraft
   check: EndpointCheck | null
   appModels: AppModel[]
+  /** The Score forecast's questions; unset for the culling profile. */
+  questionCount?: number
 }
 
 /** The model the row shows: none while "Another…" is chosen but not saved yet. */
@@ -55,7 +58,8 @@ export function stageProblem(v: StageView): StageProblem | null {
   if (!model) return 'nomodel'
   const found = offeredModels(v).find((m) => m.name === model)
   if (!found) return v.draft.other ? 'gone' : 'nomodel'
-  return found.ready ? null : 'converting'
+  if (!found.ready) return 'converting'
+  return v.questionCount === 0 ? 'noquestions' : null
 }
 
 /** The row's description: which model the stage runs where, or what keeps jobs from starting. */
@@ -75,6 +79,13 @@ export function stageDescription(kind: CullingStageKind, v: StageView): ReactNod
         <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-accent underline">
           {APP_MODEL_VIEW_JOB}
         </Link>
+      </>
+    )
+  }
+  if (problem === 'noquestions') {
+    return (
+      <>
+        {STAGE_RUNS(model!, where)} — <span className="text-error">{STAGE_NO_QUESTIONS}</span>
       </>
     )
   }

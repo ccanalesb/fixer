@@ -6,6 +6,7 @@
  * maximum as numpy's argmax takes it; the imported answers are rounded to 4 decimals and tie often
  * enough (382 of 183k) that the last maximum would change verdicts.
  */
+import { EXCUSAL_SUFFIX, excusalId } from './forecast-questions.js';
 import type {
   CullVerdict,
   PhotoDecision,
@@ -17,10 +18,6 @@ import type {
   StageAnswers,
   StageDecision,
 } from './types.js';
-
-/** Laya new's framing excusal question: `[P(no framing device), P(framing device)]`. */
-export const FRAMING_EXCUSAL_QID = 'framing-excusal';
-const FRAMING_QID = 'framing';
 
 /** 1-based level of the first maximum. */
 export function topLevel(probs: readonly number[]): number {
@@ -68,13 +65,28 @@ export function decideProfileLevelSet(rule: ProfileRule, levelSet: string, answe
   };
 }
 
-/** Highest P(level ≥ `high_from_level`) over Laya new's perspectives, framing left out when excused. */
+/**
+ * Optional questions the photo is excused from: their "applies?" answer, `[P(no), P(yes)]`, says no at
+ * `excused_at` or more.
+ */
+export function excusedQuestions(answers: StageAnswers, cfg: ScoreForecastSetting): string[] {
+  return Object.keys(answers).filter((qid) => {
+    const pNo = answers[excusalId(qid)]?.[0];
+    return !qid.endsWith(EXCUSAL_SUFFIX) && pNo !== undefined && pNo >= cfg.excused_at;
+  });
+}
+
+/** P(level ≥ `high_from_level`) of one question's answer. */
+export const pAtLeast = (probs: readonly number[], cfg: ScoreForecastSetting): number =>
+  probs.slice(cfg.high_from_level - 1).reduce((s, p) => s + p, 0);
+
+/** Highest P(level ≥ `high_from_level`) over the Score forecast questions, excused ones left out. */
 export function scoreForecastHighestP8(answers: StageAnswers, cfg: ScoreForecastSetting): number {
-  const excused = (answers[FRAMING_EXCUSAL_QID]?.[0] ?? 0) >= cfg.excused_at;
+  const excused = new Set(excusedQuestions(answers, cfg));
   let best = 0;
   for (const [qid, probs] of Object.entries(answers)) {
-    if (qid === FRAMING_EXCUSAL_QID || (qid === FRAMING_QID && excused)) continue;
-    best = Math.max(best, probs.slice(cfg.high_from_level - 1).reduce((s, p) => s + p, 0));
+    if (qid.endsWith(EXCUSAL_SUFFIX) || excused.has(qid)) continue;
+    best = Math.max(best, pAtLeast(probs, cfg));
   }
   return best;
 }
@@ -83,11 +95,7 @@ export function decideScoreForecast(answers: StageAnswers, cfg: ScoreForecastSet
   const p8 = scoreForecastHighestP8(answers, cfg);
   return {
     verdict: p8 < cfg.threshold ? 'filtered' : 'passed',
-    detail: {
-      highest_p8: p8,
-      threshold: cfg.threshold,
-      framing_excused: (answers[FRAMING_EXCUSAL_QID]?.[0] ?? 0) >= cfg.excused_at,
-    },
+    detail: { highest_p8: p8, threshold: cfg.threshold, excused: excusedQuestions(answers, cfg) },
   };
 }
 

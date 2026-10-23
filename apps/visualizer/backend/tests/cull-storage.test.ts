@@ -39,6 +39,7 @@ import {
   filterVoidSubstanceFromScoringSelection,
 } from '../src/jobs/handlers/common.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
+import { layaNewForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import type { ProfileDefinition } from '../src/cull/types.js';
 
@@ -60,6 +61,7 @@ let db: Db;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-storage-'));
   db = initLibraryDb(join(dir, 'library.db'));
+  saveForecastQuestions(db, layaNewForecastQuestions(db));
 });
 
 afterEach(() => {
@@ -75,7 +77,6 @@ const tables = (d: Db) =>
 describe('migration and seed', () => {
   it('a fresh library has every cull table, Recipe culling and the default pipeline setting', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
-    expect(LIBRARY_SCHEMA_VERSION).toBe(14);
     expect(tables(db)).toEqual(CULL_TABLES);
     const profile = getCullProfile(db, 'recipe-culling')!;
     expect(profile).toMatchObject({ name: 'Recipe culling', model: 'laya-base', active: true, measured: true });
@@ -106,7 +107,7 @@ describe('migration and seed', () => {
 
     db = openLibraryDb(join(dir, 'library.db'));
     upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(14);
+    expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
     expect(tables(db)).toEqual(CULL_TABLES);
     expect(listCullProfiles(db).map((r) => r.slug)).toEqual(['recipe-culling']);
 

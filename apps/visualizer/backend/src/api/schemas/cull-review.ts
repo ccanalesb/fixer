@@ -62,10 +62,11 @@ export const CullReviewSummaryResponse = z
   .strict()
   .openapi('CullReviewSummaryResponse');
 
-export const ForecastPerspective = z
+export const ForecastByQuestion = z
   .object({
-    name: z.string(),
-    p8: z.number(),
+    name: z.string().openapi({ description: "The question's perspective's name, else the question's own" }),
+    p8: z.number().nullable().openapi({ description: 'Null when excused' }),
+    excused: z.boolean().openapi({ description: 'Its "applies?" question said it does not apply' }),
   })
   .strict();
 
@@ -76,7 +77,7 @@ export const CullReviewDetail = z
     filtered_by: z.enum(['culling_profile', 'score_forecast']).nullable(),
     score_forecast_p8: z.number().nullable(),
     profile: CullReviewProfileBlock,
-    score_forecast: z.array(ForecastPerspective),
+    score_forecast: z.array(ForecastByQuestion),
     user_actions: z.array(
       z.object({
         action: CullUserActionSchema,

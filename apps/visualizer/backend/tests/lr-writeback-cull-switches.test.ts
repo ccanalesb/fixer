@@ -10,6 +10,7 @@ import { cullPhoto } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import type { StageAnswerer } from '../src/cull/stage-models.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
+import { layaNewForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import type { PipelineSettingConfig } from '../src/cull/types.js';
 import type { Db } from '../src/db/connection.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
@@ -30,6 +31,7 @@ let runId: number;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-switches-'));
   db = initLibraryDb(join(dir, 'library.db'));
+  saveForecastQuestions(db, layaNewForecastQuestions(db));
   runId = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
   patchLrWritebackSettings(db, { write_stars: true, write_reject: true });
 });

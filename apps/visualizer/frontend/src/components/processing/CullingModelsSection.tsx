@@ -5,6 +5,7 @@ import {
   CullingModelsAPI,
   CullingProfilesAPI,
   JobsAPI,
+  ScoreForecastQuestionsAPI,
   type AppModel,
   type CullingModelsResponse,
   type CullingStageModelPutRequest,
@@ -50,13 +51,22 @@ import {
   MODEL_CHANGE_TITLE,
   MODEL_CHANGE_UNANSWERED,
   PROCESSING_JOB_QUEUE_ROUTE,
+  SCORE_FORECAST_CREATE_FROM_PERSPECTIVES,
+  SCORE_FORECAST_EDIT_QUESTIONS,
+  SCORE_FORECAST_HOW,
+  SCORE_FORECAST_HOW_TITLE,
   SCORE_FORECAST_LEVEL,
   SCORE_FORECAST_LEVEL_LABEL,
+  SCORE_FORECAST_NO_QUESTIONS_HOW,
+  SCORE_FORECAST_QUESTION_COUNT,
+  SCORE_FORECAST_QUESTIONS_ROUTE,
+  SCORE_FORECAST_SKIPPED,
   SCORE_FORECAST_STAGE,
   SCORE_FORECAST_STAGE_HELP,
   SCORE_FORECAST_THRESHOLD,
   SCORE_FORECAST_THRESHOLD_INVALID,
   SCORE_FORECAST_THRESHOLD_LABEL,
+  SCORE_FORECAST_WRITE_THEM,
   STAGE_IN_SENTENCE,
 } from '../../constants/strings'
 
@@ -68,6 +78,8 @@ const STAGE_NAME: Record<Stage, string> = { culling_profile: CULLING_PROFILE_STA
 const LEVELS = [5, 6, 7, 8, 9]
 const INSTALL_JOB_TYPE = 'laya_model_install'
 const CULLING_JOB_TYPE = 'batch_cull_photos_before_scoring'
+const LINK_BUTTON =
+  'inline-flex items-center rounded-base border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover'
 
 const draftFromSaved = (endpoint: string): EndpointDraft =>
   endpoint === 'this_app' ? { other: false, url: '', key: '' } : { other: true, url: endpoint, key: '' }
@@ -120,6 +132,10 @@ export function CullingModelsSection() {
   const [suggest, setSuggest] = useState<Stage | null>(null)
   const [queued, setQueued] = useState<Stage | null>(null)
   const [queueing, setQueueing] = useState(false)
+  const [questionCount, setQuestionCount] = useState<number | null>(null)
+  // "How the Score forecast works" stays open once the Score forecast was just turned on.
+  const [explain, setExplain] = useState(false)
+  const [created, setCreated] = useState<{ skipped: string[] } | null>(null)
   const stageModelsRef = useRef(stageModels)
   stageModelsRef.current = stageModels
   const appModelsRef = useRef(appModels)
@@ -174,6 +190,9 @@ export function CullingModelsSection() {
   useEffect(() => {
     void load()
     void refreshAppModels()
+    ScoreForecastQuestionsAPI.get()
+      .then((r) => setQuestionCount(r.questions.length))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
     void (async () => {
       try {
         const next = await CullingModelsAPI.get()
@@ -312,6 +331,7 @@ export function CullingModelsSection() {
     draft: drafts[stage],
     check: checks[stage],
     appModels,
+    ...(stage === 'score_forecast' && questionCount !== null ? { questionCount } : {}),
   })
 
   const modelFields = (stage: Stage) => (
@@ -389,6 +409,51 @@ export function CullingModelsSection() {
     setForecast({ threshold: Number(threshold) })
   }
 
+  const createQuestions = async () => {
+    setError(null)
+    try {
+      const res = await ScoreForecastQuestionsAPI.fromPerspectives()
+      setQuestionCount(res.questions.length)
+      setCreated({ skipped: res.skipped })
+      invalidateAll(['score-forecast-questions'])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  /** With the Score forecast on: its questions, how to create them, and how it works. */
+  const forecastExplain = (): ReactNode => {
+    if (questionCount === null) return null
+    const line =
+      questionCount > 0 ? (
+        <p className="text-sm text-text-secondary">
+          {SCORE_FORECAST_QUESTION_COUNT(questionCount, created !== null)}{' '}
+          <Link to={SCORE_FORECAST_QUESTIONS_ROUTE} className="text-accent underline">
+            {SCORE_FORECAST_EDIT_QUESTIONS}
+          </Link>
+          {created?.skipped.length ? <span className="block text-warning">{SCORE_FORECAST_SKIPPED(created.skipped)}</span> : null}
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="primary" onClick={() => void createQuestions()}>
+            {SCORE_FORECAST_CREATE_FROM_PERSPECTIVES}
+          </Button>
+          <Link to={SCORE_FORECAST_QUESTIONS_ROUTE} className={LINK_BUTTON}>
+            {SCORE_FORECAST_WRITE_THEM}
+          </Link>
+        </div>
+      )
+    if (!explain && questionCount > 0) return line
+    return (
+      <div className="rounded-base border border-accent/25 bg-accent-light px-4 py-3 text-sm">
+        <div className="font-semibold text-text">{SCORE_FORECAST_HOW_TITLE}</div>
+        <p className="mt-1 text-text-secondary">{SCORE_FORECAST_HOW(forecast.high_from_level)}</p>
+        {questionCount === 0 ? <p className="mt-2 text-text-secondary">{SCORE_FORECAST_NO_QUESTIONS_HOW}</p> : null}
+        <div className="mt-2">{line}</div>
+      </div>
+    )
+  }
+
   const savedNote = (stage: Stage): ReactNode => {
     if (saved?.stage !== stage) return null
     return (
@@ -452,7 +517,14 @@ export function CullingModelsSection() {
           name={SCORE_FORECAST_STAGE}
           description={description('score_forecast')}
           control={
-            <Switch label={SCORE_FORECAST_STAGE} checked={forecast.enabled} onChange={(on) => setForecast({ enabled: on })} />
+            <Switch
+              label={SCORE_FORECAST_STAGE}
+              checked={forecast.enabled}
+              onChange={(on) => {
+                setExplain(on)
+                setForecast({ enabled: on })
+              }}
+            />
           }
           under={
             <div className="flex flex-col gap-3">
@@ -505,6 +577,7 @@ export function CullingModelsSection() {
                   ) : null}
                 </div>
               ) : null}
+              {forecast.enabled ? forecastExplain() : null}
               {savedNote('score_forecast')}
               {modelChangeNote('score_forecast')}
             </div>

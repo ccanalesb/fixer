@@ -8,13 +8,20 @@ import { cullPhoto } from '../../cull/answer-photo.js';
 import { decidePhoto } from '../../cull/decide.js';
 import { decideAndStorePhoto, type CullContext } from '../../cull/persist.js';
 import { selectPhotosToCull } from '../../cull/select.js';
-import { CullingModels, resolveStageModelIds, stageModelsFromConfig, stagesOn } from '../../cull/stage-models.js';
+import {
+  assertForecastHasQuestions,
+  CullingModels,
+  resolveStageModelIds,
+  stageModelsFromConfig,
+  stagesOn,
+} from '../../cull/stage-models.js';
 import { resolveCurrentStages } from '../../cull/stages.js';
 import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-profiles.js';
 import { loadCurrentStageAnswers, readStoredStageModelIds } from '../../db/library/cull-stages.js';
+import { getForecastQuestions } from '../../db/library/score-forecast-questions.js';
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
@@ -92,6 +99,7 @@ export async function runCullPass(
     readStoredStageModelIds(db),
     convertingModelNames(runner.waitingOrRunningJobs()),
   );
+  assertForecastHasQuestions(stagesOn(pipeline.config), getForecastQuestions(db).questions.length);
   const stages = resolveCurrentStages(db, pipeline.config, modelIds);
 
   const tSelect = performance.now();

@@ -10,6 +10,7 @@ import {
   CULL_PASS_YES,
   CULL_PASSED,
   CULL_SCORE_FORECAST,
+  SCORE_FORECAST_DOES_NOT_APPLY,
 } from '../../constants/strings'
 import { levelHighlightClass } from './cullHighlight'
 import { rowSendButtonLabel } from './sendLabel'
@@ -51,20 +52,27 @@ function ProfileTable({ profile }: { profile: CullReviewDetail['profile'] }) {
 
 function ScoreForecast({ forecast, boldTop }: { forecast: CullReviewDetail['score_forecast']; boldTop: boolean }) {
   if (forecast.length === 0) return null
-  const top = Math.max(...forecast.map((f) => f.p8))
+  const top = Math.max(...forecast.map((f) => f.p8 ?? -1))
   return (
     <div>
       <h4 className="text-sm font-medium mb-2">{CULL_SCORE_FORECAST}</h4>
       <div className="space-y-1 text-sm">
-        {forecast.map((f) => (
-          <div
-            key={f.name}
-            className={`flex justify-between gap-4 ${boldTop && f.p8 === top ? 'font-semibold' : ''}`}
-          >
-            <span>{f.name}</span>
-            <span>{(f.p8 * 100).toFixed(1)}%</span>
-          </div>
-        ))}
+        {forecast.map((f) =>
+          f.p8 === null ? (
+            <div key={f.name} className="flex justify-between gap-4 text-text-tertiary">
+              <span>{f.name}</span>
+              <span>{SCORE_FORECAST_DOES_NOT_APPLY}</span>
+            </div>
+          ) : (
+            <div
+              key={f.name}
+              className={`flex justify-between gap-4 ${boldTop && f.p8 === top ? 'font-semibold' : ''}`}
+            >
+              <span>{f.name}</span>
+              <span>{(f.p8 * 100).toFixed(1)}%</span>
+            </div>
+          ),
+        )}
       </div>
     </div>
   )
