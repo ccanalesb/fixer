@@ -11,6 +11,7 @@ import { loadLibraryConfig } from '../src/config.js';
 import { run } from '../src/cli/main.js';
 import { openLibraryDb, type Db } from '../src/db/connection.js';
 import { importResearchRuns } from '../src/cull/import-research.js';
+import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { LAYA_BASE_RESEARCH_MODEL_ID } from '../src/laya/model-id.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
@@ -24,7 +25,7 @@ let layaNewPath: string;
 let profilePath: string;
 
 beforeEach(() => {
-  fx = new LibraryFixture();
+  fx = new LibraryFixture().cullingStagesOn();
   fx.addImages(...KEYS);
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-import-'));
   layaNewPath = join(dir, 'laya_new_catalog.jsonl');
@@ -172,7 +173,31 @@ describe('cull-import', () => {
     expect(r.inserted['score_forecast']).toBe(4);
     expect(r.run_id).toBeNull();
     expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
-    expect(fx.query('SELECT COUNT(*) AS n FROM cull_profiles')).toEqual([{ n: 0 }]);
+    expect(fx.query('SELECT COUNT(*) AS n FROM cull_pipeline_settings')).toEqual([{ n: 1 }]);
+  });
+
+  it('refuses while the Score forecast is off, saying where to turn it on, and writes no answer', async () => {
+    await withDb(async (db) => {
+      const { config } = getCurrentPipelineSetting(db);
+      createPipelineSettingVersion(db, { ...config, score_forecast: { ...config.score_forecast, enabled: false } });
+    });
+    await expect(importAll()).rejects.toThrow(
+      'the Score forecast is off; turn it on in Processing → Settings → Culling models, then import',
+    );
+    expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
+  });
+
+  it('refuses a new library, where both stages start off', async () => {
+    const fresh = new LibraryFixture();
+    const db = openLibraryDb(fresh.dbPath);
+    try {
+      await expect(importResearchRuns(db, { layaNewPath, profilePath, modelIds: MODEL_IDS, dryRun: false })).rejects.toThrow(
+        'the culling profile and the Score forecast are off; turn them on in Processing → Settings → Culling models, then import',
+      );
+    } finally {
+      db.close();
+      fresh.cleanup();
+    }
   });
 
   it('refuses when the profile text is no longer what the research asked', async () => {

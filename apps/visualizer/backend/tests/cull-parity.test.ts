@@ -47,7 +47,7 @@ const PIPELINE: PipelineSettingConfig = {
       },
     },
   ],
-  score_forecast: DEFAULT_SCORE_FORECAST,
+  score_forecast: { ...DEFAULT_SCORE_FORECAST, enabled: true },
 };
 const stage = (stageKey: string, kind: ResolvedStage['kind'], levelSet: string | null): ResolvedStage => ({
   stageKey,

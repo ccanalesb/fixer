@@ -75,11 +75,11 @@ const tables = (d: Db) =>
   }[]).map((r) => r.name);
 
 describe('migration and seed', () => {
-  it('a fresh library has every cull table, Recipe culling and the default pipeline setting', () => {
+  it('a fresh library has every cull table, the Default culling profile and the default pipeline setting', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
     expect(tables(db)).toEqual(CULL_TABLES);
     const profile = getCullProfile(db, 'recipe-culling')!;
-    expect(profile).toMatchObject({ name: 'Recipe culling', model: 'laya-base', active: true, measured: true });
+    expect(profile).toMatchObject({ name: 'Default culling profile', model: 'laya-base', active: true, measured: true });
     expect(profile.definition.dimensions.map((d) => d.slug)).toEqual([
       'immediate-impact',
       'visual-structure',
@@ -89,14 +89,15 @@ describe('migration and seed', () => {
     expect(profile.definition.level_sets.map((s) => s.id)).toEqual(['7', '10']);
     const pipeline = getCurrentPipelineSetting(db);
     expect(pipeline.version).toBe(1);
-    expect(pipeline.config).toMatchObject({ culling_profiles_enabled: true, culling_profiles_filter_enabled: true });
+    // A new install has no models, so both stages start off; turning the culling profile on filters as it always did.
+    expect(pipeline.config).toMatchObject({ culling_profiles_enabled: false, culling_profiles_filter_enabled: true });
     expect(pipeline.config.culling_profiles).toEqual([{ profile_slug: 'recipe-culling', rule: profile.rule }]);
     expect(profile.rule).toEqual({
       level_sets: { '7': { fails_at_most: 3, strong_at_least: 6 }, '10': { fails_at_most: 4, strong_at_least: 8 } },
       combine: 'every',
       filter_rule: { type: 'all_fail', dimensions: ['point-of-tension', 'connotation'] },
     });
-    expect(pipeline.config.score_forecast).toMatchObject({ enabled: true, threshold: 0.111 });
+    expect(pipeline.config.score_forecast).toEqual({ enabled: false, threshold: 0.111, high_from_level: 8, excused_at: 0.5 });
   });
 
   it('upgrades a version 10 library, once; a deleted profile is not seeded again', () => {

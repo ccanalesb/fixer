@@ -3,7 +3,7 @@ import {
   CULL_AGREE,
   CULL_AGREED,
   CULL_DETAIL_SECTION,
-  CULL_MANUALLY_CULL_NOTE,
+  CULL_SENT_BY_HAND_NOTE,
   CULL_PASS_HINT,
   CULL_PASS_NO,
   CULL_PASS_QUESTION,
@@ -101,7 +101,7 @@ export function CullDetailSection({
     <section className="mt-6 pt-6 border-t border-border space-y-4">
       <h3 className="font-semibold text-sm">{CULL_DETAIL_SECTION}</h3>
       {sentByHand ? (
-        <p className="text-sm text-text-secondary">{CULL_MANUALLY_CULL_NOTE}</p>
+        <p className="text-sm text-text-secondary">{CULL_SENT_BY_HAND_NOTE}</p>
       ) : detail.verdict === 'passed' ? (
         <>
           <p className="flex items-center gap-2 text-sm font-semibold text-success">

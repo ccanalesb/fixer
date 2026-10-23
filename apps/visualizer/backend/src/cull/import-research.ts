@@ -1,6 +1,6 @@
 /**
  * The research runs as the first stored cull answers (ticket 15): Laya new on the whole catalog
- * (`laya_new_catalog.jsonl`) and the research's recipe 7H47 (seeded as Recipe culling) on Laya base at 10 and 7 levels
+ * (`laya_new_catalog.jsonl`) and the research's recipe 7H47 (seeded as the Default culling profile) on Laya base at 10 and 7 levels
  * (`laya_cull_catalog_all.jsonl`), marked imported from research with their model revision.
  *
  * The rows land in the very stage versions a cull job resolves — the seeded profile's text is checked
@@ -30,7 +30,7 @@ import {
 import { imageSignature } from './image-signature.js';
 import { decideAndStorePhoto, type CullContext } from './persist.js';
 import { profileStageKey, resolveCurrentStages, SCORE_FORECAST_STAGE_KEY } from './stages.js';
-import type { ResolvedStage, StageAnswers } from './types.js';
+import type { PipelineSettingConfig, ResolvedStage, StageAnswers } from './types.js';
 
 /** Photos per transaction. */
 const BATCH = 500;
@@ -126,6 +126,17 @@ function layaNewAnswers(line: LayaNewLine): StageAnswers | null {
   return want.every((q) => out[q]) ? Object.fromEntries(want.map((q) => [q, out[q]!])) : null;
 }
 
+/** The research answered both stages; importing while one is off would decide every photo without it. */
+function assertStagesOn(pipeline: PipelineSettingConfig): void {
+  const off = [
+    !pipeline.culling_profiles_enabled && 'the culling profile',
+    !pipeline.score_forecast.enabled && 'the Score forecast',
+  ].filter((s): s is string => Boolean(s));
+  if (off.length === 0) return;
+  const [verb, them] = off.length === 1 ? ['is', 'it'] : ['are', 'them'];
+  throw new Error(`${off.join(' and ')} ${verb} off; turn ${them} on in Processing → Settings → Culling models, then import`);
+}
+
 /** The research asked Laya new's questions; refuse to file its answers under other Score forecast questions. */
 function assertResearchForecastText(stage: ResolvedStage | undefined): void {
   if (stage && canonicalJson(stage.questions) === canonicalJson(LAYA_QUESTIONS.new)) return;
@@ -203,13 +214,16 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
     seedCullingDefaults(db);
     if (getForecastQuestions(db).questions.length === 0) saveForecastQuestions(db, layaNewForecastQuestions(db));
     const pipeline = getCurrentPipelineSetting(db);
+    assertStagesOn(pipeline.config);
     const stages = resolveCurrentStages(db, pipeline.config, {
       culling_profile: opts.modelIds.base,
       score_forecast: opts.modelIds.new,
     });
     const profileStages = ['7', '10'].map((set) => {
       const s = stages.find((st) => st.stageKey === profileStageKey(DEFAULT_CULLING_PROFILE_SLUG, set));
-      if (!s) throw new Error(`the pipeline setting does not run Recipe culling at ${set} levels; nothing to import into`);
+      if (!s) {
+        throw new Error(`the pipeline setting does not run the culling profile ${DEFAULT_CULLING_PROFILE_SLUG} at ${set} levels; nothing to import into`);
+      }
       assertResearchText(s);
       return s;
     });

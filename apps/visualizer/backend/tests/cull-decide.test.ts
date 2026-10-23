@@ -26,7 +26,7 @@ const PIPELINE: PipelineSettingConfig = {
   culling_profiles_enabled: true,
   culling_profiles_filter_enabled: true,
   culling_profiles: [{ profile_slug: 'recipe-culling', rule: VIDEO_LENIENT }],
-  score_forecast: { ...DEFAULT_SCORE_FORECAST },
+  score_forecast: { ...DEFAULT_SCORE_FORECAST, enabled: true },
 };
 
 const stage = (stageKey: string, extra: Partial<ResolvedStage> = {}): ResolvedStage => ({

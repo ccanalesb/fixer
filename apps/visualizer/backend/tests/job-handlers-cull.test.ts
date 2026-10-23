@@ -108,7 +108,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');
-  fx = new LibraryFixture().addForecastQuestions().activate();
+  fx = new LibraryFixture().cullingStagesOn().addForecastQuestions().activate();
   Object.assign(laya, fakeLayaState());
   process.env.DATABASE_PATH = jobsDbPath;
   writeConfig();

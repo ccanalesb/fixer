@@ -205,9 +205,9 @@ describe('library schema 13', () => {
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
   });
 
-  it('renames culling recipes to culling profiles; the factory one becomes Recipe culling', () => {
+  it('renames culling recipes to culling profiles; the factory one becomes Recipe culling, then (v16) the Default culling profile', () => {
     expect(all(db, 'SELECT id, slug, name, active, measured, source_filename, rule_json FROM cull_profiles ORDER BY id')).toEqual([
-      { id: 1, slug: 'recipe-culling', name: 'Recipe culling', active: 1, measured: 1, source_filename: 'recipe-culling.json', rule_json: JSON.stringify(RULE_V13) },
+      { id: 1, slug: 'recipe-culling', name: 'Default culling profile', active: 1, measured: 1, source_filename: 'recipe-culling.json', rule_json: JSON.stringify(RULE_V13) },
       { id: 2, slug: 'mine', name: 'Mine', active: 0, measured: 0, source_filename: null, rule_json: JSON.stringify(MINE_RULE_V13) },
     ]);
     expect(all(db, 'SELECT id, profile_id, version, definition_json, content_hash, is_current FROM cull_profile_versions ORDER BY id')).toEqual([

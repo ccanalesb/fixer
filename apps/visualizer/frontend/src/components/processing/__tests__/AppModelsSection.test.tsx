@@ -78,6 +78,14 @@ describe('AppModelsSection', () => {
     expect(await screen.findByText(APP_MODELS_EMPTY)).toBeInTheDocument()
   })
 
+  it('describes what can be added without calling it a Laya model; the converter’s limit comes after', async () => {
+    renderSection()
+    await screen.findByText(APP_MODELS_EMPTY)
+    const text = screen.getByText(/What this app serves on its own System One endpoint/).textContent
+    expect(text).not.toMatch(/Laya-family/)
+    expect(text).toMatch(/Today only models of the Laya architecture convert\.$/)
+  })
+
   it('adds a Hugging Face id typed by hand, which then lists as converting', async () => {
     renderSection()
     fireEvent.click(await screen.findByText(APP_MODEL_MANUAL))

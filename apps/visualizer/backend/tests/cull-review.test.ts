@@ -322,3 +322,12 @@ describe('cull catalog filter', () => {
     expect(keys).not.toContain('filtered-a');
   });
 });
+
+describe('the culling verdict in the API contract', () => {
+  it('is one of filtered, passed or pending', async () => {
+    const doc = await json<{ components: { schemas: Record<string, { properties: Record<string, { enum?: string[] }> }> } }>(
+      await app.request('/apidoc/openapi.json'),
+    );
+    expect(doc.components.schemas['CullReviewDetail']!.properties['verdict']!.enum).toEqual(['filtered', 'passed', 'pending']);
+  });
+});

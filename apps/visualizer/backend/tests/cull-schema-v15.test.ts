@@ -14,6 +14,7 @@ import { getForecastQuestions, saveForecastQuestions } from '../src/db/library/s
 import { resolveCurrentStages, SCORE_FORECAST_STAGE_KEY } from '../src/cull/stages.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
+import { seedCullingStagesOn } from './helpers/culling-stages.js';
 
 const MODEL = 'laya-new@sha256:abc';
 
@@ -28,6 +29,7 @@ afterEach(() => {
 /** A v14 library, optionally one that has answered the Score forecast. Returns that stage version's id. */
 function writeV14Library(path: string, answered: boolean): number | null {
   const db = initLibraryDb(path);
+  seedCullingStagesOn(db);
   let id: number | null = null;
   if (answered) {
     id = getOrCreateStageVersion(db, {
@@ -56,8 +58,7 @@ describe('library schema 15', () => {
     const before = writeV14Library(path, true);
     const db = initLibraryDb(path);
     try {
-      expect(LIBRARY_SCHEMA_VERSION).toBe(15);
-      expect(db.pragma('user_version', { simple: true })).toBe(15);
+      expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
       const set = getForecastQuestions(db);
       expect(set.version).toBe(1);
       expect(set.questions.map((q) => [q.id, q.perspective_slug, q.optional])).toEqual([

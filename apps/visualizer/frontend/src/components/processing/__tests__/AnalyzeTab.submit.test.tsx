@@ -8,7 +8,6 @@ import {
   ANALYZE_BACKFILL_FORCE_EXCLUSIVE_HINT,
   ANALYZE_BACKFILL_VISUAL_TAGS_LABEL,
   ANALYZE_FORCE_CULL_HINT,
-  ANALYZE_FORCE_CULL_LABEL,
   ANALYZE_FORCE_DESCRIBE_LABEL,
   ANALYZE_FORCE_SCORE_LABEL,
 } from '../../../constants/strings';
@@ -189,8 +188,9 @@ describe('AnalyzeTab submit UX (fix #1)', () => {
     await screen.findByText(/Street/);
 
     expect(screen.queryByText(ANALYZE_FORCE_CULL_HINT)).toBeNull();
-    fireEvent.click(screen.getByRole('checkbox', { name: ANALYZE_FORCE_CULL_LABEL }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Force re-run culling' }));
     expect(screen.getByText(ANALYZE_FORCE_CULL_HINT)).toBeTruthy();
+    expect(ANALYZE_FORCE_CULL_HINT).not.toMatch(/Laya/);
     fireEvent.click(screen.getByRole('button', { name: /^Analyze/i }));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalled());

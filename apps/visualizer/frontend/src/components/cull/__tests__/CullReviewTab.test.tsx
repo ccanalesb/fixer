@@ -43,10 +43,10 @@ describe('CullReviewTab', () => {
     expect(CULL_SUB_AUTO).toBe('Filtered photos are not described or scored. Send one by hand to change that.')
   })
 
-  it('names the tabs All, Culling and Score forecast', async () => {
+  it('names the tabs All, Culling profile and Score forecast', async () => {
     render(<CullReviewTab />)
     expect(await screen.findByRole('button', { name: 'All (1204)' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Culling (83)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Culling profile (83)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Score forecast (1121)' })).toBeInTheDocument()
   })
 

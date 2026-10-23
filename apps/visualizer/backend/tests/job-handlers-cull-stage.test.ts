@@ -170,7 +170,7 @@ interface JobCullResult {
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-stage-'));
   jobsDbPath = join(dir, 'visualizer.db');
-  fx = new LibraryFixture().addForecastQuestions().activate();
+  fx = new LibraryFixture().cullingStagesOn().addForecastQuestions().activate();
   resetKimiJobLaya();
   onRequest = null;
   describeReply = completion(JSON.stringify({ summary: 'A scene', subjects: ['x'] }));

@@ -7,12 +7,36 @@
  * against what it actually returns. Middleware owns the 404/500 paths and hands
  * the handler an open connection. A missing database is a 404 with the canonical
  * message; any other failure is a 500 carrying the error text.
+ *
+ * An older `library.db` is upgraded to the current schema when the server starts and, should it be
+ * replaced while running, by the first request that opens it.
  */
 import type { Env, MiddlewareHandler } from 'hono';
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openLibraryDb, type Db } from '../db/connection.js';
+import { libraryNeedsUpgrade, upgradeLibrarySchema } from '../db/library/bootstrap.js';
+
+/** Bring an existing `library.db` up to the current schema. A missing one is left missing. */
+export function upgradeLibraryDb(dbPath: string): void {
+  if (!existsSync(dbPath)) return;
+  const db = openLibraryDb(dbPath);
+  try {
+    upgradeLibrarySchema(db);
+  } finally {
+    db.close();
+  }
+}
+
+/** Open for a request, upgrading first when the schema is older. */
+function openForRequest(dbPath: string, readonly: boolean): Db {
+  const db = openLibraryDb(dbPath, { readonly });
+  if (!libraryNeedsUpgrade(db)) return db;
+  db.close();
+  upgradeLibraryDb(dbPath);
+  return openLibraryDb(dbPath, { readonly });
+}
 
 /** Env for route groups that read `library.db`. */
 export interface LibraryEnv extends Env {
@@ -61,7 +85,7 @@ export function libraryDb(opts: LibraryDbOptions = {}): MiddlewareHandler<Librar
 
     let db: Db | undefined;
     try {
-      db = openLibraryDb(dbPath, { readonly: !write });
+      db = openForRequest(dbPath, !write);
       c.set('libraryDb', db);
       await next();
       return;

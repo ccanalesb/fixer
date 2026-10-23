@@ -84,7 +84,7 @@ export function listCullReviewPhotos(
   return { rows, total };
 }
 
-/** Catalog keys that passed cull or were sent by hand (Images → Cull catalog). */
+/** Catalog keys that passed cull or were sent by hand (Images → Culling catalog). */
 export function listCullCatalogImageKeys(db: Db, keys: readonly string[]): Set<string> {
   const out = new Set<string>();
   if (keys.length === 0) return out;

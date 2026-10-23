@@ -88,9 +88,9 @@ export function AppModelsSection() {
       <div className="p-4">
         <h4 className="text-sm font-semibold text-text">{APP_MODELS_SECTION}</h4>
         <p className="mt-1 text-sm text-text-secondary">
-          What this app serves on its own System One endpoint. A Laya-family model as a folder in Hugging Face format
-          (<code>model.safetensors</code>, <code>processor/</code>, config) or a Hugging Face id; adding one converts it
-          once in a job, which needs <code>uv</code>.
+          What this app serves on its own System One endpoint. Add one as a folder in Hugging Face format
+          (<code>model.safetensors</code>, <code>processor/</code>, config) or a Hugging Face id; it is converted once in
+          a job, which needs <code>uv</code>. Today only models of the Laya architecture convert.
         </p>
       </div>
 

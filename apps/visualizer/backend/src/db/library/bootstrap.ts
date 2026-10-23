@@ -13,14 +13,14 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { openLibraryDb, type Db } from '../connection.js';
 import { REPO_ROOT } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
-import { seedCullingDefaults } from './cull-profiles.js';
+import { DEFAULT_CULLING_PROFILE_SLUG, seedCullingDefaults } from './cull-profiles.js';
 import { renameCullVocabulary } from './cull-rename-v13.js';
 import { addCullingSwitches } from './cull-switches-v14.js';
 import { markdownMarksOptional } from './scores.js';
 import { prepopulateForecastQuestions, SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 15;
+export const LIBRARY_SCHEMA_VERSION = 16;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 8;
@@ -521,11 +521,14 @@ function addColumnIfMissing(db: Db, table: string, columnDef: string): void {
  * a no-op on a database with no tables yet.
  */
 export function upgradeLibrarySchema(db: Db): void {
-  const version = userVersion(db);
-  if (version >= LIBRARY_SCHEMA_VERSION) return;
-  assertNotLegacy(db, 'library.db');
-  if (version < OLDEST_UPGRADABLE_VERSION) return;
+  if (!libraryNeedsUpgrade(db)) {
+    assertNotLegacy(db, 'library.db');
+    return;
+  }
   db.transaction(() => {
+    // Read again holding the write lock: a request and a job may open an old library.db at once.
+    const version = userVersion(db);
+    if (version >= LIBRARY_SCHEMA_VERSION) return;
     if (version < 9) {
       db.exec(`
         CREATE TABLE IF NOT EXISTS library_meta (
@@ -556,8 +559,22 @@ export function upgradeLibrarySchema(db: Db): void {
       db.exec(SCORE_FORECAST_QUESTIONS_SQL);
       prepopulateForecastQuestions(db);
     }
+    if (version < 16) {
+      // The seeded profile's name, unless the user renamed it; its slug is in every stage key and stays.
+      db.prepare('UPDATE cull_profiles SET name = ? WHERE slug = ? AND name = ?').run(
+        'Default culling profile',
+        DEFAULT_CULLING_PROFILE_SLUG,
+        'Recipe culling',
+      );
+    }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
-  })();
+  }).immediate();
+}
+
+/** Whether `upgradeLibrarySchema` has anything to do on this database. */
+export function libraryNeedsUpgrade(db: Db): boolean {
+  const version = userVersion(db);
+  return version >= OLDEST_UPGRADABLE_VERSION && version < LIBRARY_SCHEMA_VERSION;
 }
 
 /** Create every table and index at the current version. Idempotent; seeds nothing. */

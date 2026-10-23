@@ -42,7 +42,7 @@ export function withStageOff(u: CullingModelsUsable, stage: CullingStageKind): C
 
 const endpointLabel = (s: CullingStageUsability) => (s.endpoint === 'this_app' ? STAGE_THIS_APP : s.endpoint)
 
-/** The Cull tab's note when the culling profile is on and cannot run. */
+/** The Culling tab's note when the culling profile is on and cannot run. */
 export function cullingProfileNote(s: CullingStageUsability): { text: string; sub: string } {
   const where = endpointLabel(s)
   const text =
@@ -56,7 +56,7 @@ export function cullingProfileNote(s: CullingStageUsability): { text: string; su
   return { text, sub: s.problem === 'converting' ? CULLING_PROFILE_CONVERTING_SUB : CULLING_PROFILE_UNUSABLE_SUB }
 }
 
-/** The Cull tab's warning when the Score forecast is on and cannot run. */
+/** The Culling tab's warning when the Score forecast is on and cannot run. */
 export function scoreForecastWarning(s: CullingStageUsability): string {
   return SCORE_FORECAST_UNUSABLE(SCORE_FORECAST_WHY[s.problem ?? 'no_model'])
 }
