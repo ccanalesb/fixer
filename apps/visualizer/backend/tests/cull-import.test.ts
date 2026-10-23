@@ -1,5 +1,5 @@
 /**
- * Importing the research runs (`cull-import`), on small fixtures in the research files' line format:
+ * `cull-import`, on small fixtures in the answer files' line format:
  * synthetic keys and paths, real-shaped probabilities, a 7-level run appended after the 10-level one
  * and still being written.
  */
@@ -10,13 +10,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadLibraryConfig } from '../src/config.js';
 import { run } from '../src/cli/main.js';
 import { openLibraryDb, type Db } from '../src/db/connection.js';
-import { importResearchRuns } from '../src/cull/import-research.js';
-import { LAYA_BASE_RESEARCH_MODEL_ID } from '../src/laya/model-id.js';
+import { importCullAnswers } from '../src/cull/import-answers.js';
+import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
+import { LAYA_BASE_MODEL_ID } from '../src/laya/model-id.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures', 'cull');
-const MODEL_IDS = { base: LAYA_BASE_RESEARCH_MODEL_ID, new: 'laya-new@sha256:test' };
+const MODEL_IDS = { base: LAYA_BASE_MODEL_ID, new: 'laya-new@sha256:test' };
 const KEYS = ['fx-001-pass', 'fx-002-profile', 'fx-003-forecast', 'fx-004-no7'];
+/** Where the fixtures' images are. */
+const VISION_CACHE = '/photos';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -24,13 +27,13 @@ let layaNewPath: string;
 let profilePath: string;
 
 beforeEach(() => {
-  fx = new LibraryFixture();
+  fx = new LibraryFixture().cullingStagesOn();
   fx.addImages(...KEYS);
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-import-'));
-  layaNewPath = join(dir, 'laya_new_catalog.jsonl');
-  profilePath = join(dir, 'laya_cull_catalog_all.jsonl');
-  copyFileSync(join(FIXTURES, 'laya_new_catalog.sample.jsonl'), layaNewPath);
-  copyFileSync(join(FIXTURES, 'laya_cull_catalog_all.sample.jsonl'), profilePath);
+  layaNewPath = join(dir, 'score-forecast.jsonl');
+  profilePath = join(dir, 'culling-profile.jsonl');
+  copyFileSync(join(FIXTURES, 'score-forecast-answers.sample.jsonl'), layaNewPath);
+  copyFileSync(join(FIXTURES, 'culling-profile-answers.sample.jsonl'), profilePath);
 });
 
 afterEach(() => {
@@ -48,7 +51,7 @@ async function withDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 }
 
 const importAll = (dryRun = false) =>
-  withDb((db) => importResearchRuns(db, { layaNewPath, profilePath, modelIds: MODEL_IDS, dryRun }));
+  withDb((db) => importCullAnswers(db, { layaNewPath, profilePath, modelIds: MODEL_IDS, visionCacheDir: VISION_CACHE, dryRun }));
 
 const verdicts = () =>
   fx.query<{ image_key: string; verdict: string; filtered_by: string | null }>(
@@ -56,7 +59,7 @@ const verdicts = () =>
   );
 
 describe('cull-import', () => {
-  it('stores both research runs under the stages a job would use, and decides every photo', async () => {
+  it('stores both files under the stages a job would use, and decides every photo', async () => {
     const r = await importAll();
     expect(r).toMatchObject({
       photos: 4,
@@ -73,7 +76,7 @@ describe('cull-import', () => {
     expect(verdicts()).toEqual([
       { image_key: 'fx-001-pass', verdict: 'passed', filtered_by: null },
       { image_key: 'fx-002-profile', verdict: 'filtered', filtered_by: 'culling_profile' },
-      // Ticket 15's example: the profile passes it, the Score forecast (0.036) filters it.
+      // The profile passes it, the Score forecast (0.036) filters it.
       { image_key: 'fx-003-forecast', verdict: 'filtered', filtered_by: 'score_forecast' },
       // No 7-level answer: the profile cannot filter it yet.
       { image_key: 'fx-004-no7', verdict: 'pending', filtered_by: null },
@@ -81,7 +84,7 @@ describe('cull-import', () => {
     expect(fx.query("SELECT COUNT(*) AS n FROM cull_stage_answers WHERE image_key = 'fx-999-not-in-db'")).toEqual([{ n: 0 }]);
   });
 
-  it('rebuilds the framing excusal and marks the rows as imported from research', async () => {
+  it('rebuilds the framing excusal and marks the rows as imported', async () => {
     await importAll();
     const [row] = fx.query<{ answers_json: string; source: string; produced_by: string; model_id: string; image_path: string }>(
       `SELECT a.answers_json, a.source, a.produced_by, v.model_id, a.image_path FROM cull_stage_answers a
@@ -98,14 +101,27 @@ describe('cull-import', () => {
       'framing-excusal',
       'intensity-suggestion',
     ]);
-    expect(row).toMatchObject({ source: 'research_import', model_id: MODEL_IDS.new, image_path: '/research/vision/fx-003-forecast.jpg' });
-    expect(row!.produced_by).toContain('research');
+    expect(row).toMatchObject({
+      source: 'import',
+      produced_by: 'cull-import',
+      model_id: MODEL_IDS.new,
+      image_path: '/photos/fx-003-forecast.jpg',
+    });
     const [base] = fx.query<{ model_id: string }>(
       "SELECT model_id FROM cull_stage_versions WHERE stage_key = 'culling_profile:recipe-culling:7'",
     );
-    expect(base!.model_id).toBe(LAYA_BASE_RESEARCH_MODEL_ID);
+    expect(base!.model_id).toBe(LAYA_BASE_MODEL_ID);
     expect(fx.query("SELECT kind, finished_at IS NOT NULL AS finished FROM cull_runs")).toEqual([
-      { kind: 'research_import', finished: 1 },
+      { kind: 'import', finished: 1 },
+    ]);
+  });
+
+  it('stores no image path outside the vision cache', async () => {
+    await withDb((db) =>
+      importCullAnswers(db, { layaNewPath, profilePath, modelIds: MODEL_IDS, visionCacheDir: '/elsewhere', dryRun: false }),
+    );
+    expect(fx.query('SELECT DISTINCT image_path, image_signature FROM cull_stage_answers')).toEqual([
+      { image_path: '', image_signature: null },
     ]);
   });
 
@@ -127,7 +143,7 @@ describe('cull-import', () => {
     writeFileSync(profilePath, lines.join('\n') + '\n');
     appendFileSync(
       profilePath,
-      JSON.stringify({ key: 'fx-004-no7', image: '/research/vision/fx-004-no7.jpg', copied_from: null, answers: sevenLevels }) + '\n',
+      JSON.stringify({ key: 'fx-004-no7', image: '/photos/fx-004-no7.jpg', answers: sevenLevels }) + '\n',
     );
     const done = await importAll();
     expect(done.inserted).toEqual({ 'culling_profile:recipe-culling:7': 1 });
@@ -140,7 +156,7 @@ describe('cull-import', () => {
   });
 
   it('a later incomplete Laya new line keeps the earlier complete answer; incomplete photos are counted once', async () => {
-    const partialLine = { key: 'fx-001-pass', image: '/research/vision/fx-001-pass.jpg', rows: [{ slug: 'framing', probs: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0] }] };
+    const partialLine = { key: 'fx-001-pass', image: '/photos/fx-001-pass.jpg', rows: [{ slug: 'framing', probs: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0] }] };
     appendFileSync(layaNewPath, JSON.stringify(partialLine) + '\n' + JSON.stringify(partialLine) + '\n');
     const r = await importAll();
     expect(r.inserted['score_forecast']).toBe(4);
@@ -172,10 +188,34 @@ describe('cull-import', () => {
     expect(r.inserted['score_forecast']).toBe(4);
     expect(r.run_id).toBeNull();
     expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
-    expect(fx.query('SELECT COUNT(*) AS n FROM cull_profiles')).toEqual([{ n: 0 }]);
+    expect(fx.query('SELECT COUNT(*) AS n FROM cull_pipeline_settings')).toEqual([{ n: 1 }]);
   });
 
-  it('refuses when the profile text is no longer what the research asked', async () => {
+  it('refuses while the Score forecast is off, saying where to turn it on, and writes no answer', async () => {
+    await withDb(async (db) => {
+      const { config } = getCurrentPipelineSetting(db);
+      createPipelineSettingVersion(db, { ...config, score_forecast: { ...config.score_forecast, enabled: false } });
+    });
+    await expect(importAll()).rejects.toThrow(
+      'the Score forecast is off; turn it on in Processing → Settings → Culling models, then import',
+    );
+    expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
+  });
+
+  it('refuses a new library, where both stages start off', async () => {
+    const fresh = new LibraryFixture();
+    const db = openLibraryDb(fresh.dbPath);
+    try {
+      await expect(importCullAnswers(db, { layaNewPath, profilePath, modelIds: MODEL_IDS, visionCacheDir: VISION_CACHE, dryRun: false })).rejects.toThrow(
+        'the culling profile and the Score forecast are off; turn them on in Processing → Settings → Culling models, then import',
+      );
+    } finally {
+      db.close();
+      fresh.cleanup();
+    }
+  });
+
+  it('refuses when the profile text is no longer the one the answers were asked', async () => {
     await withDb(async (db) => {
       const { seedCullingDefaults, getCullProfile, saveProfileDefinition } = await import('../src/db/library/cull-profiles.js');
       seedCullingDefaults(db);
@@ -183,17 +223,17 @@ describe('cull-import', () => {
       def.dimensions[0]!.question = 'Something else';
       saveProfileDefinition(db, 'recipe-culling', def);
     });
-    await expect(importAll()).rejects.toThrow(/no longer the one the research runs answered/);
+    await expect(importAll()).rejects.toThrow(/profile's text is no longer the one these answers were asked/);
   });
 
-  it('into a library with no Score forecast questions it stores the ones the research asked', async () => {
+  it('into a library with no Score forecast questions it stores the ones the answers were asked', async () => {
     await importAll();
     const { getForecastQuestions } = await import('../src/db/library/score-forecast-questions.js');
     const ids = await withDb(async (db) => getForecastQuestions(db).questions.map((q) => q.id));
     expect(ids).toEqual(['framing', 'compositional-cleanliness', 'environmental-context-legibility', 'intensity-suggestion']);
   });
 
-  it('refuses when the Score forecast questions are no longer the ones the research asked', async () => {
+  it('refuses when the Score forecast questions are no longer the ones the answers were asked', async () => {
     await withDb(async (db) => {
       const { saveForecastQuestions, layaNewForecastQuestions } = await import('../src/db/library/score-forecast-questions.js');
       saveForecastQuestions(
@@ -201,7 +241,7 @@ describe('cull-import', () => {
         layaNewForecastQuestions(db).map((q) => (q.id === 'framing' ? { ...q, instructions: 'Something else' } : q)),
       );
     });
-    await expect(importAll()).rejects.toThrow(/Score forecast questions are no longer the ones the research runs answered/);
+    await expect(importAll()).rejects.toThrow(/Score forecast questions are no longer the ones these answers were asked/);
     expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
   });
 

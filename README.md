@@ -47,14 +47,16 @@ curl -X POST localhost:5001/api/jobs/ -H 'Content-Type: application/json' \
   -d '{"type": "batch_cull_photos_before_scoring"}'
 ```
 
-The research runs can be loaded as the first stored answers, so the job only
-asks Laya what they left out. Back up `library.db` first; `--dry-run` writes
-nothing, and the import can be run again as the research files grow:
+Culling answers in JSONL files, one line per photo, can be loaded as the first
+stored answers, so the job only asks Laya what they left out: the Score
+forecast's (Laya new) and the culling profile's (Laya base). Back up
+`library.db` first; `--dry-run` writes nothing, and the import can be run again
+as the files grow:
 
 ```bash
 lightroom-tagger cull-import --dry-run \
-  --laya-new ~/lightroom-research/bench/distill/outputs/laya_new_catalog.jsonl \
-  --culling-profile ~/lightroom-research/bench/laya-gate/laya_cull_catalog_all.jsonl
+  --laya-new score-forecast.jsonl \
+  --culling-profile culling-profile.jsonl
 ```
 
 ## Quick Start (CLI)

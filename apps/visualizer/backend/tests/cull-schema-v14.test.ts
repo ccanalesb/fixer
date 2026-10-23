@@ -1,5 +1,5 @@
 /**
- * Library schema 14 (#363): the pipeline setting's culling profile switches, and what the culling
+ * Library schema 14: the pipeline setting's culling profile switches, and what the culling
  * profile says stored on each photo. Every stored pipeline setting is rewritten in place with both
  * switches on; every culling verdict, answer and Lightroom write-back row is kept.
  */

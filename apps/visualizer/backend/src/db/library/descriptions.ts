@@ -30,7 +30,7 @@ export function getImageDescription(db: Db, imageKey: string): DescriptionRow | 
 export interface DescriptionListItem {
   image_key: string;
   /** The query selects `'catalog' AS image_type` literally, so this is never
-   *  anything else — the Instagram scope was removed (#218). */
+   *  anything else — the Instagram scope was removed. */
   image_type: 'catalog';
   filename: string | null;
   date_ref: string | null;
@@ -229,7 +229,7 @@ export function storeImageDescription(db: Db, record: DescriptionRecord): string
   const dominantColors = visualAttrJson(record.dominant_colors);
   const moodTags = visualAttrJson(record.mood_tags);
   const hasRepetition = coerceHasRepetition(record.has_repetition);
-  // Only the catalog scope is searchable; the Instagram scope was removed (#218).
+  // Only the catalog scope is searchable; the Instagram scope was removed.
   const searchDocument =
     imageType === 'catalog'
       ? buildDescriptionSearchDocument(record.summary ?? '', record.subjects ?? [])

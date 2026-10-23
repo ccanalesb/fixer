@@ -174,7 +174,7 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'all', label: `All (${tabCounts.all})` },
-    { id: 'culling_profile', label: `Culling (${tabCounts.culling_profile})` },
+    { id: 'culling_profile', label: `Culling profile (${tabCounts.culling_profile})` },
     { id: 'score_forecast', label: `Score forecast (${tabCounts.score_forecast})` },
   ]
 

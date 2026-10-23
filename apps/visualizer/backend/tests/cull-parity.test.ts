@@ -1,16 +1,15 @@
 /**
- * A new cull run on photos the research runs answered, with the same image, gives the same verdicts
- * (#338). Reads the research files and the images they name; never `library.db`.
+ * A new culling run on photos with imported answers, with the same image, gives the same verdicts.
+ * Reads the answer files and the images they name; never `library.db`.
  *
- * Needs the exported models and the research files, so it skips unless LT_LAYA_PARITY=1:
+ * Needs the exported models and the two answer files `cull-import` reads, so it skips unless both
+ * are named:
  *
- *   LT_LAYA_PARITY=1 npx vitest run tests/cull-parity.test.ts
+ *   LT_CULL_PARITY_PROFILE_FILE=… LT_CULL_PARITY_FORECAST_FILE=… npx vitest run tests/cull-parity.test.ts
  *
- * LT_CULL_RESEARCH_DIR points at the research bench (default ~/lightroom-research/bench);
  * LT_CULL_PARITY_PHOTOS sets how many photos to answer (default 6, about 2.5 s each).
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { config, loadLibraryConfig } from '../src/config.js';
@@ -21,15 +20,10 @@ import { closeAppModels } from '../src/laya/app-models.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import { askSystemOne, systemOneEndpoint } from '../src/systemone/client.js';
 
-const bench = process.env.LT_CULL_RESEARCH_DIR ?? join(homedir(), 'lightroom-research', 'bench');
-const profileFile = join(bench, 'laya-gate', 'laya_cull_catalog_all.jsonl');
-const layaNewFile = join(bench, 'distill', 'outputs', 'laya_new_catalog.jsonl');
+const profileFile = process.env.LT_CULL_PARITY_PROFILE_FILE ?? '';
+const layaNewFile = process.env.LT_CULL_PARITY_FORECAST_FILE ?? '';
 const modelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir;
-const enabled =
-  process.env.LT_LAYA_PARITY === '1' &&
-  existsSync(join(modelsDir, 'laya-new')) &&
-  existsSync(profileFile) &&
-  existsSync(layaNewFile);
+const enabled = existsSync(join(modelsDir, 'laya-new')) && existsSync(profileFile) && existsSync(layaNewFile);
 const describeMaybe = enabled ? describe : describe.skip;
 const PHOTOS = Number(process.env.LT_CULL_PARITY_PHOTOS ?? 6);
 
@@ -47,7 +41,7 @@ const PIPELINE: PipelineSettingConfig = {
       },
     },
   ],
-  score_forecast: DEFAULT_SCORE_FORECAST,
+  score_forecast: { ...DEFAULT_SCORE_FORECAST, enabled: true },
 };
 const stage = (stageKey: string, kind: ResolvedStage['kind'], levelSet: string | null): ResolvedStage => ({
   stageKey,
@@ -59,15 +53,15 @@ const stage = (stageKey: string, kind: ResolvedStage['kind'], levelSet: string |
   questions: {},
 });
 
-interface Research {
+interface Imported {
   key: string;
   image: string;
   profile: Record<string, number[]>;
   layaNew: StageAnswers;
 }
 
-/** The first photos whose research image is still there and unchanged since the run. */
-function sample(): Research[] {
+/** The first photos whose image is still there and unchanged since the answer files were written. */
+function sample(): Imported[] {
   const profileMtime = statSync(profileFile).mtimeMs;
   const profile = new Map<string, { image: string; answers: Record<string, number[]> }>();
   for (const line of readFileSync(profileFile, 'utf8').split('\n')) {
@@ -82,7 +76,7 @@ function sample(): Research[] {
     for (const [q, a] of Object.entries(r.answers)) p.answers[q] = a.probabilities;
     profile.set(r.key, p);
   }
-  const out: Research[] = [];
+  const out: Imported[] = [];
   for (const line of readFileSync(layaNewFile, 'utf8').split('\n')) {
     if (out.length >= PHOTOS || !line.trim()) break;
     const n = JSON.parse(line) as { key: string; image: string; rows: { slug: string; probs: number[]; p_excused?: number }[] };
@@ -112,7 +106,7 @@ function stageAnswers(profile: Record<string, number[]>, layaNew: StageAnswers |
   return { stages, answers };
 }
 
-describeMaybe('a new cull run agrees with the research runs', () => {
+describeMaybe('a new culling run agrees with the imported answers', () => {
   it('same verdict per stage and per photo, probabilities close', { timeout: 600_000 }, async () => {
     const photos = sample();
     expect(photos.length).toBeGreaterThan(0);
@@ -123,12 +117,12 @@ describeMaybe('a new cull run agrees with the research runs', () => {
         const profileQuestions = Object.fromEntries(Object.keys(p.profile).map((q) => [q, LAYA_QUESTIONS.base[q]!]));
         const base = await askSystemOne(ep, { model: 'laya-base', image, questions: profileQuestions });
         const neu = await askSystemOne(ep, { model: 'laya-new', image, questions: LAYA_QUESTIONS.new });
-        const research = stageAnswers(p.profile, p.layaNew);
+        const imported = stageAnswers(p.profile, p.layaNew);
         const fresh = stageAnswers(base, neu);
         for (const [q, probs] of Object.entries(p.profile)) {
           base[q]!.forEach((v, i) => expect(Math.abs(v - probs[i]!), `${p.key} ${q}`).toBeLessThan(0.02));
         }
-        const a = decidePhoto(PIPELINE, research.stages, research.answers, {});
+        const a = decidePhoto(PIPELINE, imported.stages, imported.answers, {});
         const b = decidePhoto(PIPELINE, fresh.stages, fresh.answers, {});
         expect({ key: p.key, verdict: b.verdict, filteredBy: b.filteredBy }).toEqual({ key: p.key, verdict: a.verdict, filteredBy: a.filteredBy });
         for (const s of Object.keys(a.stages)) expect(b.stages[s]!.verdict, `${p.key} ${s}`).toBe(a.stages[s]!.verdict);

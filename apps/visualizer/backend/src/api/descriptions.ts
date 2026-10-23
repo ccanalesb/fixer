@@ -56,7 +56,7 @@ const listRoute = createRoute({
 
 descriptionsRoutes.openapi(listRoute, (c) => {
   const imageType = c.req.query('image_type');
-  // Catalog-only since #218; anything else is a client error, not empty results.
+  // Catalog-only; anything else is a client error, not empty results.
   // Thrown rather than returned: the OpenAPI contract documents only 200 and 422.
   // See `HttpError`.
   if (imageType !== undefined && imageType !== '' && imageType !== 'catalog') {
@@ -133,7 +133,7 @@ descriptionsRoutes.openapi(generateRoute, async (c) => {
   const body = c.req.valid('json');
   const providerId = body.provider_id ?? null;
 
-  // Catalog-only since #218. Validated here rather than as a Zod enum so bad values
+  // Catalog-only. Validated here rather than as a Zod enum so bad values
   // return 400, not 422.
   if (body.image_type !== '' && body.image_type !== 'catalog') {
     return c.json({ error: `Invalid image_type: ${body.image_type}` }, 400);

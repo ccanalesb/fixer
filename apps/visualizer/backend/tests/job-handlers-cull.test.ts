@@ -24,8 +24,8 @@ import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import type { PipelineSettingConfig } from '../src/cull/types.js';
-import { importResearchRuns } from '../src/cull/import-research.js';
-import { LAYA_BASE_RESEARCH_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
+import { importCullAnswers } from '../src/cull/import-answers.js';
+import { LAYA_BASE_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
 import { computePromptVersion } from '../src/vision/scoring-service.js';
 import { getPerspectiveBySlug } from '../src/db/library/scores.js';
 
@@ -108,7 +108,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');
-  fx = new LibraryFixture().addForecastQuestions().activate();
+  fx = new LibraryFixture().cullingStagesOn().addForecastQuestions().activate();
   Object.assign(laya, fakeLayaState());
   process.env.DATABASE_PATH = jobsDbPath;
   writeConfig();
@@ -470,14 +470,15 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(photosAsked()).toEqual(['bad']);
   });
 
-  it('after the research import a job asks only what the research left out', async () => {
+  it('after cull-import a job asks only what the files left out', async () => {
     for (const key of ['fx-001-pass', 'fx-002-profile', 'fx-003-forecast', 'fx-004-no7']) await addPhoto(key);
     const fixtures = join(import.meta.dirname, 'fixtures', 'cull');
     const lib = openLibraryDb(fx.dbPath);
-    await importResearchRuns(lib, {
-      layaNewPath: join(fixtures, 'laya_new_catalog.sample.jsonl'),
-      profilePath: join(fixtures, 'laya_cull_catalog_all.sample.jsonl'),
-      modelIds: { base: LAYA_BASE_RESEARCH_MODEL_ID, new: await layaNewModelId(join(modelsDir, 'laya-new')) },
+    await importCullAnswers(lib, {
+      layaNewPath: join(fixtures, 'score-forecast-answers.sample.jsonl'),
+      profilePath: join(fixtures, 'culling-profile-answers.sample.jsonl'),
+      modelIds: { base: LAYA_BASE_MODEL_ID, new: await layaNewModelId(join(modelsDir, 'laya-new')) },
+      visionCacheDir: '/photos',
     });
     lib.close();
     const job = await runCull();

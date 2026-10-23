@@ -1,6 +1,6 @@
 /**
  * Shared cull pass: each stage's model through System One, checkpoints, and per-photo work. Used by the standalone cull job
- * and the in-job cull step (#339).
+ * and the in-job cull step.
  */
 import { performance } from 'node:perf_hooks';
 import { config, loadLibraryConfig } from '../../config.js';

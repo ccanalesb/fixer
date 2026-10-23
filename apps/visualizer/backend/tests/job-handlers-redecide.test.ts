@@ -79,7 +79,7 @@ beforeEach(async () => {
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');
   writeFakeLayaModels(modelsDir);
-  fx = new LibraryFixture().addForecastQuestions().activate();
+  fx = new LibraryFixture().cullingStagesOn().addForecastQuestions().activate();
   process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(
     join(dir, 'config.yaml'),

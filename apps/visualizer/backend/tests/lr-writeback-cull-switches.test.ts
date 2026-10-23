@@ -1,5 +1,5 @@
 /**
- * Lightroom write-back under the pipeline setting's switches (#363): reject follows the culling
+ * Lightroom write-back under the pipeline setting's switches: reject follows the culling
  * profile's rule whatever decided the photo; with the culling profile off, no stars and no reject.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -18,6 +18,7 @@ import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/
 import { getCullVerdict, insertCullRun } from '../src/db/library/cull-verdicts.js';
 import { getLrWritebackSettings, patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { desiredReject, desiredStarsRating } from '../src/lightroom/writeback-shared.js';
+import { seedCullingStagesOn } from './helpers/culling-stages.js';
 
 const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
 const MODEL_IDS = { culling_profile: 'base@1', score_forecast: 'new@1' };
@@ -31,6 +32,7 @@ let runId: number;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-switches-'));
   db = initLibraryDb(join(dir, 'library.db'));
+  seedCullingStagesOn(db);
   saveForecastQuestions(db, layaNewForecastQuestions(db));
   runId = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
   patchLrWritebackSettings(db, { write_stars: true, write_reject: true });

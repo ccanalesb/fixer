@@ -1,6 +1,6 @@
 /**
  * The cull's decision rules, pure: level readout, profile rules, Score forecast, the summary.
- * Numbers follow the research readout (ticket 09): top level, fails at ≤ 4 and strong at ≥ 8 on 1–10.
+ * Readout: top level, fails at ≤ 4 and strong at ≥ 8 on 1–10.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -26,7 +26,7 @@ const PIPELINE: PipelineSettingConfig = {
   culling_profiles_enabled: true,
   culling_profiles_filter_enabled: true,
   culling_profiles: [{ profile_slug: 'recipe-culling', rule: VIDEO_LENIENT }],
-  score_forecast: { ...DEFAULT_SCORE_FORECAST },
+  score_forecast: { ...DEFAULT_SCORE_FORECAST, enabled: true },
 };
 
 const stage = (stageKey: string, extra: Partial<ResolvedStage> = {}): ResolvedStage => ({
@@ -163,7 +163,7 @@ describe('the photo summary', () => {
     expect(d.filteredBy).toBe('culling_profile');
   });
 
-  it('ticket 15: the profile passes it, Score forecast 0.036 filters it', () => {
+  it('a photo the profile passes is filtered when the Score forecast is below the threshold', () => {
     const d = decidePhoto(PIPELINE, STAGES, { [S7.stageKey]: pass7, [S10.stageKey]: pass10, score_forecast: forecast({ framing: 0.036, 'intensity-suggestion': 0.02 }) }, {});
     expect(d).toMatchObject({ verdict: 'filtered', filteredBy: 'score_forecast', filteredByStageKey: 'score_forecast' });
     expect(d.scoreForecastP8).toBeCloseTo(0.036);

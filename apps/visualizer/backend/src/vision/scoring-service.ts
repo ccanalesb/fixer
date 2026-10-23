@@ -108,7 +108,7 @@ export async function scoreImageForPerspective(
   if (substance?.verdict === 'void' && !hasFrameSubstanceOverride(db, imageKey)) {
     return new VisionOpOutcome('skipped', 'Frame substance verdict: void');
   }
-  // Culling filtered it and the user did not send it on (#339). Only a filtered photo is refused: a pending or
+  // Culling filtered it and the user did not send it on. Only a filtered photo is refused: a pending or
   // never-culled photo is held back by the batch jobs, not here.
   if (isPhotoFilteredAndNotSentByHand(db, imageKey)) {
     return new VisionOpOutcome('skipped', CULL_FILTERED_SCORE_SKIP_REASON);

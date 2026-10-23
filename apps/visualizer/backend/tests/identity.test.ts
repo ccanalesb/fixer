@@ -150,7 +150,7 @@ describe('GET /api/identity/best-photos', () => {
     expect(byKey.get('b')!.peak_percentile).toBeCloseTo(1, 6);
   });
 
-  describe('the corroboration veto (#292)', () => {
+  describe('the corroboration veto', () => {
     it('ranks on the second-highest percentile when any lens scored 1', async () => {
       fx.addImages('flattered', 'solid', 'filler-a', 'filler-b');
       fx.addPerspectives({ slug: 'easy' }, { slug: 'harsh' });

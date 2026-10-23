@@ -110,7 +110,7 @@ export function distinctiveDescriptors(
 /**
  * How far this lens's percentile leads the image's next-strongest lens, in points.
  *
- * Purity is a *separation*, not a level (spec #207). An image scored on only this
+ * Purity is a *separation*, not a level. An image scored on only this
  * lens has nothing to separate from, so its purity is 0 — reporting the raw
  * percentile instead would let single-lens images out-rank genuinely distinctive
  * multi-lens ones in the exemplar tiebreak.

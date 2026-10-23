@@ -67,7 +67,7 @@ export interface StageAnswerRow {
   verdict: CullVerdict;
   decision: Record<string, unknown>;
   pipelineSettingVersion: number;
-  source: 'job' | 'research_import';
+  source: 'job' | 'import';
   producedBy?: string;
   imagePath?: string;
   imageSignature?: string | null;
@@ -76,8 +76,8 @@ export interface StageAnswerRow {
 }
 
 /**
- * Store one stage's answers for a photo. `ifAbsent` keeps a row that is already there (the research
- * import never overwrites a job's answers); returns whether a row was written.
+ * Store one stage's answers for a photo. `ifAbsent` keeps a row that is already there (`cull-import`
+ * never overwrites a job's answers); returns whether a row was written.
  */
 export function upsertStageAnswer(db: Db, row: StageAnswerRow, opts: { ifAbsent?: boolean } = {}): boolean {
   const now = nowIsoUtc();

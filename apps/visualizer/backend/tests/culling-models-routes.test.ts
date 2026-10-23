@@ -15,7 +15,7 @@ import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { getOrCreateStageVersion, upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { insertCullRun } from '../src/db/library/cull-verdicts.js';
-import { LAYA_BASE_RESEARCH_MODEL_ID } from '../src/laya/model-id.js';
+import { LAYA_BASE_MODEL_ID } from '../src/laya/model-id.js';
 import { fakeLayaState, writeFakeLayaModels } from './helpers/fake-laya.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
@@ -187,6 +187,10 @@ describe('GET /api/culling-models/usable', () => {
       body: JSON.stringify(body),
     });
   const ok = (model: string, endpoint = 'this_app'): Usable => ({ on: true, problem: null, model, endpoint, job_id: null, detail: null });
+  const stagesOn = async () => {
+    await pipelinePut('culling-profiles', { enabled: true });
+    await pipelinePut('score-forecast', { enabled: true });
+  };
 
   let server: FakeSystemOneServer;
   beforeEach(async () => {
@@ -194,10 +198,12 @@ describe('GET /api/culling-models/usable', () => {
   });
   afterEach(() => server.close());
 
-  it('a new install: both stages on with no model', async () => {
-    const body = await usable();
-    const none: Usable = { on: true, problem: 'no_model', model: null, endpoint: 'this_app', job_id: null, detail: null };
-    expect(body).toEqual({ culling_profile: none, score_forecast: none, culling_profile_filter: true });
+  it('a new install: both stages off with no model; turned on, neither has one', async () => {
+    const off: Usable = { on: false, problem: null, model: null, endpoint: 'this_app', job_id: null, detail: null };
+    expect(await usable()).toEqual({ culling_profile: off, score_forecast: off, culling_profile_filter: true });
+    await stagesOn();
+    const none: Usable = { ...off, on: true, problem: 'no_model' };
+    expect(await usable()).toEqual({ culling_profile: none, score_forecast: none, culling_profile_filter: true });
   });
 
   it('a stage that is off is never unusable', async () => {
@@ -208,6 +214,7 @@ describe('GET /api/culling-models/usable', () => {
   });
 
   it('this app: a listed model is usable, a model it does not list is not', async () => {
+    await stagesOn();
     writeFakeLayaModels(modelsDir);
     await put('culling_profile', { model: 'laya-base' });
     await put('score_forecast', { model: 'laya-gone' });
@@ -217,6 +224,7 @@ describe('GET /api/culling-models/usable', () => {
   });
 
   it('a model still converting in this app names its job', async () => {
+    await stagesOn();
     const jobsDb = initJobsDb(join(dir, 'visualizer.db'));
     const jobId = createJob(jobsDb, LAYA_INSTALL_JOB_TYPE, { source: '/models/laya-x', name: 'laya-x' });
     jobsDb.close();
@@ -232,6 +240,7 @@ describe('GET /api/culling-models/usable', () => {
   });
 
   it('another endpoint: listed, not listed, refused key, down', async () => {
+    await stagesOn();
     await put('culling_profile', { endpoint: server.url });
     await put('culling_profile', { model: 'clef-cull' });
     expect((await usable()).culling_profile).toEqual(ok('clef-cull', server.url));
@@ -286,8 +295,8 @@ describe('answered photos', () => {
   it('counts each photo once under the stage’s current versions, naming the model they were made with', async () => {
     writeFakeLayaModels(modelsDir);
     fx.addImages('a', 'b', 'c');
-    answer('culling_profile', 'culling_profile:recipe-culling:7', LAYA_BASE_RESEARCH_MODEL_ID, ['a', 'b']);
-    answer('culling_profile', 'culling_profile:recipe-culling:10', LAYA_BASE_RESEARCH_MODEL_ID, ['a', 'b', 'c']);
+    answer('culling_profile', 'culling_profile:recipe-culling:7', LAYA_BASE_MODEL_ID, ['a', 'b']);
+    answer('culling_profile', 'culling_profile:recipe-culling:10', LAYA_BASE_MODEL_ID, ['a', 'b', 'c']);
     answer('score_forecast', 'score_forecast', 'clef-forecast@http://h:1', ['a']);
     answer('score_forecast', 'score_forecast', 'other@http://h:1', ['b']);
     const body = await json<Listing>(await app.request('/api/culling-models'));

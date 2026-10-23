@@ -1,5 +1,5 @@
 /**
- * Library schema 14 (#363): the pipeline setting's switches, and what the culling profile says stored
+ * Library schema 14: the pipeline setting's switches, and what the culling profile says stored
  * apart from what decided the photo.
  *
  * Every stored pipeline setting gets both culling profile switches on and loses `run_after_filtered`.

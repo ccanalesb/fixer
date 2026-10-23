@@ -87,7 +87,7 @@ export const CullReviewDetail = z
     completion: z.enum(['none', 'some', 'all']),
     needs_send_work: z.boolean(),
     sent_by_hand: z.boolean(),
-    verdict: z.string(),
+    verdict: z.enum(['filtered', 'passed', 'pending']),
   })
   .strict()
   .openapi('CullReviewDetail');

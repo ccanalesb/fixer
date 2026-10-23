@@ -1,5 +1,5 @@
 /**
- * In-job cull step before kimi (plan #339 F.5): describe, score, and analyze handlers.
+ * In-job cull step before kimi: describe, score, and analyze handlers.
  */
 import {
   getKimiJobLaya,
@@ -170,7 +170,7 @@ interface JobCullResult {
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-stage-'));
   jobsDbPath = join(dir, 'visualizer.db');
-  fx = new LibraryFixture().addForecastQuestions().activate();
+  fx = new LibraryFixture().cullingStagesOn().addForecastQuestions().activate();
   resetKimiJobLaya();
   onRequest = null;
   describeReply = completion(JSON.stringify({ summary: 'A scene', subjects: ['x'] }));

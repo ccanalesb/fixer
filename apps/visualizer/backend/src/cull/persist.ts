@@ -2,7 +2,7 @@
  * One photo's cull, stored: new stage answers (if any), every current stage's verdict re-decided, and
  * the summary row — in one `libraryWrite`, so a photo is never half-decided.
  *
- * The culling job, the research import and the re-decide job (#339) all end here; re-decide passes no
+ * The culling job, `cull-import` and the re-decide job all end here; re-decide passes no
  * new answers and so never needs Laya.
  */
 import type { Db } from '../db/connection.js';
@@ -40,7 +40,7 @@ export function stageVersionIds(ctx: CullContext): number[] {
 
 export interface FreshAnswers {
   answers: Record<string, StageAnswers>;
-  source: 'job' | 'research_import';
+  source: 'job' | 'import';
   /** The endpoint that answered (`this_app` or its URL), one for all or by stage key. */
   producedBy: string | Readonly<Record<string, string>>;
   imagePath: string;

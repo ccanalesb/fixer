@@ -46,7 +46,7 @@ interface ImageDetailModalProps {
   contextSlot?: ReactNode
   /** When set, loads `/api/cull/photos/{key}` and renders the culling section. */
   showCullSection?: boolean
-  /** Prev / next within a cull review or catalog list (ticket 17). */
+  /** Prev / next within a cull review or catalog list. */
   cullNav?: {
     keys: string[]
     index: number

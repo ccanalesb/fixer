@@ -1,6 +1,6 @@
 /**
  * Whether a culling stage that is on can run, asked before a job is started so the UI can say why it
- * cannot (#367). A job started anyway still fails naming the stage (`resolveStageModelIds`).
+ * cannot. A job started anyway still fails naming the stage (`resolveStageModelIds`).
  */
 import type { CullingModelConfig } from '../config.js';
 import type { AppModelStatus } from '../laya/install.js';

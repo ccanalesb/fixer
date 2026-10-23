@@ -1,5 +1,5 @@
 /**
- * Lightroom write-back settings and per-photo detail (#341).
+ * Lightroom write-back settings and per-photo detail.
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { config, loadLibraryConfig } from '../config.js';

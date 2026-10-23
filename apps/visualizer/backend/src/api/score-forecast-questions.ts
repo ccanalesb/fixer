@@ -1,5 +1,5 @@
 /**
- * Score forecast questions API (#368): read and save the set, like a culling profile's text, and
+ * Score forecast questions API: read and save the set, like a culling profile's text, and
  * "Create questions from my perspectives" — a script, no model involved.
  */
 import { createRoute } from '@hono/zod-openapi';

@@ -98,6 +98,7 @@ beforeEach(() => {
   fx = new LibraryFixture()
     .addImage({ key: imageKey, id: '1' })
     .addImage({ key: starsKey, id: '1' })
+    .cullingStagesOn()
     .activate();
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-rst-'));
   cfgPath = join(dir, 'config.yaml');

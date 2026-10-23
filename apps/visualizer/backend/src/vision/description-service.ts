@@ -160,7 +160,7 @@ export async function describeMatchedImage(
     return new VisionOpOutcome('skipped', 'non-describable file type');
   }
 
-  // The same two checks scoring makes (#339): a void frame has nothing to describe, and a photo the
+  // The same two checks scoring makes: a void frame has nothing to describe, and a photo the
   // filtered photo is described only once the user sends it on.
   const refused = describeRefusal(db, catalogKey);
   if (refused !== null) return new VisionOpOutcome('skipped', refused);

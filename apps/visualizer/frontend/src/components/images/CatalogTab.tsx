@@ -49,7 +49,7 @@ import {
   INSIGHTS_KPI_BURST_STACKS,
   CATALOG_FILTER_LABEL_FRAME_SUBSTANCE,
   CATALOG_FILTER_FRAME_SUBSTANCE_ONLY,
-  CULL_MANUALLY_CULL,
+  CULL_SENT_BY_HAND,
 } from '../../constants/strings';
 import { Badge } from '../ui/badges';
 import { formatMonth } from '../../utils/date';
@@ -72,7 +72,7 @@ type SelectedCatalogEntry = {
 type CatalogTabProps = {
   /** Fires when the posted / not-posted filter changes (for parent UI, e.g. Analytics cross-link). */
   onPostedFilterChange?: (posted: boolean | undefined) => void;
-  /** Images → Cull catalog: passed + sent-by-hand only. */
+  /** Images → Culling catalog: passed + sent-by-hand only. */
   cullCatalog?: boolean;
 };
 
@@ -421,7 +421,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
                   primaryScoreSource="catalog"
                   overlayBadges={
                     cullCatalog && image.cull_manually_sent ? (
-                      <Badge variant="default">{CULL_MANUALLY_CULL}</Badge>
+                      <Badge variant="default">{CULL_SENT_BY_HAND}</Badge>
                     ) : undefined
                   }
                   onClick={() => {

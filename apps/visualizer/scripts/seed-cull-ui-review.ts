@@ -6,11 +6,11 @@ import { catalogBaseNameFromImageKey } from '../backend/src/lightroom/writer.js'
 import { makeFakeCatalog } from '../backend/tests/helpers/fake-catalog.js';
 import { patchLrWritebackSettings } from '../backend/src/db/library/lr-writeback-settings.js';
 import { reconcileLrWriteback } from '../backend/src/lightroom/writeback.js';
-import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { resolveCurrentStages } from '../backend/src/cull/stages.js';
 import { initLibraryDb } from '../backend/src/db/library/bootstrap.js';
-import { getCurrentPipelineSetting } from '../backend/src/db/library/cull-pipeline.js';
+import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../backend/src/db/library/cull-pipeline.js';
+import { layaNewForecastQuestions, saveForecastQuestions } from '../backend/src/db/library/score-forecast-questions.js';
 import { upsertStageAnswer } from '../backend/src/db/library/cull-stages.js';
 import {
   finishCullRun,
@@ -25,15 +25,12 @@ import { writeFakeLayaModels } from '../backend/tests/helpers/fake-laya.js';
 
 const libPath = process.env.LIBRARY_DB;
 const tmpRoot = process.env.CULL_UI_TMP;
-if (!libPath || !tmpRoot) {
-  console.error('LIBRARY_DB and CULL_UI_TMP required');
+/** A folder of .jpg photos to review; copied, never changed. */
+const IMAGES = process.env.CULL_UI_IMAGES;
+if (!libPath || !tmpRoot || !IMAGES) {
+  console.error('LIBRARY_DB, CULL_UI_TMP and CULL_UI_IMAGES required');
   process.exit(1);
 }
-
-const PROTOTYPE_IMG = join(
-  homedir(),
-  'projects/lightroom-tagger-research-laya/docs/research/wayfinder/pre-selector/prototypes/17-cut-photos-ui/img',
-);
 
 const vision = join(tmpRoot, 'vision');
 const models = join(tmpRoot, 'models');
@@ -87,7 +84,7 @@ function forecastAnswers(stage: ResolvedStage, high: boolean): Record<string, nu
 }
 
 /** Product-shaped library key and matching `AgLibraryFile.baseName` for the temp `.lrcat`. */
-function prototypeKeyAndBaseName(file: string): { key: string; catalogBaseName: string } {
+function keyAndBaseName(file: string): { key: string; catalogBaseName: string } {
   const stem = basename(file, '.jpg');
   const m = stem.match(/^(\d{4}-\d{2}-\d{2})__(.+)$/);
   if (m) return { key: `${m[1]!}_${m[2]!}`, catalogBaseName: m[2]! };
@@ -96,12 +93,12 @@ function prototypeKeyAndBaseName(file: string): { key: string; catalogBaseName: 
 
 const db = initLibraryDb(libPath);
 
-if (!existsSync(PROTOTYPE_IMG)) {
-  console.error(`Prototype images missing: ${PROTOTYPE_IMG}`);
+if (!existsSync(IMAGES)) {
+  console.error(`No folder at CULL_UI_IMAGES: ${IMAGES}`);
   process.exit(1);
 }
 
-const files = readdirSync(PROTOTYPE_IMG)
+const files = readdirSync(IMAGES)
   .filter((f) => f.toLowerCase().endsWith('.jpg'))
   .sort();
 
@@ -112,17 +109,23 @@ const cacheIns = db.prepare(
 
 const keyByFile = new Map<string, string>();
 for (const file of files) {
-  const { key } = prototypeKeyAndBaseName(file);
+  const { key } = keyAndBaseName(file);
   keyByFile.set(file, key);
   const dest = join(vision, file);
-  copyFileSync(join(PROTOTYPE_IMG, file), dest);
+  copyFileSync(join(IMAGES, file), dest);
   ins.run(key, file, dest);
   cacheIns.run(key, dest);
 }
 
+saveForecastQuestions(db, layaNewForecastQuestions(db));
+const initial = getCurrentPipelineSetting(db).config;
+createPipelineSettingVersion(db, {
+  ...initial,
+  culling_profiles_enabled: true,
+  score_forecast: { ...initial.score_forecast, enabled: true },
+});
 const pipe = getCurrentPipelineSetting(db);
-const layaModelIds = { base: 'laya-base', new: 'laya-new' };
-const stages = resolveCurrentStages(db, pipe.config, layaModelIds);
+const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'laya-base', score_forecast: 'laya-new' });
 const stageByKey = new Map(stages.map((s) => [s.stageKey, s]));
 const profile7 = stageByKey.get('culling_profile:recipe-culling:7');
 const profile10 = stageByKey.get('culling_profile:recipe-culling:10');
@@ -415,6 +418,6 @@ if (process.env.LT_CONFIG_YAML) {
 // A path that is not the configured catalog: rows are marked pending, nothing is written.
 void reconcileLrWriteback(db, { trigger: 'job', catalogPath: join(tmpRoot, 'no-write.lrcat') }).then(() => {
   db.close();
-  console.log(`Seeded ${libPath} with ${files.length} photos from prototype`);
+  console.log(`Seeded ${libPath} with ${files.length} photos from ${IMAGES}`);
   console.log(`Temp catalog: ${lrcatPath}`);
 });

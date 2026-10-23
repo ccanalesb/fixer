@@ -2,7 +2,7 @@
  * Identity API response models.
  *
  * `IdentityBestPhotoItem` includes `ranking_percentile`, `corroboration_revoked`
- * and `corroboration_revoked_by` (#292) — fields the ranking function returns that
+ * and `corroboration_revoked_by` — fields the ranking function returns that
  * must be declared or response validation rejects the payload.
  */
 import { z } from '@hono/zod-openapi';

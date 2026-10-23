@@ -9,8 +9,8 @@ export const NAV_IDENTITY = 'Identity'
 
 // Tab labels
 export const TAB_CATALOG = 'Catalog'
-export const TAB_CULL_CATALOG = 'Cull catalog'
-export const TAB_CULL = 'Cull'
+export const TAB_CULL_CATALOG = 'Culling catalog'
+export const TAB_CULL = 'Culling'
 export const TAB_ANALYZE = 'Analyze'
 export const TAB_PERSPECTIVES = 'Perspectives'
 export const TAB_CATALOG_CACHE = 'Catalog Cache'
@@ -656,9 +656,9 @@ export const ANALYZE_PRIMARY_BUTTON_STARTING = 'Starting…'
 export const ANALYZE_ADVANCED_RUN_SEPARATELY_TITLE = 'Run stages separately'
 export const ANALYZE_ADVANCED_DESCRIBE_ONLY = 'Generate Descriptions only'
 export const ANALYZE_ADVANCED_SCORE_ONLY = 'Run scoring only'
-export const ANALYZE_FORCE_CULL_LABEL = 'Force re-cull'
+export const ANALYZE_FORCE_CULL_LABEL = 'Force re-run culling'
 export const ANALYZE_FORCE_CULL_HINT =
-  'Re-runs Laya on every photo in the date range, even ones it already answered. Your own decisions ("Yes, keep it", sent by hand) are kept.'
+  `Asks each culling stage's model again on every photo in the date range, even ones it already answered. Your own decisions ("Yes, keep it", sent by hand) are kept.`
 export const ANALYZE_FORCE_DESCRIBE_LABEL = 'Force regenerate descriptions'
 export const ANALYZE_FORCE_SCORE_LABEL = 'Force regenerate scores'
 export const ANALYZE_BACKFILL_VISUAL_TAGS_LABEL =
@@ -673,7 +673,7 @@ export const ANALYZE_SCORE_JOB_STARTED =
   'Batch scoring job started (1–10 scores + short rationale per perspective). Check Job Queue for progress.'
 export const ANALYZE_JOB_FAILED_PREFIX = 'Failed to start job:'
 
-// Cull UI (#340)
+// Culling UI
 export const CULL_HEADING = (n: number) =>
   n === 1 ? '1 photo filtered' : `${n} photos filtered`
 export const CULL_SUB_MANUAL = (m: number) => `${m} already sent manually.`
@@ -687,9 +687,9 @@ export const CULL_AGREED = 'Agreed'
 export const CULL_CLEAR = 'Clear'
 export const CULL_ALREADY_SCORED = (d: number) => `· ${d} already described and scored`
 export const CULL_DETAIL_SECTION = 'Culling'
-export const CULL_MANUALLY_CULL = 'Manually cull'
-export const CULL_MANUALLY_CULL_NOTE =
-  'Manually cull — never filtered automatically again.'
+export const CULL_SENT_BY_HAND = 'Sent by hand'
+export const CULL_SENT_BY_HAND_NOTE =
+  'Sent by hand — never filtered automatically again.'
 export const CULL_PASS_QUESTION = 'Did culling get this right?'
 export const CULL_PASS_YES = 'Yes, keep it'
 export const CULL_PASS_NO = "No, it shouldn't have passed"
@@ -717,7 +717,7 @@ export const CULL_PROFILE_RULE_ALL_FAIL = 'All of these fail'
 export const CULL_PROFILE_RULE_N_FAIL = 'N or more fail unless one is strong'
 export const CULL_PROFILE_RULE_MEAN = 'The average fails'
 export const CULL_PROFILE_UNMEASURED_HINT =
-  'Not measured against AI scores — check what it filters in Processing → Cull.'
+  'Not measured against AI scores — check what it filters in Processing → Culling.'
 export const CULL_PROFILE_TEXT_SAVE_IMPACT = (photos: number, hours: number) =>
   `Saving text re-answers every catalog photo (~${hours.toFixed(2)} h, ${photos} photos × 2 s).`
 export const CULL_PROFILE_ACTIVE = 'Active'
@@ -782,7 +782,7 @@ export const CULL_PROFILE_COMBINE = 'Combine level sets'
 export const CULL_PROFILE_DEFINITION_CHANGED =
   'Text or levels changed: the model has to answer again, so only “Save only” / “Save and queue culling job” apply.'
 
-// Lightroom write-back (#341)
+// Lightroom write-back
 export const LR_WRITEBACK_SECTION = 'Lightroom write-back'
 export const LR_WRITEBACK_SECTION_LEAD =
   'What culling writes back to your Lightroom catalog. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'
@@ -930,7 +930,7 @@ export const MODEL_CHANGE_PROCESS = 'Process photos'
 export const MODEL_CHANGE_LATER = 'Later'
 export const MODEL_CHANGE_QUEUED = 'Job queued ·'
 
-// A culling stage that is on but cannot run: Cull tab notes and the dialog before a job starts
+// A culling stage that is on but cannot run: Culling tab notes and the dialog before a job starts
 export const CULLING_CHECKING = 'Checking culling models…'
 export const CULLING_OPEN_SETTINGS = 'Open Settings'
 export const CULLING_FIX_IN_SETTINGS = 'Fix in Settings'

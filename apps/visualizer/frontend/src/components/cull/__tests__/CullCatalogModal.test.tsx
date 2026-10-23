@@ -13,7 +13,7 @@ import {
 import { ImageDetailModal } from '../../image-view/ImageDetailModal'
 import {
   CULL_AGREE,
-  CULL_MANUALLY_CULL_NOTE,
+  CULL_SENT_BY_HAND_NOTE,
   CULL_PASSED,
   CULL_SCORE_FORECAST,
   SCORE_FORECAST_DOES_NOT_APPLY,
@@ -226,7 +226,8 @@ describe('Cull catalog modal cull section', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(CULL_MANUALLY_CULL_NOTE)).toBeInTheDocument()
+      expect(screen.getByText(CULL_SENT_BY_HAND_NOTE)).toBeInTheDocument()
+      expect(CULL_SENT_BY_HAND_NOTE).toBe('Sent by hand — never filtered automatically again.')
     })
   })
 })

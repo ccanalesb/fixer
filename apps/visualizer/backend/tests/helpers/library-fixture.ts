@@ -15,6 +15,7 @@ import { saveForecastQuestions } from '../../src/db/library/score-forecast-quest
 import { questionsFromLaya } from '../../src/cull/forecast-questions.js';
 import { LAYA_QUESTIONS } from '../../src/laya/questions.js';
 import { nowIsoLocal, nowIsoUtc } from '../../src/utils/datetime.js';
+import { seedCullingStagesOn } from './culling-stages.js';
 
 export interface PerspectiveSeed {
   slug: string;
@@ -304,6 +305,17 @@ export class LibraryFixture {
     const db = this.open();
     try {
       saveForecastQuestions(db, questionsFromLaya(LAYA_QUESTIONS.new, {}));
+    } finally {
+      db.close();
+    }
+    return this;
+  }
+
+  /** The culling defaults, with the culling profile and the Score forecast on. */
+  cullingStagesOn(): this {
+    const db = this.open();
+    try {
+      seedCullingStagesOn(db);
     } finally {
       db.close();
     }

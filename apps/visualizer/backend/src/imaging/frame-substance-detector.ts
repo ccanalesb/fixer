@@ -1,5 +1,5 @@
 /**
- * Frame substance detector — preview statistics and verdict rules (#295).
+ * Frame substance detector — preview statistics and verdict rules.
  *
  * Decoding uses sharp; greyscale uses `pilGreyscale` because `sharp().greyscale()`
  * disagrees with ITU-R 601-2 luma on a quarter of pixels. See `pil-resample.ts`.

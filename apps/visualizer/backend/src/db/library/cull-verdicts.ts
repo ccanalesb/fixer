@@ -139,7 +139,7 @@ export function listCullRunIdsForJob(db: Db, jobId: string): Set<number> {
 
 export function insertCullRun(
   db: Db,
-  run: { kind: 'job' | 'research_import' | 'redecide'; jobId: string | null; pipelineSettingVersion: number; detail?: Record<string, unknown> },
+  run: { kind: 'job' | 'import' | 'redecide'; jobId: string | null; pipelineSettingVersion: number; detail?: Record<string, unknown> },
 ): number {
   const info = db
     .prepare(

@@ -6033,7 +6033,8 @@ export interface components {
             completion: "none" | "some" | "all";
             needs_send_work: boolean;
             sent_by_hand: boolean;
-            verdict: string;
+            /** @enum {string} */
+            verdict: "filtered" | "passed" | "pending";
         };
         CullProfileListResponse: {
             profiles: components["schemas"]["CullProfileSummary"][];

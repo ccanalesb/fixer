@@ -3,7 +3,7 @@
  * stored and decided (`persist.ts`).
  *
  * Takes the stages' models as an argument, so the culling job and the jobs that cull before describing
- * (#339) share them, and tests run it on a fake.
+ * share them, and tests run it on a fake.
  */
 import type { Db } from '../db/connection.js';
 import { getImage } from '../db/library/catalog.js';

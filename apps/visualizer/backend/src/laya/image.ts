@@ -1,5 +1,5 @@
 /**
- * Laya's image: what the research runs fed it, ported so the answers match.
+ * Laya's image, prepared exactly as for the imported answers so a new answer matches them.
  *
  * `Image.thumbnail((512, 512))` (bicubic), then the Idefics3 processor without splitting: longest edge to
  * 2048 (lanczos), squashed to 512×512 (lanczos), rescaled and normalised with mean = std = 0.5.

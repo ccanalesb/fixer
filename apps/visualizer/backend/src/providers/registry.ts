@@ -5,7 +5,7 @@
  * `providers.json` is gitignored and owned by the user's machine, so it is treated
  * as untrusted input in one specific way: a `defaults` block may name a resolution
  * kind that has since been retired, and those keys are dropped on load with a
- * warning rather than failing (#245) — the same courtesy `load_config` extends to
+ * warning rather than failing — the same courtesy `load_config` extends to
  * `config.yaml`.
  *
  * Model listing, Ollama discovery, and tool-calling probes use plain `fetch`
