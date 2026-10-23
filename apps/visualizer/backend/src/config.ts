@@ -107,7 +107,7 @@ export interface LibraryConfig {
   cullingModels: CullingModelsConfig;
 }
 
-/** One stage's System One endpoint: `this_app` or a URL, the model, and an API key (`''` for none). */
+/** One stage's System One endpoint: `this_app` or a URL, the model (`''` for none), and an API key (`''` for none). */
 export interface CullingModelConfig {
   endpoint: string;
   model: string;
@@ -119,10 +119,10 @@ export interface CullingModelsConfig {
   score_forecast: CullingModelConfig;
 }
 
-/** The app's own endpoint, with the models the setup step exports, so a library culled before keeps working. */
+/** A new install: this app's endpoint, and no model until the user chooses one. */
 export const CULLING_MODELS_DEFAULTS: CullingModelsConfig = {
-  culling_profile: { endpoint: 'this_app', model: 'laya-base', apiKey: '' },
-  score_forecast: { endpoint: 'this_app', model: 'laya-new', apiKey: '' },
+  culling_profile: { endpoint: 'this_app', model: '', apiKey: '' },
+  score_forecast: { endpoint: 'this_app', model: '', apiKey: '' },
 };
 
 function cullingModelsField(raw: unknown): CullingModelsConfig {
@@ -134,6 +134,21 @@ function cullingModelsField(raw: unknown): CullingModelsConfig {
     return { endpoint: str('endpoint', d.endpoint), model: str('model', d.model), apiKey: str('api_key', d.apiKey) };
   };
   return { culling_profile: stage('culling_profile'), score_forecast: stage('score_forecast') };
+}
+
+/** Write one stage's `culling_models` entry into `config.yaml`, keeping the other stage and every other key. */
+export function updateConfigYamlCullingModel(
+  configFile: string,
+  stage: keyof CullingModelsConfig,
+  value: CullingModelConfig,
+): void {
+  const current = loadLibraryConfig(configFile).cullingModels;
+  const next = { ...current, [stage]: value };
+  const entry = (m: CullingModelConfig) => ({ endpoint: m.endpoint, model: m.model, api_key: m.apiKey });
+  updateConfigYaml(configFile, 'culling_models', {
+    culling_profile: entry(next.culling_profile),
+    score_forecast: entry(next.score_forecast),
+  });
 }
 
 const CONFIG_DEFAULTS = {

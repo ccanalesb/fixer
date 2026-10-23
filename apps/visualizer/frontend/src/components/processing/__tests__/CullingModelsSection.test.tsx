@@ -1,8 +1,17 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CullingModelsSection } from '../CullingModelsSection'
-import { CullingProfilesAPI, type PipelineSettingResponse } from '../../../services/api'
+import {
+  AppModelsAPI,
+  CullingModelsAPI,
+  CullingProfilesAPI,
+  JobsAPI,
+  type AppModel,
+  type CullingModelsResponse,
+  type CullingStageModel,
+  type PipelineSettingResponse,
+} from '../../../services/api'
 import {
   CULLING_MODELS_SAVED,
   CULLING_MODELS_SAVED_JOB_WAITING,
@@ -10,16 +19,48 @@ import {
   CULLING_PROFILE_FILTER,
   CULLING_PROFILE_FILTER_UNAVAILABLE,
   CULLING_PROFILE_STAGE,
+  MODEL_CHANGE_LATER,
+  MODEL_CHANGE_PROCESS,
   PROCESSING_JOB_QUEUE_ROUTE,
   SCORE_FORECAST_LEVEL,
   SCORE_FORECAST_STAGE,
   SCORE_FORECAST_THRESHOLD,
   SCORE_FORECAST_THRESHOLD_INVALID,
+  STAGE_ADD_MODEL,
+  STAGE_API_KEY_REMOVE,
+  STAGE_API_KEY_SAVED,
+  STAGE_CHECK,
+  STAGE_ENDPOINT_OTHER,
+  STAGE_ENDPOINT_THIS_APP,
 } from '../../../constants/strings'
+import type { Job } from '../../../types/job'
+
+const socket = vi.hoisted(() => ({ onJobUpdated: null as null | ((job: Job) => void) }))
+vi.mock('../../../hooks/useJobSocket', () => ({
+  useJobSocket: (opts: { onJobUpdated?: (job: Job) => void }) => {
+    socket.onJobUpdated = opts.onJobUpdated ?? null
+    return { connected: true, socket: null, jobListRevision: 0, refreshJobList: () => {} }
+  },
+}))
 
 type Config = PipelineSettingResponse['config']
+type Stage = 'culling_profile' | 'score_forecast'
 
 let stored: Config
+let stages: CullingModelsResponse
+let appModels: AppModel[]
+/** What each external URL lists; any other URL does not answer. */
+let endpoints: Record<string, string[]>
+
+const OLLAMA = 'http://localhost:11434'
+const stage = (over: Partial<CullingStageModel> = {}): CullingStageModel => ({
+  endpoint: 'this_app',
+  model: null,
+  has_api_key: false,
+  answered: { photos: 0, model: null },
+  ...over,
+})
+const ready = (name: string): AppModel => ({ name, source: null, revision: null, status: 'ready', job_id: null })
 
 function pipeline(over: Partial<Config> = {}, forecast: Partial<Config['score_forecast']> = {}) {
   stored = {
@@ -36,7 +77,33 @@ const saved = { version: 2, redecide_job_id: 'job-9' }
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  socket.onJobUpdated = null
   pipeline()
+  stages = { culling_profile: stage(), score_forecast: stage(), total_photos: 3 }
+  appModels = [ready('laya-base'), ready('laya-new')]
+  endpoints = { [OLLAMA]: ['intern-decision-2b', 'clef-flash'] }
+  vi.spyOn(CullingModelsAPI, 'get').mockImplementation(async () => stages)
+  vi.spyOn(CullingModelsAPI, 'save').mockImplementation(async (k: Stage, body) => {
+    const s = stages[k]
+    const endpoint = body.endpoint ?? s.endpoint
+    const moved = endpoint !== s.endpoint
+    const next = {
+      ...s,
+      endpoint,
+      model: body.model !== undefined ? body.model : moved ? null : s.model,
+      has_api_key: endpoint === 'this_app' ? false : body.api_key !== undefined ? body.api_key !== '' : moved ? false : s.has_api_key,
+    }
+    stages = { ...stages, [k]: next }
+    return next
+  })
+  vi.spyOn(CullingModelsAPI, 'models').mockImplementation(async (k: Stage) => {
+    const listed = endpoints[stages[k].endpoint]
+    return listed
+      ? { answers: true, models: listed, error: null }
+      : { answers: false, models: [], error: `${stages[k].endpoint} does not answer (fetch failed)` }
+  })
+  vi.spyOn(AppModelsAPI, 'list').mockImplementation(async () => ({ models: appModels, picker_available: true }))
+  vi.spyOn(JobsAPI, 'create').mockResolvedValue({ id: 'job-cull' } as Job)
   vi.spyOn(CullingProfilesAPI, 'getPipeline').mockImplementation(async () => ({ version: 1, config: stored }))
   vi.spyOn(CullingProfilesAPI, 'saveCullingProfileSwitches').mockImplementation(async (body) => {
     if (body.enabled !== undefined) stored = { ...stored, culling_profiles_enabled: body.enabled }
@@ -170,5 +237,194 @@ describe('CullingModelsSection', () => {
     fireEvent.click(await stageSwitch(CULLING_PROFILE_STAGE))
     expect(await screen.findByText('library.db is busy')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('checkbox', { name: CULLING_PROFILE_STAGE })).toBeChecked())
+  })
+})
+
+describe('CullingModelsSection — endpoint and model per stage', () => {
+  const row = async (k: Stage) => {
+    await screen.findByRole('checkbox', { name: CULLING_PROFILE_STAGE })
+    return document.querySelector(`[data-stage="${k}"]`) as HTMLElement
+  }
+  const control = (r: HTMLElement, role: 'combobox' | 'textbox', name: string) => within(r).getByRole(role, { name })
+  const desc = (r: HTMLElement) => r.querySelector('[data-stage-description]')!.textContent
+
+  it('a new install: this app, no model; a stage that is on says jobs won’t start, one that is off says Off', async () => {
+    pipeline({}, { enabled: false })
+    renderSection()
+    const cull = await row('culling_profile')
+    expect(control(cull, 'combobox', 'Endpoint')).toHaveValue('this_app')
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-base' })).toBeInTheDocument())
+    expect(control(cull, 'combobox', 'Model')).toHaveValue('')
+    expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off")
+    expect(desc(await row('score_forecast'))).toBe('Off')
+  })
+
+  it('lists the models in this app, a converting one disabled, and says which model a stage runs', async () => {
+    appModels = [ready('laya-base'), { ...ready('laya-run-best'), status: 'converting', job_id: 'job-2' }]
+    stages.culling_profile = stage({ model: 'laya-base' })
+    stages.score_forecast = stage({ model: 'laya-run-best' })
+    renderSection()
+    const cull = await row('culling_profile')
+    await waitFor(() => expect(desc(cull)).toBe('laya-base on this app'))
+    const forecast = await row('score_forecast')
+    expect(within(forecast).getByRole('option', { name: 'laya-run-best (converting)' })).toBeDisabled()
+    expect(desc(forecast)).toBe('laya-run-best on this app — still converting · View job')
+    expect(within(forecast).getByRole('link', { name: 'View job' })).toHaveAttribute('href', PROCESSING_JOB_QUEUE_ROUTE)
+  })
+
+  it('choosing a model saves it once and offers to process the photos the previous model answered', async () => {
+    stages.culling_profile = stage({ model: 'laya-base', answered: { photos: 45793, model: 'laya-base' } })
+    appModels = [ready('laya-base'), ready('laya-run-best')]
+    renderSection()
+    const cull = await row('culling_profile')
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-run-best' })).toBeInTheDocument())
+    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'laya-run-best' } })
+    expect(await within(cull).findByText('Culling profile now uses laya-run-best.')).toBeInTheDocument()
+    expect(CullingModelsAPI.save).toHaveBeenCalledTimes(1)
+    expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { model: 'laya-run-best' })
+    expect(
+      within(cull).getByText(
+        '45,793 photos were answered by laya-base. Process them with laya-run-best in a background job? Until then their verdicts stay as they are; earlier answers are kept.',
+      ),
+    ).toBeInTheDocument()
+    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_PROCESS }))
+    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_PROCESS }))
+    expect(await within(cull).findByText('Job queued ·', { exact: false })).toBeInTheDocument()
+    expect(within(cull).getByRole('link', { name: CULLING_MODELS_VIEW_QUEUE })).toHaveAttribute('href', PROCESSING_JOB_QUEUE_ROUTE)
+    expect(JobsAPI.create).toHaveBeenCalledTimes(1)
+    expect(JobsAPI.create).toHaveBeenCalledWith('batch_cull_photos_before_scoring', {})
+    expect(within(cull).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
+  })
+
+  it('with nothing answered yet the note says so; Later dismisses it', async () => {
+    renderSection()
+    const cull = await row('culling_profile')
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-base' })).toBeInTheDocument())
+    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'laya-base' } })
+    expect(
+      await within(cull).findByText('No photo has been answered by the culling profile yet. Process the 3 photos in a background job?'),
+    ).toBeInTheDocument()
+    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_LATER }))
+    expect(within(cull).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
+    expect(JobsAPI.create).not.toHaveBeenCalled()
+  })
+
+  it('a stage that is off saves the model but offers no processing', async () => {
+    pipeline({}, { enabled: false })
+    renderSection()
+    const forecast = await row('score_forecast')
+    await waitFor(() => expect(within(forecast).getByRole('option', { name: 'laya-new' })).toBeInTheDocument())
+    fireEvent.change(control(forecast, 'combobox', 'Model'), { target: { value: 'laya-new' } })
+    await waitFor(() => expect(desc(forecast)).toBe('Off · laya-new on this app'))
+    expect(within(forecast).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
+  })
+
+  it('a conversion job finishing for the model a stage runs offers to process the photos', async () => {
+    appModels = [{ ...ready('laya-base'), status: 'converting', job_id: 'job-1' }]
+    stages.culling_profile = stage({ model: 'laya-base' })
+    renderSection()
+    const cull = await row('culling_profile')
+    await waitFor(() => expect(desc(cull)).toBe('laya-base on this app — still converting · View job'))
+    appModels = [ready('laya-base')]
+    socket.onJobUpdated?.({ id: 'job-1', type: 'laya_model_install', status: 'completed' } as Job)
+    expect(await within(cull).findByText('Culling profile now uses laya-base.')).toBeInTheDocument()
+  })
+
+  it('another endpoint saves nothing until Check, which saves the URL and key, then lists its models', async () => {
+    renderSection()
+    const cull = await row('culling_profile')
+    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'other' } })
+    expect(CullingModelsAPI.save).not.toHaveBeenCalled()
+    expect(control(cull, 'combobox', 'Model')).toBeDisabled()
+    expect(within(cull).getByRole('option', { name: 'Check the URL first' })).toBeInTheDocument()
+    fireEvent.change(control(cull, 'textbox', 'URL'), { target: { value: OLLAMA } })
+    fireEvent.change(within(cull).getByLabelText('API key'), { target: { value: 'sk-1' } })
+    fireEvent.click(within(cull).getByRole('button', { name: STAGE_CHECK }))
+    expect(await within(cull).findByText('Answers · 2 models')).toBeInTheDocument()
+    expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { endpoint: OLLAMA, api_key: 'sk-1' })
+    expect(within(cull).getByLabelText('API key')).toHaveValue('')
+    expect(within(cull).getByLabelText('API key')).toHaveAttribute('placeholder', STAGE_API_KEY_SAVED)
+    expect(control(cull, 'combobox', 'Model')).not.toBeDisabled()
+    expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off")
+    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'clef-flash' } })
+    await waitFor(() => expect(desc(cull)).toBe(`clef-flash on ${OLLAMA}`))
+  })
+
+  it('Check on a URL that does not answer says so and lists nothing; Enter checks too', async () => {
+    renderSection()
+    const cull = await row('culling_profile')
+    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'other' } })
+    fireEvent.change(control(cull, 'textbox', 'URL'), { target: { value: 'http://localhost:9999' } })
+    fireEvent.keyDown(control(cull, 'textbox', 'URL'), { key: 'Enter' })
+    expect(await within(cull).findByText('No answer')).toBeInTheDocument()
+    expect(within(cull).getByText('No answer')).toHaveAttribute('title', 'http://localhost:9999 does not answer (fetch failed)')
+    expect(control(cull, 'combobox', 'Model')).toBeDisabled()
+    expect(desc(cull)).toBe("http://localhost:9999 does not answer — jobs won't start")
+  })
+
+  it('editing the URL clears what Check found, and checks nothing until asked', async () => {
+    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'clef-flash' })
+    renderSection()
+    const cull = await row('culling_profile')
+    expect(await within(cull).findByText('Answers · 2 models')).toBeInTheDocument()
+    fireEvent.change(control(cull, 'textbox', 'URL'), { target: { value: `${OLLAMA}/x` } })
+    expect(within(cull).queryByText('Answers · 2 models')).not.toBeInTheDocument()
+    expect(CullingModelsAPI.models).toHaveBeenCalledTimes(1)
+  })
+
+  it('a saved URL is checked once when Settings opens; a model it no longer lists says so', async () => {
+    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'gone-model', has_api_key: true })
+    renderSection()
+    const cull = await row('culling_profile')
+    expect(control(cull, 'combobox', 'Endpoint')).toHaveValue('other')
+    expect(control(cull, 'textbox', 'URL')).toHaveValue(OLLAMA)
+    await waitFor(() => expect(desc(cull)).toBe(`gone-model is no longer listed by ${OLLAMA} — jobs won't start`))
+    expect(CullingModelsAPI.models).toHaveBeenCalledTimes(1)
+    expect(CullingModelsAPI.models).toHaveBeenCalledWith('culling_profile')
+  })
+
+  it('a saved key is never shown; Remove clears it', async () => {
+    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'clef-flash', has_api_key: true })
+    renderSection()
+    const cull = await row('culling_profile')
+    const key = await within(cull).findByLabelText('API key')
+    expect(key).toHaveValue('')
+    expect(key).toHaveAttribute('type', 'password')
+    fireEvent.click(within(cull).getByRole('button', { name: STAGE_API_KEY_REMOVE }))
+    await waitFor(() => expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { api_key: '' }))
+    await waitFor(() => expect(within(cull).queryByRole('button', { name: STAGE_API_KEY_REMOVE })).not.toBeInTheDocument())
+  })
+
+  it('going back to this app saves at once and leaves no model chosen', async () => {
+    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'clef-flash' })
+    renderSection()
+    const cull = await row('culling_profile')
+    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'this_app' } })
+    await waitFor(() => expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { endpoint: 'this_app' }))
+    await waitFor(() =>
+      expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off"),
+    )
+    expect(within(cull).queryByRole('textbox', { name: 'URL' })).not.toBeInTheDocument()
+  })
+
+  it('"Add a model to this app" goes to Models in this app; another endpoint has no such link', async () => {
+    const target = document.createElement('div')
+    target.id = 'app-models'
+    target.scrollIntoView = vi.fn()
+    document.body.appendChild(target)
+    renderSection()
+    const cull = await row('culling_profile')
+    fireEvent.click(within(cull).getByRole('button', { name: STAGE_ADD_MODEL }))
+    expect(target.scrollIntoView).toHaveBeenCalledTimes(1)
+    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'other' } })
+    expect(within(cull).queryByRole('button', { name: STAGE_ADD_MODEL })).not.toBeInTheDocument()
+    target.remove()
+  })
+
+  it('the endpoint select offers this app and another System One endpoint', async () => {
+    renderSection()
+    const cull = await row('culling_profile')
+    expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_THIS_APP })).toBeInTheDocument()
+    expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_OTHER })).toBeInTheDocument()
   })
 })

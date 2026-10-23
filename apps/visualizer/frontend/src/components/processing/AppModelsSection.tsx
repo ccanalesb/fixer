@@ -30,6 +30,9 @@ import { PathSummary, SettingRow } from './SettingRow'
 
 const INSTALL_JOB_TYPE = 'laya_model_install'
 
+/** Where a stage row's "Add a model to this app" scrolls to. */
+export const APP_MODELS_SECTION_ID = 'app-models'
+
 /** A folder as a path that truncates its directory; a Hugging Face id as it is. */
 function SourceSummary({ source }: { source: string }) {
   return source.startsWith('/') || source.startsWith('~') ? <PathSummary path={source} /> : <span>{source}</span>
@@ -81,7 +84,7 @@ export function AppModelsSection() {
   )
 
   return (
-    <div className="divide-y divide-border rounded-base border border-border bg-bg">
+    <div id={APP_MODELS_SECTION_ID} className="divide-y divide-border rounded-base border border-border bg-bg">
       <div className="p-4">
         <h4 className="text-sm font-semibold text-text">{APP_MODELS_SECTION}</h4>
         <p className="mt-1 text-sm text-text-secondary">

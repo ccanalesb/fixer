@@ -179,6 +179,18 @@ export function loadAnsweredStageKeys(db: Db, stages: readonly ResolvedStage[]):
   return out;
 }
 
+/** Photos with an answer under any current version of this stage kind, each counted once. */
+export function countPhotosAnsweredByCurrentStage(db: Db, kind: StageKind): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(DISTINCT a.image_key) AS n FROM cull_stage_answers a
+       JOIN cull_stage_versions v ON v.id = a.stage_version_id
+       WHERE v.kind = ? AND v.is_current = 1`,
+    )
+    .get(kind) as { n: number };
+  return row.n;
+}
+
 /**
  * The model identity each stage kind's current versions were made with; null for a kind never
  * answered. What re-decide resolves stages with, so it never calls an endpoint.

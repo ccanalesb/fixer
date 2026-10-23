@@ -58,12 +58,19 @@ async function runCull(metadata: Record<string, unknown> = {}, before?: (db: Db,
   });
 }
 
-/** config.yaml with the given `culling_models` block (YAML lines, already indented). */
-function writeConfig(cullingModels = ''): void {
-  writeFileSync(
-    join(dir, 'config.yaml'),
-    `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n${cullingModels ? `culling_models:\n${cullingModels}` : ''}`,
-  );
+type StageYaml = Partial<Record<'culling_profile' | 'score_forecast', string>>;
+
+/** Each stage on this app's Laya base and Laya new, unless named (a YAML flow map per stage). */
+const THIS_APP_LAYA: Required<StageYaml> = {
+  culling_profile: '{endpoint: this_app, model: laya-base, api_key: ""}',
+  score_forecast: '{endpoint: this_app, model: laya-new, api_key: ""}',
+};
+
+/** config.yaml with a `culling_models` block; `null` leaves the block out. */
+function writeConfig(stages: StageYaml | null = {}): void {
+  const s = { ...THIS_APP_LAYA, ...stages };
+  const block = stages === null ? '' : `culling_models:\n  culling_profile: ${s.culling_profile}\n  score_forecast: ${s.score_forecast}\n`;
+  writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n${block}`);
 }
 
 /** A catalog photo whose original is gone and whose vision-cache JPEG exists. */
@@ -298,6 +305,35 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(laya.calls).toEqual([]);
   });
 
+  it('a new install has no model for either stage: a stage that is on fails the job, naming the stage', async () => {
+    writeConfig(null);
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(
+      'Culling profile: no model chosen. Choose one in Processing → Settings → Culling models, or turn the culling profile off',
+    );
+    expect(job.error_severity).toBe('warning');
+    expect(laya.calls).toEqual([]);
+  });
+
+  it('a Score forecast that is on with no model fails the job, naming it', async () => {
+    writeConfig({ score_forecast: '{endpoint: this_app, model: "", api_key: ""}' });
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(
+      'Score forecast: no model chosen. Choose one in Processing → Settings → Culling models, or turn the Score forecast off',
+    );
+  });
+
+  it('a stage that is off needs no model', async () => {
+    writeConfig({ score_forecast: '{endpoint: this_app, model: "", api_key: ""}' });
+    changePipeline((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, enabled: false } }));
+    await addPhoto('a', PASS);
+    expect((await runCull()).status).toBe('completed');
+  });
+
   it('without Laya new and the Score forecast on, the job fails naming the Score forecast', async () => {
     rmSync(join(modelsDir, 'laya-new'), { recursive: true, force: true });
     await addPhoto('c', FORECAST_CUT);
@@ -500,9 +536,13 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
   });
   afterEach(() => server.close());
 
-  const both = () =>
-    `  culling_profile: {endpoint: "${server.url}/", model: clef-cull, api_key: k1}\n` +
-    `  score_forecast: {endpoint: "${server.url}", model: clef-forecast, api_key: k1}\n`;
+  const both = (): StageYaml => ({
+    culling_profile: `{endpoint: "${server.url}/", model: clef-cull, api_key: k1}`,
+    score_forecast: `{endpoint: "${server.url}", model: clef-forecast, api_key: k1}`,
+  });
+  const forecastElsewhere = (model: string): StageYaml => ({
+    score_forecast: `{endpoint: "${server.url}", model: ${model}, api_key: ""}`,
+  });
 
   it('asks each stage of the endpoint config.yaml names, with its API key, and files answers under it', async () => {
     writeConfig(both());
@@ -534,7 +574,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
   });
 
   it('one stage on this app and one elsewhere', async () => {
-    writeConfig(`  score_forecast: {endpoint: "${server.url}", model: clef-forecast, api_key: ""}\n`);
+    writeConfig(forecastElsewhere('clef-forecast'));
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('completed');
@@ -557,7 +597,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
   it("another model's answers never read as current; switching back makes the earlier answers current again", async () => {
     await addPhoto('a', PASS);
     await runCull();
-    writeConfig(`  score_forecast: {endpoint: "${server.url}", model: clef-forecast, api_key: ""}\n`);
+    writeConfig(forecastElsewhere('clef-forecast'));
     laya.calls = [];
     await runCull();
     expect(laya.calls).toEqual([]);
@@ -625,7 +665,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
   });
 
   it('a model the endpoint does not list fails the job at the start, naming the stage and the model', async () => {
-    writeConfig(`  score_forecast: {endpoint: "${server.url}", model: nope, api_key: ""}\n`);
+    writeConfig(forecastElsewhere('nope'));
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');

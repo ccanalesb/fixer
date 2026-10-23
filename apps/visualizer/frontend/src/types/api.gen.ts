@@ -3976,6 +3976,155 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/culling-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Each culling stage’s endpoint and model */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullingModelsResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-models/{stage}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    stage: "culling_profile" | "score_forecast";
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CullingStageModelPutRequest"];
+                };
+            };
+            responses: {
+                /** @description Saved in config.yaml */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullingStageModel"];
+                    };
+                };
+                /** @description Neither this app nor an http(s) URL */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling-models/{stage}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    stage: "culling_profile" | "score_forecast";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What the stage’s saved endpoint lists */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullingStageModelsList"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/": {
         parameters: {
             query?: never;
@@ -5854,6 +6003,30 @@ export interface components {
         };
         AppModelPickResponse: {
             path: string | null;
+        };
+        CullingModelsResponse: {
+            culling_profile: components["schemas"]["CullingStageModel"];
+            score_forecast: components["schemas"]["CullingStageModel"];
+            total_photos: number;
+        };
+        CullingStageModel: {
+            endpoint: string;
+            model: string | null;
+            has_api_key: boolean;
+            answered: {
+                photos: number;
+                model: string | null;
+            };
+        };
+        CullingStageModelPutRequest: {
+            endpoint?: string;
+            model?: string | null;
+            api_key?: string;
+        };
+        CullingStageModelsList: {
+            answers: boolean;
+            models: string[];
+            error: string | null;
         };
         ProviderListResponse: components["schemas"]["Provider"][];
         Provider: {

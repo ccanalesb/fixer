@@ -825,8 +825,7 @@ export const LR_WRITEBACK_LOADING = 'Loading Lightroom write-back…'
 
 // Processing → Settings → Culling models
 export const CULLING_MODELS_SECTION = 'Culling models'
-export const CULLING_MODELS_SECTION_LEAD =
-  'The stages of culling. Every stage that is on is answered on every photo; a change re-decides every photo from stored answers, with no model call.'
+export const CULLING_MODELS_SECTION_LEAD = 'Each stage calls a System One endpoint: this app, or any other System One server.'
 export const CULLING_MODELS_LOADING = 'Loading culling models…'
 export const CULLING_MODELS_SAVED = 'Saved · re-decide job queued ·'
 export const CULLING_MODELS_SAVED_JOB_WAITING = 'Saved · the re-decide job already queued applies it ·'
@@ -835,8 +834,6 @@ export const CULLING_MODELS_SAVE = 'Save'
 export const CULLING_MODELS_CANCEL = 'Cancel'
 export const CULLING_MODELS_NOT_SAVED = 'Not saved'
 export const CULLING_PROFILE_STAGE = 'Culling profile'
-export const CULLING_PROFILE_STAGE_ON = 'On'
-export const CULLING_PROFILE_STAGE_OFF = 'Off — no stars or reject are written to Lightroom'
 export const CULLING_PROFILE_STAGE_HELP =
   "Every photo answers the culling profile's questions. It gives the stars and reject written to Lightroom."
 export const CULLING_PROFILE_FILTER = "Filter with the culling profile's rule"
@@ -845,11 +842,47 @@ export const CULLING_PROFILE_FILTER_OFF =
   'Off — the rule still gives the reject written to Lightroom, but filters nothing.'
 export const CULLING_PROFILE_FILTER_UNAVAILABLE = 'Available while the culling profile is on.'
 export const SCORE_FORECAST_STAGE = 'Score forecast'
-export const SCORE_FORECAST_STAGE_ON = (level: number, threshold: number) =>
-  `On — passes at P(AI score ≥ ${level}) ≥ ${threshold}`
-export const SCORE_FORECAST_STAGE_OFF = 'Off'
 export const SCORE_FORECAST_STAGE_HELP =
   'When on, every photo answers it, and a photo below the threshold is not described or scored. Stars and reject do not change.'
+/** How a sentence names a stage: "turn the culling profile off". */
+export const STAGE_IN_SENTENCE = { culling_profile: 'the culling profile', score_forecast: 'the Score forecast' } as const
+export const STAGE_ENDPOINT = 'Endpoint'
+export const STAGE_ENDPOINT_THIS_APP = 'This app'
+export const STAGE_ENDPOINT_OTHER = 'Another System One endpoint…'
+export const STAGE_URL = 'URL'
+export const STAGE_URL_PLACEHOLDER = 'http://localhost:11434'
+export const STAGE_CHECK = 'Check'
+export const STAGE_CHECKING = 'Checking…'
+export const STAGE_CHECK_ANSWERS = (models: number) => `Answers · ${models} models`
+export const STAGE_CHECK_NO_ANSWER = 'No answer'
+export const STAGE_API_KEY = 'API key'
+export const STAGE_API_KEY_OPTIONAL = 'Optional'
+export const STAGE_API_KEY_SAVED = 'Saved · type a new one to replace'
+export const STAGE_API_KEY_REMOVE = 'Remove'
+export const STAGE_MODEL = 'Model'
+export const STAGE_MODEL_CHOOSE = 'Choose a model…'
+export const STAGE_MODEL_NONE_IN_APP = 'No models in this app yet'
+export const STAGE_MODEL_CHECK_FIRST = 'Check the URL first'
+export const STAGE_MODEL_CONVERTING = (model: string) => `${model} (converting)`
+export const STAGE_ADD_MODEL = 'Add a model to this app'
+export const STAGE_THIS_APP = 'this app'
+export const STAGE_OFF = 'Off'
+export const STAGE_OFF_WITH = (model: string, where: string) => `Off · ${model} on ${where}`
+export const STAGE_RUNS = (model: string, where: string) => `${model} on ${where}`
+export const STAGE_DOWN = (url: string) => `${url || 'No URL'} does not answer — jobs won't start`
+export const STAGE_GONE = (model: string, url: string) => `${model} is no longer listed by ${url} — jobs won't start`
+export const STAGE_NO_MODEL = (stage: string) =>
+  `No model chosen — jobs won't start until you choose one or turn ${stage} off`
+export const STAGE_CONVERTING = (model: string) => `${model} on this app — `
+export const STAGE_STILL_CONVERTING = 'still converting'
+export const MODEL_CHANGE_TITLE = (stage: string, model: string) => `${stage} now uses ${model}.`
+export const MODEL_CHANGE_ANSWERED = (photos: number, previous: string, model: string) =>
+  `${photos.toLocaleString('en-US')} ${photos === 1 ? 'photo was' : 'photos were'} answered by ${previous}. Process them with ${model} in a background job? Until then their verdicts stay as they are; earlier answers are kept.`
+export const MODEL_CHANGE_UNANSWERED = (stage: string, total: number) =>
+  `No photo has been answered by ${stage} yet. Process the ${total.toLocaleString('en-US')} photos in a background job?`
+export const MODEL_CHANGE_PROCESS = 'Process photos'
+export const MODEL_CHANGE_LATER = 'Later'
+export const MODEL_CHANGE_QUEUED = 'Job queued ·'
 export const SCORE_FORECAST_LEVEL = 'Score forecast level'
 export const SCORE_FORECAST_LEVEL_LABEL = 'Passes when the chance of an AI score ≥'
 export const SCORE_FORECAST_THRESHOLD = 'Score forecast threshold'

@@ -13,7 +13,7 @@ import { createJob, getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jo
 import { LR_WRITEBACK_JOB_TYPE } from '../src/jobs/handlers/lr-writeback.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
-import { fakeLayaState, writeFakeLayaModels } from './helpers/fake-laya.js';
+import { fakeLayaState, THIS_APP_LAYA_YAML, writeFakeLayaModels } from './helpers/fake-laya.js';
 import { closeAppModels } from '../src/laya/app-models.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
@@ -49,6 +49,7 @@ beforeEach(() => {
       `vision_cache_dir: ${join(dir, 'vision')}`,
       `laya_models_dir: ${modelsDir}`,
       `catalog_path: ${lrcat}`,
+      THIS_APP_LAYA_YAML,
     ].join('\n'),
   );
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');

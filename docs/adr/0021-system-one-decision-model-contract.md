@@ -1,8 +1,19 @@
 # ADR-0021: Culling reaches its models through System One; the app serves its own
 
-**Status:** Accepted (2026-10-22)
+**Status:** Accepted (2026-10-22), amended by
+[#366](https://github.com/ccanalesb/lightroom-tagger/issues/366) (2026-10-22)
 **Date:** 2026-10-22
 **Amends:** ADR-0020
+
+> **Amended by #366.** Without a `culling_models` block a stage is on this app's
+> endpoint with no model (`model: ""`), not `laya-base` / `laya-new`
+> (Decision 2): a new install has no model until one is added and chosen. A job
+> with a stage on and no model fails before any photo, naming the stage
+> ("Culling profile: no model chosen. Choose one in Processing → Settings →
+> Culling models, or turn the culling profile off"). Each stage's endpoint, model
+> and API key are chosen in Processing → Settings → Culling models
+> (`/api/culling-models`), which writes the block. The API key is never sent back
+> to the browser, and belongs to its URL: changing the endpoint clears it.
 
 ## Context
 

@@ -96,7 +96,7 @@ const errorText = (e: unknown): string => {
   return `${e instanceof Error ? e.message : String(e)}${cause}`;
 };
 
-async function request(ep: SystemOneEndpoint, path: string, body?: unknown): Promise<unknown> {
+async function request(ep: SystemOneEndpoint, path: string, body?: unknown, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
   const headers: Record<string, string> = {};
   if (ep.apiKey) headers.authorization = `Bearer ${ep.apiKey}`;
   if (body !== undefined) headers['content-type'] = 'application/json';
@@ -106,7 +106,7 @@ async function request(ep: SystemOneEndpoint, path: string, body?: unknown): Pro
       method: body === undefined ? 'GET' : 'POST',
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
     throw new SystemOneError('down', `${ep.label} does not answer (${errorText(e)})`);
@@ -136,8 +136,8 @@ async function request(ep: SystemOneEndpoint, path: string, body?: unknown): Pro
   }
 }
 
-export async function listSystemOneModels(ep: SystemOneEndpoint): Promise<ListedModel[]> {
-  const parsed = ModelsList.safeParse(await request(ep, '/v1/models'));
+export async function listSystemOneModels(ep: SystemOneEndpoint, opts: { timeoutMs?: number } = {}): Promise<ListedModel[]> {
+  const parsed = ModelsList.safeParse(await request(ep, '/v1/models', undefined, opts.timeoutMs));
   if (!parsed.success) throw new SystemOneError('malformed', `${ep.label} sent a model list it cannot read`);
   const list = parsed.data;
   return 'models' in list

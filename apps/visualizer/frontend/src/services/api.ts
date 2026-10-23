@@ -967,6 +967,21 @@ export const AppModelsAPI = {
   pick: () => request<AppModelPickResponse>('/app-models/pick', { method: 'POST' }, CATALOG_PICK_TIMEOUT_MS),
 }
 
+export type CullingModelsResponse = components['schemas']['CullingModelsResponse']
+export type CullingStageModel = components['schemas']['CullingStageModel']
+export type CullingStageModelPutRequest = components['schemas']['CullingStageModelPutRequest']
+export type CullingStageModelsList = components['schemas']['CullingStageModelsList']
+export type CullingStageKind = 'culling_profile' | 'score_forecast'
+
+/** Each culling stage's System One endpoint and model, in `config.yaml`. */
+export const CullingModelsAPI = {
+  get: () => request<CullingModelsResponse>('/culling-models'),
+  save: (stage: CullingStageKind, body: CullingStageModelPutRequest) =>
+    request<CullingStageModel>(`/culling-models/${stage}`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** What the stage's saved endpoint lists: Check. */
+  models: (stage: CullingStageKind) => request<CullingStageModelsList>(`/culling-models/${stage}/models`),
+}
+
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
 export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackPhotoDetailResponse']
 
