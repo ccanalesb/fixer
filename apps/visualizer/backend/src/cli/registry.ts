@@ -6,7 +6,7 @@
 import type { LibraryConfig } from '../config.js';
 import type { FlagSpec, ParsedArgs } from './parse.js';
 import { cmdScan, cmdSync } from './commands/catalog.js';
-import { cmdCullCheck, cmdCullImport } from './commands/cull.js';
+import { cmdCullCheck } from './commands/cull.js';
 import { cmdEnrichCatalog } from './commands/enrich.js';
 import { cmdInit } from './commands/init.js';
 import { cmdExport, cmdSearch, cmdStats } from './commands/query.js';
@@ -133,17 +133,5 @@ export const COMMANDS: readonly CliCommand[] = [
     help: "Check culling's stages: each endpoint and model from config.yaml, one test image",
     flags: [{ name: 'photo', kind: 'string', help: "Also answer this photo and print each stage's probabilities" }],
     handler: cmdCullCheck,
-  },
-  {
-    name: 'cull-import',
-    help: 'Import culling answers from JSONL files, one line per photo',
-    flags: [
-      DB_FLAG,
-      { name: 'laya-new', kind: 'string', help: 'Score forecast answers (Laya new): key, image, rows of slug and probs' },
-      { name: 'culling-profile', kind: 'string', help: 'Culling profile answers (Laya base): key, image, answers by <levels>|<dimension>' },
-      { name: 'laya-new-model-id', kind: 'string', help: 'Name Laya new by hand instead of by its export' },
-      { name: 'dry-run', kind: 'boolean', help: 'Report what would be imported, write nothing' },
-    ],
-    handler: cmdCullImport,
   },
 ];

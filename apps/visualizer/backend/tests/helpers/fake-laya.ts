@@ -8,6 +8,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
+import { installedModelId } from '../../src/laya/model-id.js';
 import type { LayaQuestion } from '../../src/laya/rows.js';
 
 /** Per photo file: profile levels and highest P(≥ 8) for the forecast stage. */
@@ -73,6 +74,12 @@ export async function writeFakePhoto(path: string, key: string): Promise<void> {
     .toFile(path);
 }
 
+const LAYA_BASE_SOURCE = 'thaitea/laya-vision';
+const LAYA_BASE_REVISION = '8b318c99d7ad3ce19c24369263463882eada9d1e';
+
+/** The model identity of the Laya base `writeFakeLayaModels` writes. */
+export const FAKE_LAYA_BASE_MODEL_ID = `${LAYA_BASE_SOURCE}@${LAYA_BASE_REVISION}`;
+
 function writeMinimalLayaTokenizer(dir: string): void {
   mkdirSync(join(dir, 'tokenizer'), { recursive: true });
   const vocab: Record<string, number> = {};
@@ -89,8 +96,8 @@ function writeMinimalLayaTokenizer(dir: string): void {
       image_token_id: 1,
       pad_token_id: 0,
       prefix_ids: [1, 2, 3],
-      source: 'thaitea/laya-vision',
-      revision: '8b318c99d7ad3ce19c24369263463882eada9d1e',
+      source: LAYA_BASE_SOURCE,
+      revision: LAYA_BASE_REVISION,
     }),
   );
 }
@@ -116,6 +123,12 @@ export function writeFakeLayaModels(modelsDir: string, opts: { withNew?: boolean
     writeFileSync(join(neu, f), 'x');
   }
   writeFileSync(join(neu, 'model.json'), JSON.stringify({ source: '/somewhere/best', revision: null }));
+}
+
+/** The model identity of the Laya new `writeFakeLayaModels` writes: a folder export, named by its decoder. */
+export function fakeLayaNewModelId(modelsDir: string): Promise<string> {
+  const dir = join(modelsDir, 'laya-new');
+  return installedModelId({ name: 'laya-new', dir, visionDir: dir, source: '/somewhere/best', revision: null, jobId: null });
 }
 
 const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];

@@ -2,7 +2,7 @@
  * Create a `library.db`.
  *
  * Fresh databases are created at the current schema version in one script. A
- * database below version 13 is not upgraded.
+ * database below `OLDEST_UPGRADABLE_VERSION` is not upgraded.
  *
  * `image_descriptions_fts` is external-content (`content='image_descriptions'`),
  * matching production; standalone and external-content forms need opposite delete
@@ -13,17 +13,15 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { openLibraryDb, type Db } from '../connection.js';
 import { REPO_ROOT } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
-import { DEFAULT_CULLING_PROFILE_SLUG, seedCullingDefaults } from './cull-profiles.js';
-import { upgradeCullImports } from './cull-imports-v17.js';
-import { addCullingSwitches } from './cull-switches-v14.js';
+import { seedCullingDefaults } from './cull-profiles.js';
 import { markdownMarksOptional } from './scores.js';
-import { prepopulateForecastQuestions, SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
+import { SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
 export const LIBRARY_SCHEMA_VERSION = 17;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
-const OLDEST_UPGRADABLE_VERSION = 13;
+const OLDEST_UPGRADABLE_VERSION = 17;
 
 /** Set after the one-time Lightroom keyword backfill in `catalog_sync`. */
 export const KEYWORDS_BACKFILL_META_KEY = 'keywords_backfilled_v1';
@@ -53,7 +51,7 @@ CREATE TABLE IF NOT EXISTS vision_stale (
 `;
 
 /**
- * Culling (version 11, renamed in 13): culling profiles and their text versions, stage versions, one answer row per
+ * Culling: culling profiles and their text versions, stage versions, one answer row per
  * photo per stage version, the per-photo summary jobs and the UI read, the user's actions, and the
  * versioned pipeline setting. See `cull/` and the culling terms in `CONTEXT.md`.
  *
@@ -191,7 +189,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cull_pipeline_settings_current
     ON cull_pipeline_settings(is_current) WHERE is_current = 1;
 `;
 
-/** Lightroom write-back switches and per-photo state (schema 12). */
+/** Lightroom write-back switches and per-photo state. */
 const LR_WRITEBACK_SQL = `
 CREATE TABLE IF NOT EXISTS lr_writeback_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -519,24 +517,6 @@ export function upgradeLibrarySchema(db: Db): void {
     // Read again holding the write lock: a request and a job may open an old library.db at once.
     const version = userVersion(db);
     if (version >= LIBRARY_SCHEMA_VERSION) return;
-    if (version < 14) {
-      addCullingSwitches(db);
-    }
-    if (version < 15) {
-      db.exec(SCORE_FORECAST_QUESTIONS_SQL);
-      prepopulateForecastQuestions(db);
-    }
-    if (version < 16) {
-      // The seeded profile's name, unless the user renamed it; its slug is in every stage key and stays.
-      db.prepare('UPDATE cull_profiles SET name = ? WHERE slug = ? AND name = ?').run(
-        'Default culling profile',
-        DEFAULT_CULLING_PROFILE_SLUG,
-        'Recipe culling',
-      );
-    }
-    if (version < 17) {
-      upgradeCullImports(db, CULL_SQL);
-    }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   }).immediate();
 }

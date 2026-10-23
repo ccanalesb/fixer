@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LibraryFixture } from './helpers/library-fixture.js';
-import { fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto, type FakeLayaScript } from './helpers/fake-laya.js';
+import { fakeLayaNewModelId, fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto, type FakeLayaScript } from './helpers/fake-laya.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { createJob, getJob, initJobsDb, updateJobStatus } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
@@ -24,8 +24,6 @@ import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import type { PipelineSettingConfig } from '../src/cull/types.js';
-import { importCullAnswers } from '../src/cull/import-answers.js';
-import { LAYA_BASE_MODEL_ID, layaNewModelId } from '../src/laya/model-id.js';
 import { computePromptVersion } from '../src/vision/scoring-service.js';
 import { getPerspectiveBySlug } from '../src/db/library/scores.js';
 
@@ -190,7 +188,7 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(fx.query('SELECT stage_key, model_id FROM cull_stage_versions ORDER BY id')).toEqual([
       { stage_key: 'culling_profile:recipe-culling:7', model_id: 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e' },
       { stage_key: 'culling_profile:recipe-culling:10', model_id: 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e' },
-      { stage_key: 'score_forecast', model_id: await layaNewModelId(join(modelsDir, 'laya-new')) },
+      { stage_key: 'score_forecast', model_id: await fakeLayaNewModelId(modelsDir) },
     ]);
   });
 
@@ -470,22 +468,6 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(photosAsked()).toEqual(['bad']);
   });
 
-  it('after cull-import a job asks only what the files left out', async () => {
-    for (const key of ['fx-001-pass', 'fx-002-profile', 'fx-003-forecast', 'fx-004-no7']) await addPhoto(key);
-    const fixtures = join(import.meta.dirname, 'fixtures', 'cull');
-    const lib = openLibraryDb(fx.dbPath);
-    await importCullAnswers(lib, {
-      layaNewPath: join(fixtures, 'score-forecast-answers.sample.jsonl'),
-      profilePath: join(fixtures, 'culling-profile-answers.sample.jsonl'),
-      modelIds: { base: LAYA_BASE_MODEL_ID, new: await layaNewModelId(join(modelsDir, 'laya-new')) },
-      visionCacheDir: '/photos',
-    });
-    lib.close();
-    const job = await runCull();
-    expect(calls()).toEqual([['fx-004-no7', 'laya-base', 4]]);
-    expect(result(job)).toMatchObject({ culled: 1, redecided: 0 });
-  });
-
   it('the worker dies: the job fails, the photo is pending as such, and the next job asks it last', async () => {
     await addPhoto('a', PASS);
     await addPhoto('b', PASS);
@@ -634,7 +616,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     expect(server.requests).toEqual([]);
     expect(result(back)).toMatchObject({ culled: 0, redecided: 1 });
     expect(fx.query("SELECT model_id, is_current FROM cull_stage_versions WHERE kind = 'score_forecast' ORDER BY id")).toEqual([
-      { model_id: await layaNewModelId(join(modelsDir, 'laya-new')), is_current: 1 },
+      { model_id: await fakeLayaNewModelId(modelsDir), is_current: 1 },
       { model_id: `clef-forecast@${server.url}`, is_current: 0 },
     ]);
   });

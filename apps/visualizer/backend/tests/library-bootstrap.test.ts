@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { upgradeLibraryDb } from '../src/api/library-db.js';
 import { config } from '../src/config.js';
 import { openLibraryDb, type Db } from '../src/db/connection.js';
 import {
@@ -115,37 +116,32 @@ describe('initLibraryDb', () => {
     legacy.pragma('user_version = 5');
     legacy.close();
 
-    expect(() => initLibraryDb(path)).toThrow(/schema version 5, below 13, the oldest this app upgrades/);
+    expect(() => initLibraryDb(path)).toThrow(/schema version 5, below 17, the oldest this app upgrades/);
   });
 
-  it('refuses a version 12 database', () => {
-    const path = join(dir, 'v12.db');
-    const v12 = new Database(path);
-    v12.exec('CREATE TABLE images (key TEXT PRIMARY KEY)');
-    v12.pragma('user_version = 12');
-    v12.close();
+  it('refuses a version 16 library, also when the server starts', () => {
+    const path = join(dir, 'v16.db');
+    initLibraryDb(path).close();
+    const v16 = new Database(path);
+    v16.pragma('user_version = 16');
+    v16.close();
 
     const db = openLibraryDb(path);
     try {
-      expect(() => upgradeLibrarySchema(db)).toThrow(/schema version 12, below 13/);
+      expect(() => upgradeLibrarySchema(db)).toThrow(/schema version 16, below 17/);
     } finally {
       db.close();
     }
+    expect(() => upgradeLibraryDb(path)).toThrow(/schema version 16, below 17/);
   });
 
-  it('upgrades a version 13 library, once', () => {
-    const path = join(dir, 'v13.db');
-    initLibraryDb(path).close();
-    const v13 = new Database(path);
-    v13.pragma('user_version = 13');
-    v13.close();
-
-    const db = openLibraryDb(path);
+  it('leaves a current library as it is', () => {
+    const path = join(dir, 'library.db');
+    const db = initLibraryDb(path);
     try {
-      upgradeLibrarySchema(db);
-      expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
       setLibraryMeta(db, 'k', 'v');
       upgradeLibrarySchema(db);
+      expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
       expect(getLibraryMeta(db, 'k')).toBe('v');
     } finally {
       db.close();

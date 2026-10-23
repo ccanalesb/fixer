@@ -213,8 +213,8 @@ function readSeedFiles(dir: string): { file: string; seed: SeedFile }[] {
 
 /**
  * Copy the factory profiles into the table and write pipeline-setting version 1, once per library.
- * Returns whether it seeded; the library is marked seeded only once a pipeline setting exists. Runs from the version-11 upgrade and `initLibraryDb`; the culling job and
- * `cull-import` call it too, for databases made with the bare schema.
+ * Returns whether it seeded; the library is marked seeded only once a pipeline setting exists. Runs from
+ * `initLibraryDb`; the culling job calls it too, for databases made with the bare schema.
  */
 export function seedCullingDefaults(db: Db, dir: string = CULLING_PROFILE_SEED_DIR): boolean {
   const seeded = db.prepare('SELECT 1 FROM library_meta WHERE key = ?').get(CULL_DEFAULTS_SEEDED_META_KEY);

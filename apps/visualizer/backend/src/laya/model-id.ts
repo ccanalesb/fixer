@@ -12,9 +12,6 @@ import { createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs
 import { join } from 'node:path';
 import type { InstalledModel } from './files.js';
 
-/** The Laya base `cull-import` files culling profile answers under and the setup step installs (`thaitea/laya-vision` at `8b318c9`). */
-export const LAYA_BASE_MODEL_ID = 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e';
-
 const HASH_CACHE = 'decoder.onnx.sha256.json';
 
 async function sha256File(path: string): Promise<string> {
@@ -45,9 +42,4 @@ async function decoderModelId(dir: string, name: string): Promise<string> {
 
 export async function installedModelId(m: InstalledModel): Promise<string> {
   return m.source && m.revision ? `${m.source}@${m.revision}` : decoderModelId(m.dir, m.name);
-}
-
-/** Laya new's identity from its export directory; `cull-import` files Score forecast answers under it. */
-export function layaNewModelId(newDir: string): Promise<string> {
-  return decoderModelId(newDir, 'laya-new');
 }

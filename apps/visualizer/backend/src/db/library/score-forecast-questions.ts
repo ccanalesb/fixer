@@ -84,15 +84,3 @@ function perspectiveNames(db: Db): Record<string, string> {
 export function layaNewForecastQuestions(db: Db): ScoreForecastQuestion[] {
   return questionsFromLaya(LAYA_QUESTIONS.new, perspectiveNames(db));
 }
-
-/**
- * Laya new's questions stored as version 1, for a library that has answered the Score forecast: it was
- * asked exactly those. Returns whether it stored them.
- */
-export function prepopulateForecastQuestions(db: Db): boolean {
-  if (db.prepare('SELECT 1 FROM score_forecast_question_versions LIMIT 1').get()) return false;
-  const answered = db.prepare("SELECT 1 FROM cull_stage_versions WHERE kind = 'score_forecast' LIMIT 1").get();
-  if (!answered) return false;
-  saveForecastQuestions(db, layaNewForecastQuestions(db));
-  return true;
-}
