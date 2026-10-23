@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto, type FakeLayaScript } from './helpers/fake-laya.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
-import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
+import { createJob, getJob, initJobsDb, updateJobStatus } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
@@ -18,6 +18,7 @@ import { tick } from '../src/jobs/processor.js';
 import { JOB_TYPES_BY_NAME } from '../src/jobs/registry.js';
 import { LAYA_SETUP_COMMAND } from '../src/laya/files.js';
 import { closeAppModels } from '../src/laya/app-models.js';
+import { LAYA_INSTALL_JOB_TYPE } from '../src/laya/install.js';
 import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
@@ -332,6 +333,17 @@ describe('batch_cull_photos_before_scoring', () => {
     changePipeline((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, enabled: false } }));
     await addPhoto('a', PASS);
     expect((await runCull()).status).toBe('completed');
+  });
+
+  it('a model still converting in this app fails the job saying so, not that the setup step is missing', async () => {
+    writeConfig({ culling_profile: '{endpoint: this_app, model: laya-x, api_key: ""}' });
+    await addPhoto('a', PASS);
+    const job = await runCull({}, (db) => {
+      updateJobStatus(db, createJob(db, LAYA_INSTALL_JOB_TYPE, { source: '/models/laya-x', name: 'laya-x' }), 'running');
+    });
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe('Culling profile: laya-x is still converting. It can be used once its conversion job finishes');
+    expect(laya.calls).toEqual([]);
   });
 
   it('without Laya new and the Score forecast on, the job fails naming the Score forecast', async () => {

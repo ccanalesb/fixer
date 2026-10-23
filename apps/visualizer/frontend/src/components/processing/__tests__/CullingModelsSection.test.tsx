@@ -9,7 +9,9 @@ import {
   JobsAPI,
   type AppModel,
   type CullingModelsResponse,
+  type CullingModelsUsable,
   type CullingStageModel,
+  type CullingStageUsability,
   type PipelineSettingResponse,
 } from '../../../services/api'
 import {
@@ -74,11 +76,23 @@ function pipeline(over: Partial<Config> = {}, forecast: Partial<Config['score_fo
 }
 
 const saved = { version: 2, redecide_job_id: 'job-9' }
+const usableStage = (over: Partial<CullingStageUsability> = {}): CullingStageUsability => ({
+  on: true,
+  problem: null,
+  model: 'laya-base',
+  endpoint: 'this_app',
+  job_id: null,
+  detail: null,
+  ...over,
+})
+/** What `GET /api/culling-models/usable` answers. */
+let usable: CullingModelsUsable
 
 beforeEach(() => {
   vi.restoreAllMocks()
   socket.onJobUpdated = null
   pipeline()
+  usable = { culling_profile: usableStage(), score_forecast: usableStage({ model: 'laya-new' }), culling_profile_filter: true }
   stages = { culling_profile: stage(), score_forecast: stage(), total_photos: 3 }
   appModels = [ready('laya-base'), ready('laya-new')]
   endpoints = { [OLLAMA]: ['intern-decision-2b', 'clef-flash'] }
@@ -104,6 +118,7 @@ beforeEach(() => {
   })
   vi.spyOn(AppModelsAPI, 'list').mockImplementation(async () => ({ models: appModels, picker_available: true }))
   vi.spyOn(JobsAPI, 'create').mockResolvedValue({ id: 'job-cull' } as Job)
+  vi.spyOn(CullingModelsAPI, 'usable').mockImplementation(async () => usable)
   vi.spyOn(CullingProfilesAPI, 'getPipeline').mockImplementation(async () => ({ version: 1, config: stored }))
   vi.spyOn(CullingProfilesAPI, 'saveCullingProfileSwitches').mockImplementation(async (body) => {
     if (body.enabled !== undefined) stored = { ...stored, culling_profiles_enabled: body.enabled }
@@ -294,6 +309,47 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     expect(JobsAPI.create).toHaveBeenCalledTimes(1)
     expect(JobsAPI.create).toHaveBeenCalledWith('batch_cull_photos_before_scoring', {})
     expect(within(cull).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
+  })
+
+  it('Process photos asks first while the other stage cannot run, and can turn it off and start', async () => {
+    stages.culling_profile = stage({ model: 'laya-base', answered: { photos: 45793, model: 'laya-base' } })
+    appModels = [ready('laya-base'), ready('laya-run-best')]
+    usable = { ...usable, score_forecast: usableStage({ model: null, problem: 'no_model' }) }
+    renderSection()
+    const cull = await row('culling_profile')
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-run-best' })).toBeInTheDocument())
+    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'laya-run-best' } })
+    fireEvent.click(await within(cull).findByRole('button', { name: MODEL_CHANGE_PROCESS }))
+    const dialog = await screen.findByRole('dialog', { name: 'Score forecast has no model' })
+    expect(
+      within(dialog).getByText(
+        "This job runs the Score forecast. Fix it, or turn the Score forecast off and start without it. Without it, the culling profile's rule decides what goes to the big model.",
+      ),
+    ).toBeInTheDocument()
+    expect(JobsAPI.create).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Turn off and start' }))
+    expect(await within(cull).findByText('Job queued ·', { exact: false })).toBeInTheDocument()
+    expect(CullingProfilesAPI.saveScoreForecast).toHaveBeenCalledWith({ enabled: false })
+    expect(JobsAPI.create).toHaveBeenCalledWith('batch_cull_photos_before_scoring', {})
+    expect(await stageSwitch(SCORE_FORECAST_STAGE)).not.toBeChecked()
+  })
+
+  it('arriving from "Open Settings" scrolls to that stage’s row', async () => {
+    const scrolled: string[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id)
+    }
+    try {
+      render(
+        <MemoryRouter initialEntries={['/processing?tab=settings#stage-score_forecast']}>
+          <CullingModelsSection />
+        </MemoryRouter>,
+      )
+      await waitFor(() => expect(scrolled).toEqual(['stage-score_forecast']))
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
   })
 
   it('with nothing answered yet the note says so; Later dismisses it', async () => {

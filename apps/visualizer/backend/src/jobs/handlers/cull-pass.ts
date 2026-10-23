@@ -18,6 +18,7 @@ import { loadCurrentStageAnswers, readStoredStageModelIds } from '../../db/libra
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
+import { convertingModelNames } from '../../laya/install.js';
 import { createEventLoopYieldState, pollCancelAndYield } from '../../utils/yield.js';
 import {
   buildBatchCullCheckpointBody,
@@ -85,7 +86,12 @@ export async function runCullPass(
   seedCullingDefaults(db);
   const pipeline = getCurrentPipelineSetting(db);
   const stageModels = stageModelsFromConfig(loadLibraryConfig(config.LT_CONFIG_YAML).cullingModels);
-  const modelIds = await resolveStageModelIds(stageModels, stagesOn(pipeline.config), readStoredStageModelIds(db));
+  const modelIds = await resolveStageModelIds(
+    stageModels,
+    stagesOn(pipeline.config),
+    readStoredStageModelIds(db),
+    convertingModelNames(runner.waitingOrRunningJobs()),
+  );
   const stages = resolveCurrentStages(db, pipeline.config, modelIds);
 
   const tSelect = performance.now();

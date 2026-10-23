@@ -8,11 +8,13 @@
 import type { Db } from '../db/connection.js';
 import {
   addJobLog,
+  getActiveJobs,
   getJob,
   jobLogHasMessage,
   updateJobField,
   updateJobStatus,
   type JobLogLevel,
+  type JobRow,
 } from '../db/jobs/jobs.js';
 import { CHECKPOINT_VERSION } from './checkpoint.js';
 
@@ -59,6 +61,11 @@ export class JobRunner {
     return meta && typeof meta === 'object' && !Array.isArray(meta)
       ? (meta as Record<string, unknown>)
       : {};
+  }
+
+  /** Every job pending or running, this one included. */
+  waitingOrRunningJobs(): JobRow[] {
+    return getActiveJobs(this.db);
   }
 
   /** Whether the job has already settled, e.g. failed from inside a handler. */

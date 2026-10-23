@@ -91,10 +91,15 @@ export interface InstallJobMetadata {
   name: string;
 }
 
-function installJobs(jobsDb: Db): (JobRow & { metadata: Partial<InstallJobMetadata> })[] {
-  return getActiveJobs(jobsDb)
+function installJobs(activeJobs: readonly JobRow[]): (JobRow & { metadata: Partial<InstallJobMetadata> })[] {
+  return activeJobs
     .filter((j) => j.type === LAYA_INSTALL_JOB_TYPE)
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+/** The models a conversion job is still installing, from the jobs pending or running. */
+export function convertingModelNames(activeJobs: readonly JobRow[]): Set<string> {
+  return new Set(installJobs(activeJobs).flatMap((j) => (j.metadata.name ? [j.metadata.name] : [])));
 }
 
 /** Installed models, then the ones still converting, in the order they were added. */
@@ -107,7 +112,7 @@ export function listAppModels(modelsDir: string, jobsDb: Db): AppModelStatus[] {
     job_id: m.jobId,
   }));
   const readyNames = new Set(ready.map((m) => m.name));
-  const converting: AppModelStatus[] = installJobs(jobsDb)
+  const converting: AppModelStatus[] = installJobs(getActiveJobs(jobsDb))
     .filter((j) => j.metadata.name && !readyNames.has(j.metadata.name))
     .map((j) => ({
       name: j.metadata.name!,
@@ -122,7 +127,7 @@ export function listAppModels(modelsDir: string, jobsDb: Db): AppModelStatus[] {
 /** Queues the conversion; the model lists as converting until the job has installed it. */
 export function addAppModel(jobsDb: Db, modelsDir: string, raw: string): { name: string; job_id: string } {
   const src = parseModelSource(raw);
-  const active = installJobs(jobsDb);
+  const active = installJobs(getActiveJobs(jobsDb));
   const same = active.find((j) => j.metadata.source === src.source);
   if (same) throw new AppModelSourceError(`Already converting as ${same.metadata.name}`, 409);
   const taken = new Set<string>(active.map((j) => j.metadata.name).filter((n): n is string => Boolean(n)));

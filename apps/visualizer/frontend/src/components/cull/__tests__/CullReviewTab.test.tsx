@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
-import { CullAPI, type CullReviewRow } from '../../../services/api'
+import { CullAPI, CullingModelsAPI, type CullReviewRow } from '../../../services/api'
 import { CullReviewTab } from '../CullReviewTab'
 import { CULL_AGREE, CULL_SUB_AUTO } from '../../../constants/strings'
 import { deleteMatching } from '../../../data/cache'
@@ -27,6 +27,8 @@ describe('CullReviewTab', () => {
       last_checked_at: null,
     })
     vi.spyOn(CullAPI, 'listPhotos').mockResolvedValue({ data: [ROW], total: 1, limit: 50, offset: 0 })
+    const ok = { on: true, problem: null, model: 'laya-base', endpoint: 'this_app', job_id: null, detail: null }
+    vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue({ culling_profile: ok, score_forecast: ok, culling_profile_filter: true })
   })
 
   afterEach(() => {

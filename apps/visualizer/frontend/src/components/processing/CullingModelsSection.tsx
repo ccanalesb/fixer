@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
   CullingModelsAPI,
@@ -26,6 +26,7 @@ import {
   type StageView,
 } from './stageModelView'
 import { APP_MODELS_SECTION_ID } from './AppModelsSection'
+import { useCullingGate } from '../cull/useCullingGate'
 import {
   CULLING_MODELS_CANCEL,
   CULLING_MODELS_LOADING,
@@ -188,6 +189,14 @@ export function CullingModelsSection() {
     })()
   }, [load, refreshAppModels, check])
 
+  const { run: runCullingGate, dialog: cullingDialog } = useCullingGate({ onStageOff: () => void load() })
+
+  const { hash } = useLocation()
+  const loaded = config !== null && stageModels !== null
+  useEffect(() => {
+    if (loaded && hash.startsWith('#stage-')) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [loaded, hash])
+
   const onJobUpdated = useCallback(
     (job: Job) => {
       if (job.type === INSTALL_JOB_TYPE && job.status !== 'pending' && job.status !== 'running') void refreshAppModels()
@@ -252,12 +261,19 @@ export function CullingModelsSection() {
     if (queueing) return
     setQueueing(true)
     setError(null)
+    const failed = (e: unknown) => setError(e instanceof Error ? e.message : String(e))
     try {
-      await JobsAPI.create(CULLING_JOB_TYPE, {})
-      setQueued(stage)
-      setSuggest(null)
+      await runCullingGate('cull', async () => {
+        try {
+          await JobsAPI.create(CULLING_JOB_TYPE, {})
+          setQueued(stage)
+          setSuggest(null)
+        } catch (e) {
+          failed(e)
+        }
+      })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      failed(e)
     } finally {
       setQueueing(false)
     }
@@ -393,7 +409,7 @@ export function CullingModelsSection() {
         {error ? <p className="mt-2 text-sm text-error">{error}</p> : null}
       </div>
 
-      <div data-stage="culling_profile">
+      <div id="stage-culling_profile" data-stage="culling_profile">
         <SettingRow
           name={CULLING_PROFILE_STAGE}
           description={description('culling_profile')}
@@ -431,7 +447,7 @@ export function CullingModelsSection() {
         />
       </div>
 
-      <div data-stage="score_forecast">
+      <div id="stage-score_forecast" data-stage="score_forecast">
         <SettingRow
           name={SCORE_FORECAST_STAGE}
           description={description('score_forecast')}
@@ -495,6 +511,7 @@ export function CullingModelsSection() {
           }
         />
       </div>
+      {cullingDialog}
     </div>
   )
 }

@@ -490,6 +490,9 @@ export const PROCESSING_EMBED_CATALOG_QUEUED =
 export const PROCESSING_EMBED_CATALOG_FAILED_PREFIX = 'Couldn’t start Embed images job:'
 export const PROCESSING_OPEN_JOB_QUEUE = 'Open Job Queue'
 export const PROCESSING_JOB_QUEUE_ROUTE = '/processing?tab=jobs'
+/** Processing → Settings, scrolled to a culling stage's row in Culling models. */
+export const PROCESSING_SETTINGS_STAGE_ROUTE = (stage: 'culling_profile' | 'score_forecast') =>
+  `/processing?tab=settings#stage-${stage}`
 export const PROCESSING_CATALOG_CACHE_ROUTE = '/processing?tab=cache'
 
 /** Catalog Cache tab — composite pipeline + Advanced stage triggers (Phase 08 / CACHE-01). */
@@ -883,6 +886,58 @@ export const MODEL_CHANGE_UNANSWERED = (stage: string, total: number) =>
 export const MODEL_CHANGE_PROCESS = 'Process photos'
 export const MODEL_CHANGE_LATER = 'Later'
 export const MODEL_CHANGE_QUEUED = 'Job queued ·'
+
+// A culling stage that is on but cannot run: Cull tab notes and the dialog before a job starts
+export const CULLING_CHECKING = 'Checking culling models…'
+export const CULLING_OPEN_SETTINGS = 'Open Settings'
+export const CULLING_FIX_IN_SETTINGS = 'Fix in Settings'
+export const CULLING_CREATE_QUESTIONS = 'Create questions'
+export const CULLING_CANCEL = 'Cancel'
+export const CULLING_TURN_OFF = { culling_profile: 'Turn culling profile off', score_forecast: 'Turn Score forecast off' } as const
+export const CULLING_PROFILE_OFF_NOTE = 'Culling profile is off.'
+export const CULLING_PROFILE_OFF_SUB =
+  'Photos get no stars or reject, and only the Score forecast (if on) filters before the big model.'
+export const CULLING_PROFILE_UNUSABLE = {
+  no_model: () => 'The culling profile is on but has no model.',
+  converting: () => "The culling profile's model is still converting.",
+  down: (endpoint: string) => `The culling profile's endpoint (${endpoint}) does not answer.`,
+  refused: (endpoint: string) => `The culling profile's endpoint (${endpoint}) refused the API key.`,
+  not_listed: (endpoint: string, model: string) => `${model} is no longer listed by ${endpoint}.`,
+} as const
+export const CULLING_PROFILE_UNUSABLE_SUB = 'Fix it in Settings → Culling models, or turn the culling profile off.'
+export const CULLING_PROFILE_CONVERTING_SUB = 'It can be used once the conversion job finishes.'
+export const SCORE_FORECAST_UNUSABLE = (why: string) => `Score forecast is on but ${why}.`
+export const SCORE_FORECAST_WHY = {
+  no_model: 'has no model',
+  converting: 'its model is still converting',
+  down: 'its endpoint does not answer',
+  refused: 'its endpoint refused the API key',
+  not_listed: 'its model is no longer listed',
+  no_questions: 'has no questions yet',
+} as const
+export const STAGE_UNUSABLE_TITLE = {
+  no_model: (stage: string) => `${stage} has no model`,
+  converting: (stage: string) => `${stage}'s model is still converting`,
+  down: (stage: string) => `${stage}'s endpoint does not answer`,
+  refused: (stage: string) => `${stage}'s endpoint refused the API key`,
+  not_listed: (stage: string) => `${stage}'s model is no longer listed`,
+  no_questions: () => 'Score forecast has no questions',
+} as const
+/** How the dialog says what runs the stage, by what is being started. */
+export const STAGE_DIALOG_RUNS = {
+  start: (stage: string) => `This job runs ${stage} before the big model.`,
+  send: (stage: string) => `Sending starts a job that runs ${stage} first.`,
+  cull: (stage: string) => `This job runs ${stage}.`,
+} as const
+export const STAGE_DIALOG_FIX = (stage: string, verb: 'start' | 'send') =>
+  `Fix it, or turn ${stage} off and ${verb} without it.`
+export const STAGE_DIALOG_WITHOUT_PROFILE = 'Without it, no stars or reject are given.'
+export const STAGE_DIALOG_WITHOUT_ANY = (inRange: boolean) =>
+  `Without it, every photo${inRange ? ' in the range' : ''} goes to the big model and no stars or reject are given.`
+export const STAGE_DIALOG_WITHOUT_FORECAST_RULE = "Without it, the culling profile's rule decides what goes to the big model."
+export const STAGE_DIALOG_WITHOUT_FORECAST_ALL = (inRange: boolean) =>
+  `Without it, every photo${inRange ? ' in the range' : ''} goes to the big model.`
+export const STAGE_DIALOG_TURN_OFF = { start: 'Turn off and start', send: 'Turn off and send' } as const
 export const SCORE_FORECAST_LEVEL = 'Score forecast level'
 export const SCORE_FORECAST_LEVEL_LABEL = 'Passes when the chance of an AI score ≥'
 export const SCORE_FORECAST_THRESHOLD = 'Score forecast threshold'

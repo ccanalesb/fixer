@@ -45,6 +45,12 @@ vi.mock('../../../services/api', () => ({
   ProvidersAPI: {
     getDefaults: (...args: unknown[]) => mockGetDefaults(...args),
   },
+  CullingModelsAPI: {
+    usable: () => {
+      const ok = { on: true, problem: null, model: 'laya-base', endpoint: 'this_app', job_id: null, detail: null };
+      return Promise.resolve({ culling_profile: ok, score_forecast: ok, culling_profile_filter: true });
+    },
+  },
 }));
 
 function renderAnalyzeTab() {
@@ -114,6 +120,8 @@ describe('AnalyzeTab submit UX (fix #1)', () => {
     fireEvent.click(primary);
     fireEvent.click(primary);
 
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    fireEvent.click(primary);
     expect(mockCreate).toHaveBeenCalledTimes(1);
 
     // Resolving closes the submission so subsequent clicks work again.
@@ -143,6 +151,7 @@ describe('AnalyzeTab submit UX (fix #1)', () => {
     expect(describeBtn.hasAttribute('disabled')).toBe(true);
     expect(scoreBtn.hasAttribute('disabled')).toBe(true);
 
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     fireEvent.click(describeBtn);
     fireEvent.click(scoreBtn);
 

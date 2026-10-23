@@ -4079,6 +4079,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/culling-models/usable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Whether each culling stage that is on can run */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CullingModelsUsableResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/culling-models/{stage}/models": {
         parameters: {
             query?: never;
@@ -6022,6 +6066,20 @@ export interface components {
             endpoint?: string;
             model?: string | null;
             api_key?: string;
+        };
+        CullingModelsUsableResponse: {
+            culling_profile: components["schemas"]["CullingStageUsability"];
+            score_forecast: components["schemas"]["CullingStageUsability"];
+            culling_profile_filter: boolean;
+        };
+        CullingStageUsability: {
+            on: boolean;
+            /** @enum {string|null} */
+            problem: "no_model" | "converting" | "down" | "refused" | "not_listed" | "no_questions" | null;
+            model: string | null;
+            endpoint: string;
+            job_id: string | null;
+            detail: string | null;
         };
         CullingStageModelsList: {
             answers: boolean;
