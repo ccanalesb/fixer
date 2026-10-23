@@ -40,7 +40,7 @@ export class CullingStageError extends Error {
   override readonly name = 'CullingStageError';
   constructor(
     readonly stage: StageKind,
-    readonly failure: SystemOneFailure,
+    readonly failure: SystemOneFailure | 'no_model',
     message: string,
   ) {
     super(message);
@@ -83,6 +83,11 @@ export function stagesOn(cfg: PipelineSettingConfig): Record<StageKind, boolean>
 
 const named = (kind: StageKind, message: string) => `${STAGE_NAMES[kind]}: ${message}`;
 
+const TURN_OFF: Record<StageKind, string> = { culling_profile: 'the culling profile', score_forecast: 'the Score forecast' };
+
+const noModelMessage = (kind: StageKind) =>
+  named(kind, `no model chosen. Choose one in Processing → Settings → Culling models, or turn ${TURN_OFF[kind]} off`);
+
 function notListedMessage(kind: StageKind, m: StageModel): string {
   const problem = `${m.model} is not listed by ${m.endpoint.label}`;
   return named(kind, m.endpoint.id === THIS_APP_ENDPOINT ? setupErrorMessage(problem) : problem);
@@ -101,6 +106,7 @@ export async function resolveStageModelIds(
   for (const kind of KINDS) {
     if (!on[kind]) continue;
     const m = models[kind];
+    if (!m.model) throw new CullingStageError(kind, 'no_model', noModelMessage(kind));
     let listed;
     try {
       listed = await listSystemOneModels(m.endpoint);

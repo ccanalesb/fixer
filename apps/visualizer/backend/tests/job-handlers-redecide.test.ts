@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { LibraryFixture } from './helpers/library-fixture.js';
-import { fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto } from './helpers/fake-laya.js';
+import { fakeLayaRuntimeModule, fakeLayaState, THIS_APP_LAYA_YAML, writeFakeLayaModels, writeFakePhoto } from './helpers/fake-laya.js';
 import { closeAppModels } from '../src/laya/app-models.js';
 import { createJob, getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
@@ -83,7 +83,7 @@ beforeEach(async () => {
   process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(
     join(dir, 'config.yaml'),
-    `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n`,
+    `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n${THIS_APP_LAYA_YAML}`,
   );
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
   Object.assign(laya, fakeLayaState());

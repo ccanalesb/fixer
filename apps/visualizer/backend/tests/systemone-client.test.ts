@@ -190,12 +190,12 @@ describe('askSystemOne', () => {
 });
 
 describe('culling_models in config.yaml', () => {
-  it('defaults both stages to this app’s Laya base and Laya new, and reads every key of a stage', () => {
+  it('defaults both stages to this app with no model, and reads every key of a stage', () => {
     const dir = mkdtempSync(join(tmpdir(), 'lt-s1-cfg-'));
     try {
       expect(loadLibraryConfig(join(dir, 'none.yaml')).cullingModels).toEqual({
-        culling_profile: { endpoint: 'this_app', model: 'laya-base', apiKey: '' },
-        score_forecast: { endpoint: 'this_app', model: 'laya-new', apiKey: '' },
+        culling_profile: { endpoint: 'this_app', model: '', apiKey: '' },
+        score_forecast: { endpoint: 'this_app', model: '', apiKey: '' },
       });
       const cfg = join(dir, 'config.yaml');
       writeFileSync(

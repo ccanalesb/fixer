@@ -95,6 +95,12 @@ function writeMinimalLayaTokenizer(dir: string): void {
   );
 }
 
+/** config.yaml lines putting each culling stage on this app's Laya base and Laya new (a new install has no model). */
+export const THIS_APP_LAYA_YAML =
+  'culling_models:\n' +
+  '  culling_profile: {endpoint: this_app, model: laya-base, api_key: ""}\n' +
+  '  score_forecast: {endpoint: this_app, model: laya-new, api_key: ""}\n';
+
 export function writeFakeLayaModels(modelsDir: string, opts: { withNew?: boolean } = {}): void {
   const withNew = opts.withNew !== false;
   const base = join(modelsDir, 'laya-base');

@@ -20,6 +20,7 @@ import { rescaleToMaxLen, thumbnailSize } from '../src/laya/image.js';
 import { buildRow, renderOptions, softmax, tempBucket, type LayaModelMeta } from '../src/laya/rows.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
 import { installedModelId, layaNewModelId } from '../src/laya/model-id.js';
+import { THIS_APP_LAYA_YAML } from './helpers/fake-laya.js';
 
 describe('image sizes', () => {
   // [width, height, thumbnail w, h, Idefics3 resize w, h], from PIL 12.3 and transformers 5.17.
@@ -195,10 +196,24 @@ describe('model files', () => {
 
   it('cull-check exits 1 with the setup step when nothing is exported', async () => {
     const lines: string[] = [];
-    const config = { ...loadLibraryConfig('/nonexistent/config.yaml'), layaModelsDir: dir };
+    const cfg = join(dir, 'config.yaml');
+    writeFileSync(cfg, THIS_APP_LAYA_YAML);
+    const config = { ...loadLibraryConfig(cfg), layaModelsDir: dir };
     const code = await run(['cull-check'], { out: (l) => lines.push(l), config });
     expect(code).toBe(1);
     expect(lines.join('\n')).toContain(LAYA_SETUP_COMMAND);
+  });
+
+  it('cull-check on a new install says no model is chosen', async () => {
+    const lines: string[] = [];
+    const config = { ...loadLibraryConfig('/nonexistent/config.yaml'), layaModelsDir: dir };
+    expect(await run(['cull-check'], { out: (l) => lines.push(l), config })).toBe(1);
+    expect(lines).toEqual([
+      'Culling profile: no model on this app',
+      'Score forecast: no model on this app',
+      `This app's models: ${dir}`,
+      'Culling profile: no model chosen. Choose one in Processing → Settings → Culling models, or turn the culling profile off',
+    ]);
   });
 
   it('reads laya_models_dir from config.yaml, defaulting to models/ in the repo', () => {

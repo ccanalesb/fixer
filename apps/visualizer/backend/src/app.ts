@@ -12,6 +12,7 @@ import { appModelsRoutes } from './api/app-models.js';
 import { descriptionsRoutes } from './api/descriptions.js';
 import { identityRoutes } from './api/identity.js';
 import { jobsRoutes } from './api/jobs.js';
+import { cullingModelsRoutes } from './api/culling-models.js';
 import { catalogRoutes } from './api/images/catalog.js';
 import { stacksRoutes } from './api/images/stacks.js';
 import { ltConfigRoutes } from './api/lt-config.js';
@@ -52,6 +53,7 @@ export function createApp() {
   app.route('/api', cullingProfilesRoutes);
   app.route('/api', lrWritebackRoutes);
   app.route('/api', appModelsRoutes);
+  app.route('/api', cullingModelsRoutes);
   app.route('/api', providersRoutes);
   app.route('/api', identityRoutes);
   app.route('/api/scores', scoresRoutes);

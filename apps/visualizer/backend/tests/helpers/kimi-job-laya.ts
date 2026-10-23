@@ -10,6 +10,7 @@ import { seedCullingDefaults } from '../../src/db/library/cull-profiles.js';
 import {
   fakeLayaRuntimeModule,
   fakeLayaState,
+  THIS_APP_LAYA_YAML,
   writeFakeLayaModels,
   type FakeLayaState,
 } from './fake-laya.js';
@@ -52,7 +53,7 @@ export function prepareKimiJobCull(libraryDbPath: string, tempDir: string): stri
 export function writeKimiJobConfig(tempDir: string, modelsDir: string): void {
   writeFileSync(
     join(tempDir, 'config.yaml'),
-    `vision_cache_dir: ${join(tempDir, 'vision')}\nlaya_models_dir: ${modelsDir}\n`,
+    `vision_cache_dir: ${join(tempDir, 'vision')}\nlaya_models_dir: ${modelsDir}\n${THIS_APP_LAYA_YAML}`,
   );
 }
 
