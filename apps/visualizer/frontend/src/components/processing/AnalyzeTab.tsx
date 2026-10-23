@@ -38,7 +38,9 @@ import {
   ANALYZE_PRIMARY_BUTTON,
   ANALYZE_PRIMARY_BUTTON_STARTING,
   ANALYZE_SCORE_JOB_STARTED,
+  CULLING_CHECKING,
 } from '../../constants/strings';
+import { useCullingGate } from '../cull/useCullingGate';
 
 // Date-filter options mirror the richer contract MatchingTab uses. The value
 // is either ``'all'`` (no window), ``'<N>months'`` (last-N-months rolling
@@ -118,6 +120,7 @@ export function AnalyzeTab() {
   // and additionally blocks concurrent clicks across all three submit
   // buttons — a single batch submission at a time is the contract.
   const submitInFlightRef = useRef(false);
+  const { run: runCullingGate, checking: checkingCulling, dialog: cullingDialog } = useCullingGate();
 
   useEffect(() => {
     return () => {
@@ -230,18 +233,27 @@ export function AnalyzeTab() {
       // Clear any prior banner so the user doesn't see a stale success
       // message while the new submission is still in flight.
       setStatusBanner(null);
-      try {
-        const job = await JobsAPI.create(jobType, metadata);
-        showStatus('success', successMessage, job.id);
-      } catch (error) {
+      const failed = (error: unknown) => {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         showStatus('error', `${ANALYZE_JOB_FAILED_PREFIX} ${msg}`);
+      };
+      try {
+        await runCullingGate('start', async () => {
+          try {
+            const job = await JobsAPI.create(jobType, metadata);
+            showStatus('success', successMessage, job.id);
+          } catch (error) {
+            failed(error);
+          }
+        });
+      } catch (error) {
+        failed(error);
       } finally {
         setStarting(false);
         submitInFlightRef.current = false;
       }
     },
-    [showStatus],
+    [showStatus, runCullingGate],
   );
 
   const startAnalyze = useCallback(() => {
@@ -278,6 +290,7 @@ export function AnalyzeTab() {
   // Any in-flight submission disables all submit buttons — prevents a
   // "while batch_analyze is submitting, click describe-only too" footgun.
   const isAnySubmitting = isStartingAnalyze || isStartingDescribe || isStartingScore;
+  const startingLabel = checkingCulling ? CULLING_CHECKING : ANALYZE_PRIMARY_BUTTON_STARTING;
 
   return (
     <div>
@@ -487,7 +500,7 @@ export function AnalyzeTab() {
                     disabled={isAnySubmitting}
                   >
                     {isStartingDescribe
-                      ? ANALYZE_PRIMARY_BUTTON_STARTING
+                      ? startingLabel
                       : ANALYZE_ADVANCED_DESCRIBE_ONLY}
                   </Button>
                   <Button
@@ -498,7 +511,7 @@ export function AnalyzeTab() {
                     disabled={isAnySubmitting}
                   >
                     {isStartingScore
-                      ? ANALYZE_PRIMARY_BUTTON_STARTING
+                      ? startingLabel
                       : ANALYZE_ADVANCED_SCORE_ONLY}
                   </Button>
                 </div>
@@ -513,7 +526,7 @@ export function AnalyzeTab() {
                 onClick={startAnalyze}
                 disabled={isAnySubmitting}
               >
-                {isStartingAnalyze ? ANALYZE_PRIMARY_BUTTON_STARTING : ANALYZE_PRIMARY_BUTTON}
+                {isStartingAnalyze ? startingLabel : ANALYZE_PRIMARY_BUTTON}
               </Button>
               {statusBanner && (
                 <div
@@ -548,6 +561,7 @@ export function AnalyzeTab() {
           </div>
         </CardContent>
       </Card>
+      {cullingDialog}
     </div>
   );
 }

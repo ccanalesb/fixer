@@ -88,19 +88,24 @@ const TURN_OFF: Record<StageKind, string> = { culling_profile: 'the culling prof
 const noModelMessage = (kind: StageKind) =>
   named(kind, `no model chosen. Choose one in Processing → Settings → Culling models, or turn ${TURN_OFF[kind]} off`);
 
-function notListedMessage(kind: StageKind, m: StageModel): string {
-  const problem = `${m.model} is not listed by ${m.endpoint.label}`;
-  return named(kind, m.endpoint.id === THIS_APP_ENDPOINT ? setupErrorMessage(problem) : problem);
+function notListedMessage(kind: StageKind, m: StageModel, converting: ReadonlySet<string> = new Set()): string {
+  if (m.endpoint.id !== THIS_APP_ENDPOINT) return named(kind, `${m.model} is not listed by ${m.endpoint.label}`);
+  if (converting.has(m.model)) {
+    return named(kind, `${m.model} is still converting. It can be used once its conversion job finishes`);
+  }
+  return named(kind, setupErrorMessage(`${m.model} is not listed by ${m.endpoint.label}`));
 }
 
 /**
  * The model identity each stage's versions hash: from its endpoint while the stage is on, else what its
  * current versions were made with, so turning a stage off never touches its versions.
+ * `converting` names this app's models a conversion job is still installing.
  */
 export async function resolveStageModelIds(
   models: StageModels,
   on: Record<StageKind, boolean>,
   stored: StageModelIds,
+  converting: ReadonlySet<string> = new Set(),
 ): Promise<StageModelIds> {
   const ids: StageModelIds = { ...stored };
   for (const kind of KINDS) {
@@ -115,7 +120,7 @@ export async function resolveStageModelIds(
       throw e;
     }
     const entry = listed.find((x) => x.name === m.model);
-    if (!entry) throw new CullingStageError(kind, 'not_listed', notListedMessage(kind, m));
+    if (!entry) throw new CullingStageError(kind, 'not_listed', notListedMessage(kind, m, converting));
     ids[kind] = modelIdentity(m.endpoint, entry);
   }
   return ids;

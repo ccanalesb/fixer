@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { createApp } from '../src/app.js';
 import { openLibraryDb } from '../src/db/connection.js';
+import { createJob, initJobsDb } from '../src/db/jobs/jobs.js';
+import { LAYA_INSTALL_JOB_TYPE } from '../src/laya/install.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { getOrCreateStageVersion, upsertStageAnswer } from '../src/db/library/cull-stages.js';
@@ -171,6 +173,82 @@ describe('GET /api/culling-models/{stage}/models', () => {
       models: ['laya-base', 'laya-new'],
       error: null,
     });
+  });
+});
+
+describe('GET /api/culling-models/usable', () => {
+  type Usable = { on: boolean; problem: string | null; model: string | null; endpoint: string; job_id: string | null; detail: string | null };
+  type Body = { culling_profile: Usable; score_forecast: Usable; culling_profile_filter: boolean };
+  const usable = async () => json<Body>(await app.request('/api/culling-models/usable'));
+  const pipelinePut = (path: string, body: unknown) =>
+    app.request(`/api/culling-profiles/pipeline/${path}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const ok = (model: string, endpoint = 'this_app'): Usable => ({ on: true, problem: null, model, endpoint, job_id: null, detail: null });
+
+  let server: FakeSystemOneServer;
+  beforeEach(async () => {
+    server = await startFakeSystemOneServer(fakeLayaState(), ['clef-cull']);
+  });
+  afterEach(() => server.close());
+
+  it('a new install: both stages on with no model', async () => {
+    const body = await usable();
+    const none: Usable = { on: true, problem: 'no_model', model: null, endpoint: 'this_app', job_id: null, detail: null };
+    expect(body).toEqual({ culling_profile: none, score_forecast: none, culling_profile_filter: true });
+  });
+
+  it('a stage that is off is never unusable', async () => {
+    await pipelinePut('culling-profiles', { enabled: false, filter_enabled: false });
+    await pipelinePut('score-forecast', { enabled: false });
+    const off: Usable = { on: false, problem: null, model: null, endpoint: 'this_app', job_id: null, detail: null };
+    expect(await usable()).toEqual({ culling_profile: off, score_forecast: off, culling_profile_filter: false });
+  });
+
+  it('this app: a listed model is usable, a model it does not list is not', async () => {
+    writeFakeLayaModels(modelsDir);
+    await put('culling_profile', { model: 'laya-base' });
+    await put('score_forecast', { model: 'laya-gone' });
+    const body = await usable();
+    expect(body.culling_profile).toEqual(ok('laya-base'));
+    expect(body.score_forecast).toMatchObject({ problem: 'not_listed', model: 'laya-gone' });
+  });
+
+  it('a model still converting in this app names its job', async () => {
+    const jobsDb = initJobsDb(join(dir, 'visualizer.db'));
+    const jobId = createJob(jobsDb, LAYA_INSTALL_JOB_TYPE, { source: '/models/laya-x', name: 'laya-x' });
+    jobsDb.close();
+    await put('culling_profile', { model: 'laya-x' });
+    expect((await usable()).culling_profile).toEqual({
+      on: true,
+      problem: 'converting',
+      model: 'laya-x',
+      endpoint: 'this_app',
+      job_id: jobId,
+      detail: null,
+    });
+  });
+
+  it('another endpoint: listed, not listed, refused key, down', async () => {
+    await put('culling_profile', { endpoint: server.url });
+    await put('culling_profile', { model: 'clef-cull' });
+    expect((await usable()).culling_profile).toEqual(ok('clef-cull', server.url));
+
+    await put('culling_profile', { model: 'nope' });
+    expect((await usable()).culling_profile).toMatchObject({ problem: 'not_listed', model: 'nope' });
+
+    server.apiKey = 'right';
+    await put('culling_profile', { model: 'clef-cull', api_key: 'wrong' });
+    const refused = (await usable()).culling_profile;
+    expect(refused.problem).toBe('refused');
+    expect(refused.detail).toContain('refused the API key');
+
+    await server.close();
+    const down = (await usable()).culling_profile;
+    expect(down.problem).toBe('down');
+    expect(down.detail).toContain(`${server.url} does not answer`);
   });
 });
 

@@ -51,3 +51,28 @@ export const CullingStageModelsList = z
   })
   .strict()
   .openapi('CullingStageModelsList');
+
+export const CullingStageUsability = z
+  .object({
+    on: z.boolean(),
+    /** Why a stage that is on cannot run; `null` when it can, or is off. */
+    problem: z.enum(['no_model', 'converting', 'down', 'refused', 'not_listed', 'no_questions']).nullable(),
+    model: z.string().nullable(),
+    endpoint: z.string(),
+    /** The conversion job of a model still converting in this app. */
+    job_id: z.string().nullable(),
+    /** What the endpoint said, when it did not answer or refused. */
+    detail: z.string().nullable(),
+  })
+  .strict()
+  .openapi('CullingStageUsability');
+
+export const CullingModelsUsableResponse = z
+  .object({
+    culling_profile: CullingStageUsability,
+    score_forecast: CullingStageUsability,
+    /** Whether the culling profile's rule filters photos (`culling_profiles_filter_enabled`). */
+    culling_profile_filter: z.boolean(),
+  })
+  .strict()
+  .openapi('CullingModelsUsableResponse');

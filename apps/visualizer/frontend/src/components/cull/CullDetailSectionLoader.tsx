@@ -1,6 +1,7 @@
 import { CullAPI } from '../../services/api'
 import { invalidate, invalidateAll, useQuery } from '../../data'
 import { CullDetailSection } from './CullDetailSection'
+import { useCullingGate } from './useCullingGate'
 
 /** Fetches cull detail and wires send / user-action mutations. */
 export function CullDetailSectionLoader({
@@ -10,6 +11,7 @@ export function CullDetailSectionLoader({
   imageKey: string
   onMutated?: () => void
 }) {
+  const { run: runCullingGate, dialog: cullingDialog } = useCullingGate()
   const detail = useQuery(['cull.detail', imageKey] as const, () => CullAPI.photoDetail(imageKey))
 
   const refresh = () => {
@@ -20,20 +22,25 @@ export function CullDetailSectionLoader({
   }
 
   return (
-    <CullDetailSection
-      detail={detail}
-      onAction={async (action) => {
-        await CullAPI.recordAction(imageKey, action)
-        refresh()
-      }}
-      onWithdrawShouldHaveBeenFiltered={async () => {
-        await CullAPI.withdrawShouldHaveBeenFiltered(imageKey)
-        refresh()
-      }}
-      onSend={async () => {
-        await CullAPI.sendPhotos([imageKey])
-        refresh()
-      }}
-    />
+    <>
+      <CullDetailSection
+        detail={detail}
+        onAction={async (action) => {
+          await CullAPI.recordAction(imageKey, action)
+          refresh()
+        }}
+        onWithdrawShouldHaveBeenFiltered={async () => {
+          await CullAPI.withdrawShouldHaveBeenFiltered(imageKey)
+          refresh()
+        }}
+        onSend={() =>
+          void runCullingGate('send', async () => {
+            await CullAPI.sendPhotos([imageKey])
+            refresh()
+          })
+        }
+      />
+      {cullingDialog}
+    </>
   )
 }

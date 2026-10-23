@@ -972,6 +972,9 @@ export type CullingStageModel = components['schemas']['CullingStageModel']
 export type CullingStageModelPutRequest = components['schemas']['CullingStageModelPutRequest']
 export type CullingStageModelsList = components['schemas']['CullingStageModelsList']
 export type CullingStageKind = 'culling_profile' | 'score_forecast'
+export type CullingModelsUsable = components['schemas']['CullingModelsUsableResponse']
+export type CullingStageUsability = components['schemas']['CullingStageUsability']
+export type CullingStageProblem = NonNullable<CullingStageUsability['problem']>
 
 /** Each culling stage's System One endpoint and model, in `config.yaml`. */
 export const CullingModelsAPI = {
@@ -980,6 +983,8 @@ export const CullingModelsAPI = {
     request<CullingStageModel>(`/culling-models/${stage}`, { method: 'PUT', body: JSON.stringify(body) }),
   /** What the stage's saved endpoint lists: Check. */
   models: (stage: CullingStageKind) => request<CullingStageModelsList>(`/culling-models/${stage}/models`),
+  /** Whether each stage that is on can run; asks every endpoint, so it can take up to Check's timeout. */
+  usable: () => request<CullingModelsUsable>('/culling-models/usable'),
 }
 
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']

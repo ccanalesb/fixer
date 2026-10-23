@@ -5,10 +5,16 @@
  */
 import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig, updateConfigYamlCullingModel, type CullingModelConfig } from '../config.js';
+import { stagesOn } from '../cull/stage-models.js';
+import { stageUsability } from '../cull/stage-usable.js';
+import { SCORE_FORECAST_QUESTIONS } from '../cull/stages.js';
 import type { StageKind } from '../cull/types.js';
 import type { Db } from '../db/connection.js';
+import { initJobsDb } from '../db/jobs/jobs.js';
+import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { countCatalogPhotosForCullEstimate } from '../db/library/cull-profiles-mutations.js';
 import { countPhotosAnsweredByCurrentStage, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { listAppModels } from '../laya/install.js';
 import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
 import { errorBadRequest } from '../utils/responses.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
@@ -16,6 +22,7 @@ import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
 import {
   CullingModelsResponse,
+  CullingModelsUsableResponse,
   CullingStageModel,
   CullingStageModelPutRequest,
   CullingStageModelsList,
@@ -30,6 +37,15 @@ cullingModelsRoutes.use('/culling-models', libraryDb());
 cullingModelsRoutes.use('/culling-models/:stage', libraryDb());
 
 const stagesConfig = () => loadLibraryConfig(config.LT_CONFIG_YAML).cullingModels;
+
+function withJobsDb<T>(fn: (db: Db) => T): T {
+  const db = initJobsDb(config.VISUALIZER_DB);
+  try {
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
 
 /** Check is someone waiting on a button, not a model loading for a job. */
 const CHECK_TIMEOUT_MS = 10_000;
@@ -139,6 +155,41 @@ const modelsRoute = createRoute({
   responses: withValidationError({
     200: { description: 'What the stage’s saved endpoint lists', content: jsonBody(CullingStageModelsList) },
   }),
+});
+
+const usableRoute = createRoute({
+  method: 'get',
+  path: '/culling-models/usable',
+  tags: ['culling-models'],
+  responses: withValidationError({
+    200: { description: 'Whether each culling stage that is on can run', content: jsonBody(CullingModelsUsableResponse) },
+  }),
+});
+
+cullingModelsRoutes.openapi(usableRoute, async (c) => {
+  const { config: pipeline } = getCurrentPipelineSetting(c.get('libraryDb'));
+  const on = stagesOn(pipeline);
+  const cfg = stagesConfig();
+  const appModels = withJobsDb((db) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir, db));
+  const input = (kind: StageKind) => ({
+    on: on[kind],
+    cfg: cfg[kind],
+    appModels,
+    questionCount: Object.keys(SCORE_FORECAST_QUESTIONS).length,
+    timeoutMs: CHECK_TIMEOUT_MS,
+  });
+  const [cullingProfile, scoreForecast] = await Promise.all([
+    stageUsability('culling_profile', input('culling_profile')),
+    stageUsability('score_forecast', input('score_forecast')),
+  ]);
+  return c.json(
+    {
+      culling_profile: cullingProfile,
+      score_forecast: scoreForecast,
+      culling_profile_filter: pipeline.culling_profiles_filter_enabled,
+    },
+    200,
+  );
 });
 
 cullingModelsRoutes.openapi(modelsRoute, async (c) => {
