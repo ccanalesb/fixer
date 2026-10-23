@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { CullProfileDetail } from '../../services/api'
 import { ApiRequestError, CullingProfilesAPI } from '../../services/api'
 import { Button } from '../ui/Button'
@@ -6,7 +7,11 @@ import {
   CULL_DUPLICATE,
   CULL_NOT_MEASURED,
   CULL_PROFILE_ACTIVATE,
+  CULL_PROFILE_ACTIVATE_CONFIRM,
+  CULL_PROFILE_ACTIVATE_CONFIRM_TITLE,
   CULL_PROFILE_DEACTIVATE,
+  CULL_PROFILE_DEACTIVATE_CONFIRM,
+  CULL_PROFILE_DEACTIVATE_CONFIRM_TITLE,
   CULL_PROFILE_DEFINITION_CHANGED,
   CULL_PROFILE_NAME,
   CULL_PROFILE_TAB_DIMENSIONS,
@@ -14,19 +19,29 @@ import {
   CULL_PROFILE_TAB_RULE,
   CULL_PROFILE_TEXT_SAVE_IMPACT,
   CULL_PROFILE_UNMEASURED_HINT,
+  CULL_RULE_SAVE_CONFIRM,
+  CULL_RULE_SAVE_CONFIRM_TITLE,
   CULL_RULE_SAVE_NOTE,
   CULL_SAVE,
   CULL_SAVE_AND_QUEUE,
   CULL_SAVE_ONLY,
+  CULL_SAVED_NO_JOB,
+  CULLING_MODELS_SAVED,
+  CULLING_MODELS_SAVED_JOB_WAITING,
+  CULLING_MODELS_VIEW_QUEUE,
+  PROCESSING_JOB_QUEUE_ROUTE,
 } from '../../constants/strings'
 import { CullingProfileDimensionsFields } from './CullingProfileDimensionsFields'
 import { CullingProfileLevelsFields } from './CullingProfileLevelsFields'
 import { CullingProfileRuleFields } from './CullingProfileRuleFields'
+import { RedecideConfirmDialog } from './RedecideConfirmDialog'
 import { Segmented } from './Segmented'
 import { bandProblems, emptyLevelCount } from './profileDraft'
 
 type Draft = CullProfileDetail
 type Tab = 'dimensions' | 'levels' | 'rule'
+type RedecideChange = 'rule' | 'active'
+type Redecided = { pipeline_setting_version: number | null; redecide_job_id: string | null }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
@@ -42,11 +57,14 @@ export function CullingProfileEditor({
   const [impact, setImpact] = useState<{ photos: number; hours_estimate: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [confirming, setConfirming] = useState<RedecideChange | null>(null)
+  const [redecided, setRedecided] = useState<Redecided | null>(null)
 
   const setDefinition = (fn: (d: Draft['definition']) => Draft['definition']) => {
     setDraft((d) => ({ ...d, definition: fn(d.definition) }))
   }
   const setRule = (fn: (r: Draft['rule']) => Draft['rule']) => {
+    setRedecided(null)
     setDraft((d) => ({ ...d, rule: fn(d.rule) }))
   }
 
@@ -69,15 +87,38 @@ export function CullingProfileEditor({
     onRefresh()
   }
 
-  const saveRule = async () => {
+  const applyRedecideChange = async (change: RedecideChange) => {
+    setConfirming(null)
     setError(null)
     setFieldErrors({})
+    setRedecided(null)
     try {
-      await CullingProfilesAPI.saveRule(draft.slug, draft.rule)
+      if (change === 'rule') {
+        setRedecided(await CullingProfilesAPI.saveRule(draft.slug, draft.rule))
+      } else {
+        const res = await CullingProfilesAPI.patch(draft.slug, { active: !draft.active })
+        setDraft((d) => ({ ...d, active: res.profile.active }))
+        setRedecided(res)
+      }
       onRefresh()
     } catch (e) {
       showErrors(e)
     }
+  }
+
+  const redecidedNote = () => {
+    if (!redecided) return null
+    if (redecided.pipeline_setting_version === null) {
+      return <p className="text-sm text-success">{CULL_SAVED_NO_JOB}</p>
+    }
+    return (
+      <p className="text-sm text-success">
+        {redecided.redecide_job_id ? CULLING_MODELS_SAVED : CULLING_MODELS_SAVED_JOB_WAITING}{' '}
+        <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-accent underline">
+          {CULLING_MODELS_VIEW_QUEUE}
+        </Link>
+      </p>
+    )
   }
 
   const saveDefinition = async (mode: 'save_only' | 'save_and_queue_cull') => {
@@ -146,6 +187,7 @@ export function CullingProfileEditor({
       {impact ? (
         <p className="text-xs text-warning">{CULL_PROFILE_TEXT_SAVE_IMPACT(impact.photos, impact.hours_estimate)}</p>
       ) : null}
+      {redecidedNote()}
 
       <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
         <Button
@@ -153,7 +195,7 @@ export function CullingProfileEditor({
           size="sm"
           variant="secondary"
           disabled={definitionChanged || bandsBad}
-          onClick={() => void saveRule()}
+          onClick={() => setConfirming('rule')}
         >
           {CULL_SAVE}
         </Button>
@@ -179,7 +221,7 @@ export function CullingProfileEditor({
           type="button"
           size="sm"
           variant="secondary"
-          onClick={() => void CullingProfilesAPI.patch(draft.slug, { active: !draft.active }).then(onRefresh)}
+          onClick={() => setConfirming('active')}
         >
           {draft.active ? CULL_PROFILE_DEACTIVATE : CULL_PROFILE_ACTIVATE}
         </Button>
@@ -196,6 +238,26 @@ export function CullingProfileEditor({
         </Button>
       </div>
       {definitionChanged ? <p className="text-xs text-text-tertiary">{CULL_PROFILE_DEFINITION_CHANGED}</p> : null}
+      {confirming ? (
+        <RedecideConfirmDialog
+          title={
+            confirming === 'rule'
+              ? CULL_RULE_SAVE_CONFIRM_TITLE
+              : draft.active
+                ? CULL_PROFILE_DEACTIVATE_CONFIRM_TITLE
+                : CULL_PROFILE_ACTIVATE_CONFIRM_TITLE
+          }
+          confirmLabel={
+            confirming === 'rule'
+              ? CULL_RULE_SAVE_CONFIRM
+              : draft.active
+                ? CULL_PROFILE_DEACTIVATE_CONFIRM
+                : CULL_PROFILE_ACTIVATE_CONFIRM
+          }
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => void applyRedecideChange(confirming)}
+        />
+      ) : null}
     </div>
   )
 }
