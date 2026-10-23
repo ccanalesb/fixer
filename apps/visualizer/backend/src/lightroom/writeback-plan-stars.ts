@@ -5,6 +5,7 @@ import {
   AUTO_STARS_KEYWORD,
   clearStarsFromCatalog,
   removeKeywordByKey,
+  replaceRatingIfMatches,
   writeStarsToCatalog,
   type LivePickRating,
 } from './writer.js';
@@ -96,6 +97,32 @@ export function planStarsPhoto(
     return null;
   }
 
+  // Only stars the app put on an unrated photo are its own to replace; the user's stays theirs under the keyword.
+  if (
+    conn &&
+    canWrite &&
+    row?.before_rating === null &&
+    row.written_rating !== null &&
+    row.written_rating !== rating &&
+    catalogHasAppStars(conn, imageKey, row.written_rating)
+  ) {
+    const result = replaceRatingIfMatches(conn, imageKey, row.written_rating, rating);
+    if (result === 'updated') {
+      tally.catalog_updated_stars += 1;
+      return {
+        image_key: imageKey,
+        kind: 'stars',
+        status: 'written',
+        before_pick: null,
+        before_rating: null,
+        written_pick: null,
+        written_rating: rating,
+        stars_profile_version_id: starsVersionId,
+        written_at: nowIsoUtc(),
+      };
+    }
+  }
+
   if (live.rating !== null) {
     if (conn && rating !== null && catalogHasAppStars(conn, imageKey, rating)) {
       return adoptWrittenStarsState(imageKey, rating, starsVersionId, row);
@@ -106,7 +133,7 @@ export function planStarsPhoto(
         kind: 'stars',
         status: 'skipped',
         before_pick: null,
-        before_rating: live.rating,
+        before_rating: row?.written_at ? row.before_rating : live.rating,
         written_pick: null,
         written_rating: row?.written_rating ?? null,
         stars_profile_version_id: row?.stars_profile_version_id ?? starsVersionId,

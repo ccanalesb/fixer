@@ -327,6 +327,21 @@ export function updateRatingIfUnset(conn: Db, imageKey: string, rating: number):
   return info.changes > 0 ? 'updated' : 'skipped';
 }
 
+/** Swap the app-written stars for others when LR still holds them. */
+export function replaceRatingIfMatches(
+  conn: Db,
+  imageKey: string,
+  writtenRating: number,
+  rating: number,
+): PickRatingWriteResult {
+  const imageId = getImageLocalId(conn, imageKey);
+  if (!imageId) return 'image_not_found';
+  const info = conn
+    .prepare(`UPDATE Adobe_images SET rating = ? WHERE id_local = ? AND rating = ?`)
+    .run(rating, imageId, writtenRating);
+  return info.changes > 0 ? 'updated' : 'skipped';
+}
+
 /** Restore pick when LR still holds the app-written reject. */
 export function clearPickIfMatches(conn: Db, imageKey: string, writtenPick: -1): PickRatingWriteResult {
   const imageId = getImageLocalId(conn, imageKey);
