@@ -2,7 +2,7 @@
  * One photo's cull, stored: new stage answers (if any), every current stage's verdict re-decided, and
  * the summary row — in one `libraryWrite`, so a photo is never half-decided.
  *
- * The culling job, `cull-import` and the re-decide job all end here; re-decide passes no
+ * The culling job and the re-decide job both end here; re-decide passes no
  * new answers and so never needs Laya.
  */
 import type { Db } from '../db/connection.js';
@@ -45,8 +45,6 @@ export interface FreshAnswers {
   producedBy: string | Readonly<Record<string, string>>;
   imagePath: string;
   imageSignature: string | null;
-  /** Keep a row already stored for that stage version (the import never overwrites a job's). */
-  ifAbsent?: boolean;
 }
 
 export interface StorePhotoArgs {
@@ -72,24 +70,20 @@ export function decideAndStorePhoto(db: Db, ctx: CullContext, args: StorePhotoAr
       if (!d) continue;
       if (fresh[stage.stageKey] && args.fresh) {
         if (args.runId === null) throw new Error('new stage answers need a cull run');
-        upsertStageAnswer(
-          db,
-          {
-            imageKey: args.imageKey,
-            stageVersionId: stage.versionId,
-            answers: fresh[stage.stageKey]!,
-            verdict: d.verdict,
-            decision: d.detail,
-            pipelineSettingVersion: ctx.pipeline.version,
-            source: args.fresh.source,
-            producedBy:
-              typeof args.fresh.producedBy === 'string' ? args.fresh.producedBy : (args.fresh.producedBy[stage.stageKey] ?? ''),
-            imagePath: args.fresh.imagePath,
-            imageSignature: args.fresh.imageSignature,
-            runId: args.runId,
-          },
-          { ifAbsent: args.fresh.ifAbsent },
-        );
+        upsertStageAnswer(db, {
+          imageKey: args.imageKey,
+          stageVersionId: stage.versionId,
+          answers: fresh[stage.stageKey]!,
+          verdict: d.verdict,
+          decision: d.detail,
+          pipelineSettingVersion: ctx.pipeline.version,
+          source: args.fresh.source,
+          producedBy:
+            typeof args.fresh.producedBy === 'string' ? args.fresh.producedBy : (args.fresh.producedBy[stage.stageKey] ?? ''),
+          imagePath: args.fresh.imagePath,
+          imageSignature: args.fresh.imageSignature,
+          runId: args.runId,
+        });
       } else {
         updateStageDecision(db, args.imageKey, stage.versionId, d.verdict, d.detail, ctx.pipeline.version);
       }

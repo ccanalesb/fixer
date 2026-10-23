@@ -7,12 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto } from './helpers/fake-laya.js';
+import { fakeLayaNewModelId, fakeLayaRuntimeModule, fakeLayaState, writeFakeLayaModels, writeFakePhoto } from './helpers/fake-laya.js';
 import { createApp } from '../src/app.js';
 import { systemOneRoutes } from '../src/api/systemone.js';
 import { AppModels, closeAppModels } from '../src/laya/app-models.js';
 import { LAYA_SETUP_COMMAND } from '../src/laya/files.js';
-import { layaNewModelId } from '../src/laya/model-id.js';
 
 const laya = vi.hoisted(() => ({}) as ReturnType<typeof import('./helpers/fake-laya.js').fakeLayaState>);
 
@@ -66,7 +65,7 @@ describe('GET /v1/models', () => {
     const body = (await res.json()) as { models: { name: string; x_model_id: string; release_date: string }[] };
     expect(body.models.map((m) => [m.name, m.x_model_id])).toEqual([
       ['laya-base', 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e'],
-      ['laya-new', await layaNewModelId(join(modelsDir, 'laya-new'))],
+      ['laya-new', await fakeLayaNewModelId(modelsDir)],
     ]);
     expect(body.models[0]!.release_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });

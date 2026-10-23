@@ -19,7 +19,7 @@ import {
 import { rescaleToMaxLen, thumbnailSize } from '../src/laya/image.js';
 import { buildRow, renderOptions, softmax, tempBucket, type LayaModelMeta } from '../src/laya/rows.js';
 import { LAYA_QUESTIONS } from '../src/laya/questions.js';
-import { installedModelId, layaNewModelId } from '../src/laya/model-id.js';
+import { installedModelId } from '../src/laya/model-id.js';
 import { THIS_APP_LAYA_YAML } from './helpers/fake-laya.js';
 
 describe('image sizes', () => {
@@ -251,7 +251,6 @@ describe('model ids', () => {
     expect(first).toBe(`laya-new@sha256:${createHash('sha256').update('one').digest('hex')}`);
     expect(existsSync(join(dir, 'decoder.onnx.sha256.json'))).toBe(true);
     expect(await installedModelId(m)).toBe(first);
-    expect(await layaNewModelId(dir)).toBe(first);
     writeFileSync(join(dir, 'decoder.onnx'), 'two, longer');
     expect(await installedModelId(m)).not.toBe(first);
     expect(await installedModelId(installed('laya-run-best', '/x/best', null))).toMatch(/^laya-run-best@sha256:/);

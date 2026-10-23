@@ -46,19 +46,6 @@ Culling itself is the job `batch_cull_photos_before_scoring` (whole catalog, or
 curl -X POST localhost:5001/api/jobs/ -H 'Content-Type: application/json' \
   -d '{"type": "batch_cull_photos_before_scoring"}'
 ```
-
-Culling answers in JSONL files, one line per photo, can be loaded as the first
-stored answers, so the job only asks Laya what they left out: the Score
-forecast's (Laya new) and the culling profile's (Laya base). Back up
-`library.db` first; `--dry-run` writes nothing, and the import can be run again
-as the files grow:
-
-```bash
-lightroom-tagger cull-import --dry-run \
-  --laya-new score-forecast.jsonl \
-  --culling-profile culling-profile.jsonl
-```
-
 ## Quick Start (CLI)
 
 ```bash

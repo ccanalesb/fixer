@@ -247,8 +247,6 @@ describe('stage answers, summaries and user actions', () => {
     upsertStageAnswer(db, row);
     upsertStageAnswer(db, { ...row, verdict: 'filtered' });
     expect(db.prepare('SELECT verdict FROM cull_stage_answers').all()).toEqual([{ verdict: 'filtered' }]);
-    expect(upsertStageAnswer(db, { ...row, verdict: 'passed' }, { ifAbsent: true })).toBe(false);
-    expect(db.prepare('SELECT verdict FROM cull_stage_answers').all()).toEqual([{ verdict: 'filtered' }]);
   });
 
   it('records each action with the verdict it answered; sent by hand sticks', () => {

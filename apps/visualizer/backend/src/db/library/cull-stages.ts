@@ -75,27 +75,21 @@ export interface StageAnswerRow {
   answeredAt?: string;
 }
 
-/**
- * Store one stage's answers for a photo. `ifAbsent` keeps a row that is already there (`cull-import`
- * never overwrites a job's answers); returns whether a row was written.
- */
-export function upsertStageAnswer(db: Db, row: StageAnswerRow, opts: { ifAbsent?: boolean } = {}): boolean {
+/** Store one stage's answers for a photo, replacing any already stored for that stage version. */
+export function upsertStageAnswer(db: Db, row: StageAnswerRow): void {
   const now = nowIsoUtc();
-  const conflict = opts.ifAbsent
-    ? 'DO NOTHING'
-    : `DO UPDATE SET answers_json = excluded.answers_json, verdict = excluded.verdict,
-         decision_json = excluded.decision_json, pipeline_setting_version = excluded.pipeline_setting_version,
-         source = excluded.source, produced_by = excluded.produced_by, image_path = excluded.image_path,
-         image_signature = excluded.image_signature, run_id = excluded.run_id,
-         answered_at = excluded.answered_at, decided_at = excluded.decided_at`;
-  const info = db
-    .prepare(
-      `INSERT INTO cull_stage_answers
-         (image_key, stage_version_id, answers_json, verdict, decision_json, pipeline_setting_version,
-          source, produced_by, image_path, image_signature, run_id, answered_at, decided_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (image_key, stage_version_id) ${conflict}`,
-    )
+  db.prepare(
+    `INSERT INTO cull_stage_answers
+       (image_key, stage_version_id, answers_json, verdict, decision_json, pipeline_setting_version,
+        source, produced_by, image_path, image_signature, run_id, answered_at, decided_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (image_key, stage_version_id) DO UPDATE SET answers_json = excluded.answers_json,
+       verdict = excluded.verdict, decision_json = excluded.decision_json,
+       pipeline_setting_version = excluded.pipeline_setting_version, source = excluded.source,
+       produced_by = excluded.produced_by, image_path = excluded.image_path,
+       image_signature = excluded.image_signature, run_id = excluded.run_id,
+       answered_at = excluded.answered_at, decided_at = excluded.decided_at`,
+  )
     .run(
       row.imageKey,
       row.stageVersionId,
@@ -111,7 +105,6 @@ export function upsertStageAnswer(db: Db, row: StageAnswerRow, opts: { ifAbsent?
       row.answeredAt ?? now,
       now,
     );
-  return info.changes > 0;
 }
 
 /** Re-decided stage verdict, from stored answers, without touching the answers. */

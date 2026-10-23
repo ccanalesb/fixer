@@ -77,11 +77,11 @@ Paths are relative to `apps/visualizer/backend/src/`.
 | `api/schemas/` | zod request/response models, one module per group |
 | `websocket/` | SocketIO event handlers |
 | `utils/responses.ts` | Shared JSON response helpers |
-| `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check`, `cull-import` |
+| `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check` |
 | `laya/` | The models in this app, through ONNX in a worker thread, each loaded on its first request; one directory per model in the git-ignored `models/`, written by `scripts/laya/export_onnx.py` (run by the `laya_model_install` job, `install.ts`). `app-models.ts` serves them on this app's System One endpoint, starting the worker on the first request and closing it after two idle minutes. See ADR-0020, ADR-0021 |
 | `systemone/` | The System One client culling uses for every stage, whether the endpoint is this app (in-process) or another server. See ADR-0021 |
 | `api/systemone.ts` | This app's System One endpoint (`GET /v1/models`, `POST /v1/systemone`) |
-| `cull/` | Culling decisions (`decide.ts`, pure), stages and their versions (`stages.ts`), each stage's model through System One (`stage-models.ts`), one photo stored and decided (`persist.ts`), the research-run import. Storage in `db/library/cull-*.ts`; jobs in `jobs/handlers/cull.ts` (standalone culling), `cull-pass.ts` (shared pass), `cull-stage.ts` (in-job step before kimi), `redecide.ts` (stored-answer re-decide), `work-keys.ts` (describe/score work selection) |
+| `cull/` | Culling decisions (`decide.ts`, pure), stages and their versions (`stages.ts`), each stage's model through System One (`stage-models.ts`), one photo stored and decided (`persist.ts`). Storage in `db/library/cull-*.ts`; jobs in `jobs/handlers/cull.ts` (standalone culling), `cull-pass.ts` (shared pass), `cull-stage.ts` (in-job step before kimi), `redecide.ts` (stored-answer re-decide), `work-keys.ts` (describe/score work selection) |
 | `lightroom/` | `.lrcat` reader, keyword writer and the catalog sync driver |
 | `imaging/`, `vision/`, `providers/`, `analyzer/`, `identity/`, `clip/` | The library layer: RAW decode, CLIP, phash, vision calls, scoring, identity |
 
