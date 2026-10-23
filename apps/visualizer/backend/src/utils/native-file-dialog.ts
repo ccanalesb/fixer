@@ -1,5 +1,5 @@
 /**
- * The macOS "choose file" dialog, opened by the backend on its own machine.
+ * The macOS "choose file" and "choose folder" dialogs, opened by the backend on its own machine.
  *
  * The dialog appears on the host's screen, never the browser's. That is only
  * coherent because the backend always runs on the user's machine (ADR-0019);
@@ -50,7 +50,17 @@ function asAppleScriptString(value: string): string {
  * @param extension file type to filter by, without the dot (e.g. `lrcat`)
  * @returns the chosen POSIX path, or `dismissed` if the user closed the dialog
  */
-export async function chooseFile(prompt: string, extension: string): Promise<FileDialogResult> {
+export function chooseFile(prompt: string, extension: string): Promise<FileDialogResult> {
+  return choose(`choose file with prompt ${asAppleScriptString(prompt)} of type {${asAppleScriptString(extension)}}`);
+}
+
+/** @returns the chosen folder's POSIX path, without the trailing slash AppleScript gives it */
+export async function chooseFolder(prompt: string): Promise<FileDialogResult> {
+  const result = await choose(`choose folder with prompt ${asAppleScriptString(prompt)}`);
+  return 'path' in result ? { path: result.path.replace(/(.)\/+$/, '$1') } : result;
+}
+
+async function choose(command: string): Promise<FileDialogResult> {
   if (!nativeFileDialogAvailable()) throw new FileDialogUnavailableError();
   if (dialogOpen) throw new FileDialogBusyError();
 
@@ -60,7 +70,7 @@ export async function chooseFile(prompt: string, extension: string): Promise<Fil
     'tell application "System Events"',
     '  activate',
     `  with timeout of ${DIALOG_TIMEOUT_SECONDS} seconds`,
-    `    set chosenFile to choose file with prompt ${asAppleScriptString(prompt)} of type {${asAppleScriptString(extension)}}`,
+    `    set chosenFile to ${command}`,
     '  end timeout',
     'end tell',
     'return POSIX path of chosenFile',

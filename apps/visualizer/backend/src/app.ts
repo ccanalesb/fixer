@@ -8,6 +8,7 @@ import { cors } from 'hono/cors';
 import { config } from './config.js';
 import { HttpError } from './utils/responses.js';
 import { createOpenApiApp, openApiDoc } from './api/openapi.js';
+import { appModelsRoutes } from './api/app-models.js';
 import { descriptionsRoutes } from './api/descriptions.js';
 import { identityRoutes } from './api/identity.js';
 import { jobsRoutes } from './api/jobs.js';
@@ -50,6 +51,7 @@ export function createApp() {
   app.route('/api', cullReviewRoutes);
   app.route('/api', cullingProfilesRoutes);
   app.route('/api', lrWritebackRoutes);
+  app.route('/api', appModelsRoutes);
   app.route('/api', providersRoutes);
   app.route('/api', identityRoutes);
   app.route('/api/scores', scoresRoutes);

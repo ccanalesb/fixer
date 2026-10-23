@@ -12,32 +12,40 @@
 #   "laya @ git+https://github.com/r33drichards/laya-vision@568feeeada793f70f736756b0f3a7643d1e75910",
 # ]
 # ///
-"""Setup step for the cull: export Laya base and Laya new to ONNX (fp32) for the backend.
+"""Convert one Laya-family model to ONNX (fp32) for this app's System One endpoint.
 
-    uv run scripts/laya/export_onnx.py [--laya-new PATH] [--out models]
+    uv run scripts/laya/export_onnx.py SOURCE --name NAME [--out models] [--job-id ID]
 
-Downloads Laya base (`thaitea/laya-vision` at a fixed revision) from Hugging Face when it is not cached and
-converts it on this machine; Laya new is converted from the checkpoint directory given with `--laya-new`
-(without it the Score forecast stage stays off). Nothing is uploaded. Writes:
+SOURCE is a folder in Hugging Face format (`vlm_agent_config.json`, `model.safetensors`, `processor/`) or a
+Hugging Face id, `id` or `id@revision`. Without a revision, the commit recorded is the last one that changed
+the model's files, so a commit that only touched the README is not a new model. The app's conversion job
+(`laya_model_install`) runs this; it can be run by hand too. Nothing is uploaded. Writes, in
+<out>/.install-<name>/ renamed to <out>/<name>/ once every check has passed:
 
-  <out>/laya-base/vision.onnx     pixel_values [1, 3, 512, 512] -> image features [64, 576]; vision tower +
-                                  connector, shared by Laya new (its weights must be identical — checked).
-  <out>/laya-base/decoder.onnx    one row per question: input_ids, attention_mask [B, L], option_span [B, 2],
-  <out>/laya-new/decoder.onnx     qtype [B], marker_pos / marker_mask [B, K], image_features -> option logits
-                                  [B, K] before temperature. Token embedding, image merge, the text model under
-                                  Laya's block option mask, and the decision head.
-  <out>/<model>/model.json        temperatures, budgets, special ids, image prefix ids.
-  <out>/<model>/tokenizer/        the processor's tokenizer files.
-  <out>/<model>/reference/        a synthetic test photo with PyTorch's pixel values, token rows and
-                                  probabilities, for the backend's start check and parity test.
+  vision.onnx     pixel_values [1, 3, 512, 512] -> image features [64, 576]; vision tower + connector. Left out
+                  when an installed model has the same vision tower (same weights): `vision` in model.json
+                  names the model whose graph it reads.
+  decoder.onnx    one row per question: input_ids, attention_mask [B, L], option_span [B, 2], qtype [B],
+                  marker_pos / marker_mask [B, K], image_features -> option logits [B, K] before temperature.
+                  Token embedding, image merge, the text model under Laya's block option mask, and the decision
+                  head.
+  model.json      temperatures, budgets, special ids, image prefix ids; source, revision, vision, vision_sha256.
+  tokenizer/      the processor's tokenizer files.
+  reference/      a synthetic test photo with PyTorch's pixel values, token rows and probabilities, for the
+                  backend's parity test.
 
-Each graph is checked against PyTorch before the reference is written.
+Each graph is checked against PyTorch before the reference is written. A failure ends with one line
+`error: <kind>: <message>` on stderr and exit status 2; kind is `source`, `network`, `not_laya` or `parity`.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import shutil
+import signal
+import sys
 import time
 from pathlib import Path
 
@@ -48,9 +56,32 @@ import torch.nn.functional as F
 
 REPO = Path(__file__).resolve().parents[2]
 QUESTIONS = REPO / "apps/visualizer/backend/src/laya/questions.json"
-BASE_ID = "thaitea/laya-vision"
-BASE_REVISION = "8b318c99d7ad3ce19c24369263463882eada9d1e"
 MAX_LOGIT_DIFF = 1e-3
+CONFIG_NAME = "vlm_agent_config.json"
+#: What `laya.load_vlm` reads of a checkpoint: the files whose last commit is the model's revision.
+MODEL_PATHS = (CONFIG_NAME, "model.safetensors", "head.safetensors", "processor", "backbone")
+#: The backbones the backend's port runs: SmolVLM (Idefics3).
+SUPPORTED_MODEL_TYPES = ("idefics3", "smolvlm")
+NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+
+class InstallError(Exception):
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind = kind
+
+
+def step(text: str) -> None:
+    """A line the conversion job shows as its current step."""
+    print(f"step: {text}", flush=True)
+
+
+def is_network_error(e: BaseException) -> bool:
+    import httpx
+    from huggingface_hub.errors import LocalEntryNotFoundError, OfflineModeIsEnabled
+
+    return isinstance(e, (httpx.TransportError, OfflineModeIsEnabled, LocalEntryNotFoundError, ConnectionError,
+                          TimeoutError))
 
 
 class Vision(nn.Module):
@@ -144,104 +175,266 @@ def rows_for(agent, im, qs):
 def check(label: str, diff: float) -> None:
     print(f"{label}: max abs difference {diff:.2e}", flush=True)
     if not diff <= MAX_LOGIT_DIFF:
-        raise SystemExit(f"{label}: ONNX differs from PyTorch by {diff}, above {MAX_LOGIT_DIFF}")
+        raise InstallError("parity", f"{label}: the ONNX graph differs from PyTorch by {diff:.2e}, above {MAX_LOGIT_DIFF}")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--laya-new", type=Path, help="Laya new checkpoint directory (omit: Score forecast off)")
-    ap.add_argument("--out", type=Path, default=REPO / "models")
-    a = ap.parse_args()
+def resolve_source(source: str) -> tuple[Path, str, str | None]:
+    """The directory to load, the source as recorded, and the Hugging Face commit (None for a folder)."""
+    p = Path(source).expanduser()
+    if source.startswith(("/", "~", ".")) or p.is_dir():
+        if not p.is_dir():
+            raise InstallError("source", f"No folder at {p}")
+        if not (p / CONFIG_NAME).exists():
+            raise InstallError("not_laya", f"{p} is not a Laya-family model: it has no {CONFIG_NAME}")
+        return p.resolve(), str(p.resolve()), None
 
+    from huggingface_hub import HfApi, snapshot_download
+    from huggingface_hub.errors import HFValidationError, RepositoryNotFoundError, RevisionNotFoundError
+
+    repo, _, rev = source.partition("@")
+    api = HfApi()
+    try:
+        step(f"looking up {source} on Hugging Face")
+        info = api.model_info(repo, revision=rev or None)
+        files = [s.rfilename for s in info.siblings or []]
+        if CONFIG_NAME not in files:
+            raise InstallError("not_laya", f"{repo} is not a Laya-family model: it has no {CONFIG_NAME}")
+        commit = info.sha
+        if not rev:
+            present = [m for m in MODEL_PATHS if any(f == m or f.startswith(f"{m}/") for f in files)]
+            changed = [i.last_commit for i in api.get_paths_info(repo, present, revision=commit, expand=True)
+                       if i.last_commit]
+            if changed:
+                commit = max(changed, key=lambda c: c.date).oid
+        step(f"downloading {repo}@{commit[:7]}")
+        path = snapshot_download(repo, revision=commit)
+    except InstallError:
+        raise
+    except RevisionNotFoundError:
+        raise InstallError("source", f"{repo} has no revision {rev}")
+    except RepositoryNotFoundError:
+        raise InstallError("source", f"{repo} is not a model on Hugging Face, or it is private")
+    except HFValidationError:
+        raise InstallError("source", f"{source} is neither a folder nor a Hugging Face id")
+    except Exception as e:
+        if is_network_error(e):
+            raise InstallError("network", f"Could not reach Hugging Face ({type(e).__name__}: {e})")
+        raise
+    return Path(path), repo, commit
+
+
+def check_backbone(model_dir: Path) -> None:
+    """Before loading: the backbone has to be one the backend's port runs."""
+    from transformers import AutoConfig
+
+    cfg = json.loads((model_dir / CONFIG_NAME).read_text())
+    local = model_dir / "backbone"
+    try:
+        if (local / "config.json").exists():
+            bb = AutoConfig.from_pretrained(str(local))
+        else:
+            bb = AutoConfig.from_pretrained(cfg["backbone"], revision=cfg.get("backbone_revision"))
+    except Exception as e:
+        if is_network_error(e):
+            raise InstallError("network", f"Could not reach Hugging Face for the backbone ({e})")
+        raise InstallError("not_laya", f"Its backbone {cfg.get('backbone')!r} cannot be read ({e})")
+    if bb.model_type not in SUPPORTED_MODEL_TYPES:
+        raise InstallError("not_laya", f"Its backbone is {cfg.get('backbone')} ({bb.model_type}); this app runs "
+                                       "Laya on SmolVLM (Idefics3) only")
+
+
+def check_loaded(agent) -> None:
+    """After loading: the image path and readout the backend's port reproduces."""
+    c = agent.cfg
+    problems = []
+    if c.get("preprocess", "processor") != "processor":
+        problems.append(f"preprocess {c.get('preprocess')!r}")
+    if c.get("image_size", 512) != 512:
+        problems.append(f"image size {c.get('image_size')}")
+    if c.get("image_split_edge") or 0:
+        problems.append("image splitting")
+    if c.get("readout", "terminator") != "terminator":
+        problems.append(f"readout {c.get('readout')!r}")
+    if problems:
+        raise InstallError("not_laya", f"This app runs Laya on one 512 px image through the processor with a "
+                                       f"terminator readout; this model has {', '.join(problems)}")
+
+
+def vision_sha256(agent) -> str:
+    """The vision tower and connector weights: equal hashes can share one vision graph."""
+    h = hashlib.sha256()
+    enc = agent.model.encoder
+    for prefix, module in (("vision_model", enc.vision_model), ("connector", enc.connector)):
+        for k, v in sorted(module.state_dict().items()):
+            h.update(f"{prefix}.{k}".encode())
+            h.update(v.detach().cpu().contiguous().flatten().view(torch.uint8).numpy().tobytes())
+    return h.hexdigest()
+
+
+def write_json(path: Path, value) -> None:
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(value, indent=1))
+    tmp.replace(path)
+
+
+def installed_vision(out: Path, wanted: str) -> str | None:
+    """The installed model whose own vision graph has these weights. A model converted before the hash was
+    recorded gets it now, from its recorded source, and keeps it."""
+    import laya
+
+    own = []
+    for d in sorted(out.iterdir()) if out.is_dir() else []:
+        if d.name.startswith(".") or not (d / "vision.onnx").exists() or not (d / "model.json").exists():
+            continue
+        meta = json.loads((d / "model.json").read_text())
+        if meta.get("vision", d.name) == d.name:
+            own.append((d, meta))
+    for d, meta in own:
+        if meta.get("vision_sha256") == wanted:
+            return d.name
+    for d, meta in own:
+        if meta.get("vision_sha256"):
+            continue
+        source, revision = meta.get("source"), meta.get("revision")
+        if not source or (not revision and not Path(source).is_dir()):
+            continue
+        step(f"reading {d.name}'s vision tower")
+        try:
+            other = laya.load_vlm(source, revision=revision, device="cpu")
+        except Exception as e:
+            print(f"{d.name}: its source {source} could not be loaded ({e}); not compared", flush=True)
+            continue
+        meta["vision_sha256"] = vision_sha256(other)
+        del other
+        write_json(d / "model.json", meta)
+        if meta["vision_sha256"] == wanted:
+            return d.name
+    return None
+
+
+def convert(source_arg: str, name: str, out: Path, partial: Path, job_id: str | None) -> None:
     import laya
     import laya.vlm as V
     import onnxruntime as ort
 
-    questions = json.loads(QUESTIONS.read_text())
-    agents = {"base": laya.load_vlm(BASE_ID, revision=BASE_REVISION, device="cpu")}
-    if a.laya_new:
-        agents["new"] = laya.load_vlm(str(a.laya_new.expanduser()), device="cpu")
-        b, n = agents["base"].model.encoder, agents["new"].model.encoder
-        same = all(torch.equal(p, q) for m1, m2 in ((b.vision_model, n.vision_model), (b.connector, n.connector))
-                   for p, q in zip(m1.state_dict().values(), m2.state_dict().values()))
-        if not same:
-            raise SystemExit("Laya new's vision tower differs from Laya base's; the shared vision graph cannot serve it")
+    model_dir, source, revision = resolve_source(source_arg)
+    check_backbone(model_dir)
+    step("loading the model")
+    try:
+        agent = laya.load_vlm(str(model_dir), device="cpu")
+    except Exception as e:
+        if is_network_error(e):
+            raise InstallError("network", f"Could not reach Hugging Face while loading ({e})")
+        raise InstallError("not_laya", f"It does not load as a Laya-family model ({type(e).__name__}: {e})")
+    check_loaded(agent)
+    vhash = vision_sha256(agent)
+    step("looking for an installed model with the same vision tower")
+    shared = installed_vision(out, vhash)
 
-    tok = agents["base"].processor.tokenizer
-    image_token_id = tok.convert_tokens_to_ids(agents["base"].processor.image_token)
+    questions = json.loads(QUESTIONS.read_text())
+    qs = {**questions["base"], **questions["new"]}
+    tok = agent.processor.tokenizer
+    image_token_id = tok.convert_tokens_to_ids(agent.processor.image_token)
     im = test_photo()
     thumb = im.copy()
     thumb.thumbnail((512, 512))
+    (partial / "reference").mkdir(parents=True)
+    im.save(partial / "reference/photo.png")
 
-    base_dir = a.out / "laya-base"
-    for name in agents:
-        d = a.out / f"laya-{name}"
-        if d.exists():
-            shutil.rmtree(d)
-        (d / "reference").mkdir(parents=True)
-    im.save(base_dir / "reference/photo.png")
-
-    prefix, _, _ = rows_for(agents["base"], thumb, {})
+    prefix, _, _ = rows_for(agent, thumb, {})
     pv = prefix["pixel_values"].float()
-    vis = Vision(agents["base"].model.encoder).eval()
+    vis = Vision(agent.model.encoder).eval()
     with torch.no_grad():
         ref_feats = vis(pv)
-        t = time.time()
-        torch.onnx.export(vis, (pv,), base_dir / "vision.onnx", input_names=["pixel_values"],
-                          output_names=["image_features"], dynamo=True, external_data=False, optimize=True)
-        print(f"vision exported in {time.time() - t:.0f} s", flush=True)
-    got = ort.InferenceSession(str(base_dir / "vision.onnx"), providers=["CPUExecutionProvider"]).run(
+        if shared:
+            print(f"vision: same weights as {shared}, reusing its graph", flush=True)
+            vision_path = out / shared / "vision.onnx"
+        else:
+            step("exporting the vision graph")
+            vision_path = partial / "vision.onnx"
+            t = time.time()
+            torch.onnx.export(vis, (pv,), vision_path, input_names=["pixel_values"],
+                              output_names=["image_features"], dynamo=True, external_data=False, optimize=True)
+            print(f"vision exported in {time.time() - t:.0f} s", flush=True)
+    got = ort.InferenceSession(str(vision_path), providers=["CPUExecutionProvider"]).run(
         None, {"pixel_values": pv.numpy()})[0]
     check("vision", float(np.abs(got - ref_feats.numpy()).max()))
-    pv.numpy().astype(np.float32).tofile(base_dir / "reference/pixel_values.f32")
+    pv.numpy().astype(np.float32).tofile(partial / "reference/pixel_values.f32")
 
-    for name, agent in agents.items():
-        d = a.out / f"laya-{name}"
-        qs = questions[name]
-        prefix, feats, rows = rows_for(agent, thumb, qs)
-        b = V.collate_vlm(rows, tok.pad_token_id, with_pixels=False)
-        dec = Decoder(agent.model, image_token_id).eval()
-        args = (b["input_ids"], b["attention_mask"], b["option_span"], b["qtype"], b["marker_pos"],
-                b["marker_mask"], feats[0].float())
-        with torch.no_grad():
-            ref, _ = agent.model(b["input_ids"], b["attention_mask"], b["marker_pos"], b["marker_mask"], b["qtype"],
-                                 image_hidden_states=feats.repeat(len(qs), 1, 1), option_span=b["option_span"])
-            check(f"{name} export wrapper vs model.forward", float((dec(*args) - ref).abs().max()))
-            Bd, Ld, Kd = (torch.export.Dim("B", min=1, max=64), torch.export.Dim("L", min=80, max=1024),
-                          torch.export.Dim("K", min=2, max=64))
-            dyn = {"input_ids": {0: Bd, 1: Ld}, "attention_mask": {0: Bd, 1: Ld}, "option_span": {0: Bd},
-                   "qtype": {0: Bd}, "marker_pos": {0: Bd, 1: Kd}, "marker_mask": {0: Bd, 1: Kd},
-                   "image_features": None}
-            t = time.time()
-            torch.onnx.export(dec, args, d / "decoder.onnx", input_names=list(dyn), output_names=["logits"],
-                              dynamic_shapes=dyn, dynamo=True, external_data=False, optimize=True)
-            print(f"{name} decoder exported in {time.time() - t:.0f} s", flush=True)
-        sess = ort.InferenceSession(str(d / "decoder.onnx"), providers=["CPUExecutionProvider"])
-        got = sess.run(None, {k: v.detach().numpy() for k, v in zip(dyn, args)})[0]
-        check(f"{name} decoder", float(np.abs(got - ref.numpy()).max()))
+    prefix, feats, rows = rows_for(agent, thumb, qs)
+    b = V.collate_vlm(rows, tok.pad_token_id, with_pixels=False)
+    dec = Decoder(agent.model, image_token_id).eval()
+    args = (b["input_ids"], b["attention_mask"], b["option_span"], b["qtype"], b["marker_pos"],
+            b["marker_mask"], feats[0].float())
+    with torch.no_grad():
+        ref, _ = agent.model(b["input_ids"], b["attention_mask"], b["marker_pos"], b["marker_mask"], b["qtype"],
+                             image_hidden_states=feats.repeat(len(qs), 1, 1), option_span=b["option_span"])
+        check("export wrapper vs model.forward", float((dec(*args) - ref).abs().max()))
+        Bd, Ld, Kd = (torch.export.Dim("B", min=1, max=64), torch.export.Dim("L", min=80, max=1024),
+                      torch.export.Dim("K", min=2, max=64))
+        dyn = {"input_ids": {0: Bd, 1: Ld}, "attention_mask": {0: Bd, 1: Ld}, "option_span": {0: Bd},
+               "qtype": {0: Bd}, "marker_pos": {0: Bd, 1: Kd}, "marker_mask": {0: Bd, 1: Kd},
+               "image_features": None}
+        step("exporting the decoder graph")
+        t = time.time()
+        torch.onnx.export(dec, args, partial / "decoder.onnx", input_names=list(dyn), output_names=["logits"],
+                          dynamic_shapes=dyn, dynamo=True, external_data=False, optimize=True)
+        print(f"decoder exported in {time.time() - t:.0f} s", flush=True)
+    step("checking the decoder graph")
+    sess = ort.InferenceSession(str(partial / "decoder.onnx"), providers=["CPUExecutionProvider"])
+    got = sess.run(None, {k: v.detach().numpy() for k, v in zip(dyn, args)})[0]
+    check("decoder", float(np.abs(got - ref.numpy()).max()))
 
-        agent.processor.tokenizer.save_pretrained(d / "tokenizer")
-        meta = {
-            "source": BASE_ID if name == "base" else str(a.laya_new),
-            "revision": BASE_REVISION if name == "base" else None,
-            "fine_tuned_from": agent.cfg.get("loaded_from") if name == "new" else None,
-            "temperature": list(agent.temperature), "temperature_by_options": dict(agent.temperature_by_options),
-            "max_len": agent.cfg["max_len"], "head_max_len": agent.cfg["head_max_len"],
-            "option_attention": agent.model.option_attention, "image_token_id": image_token_id,
-            "pad_token_id": tok.pad_token_id, "prefix_ids": prefix["ids"],
-        }
-        (d / "model.json").write_text(json.dumps(meta, indent=1))
-        probs, ref_rows = {}, {}
-        for i, (qid, r) in enumerate(zip(qs, rows)):
-            k = len(r["markers"])
-            temp = agent._checkpoint_temperature(r["qtype"], k)
-            probs[qid] = torch.softmax(ref[i, :k] / max(1e-3, temp), -1).tolist()
-            ref_rows[qid] = {"ids": r["ids"], "markers": r["markers"], "option_span": list(r["option_span"]),
-                             "qtype": r["qtype"]}
-        (d / "reference/rows.json").write_text(json.dumps(ref_rows))
-        (d / "reference/probabilities.json").write_text(json.dumps(probs))
-    print(f"done: {', '.join(f'laya-{n}' for n in agents)} in {a.out}", flush=True)
+    tok.save_pretrained(partial / "tokenizer")
+    write_json(partial / "model.json", {
+        "source": source, "revision": revision, "fine_tuned_from": agent.cfg.get("loaded_from"),
+        "vision": shared or name, "vision_sha256": vhash, "job_id": job_id,
+        "temperature": list(agent.temperature), "temperature_by_options": dict(agent.temperature_by_options),
+        "max_len": agent.cfg["max_len"], "head_max_len": agent.cfg["head_max_len"],
+        "option_attention": agent.model.option_attention, "image_token_id": image_token_id,
+        "pad_token_id": tok.pad_token_id, "prefix_ids": prefix["ids"],
+    })
+    probs, ref_rows = {}, {}
+    for i, (qid, r) in enumerate(zip(qs, rows)):
+        k = len(r["markers"])
+        temp = agent._checkpoint_temperature(r["qtype"], k)
+        probs[qid] = torch.softmax(ref[i, :k] / max(1e-3, temp), -1).tolist()
+        ref_rows[qid] = {"ids": r["ids"], "markers": r["markers"], "option_span": list(r["option_span"]),
+                         "qtype": r["qtype"]}
+    (partial / "reference/rows.json").write_text(json.dumps(ref_rows))
+    (partial / "reference/probabilities.json").write_text(json.dumps(probs))
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("source", help="a folder in Hugging Face format, or a Hugging Face id (id or id@revision)")
+    ap.add_argument("--name", required=True, help="the model's name in this app, e.g. laya-base")
+    ap.add_argument("--out", type=Path, default=REPO / "models")
+    ap.add_argument("--job-id", help="the conversion job running this, recorded in model.json")
+    a = ap.parse_args()
+    if not NAME.match(a.name):
+        raise InstallError("source", f"{a.name!r} is not a model name (lowercase letters, digits, '.', '_', '-')")
+
+    out = a.out.expanduser().resolve()
+    final, partial = out / a.name, out / f".install-{a.name}"
+    if final.exists():
+        raise InstallError("source", f"{final} already exists")
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(partial, ignore_errors=True)
+    try:
+        convert(a.source, a.name, out, partial, a.job_id)
+        partial.rename(final)
+    except BaseException:
+        shutil.rmtree(partial, ignore_errors=True)
+        raise
+    print(f"done: {a.name} in {out}", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    # The job cancels with SIGTERM: exit through `main`'s cleanup rather than leave a half-written model.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    try:
+        main()
+    except InstallError as e:
+        print(f"error: {e.kind}: {e}", file=sys.stderr, flush=True)
+        sys.exit(2)

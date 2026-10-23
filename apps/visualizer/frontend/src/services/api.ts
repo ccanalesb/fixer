@@ -952,6 +952,21 @@ export const CullingProfilesAPI = {
     }),
 }
 
+export type AppModel = components['schemas']['AppModel']
+export type AppModelsListResponse = components['schemas']['AppModelsListResponse']
+export type AppModelAddResponse = components['schemas']['AppModelAddResponse']
+export type AppModelPickResponse = components['schemas']['AppModelPickResponse']
+
+/** Models in this app: installed on its System One endpoint, or converting in a job. */
+export const AppModelsAPI = {
+  list: () => request<AppModelsListResponse>('/app-models'),
+  /** Queues the conversion job. */
+  add: (source: string) =>
+    request<AppModelAddResponse>('/app-models', { method: 'POST', body: JSON.stringify({ source }) }),
+  /** Opens a folder dialog on the machine running the backend, like `ConfigAPI.pickCatalog`. */
+  pick: () => request<AppModelPickResponse>('/app-models/pick', { method: 'POST' }, CATALOG_PICK_TIMEOUT_MS),
+}
+
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
 export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackPhotoDetailResponse']
 

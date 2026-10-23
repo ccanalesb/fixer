@@ -1,7 +1,25 @@
 # ADR-0020: Laya runs in Node through ONNX, in a worker thread, from git-ignored files
 
-**Status:** Accepted (2026-10-19), amended by ADR-0021 (2026-10-22)
+**Status:** Accepted (2026-10-19), amended by ADR-0021 (2026-10-22) and by
+[#365](https://github.com/ccanalesb/lightroom-tagger/issues/365) (2026-10-22)
 **Date:** 2026-10-19
+
+> **Amended by #365.** The setup step converts one Laya-family model at a time,
+> from a folder in Hugging Face format or a Hugging Face id (`id` or
+> `id@revision`): `uv run scripts/laya/export_onnx.py <source> --name <name>`, run
+> by the `laya_model_install` job when a model is added in Processing → Settings →
+> Models in this app. Without a revision the script records the last commit that
+> changed the model files (`8b318c9` for `thaitea/laya-vision`). Every directory
+> in `models/` with complete files is one installed model; its `model.json` records
+> its source, revision, the job that converted it, and which directory holds its
+> vision graph (`vision`). A model whose vision tower and connector hash
+> (`vision_sha256`) matches an installed one's reuses that graph, as Laya new
+> always did; a model without the hash gets it computed once from its recorded
+> source. The script writes to `models/.install-<name>/` and renames it when every
+> check passes, so a failed or cancelled install leaves nothing listed. The worker
+> loads each model's decoder and vision graph on its first request, not all at
+> start. A model with no revision keeps its decoder-hash id, so `laya-new` keeps
+> the id its answers hash (ADR-0021, Decision 4).
 
 > **Amended by ADR-0021.** Culling no longer calls the worker: it asks this app's
 > System One endpoint, which owns the worker. The worker starts on the endpoint's

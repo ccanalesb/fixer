@@ -1,6 +1,6 @@
 /**
- * The models this app serves on its own System One endpoint (ADR-0021): the setup step's exports in
- * `laya_models_dir`, as `laya-base` and `laya-new`.
+ * The models this app serves on its own System One endpoint (ADR-0021): every model installed in
+ * `laya_models_dir`, by its directory name.
  *
  * The Laya worker starts on the first request and is closed after two idle minutes, which frees the
  * ~2–3.5 GB it holds; the next request starts it again.
@@ -8,22 +8,19 @@
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, loadLibraryConfig } from '../config.js';
-import { LayaSetupError, resolveLayaModelFiles, setupErrorMessage, type LayaModelFiles } from './files.js';
-import { readLayaModelIds } from './model-id.js';
-import type { LayaModelName } from './questions.js';
+import { LayaSetupError, installedModels, resolveInstalledModel, type InstalledModel } from './files.js';
+import { installedModelId } from './model-id.js';
 import type { LayaQuestion } from './rows.js';
 import { startLayaRuntime, type LayaAnswerRuntime } from './runtime.js';
 import type { LayaImageAnswer } from './sessions.js';
 
 export const APP_MODELS_IDLE_MS = 120_000;
 
-const MODEL_NAMES: Record<string, LayaModelName> = { 'laya-base': 'base', 'laya-new': 'new' };
-
 export interface AppModelEntry {
   name: string;
   description: string;
   release_date: string;
-  /** The identity stage versions hash: Laya base's revision, Laya new's decoder hash. */
+  /** The identity stage versions hash: the Hugging Face id and commit, else the decoder's hash. */
   x_model_id: string;
 }
 
@@ -36,12 +33,9 @@ export class AppModelAnswerFailed extends Error {}
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-function exportedOn(file: string): string {
-  return statSync(file).mtime.toISOString().slice(0, 10);
-}
-
-function sameFiles(a: LayaModelFiles, b: LayaModelFiles): boolean {
-  return a.baseDir === b.baseDir && a.newDir === b.newDir;
+function description(m: InstalledModel): string {
+  const from = m.revision ? `${m.source}@${m.revision.slice(0, 7)}` : (m.source ?? 'a folder');
+  return `${from}, converted to ONNX in this app`;
 }
 
 export class AppModels {
@@ -55,52 +49,32 @@ export class AppModels {
     private readonly idleMs = APP_MODELS_IDLE_MS,
   ) {}
 
-  /** Nothing when the setup step has not run. */
+  /** Nothing until a model is installed. */
   async list(): Promise<AppModelEntry[]> {
-    let files: LayaModelFiles;
-    try {
-      files = resolveLayaModelFiles(this.modelsDir());
-    } catch (e) {
-      if (e instanceof LayaSetupError) return [];
-      throw e;
-    }
-    const ids = await readLayaModelIds(files);
-    const out: AppModelEntry[] = [
-      {
-        name: 'laya-base',
-        description: 'Laya base (thaitea/laya-vision), converted to ONNX in this app',
-        release_date: exportedOn(join(files.baseDir, 'decoder.onnx')),
-        x_model_id: ids.base,
-      },
-    ];
-    if (files.newDir && ids.new) {
+    const out: AppModelEntry[] = [];
+    for (const m of installedModels(this.modelsDir())) {
       out.push({
-        name: 'laya-new',
-        description: 'Laya new (Laya base fine-tuned on this library), converted to ONNX in this app',
-        release_date: exportedOn(join(files.newDir, 'decoder.onnx')),
-        x_model_id: ids.new,
+        name: m.name,
+        description: description(m),
+        release_date: statSync(join(m.dir, 'decoder.onnx')).mtime.toISOString().slice(0, 10),
+        x_model_id: await installedModelId(m),
       });
     }
     return out;
   }
 
   async answer(name: string, image: Uint8Array, questions: Record<string, LayaQuestion>): Promise<LayaImageAnswer> {
-    const model = MODEL_NAMES[name];
-    let files: LayaModelFiles;
+    let model: InstalledModel;
     try {
-      files = resolveLayaModelFiles(this.modelsDir());
+      model = resolveInstalledModel(this.modelsDir(), name);
     } catch (e) {
-      if (e instanceof LayaSetupError) throw new AppModelNotListed(`${name} is not listed by this app. ${e.message}`);
+      if (e instanceof LayaSetupError) throw new AppModelNotListed(e.message);
       throw e;
-    }
-    if (!model) throw new AppModelNotListed(`${name} is not listed by this app`);
-    if (model === 'new' && !files.newDir) {
-      throw new AppModelNotListed(setupErrorMessage(`${name} is not listed by this app: Laya new was not exported`));
     }
     this.inFlight += 1;
     this.clearIdle();
     try {
-      const runtime = await this.ensure(files);
+      const runtime = await this.ensure();
       try {
         return await runtime.answer(model, image, questions);
       } catch (e) {
@@ -116,14 +90,14 @@ export class AppModels {
     }
   }
 
-  private async ensure(files: LayaModelFiles): Promise<LayaAnswerRuntime> {
-    if (this.runtime && !this.runtime.broken && sameFiles(this.runtime.files, files)) return this.runtime;
+  private async ensure(): Promise<LayaAnswerRuntime> {
+    if (this.runtime && !this.runtime.broken) return this.runtime;
     if (this.runtime) {
       const old = this.runtime;
       this.runtime = null;
       await old.close().catch(() => undefined);
     }
-    this.starting ??= startLayaRuntime(files).finally(() => {
+    this.starting ??= startLayaRuntime().finally(() => {
       this.starting = null;
     });
     try {
