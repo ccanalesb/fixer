@@ -39,8 +39,8 @@ import {
   filterVoidSubstanceFromScoringSelection,
 } from '../src/jobs/handlers/common.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
-import { layaNewForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
-import { LAYA_QUESTIONS } from '../src/laya/questions.js';
+import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
+import { FACTORY_QUESTIONS } from '../src/app-models/factory-questions.js';
 import type { ProfileDefinition } from '../src/cull/types.js';
 
 const CULL_TABLES = [
@@ -53,7 +53,7 @@ const CULL_TABLES = [
   'cull_user_actions',
   'cull_verdicts',
 ];
-const MODEL_IDS = { culling_profile: 'thaitea/laya-vision@8b318c9', score_forecast: 'laya-new@sha256:abc' };
+const MODEL_IDS = { culling_profile: 'owner/vision-model@8b318c9', score_forecast: 'forecast-model@sha256:abc' };
 
 let dir: string;
 let db: Db;
@@ -61,7 +61,7 @@ let db: Db;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-storage-'));
   db = initLibraryDb(join(dir, 'library.db'));
-  saveForecastQuestions(db, layaNewForecastQuestions(db));
+  saveForecastQuestions(db, factoryForecastQuestions(db));
 });
 
 afterEach(() => {
@@ -78,8 +78,8 @@ describe('migration and seed', () => {
   it('a fresh library has every cull table, the Default culling profile and the default pipeline setting', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
     expect(tables(db)).toEqual(CULL_TABLES);
-    const profile = getCullProfile(db, 'recipe-culling')!;
-    expect(profile).toMatchObject({ name: 'Default culling profile', model: 'laya-base', active: true, measured: true });
+    const profile = getCullProfile(db, 'default')!;
+    expect(profile).toMatchObject({ name: 'Default culling profile', active: true, measured: true });
     expect(profile.definition.dimensions.map((d) => d.slug)).toEqual([
       'immediate-impact',
       'visual-structure',
@@ -91,7 +91,7 @@ describe('migration and seed', () => {
     expect(pipeline.version).toBe(1);
     // A new install has no models, so both stages start off; turning the culling profile on filters as it always did.
     expect(pipeline.config).toMatchObject({ culling_profiles_enabled: false, culling_profiles_filter_enabled: true });
-    expect(pipeline.config.culling_profiles).toEqual([{ profile_slug: 'recipe-culling', rule: profile.rule }]);
+    expect(pipeline.config.culling_profiles).toEqual([{ profile_slug: 'default', rule: profile.rule }]);
     expect(profile.rule).toEqual({
       level_sets: { '7': { fails_at_most: 3, strong_at_least: 6 }, '10': { fails_at_most: 4, strong_at_least: 8 } },
       combine: 'every',
@@ -101,7 +101,7 @@ describe('migration and seed', () => {
   });
 
   it('a deleted profile is not seeded again', () => {
-    expect(listCullProfiles(db).map((r) => r.slug)).toEqual(['recipe-culling']);
+    expect(listCullProfiles(db).map((r) => r.slug)).toEqual(['default']);
     db.exec('DELETE FROM cull_profile_versions; DELETE FROM cull_profiles');
     expect(seedCullingDefaults(db)).toBe(false);
     db.close();
@@ -120,13 +120,13 @@ describe('migration and seed', () => {
 
   it('the seed file asks the Default culling profile questions in questions.json, word for word', () => {
     const seed = JSON.parse(
-      readFileSync(join(REPO_ROOT, 'prompts', 'culling-profiles', 'recipe-culling.json'), 'utf8'),
+      readFileSync(join(REPO_ROOT, 'prompts', 'culling-profiles', 'default.json'), 'utf8'),
     ) as { definition: ProfileDefinition };
     const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
     for (const set of seed.definition.level_sets) {
-      const stage = stages.find((s) => s.stageKey === `culling_profile:recipe-culling:${set.id}`)!;
+      const stage = stages.find((s) => s.stageKey === `culling_profile:default:${set.id}`)!;
       const asked = Object.values(stage.questions);
-      const expected = Object.entries(LAYA_QUESTIONS.base)
+      const expected = Object.entries(FACTORY_QUESTIONS.culling_profile)
         .filter(([qid]) => qid.startsWith(`${set.id}|`))
         .map(([, q]) => q);
       expect(asked).toEqual(expected);
@@ -137,23 +137,23 @@ describe('migration and seed', () => {
 describe('versions', () => {
   const current = () => resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
   const byKey = (key: string) => current().find((s) => s.stageKey === key)!;
-  const S7 = 'culling_profile:recipe-culling:7';
-  const S10 = 'culling_profile:recipe-culling:10';
+  const S7 = 'culling_profile:default:7';
+  const S10 = 'culling_profile:default:10';
 
   function editLevels(setId: string, edit: (levels: string[]) => string[]): ProfileDefinition {
-    const def = structuredClone(getCullProfile(db, 'recipe-culling')!.definition);
+    const def = structuredClone(getCullProfile(db, 'default')!.definition);
     const set = def.level_sets.find((s) => s.id === setId)!;
     for (const dim of Object.keys(set.levels)) set.levels[dim] = edit(set.levels[dim]!);
     return def;
   }
 
-  it('resolves three stages: Recipe culling at 7 and 10 levels and the Score forecast', () => {
+  it('resolves three stages: the Default culling profile at 7 and 10 levels and the Score forecast', () => {
     expect(current().map((s) => [s.stageKey, s.kind, s.modelId])).toEqual([
       [S7, 'culling_profile', MODEL_IDS.culling_profile],
       [S10, 'culling_profile', MODEL_IDS.culling_profile],
       ['score_forecast', 'score_forecast', MODEL_IDS.score_forecast],
     ]);
-    expect(Object.keys(byKey('score_forecast').questions)).toEqual(Object.keys(LAYA_QUESTIONS.new));
+    expect(Object.keys(byKey('score_forecast').questions)).toEqual(Object.keys(FACTORY_QUESTIONS.score_forecast));
   });
 
   it('a level text change makes a new version of that level set only; old rows stay, not current', () => {
@@ -171,32 +171,32 @@ describe('versions', () => {
       runId: run,
     });
 
-    const saved = saveProfileDefinition(db, 'recipe-culling', editLevels('7', (l) => [...l.slice(0, 6), 'unforgettable']));
+    const saved = saveProfileDefinition(db, 'default', editLevels('7', (l) => [...l.slice(0, 6), 'unforgettable']));
     expect(saved).toMatchObject({ created: true, version: 2 });
     expect(byKey(S7).versionId).not.toBe(old7);
     expect(byKey(S10).versionId).toBe(old10);
     expect(Object.keys(loadCurrentStageAnswers(db, current(), ['a']).get('a') ?? {})).toEqual([]);
     expect(db.prepare('SELECT COUNT(*) AS n FROM cull_stage_answers WHERE stage_version_id = ?').get(old7)).toEqual({ n: 1 });
 
-    expect(saveProfileDefinition(db, 'recipe-culling', getCullProfile(db, 'recipe-culling')!.definition).created).toBe(false);
+    expect(saveProfileDefinition(db, 'default', getCullProfile(db, 'default')!.definition).created).toBe(false);
   });
 
   it('a level-count change makes a new version; reverting brings the old one and its rows back', () => {
     const old7 = byKey(S7).versionId;
-    const original = getCullProfile(db, 'recipe-culling')!.definition;
-    saveProfileDefinition(db, 'recipe-culling', editLevels('7', (l) => [...l, 'beyond words']));
+    const original = getCullProfile(db, 'default')!.definition;
+    saveProfileDefinition(db, 'default', editLevels('7', (l) => [...l, 'beyond words']));
     const seven = byKey(S7);
     expect(seven.versionId).not.toBe(old7);
     expect(Object.values(seven.questions)[0]!.criteria).toHaveLength(8);
 
-    saveProfileDefinition(db, 'recipe-culling', original);
+    saveProfileDefinition(db, 'default', original);
     expect(byKey(S7).versionId).toBe(old7);
-    expect(getCullProfile(db, 'recipe-culling')!.version).toBe(1);
+    expect(getCullProfile(db, 'default')!.version).toBe(1);
   });
 
   it('a new model makes a new stage version', () => {
     const old = byKey('score_forecast').versionId;
-    const other = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, score_forecast: 'laya-new@other' });
+    const other = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, score_forecast: 'forecast-model@other' });
     expect(other.find((s) => s.stageKey === 'score_forecast')!.versionId).not.toBe(old);
   });
 
@@ -207,9 +207,9 @@ describe('versions', () => {
 
   it('a rule change is not a stage version: it makes a new pipeline-setting version', () => {
     const before = current().map((s) => s.versionId);
-    const rule = { ...getCullProfile(db, 'recipe-culling')!.rule, combine: 'any' as const };
-    setProfileRule(db, 'recipe-culling', rule);
-    expect(getCullProfile(db, 'recipe-culling')!.rule.combine).toBe('any');
+    const rule = { ...getCullProfile(db, 'default')!.rule, combine: 'any' as const };
+    setProfileRule(db, 'default', rule);
+    expect(getCullProfile(db, 'default')!.rule.combine).toBe('any');
     const pipeline = getCurrentPipelineSetting(db);
     expect(pipeline.version).toBe(2);
     expect(pipeline.config.culling_profiles[0]!.rule.combine).toBe('any');

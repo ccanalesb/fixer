@@ -7,7 +7,7 @@ import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig } from '../config.js';
 import type { Db } from '../db/connection.js';
 import { getJob, initJobsDb } from '../db/jobs/jobs.js';
-import { AppModelSourceError, addAppModel, listAppModels } from '../laya/install.js';
+import { AppModelSourceError, addAppModel, listAppModels } from '../app-models/install.js';
 import {
   FileDialogBusyError,
   FileDialogUnavailableError,
@@ -38,7 +38,7 @@ function withJobsDb<T>(fn: (db: Db) => T): T {
   }
 }
 
-const modelsDir = () => loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir;
+const modelsDir = () => loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir;
 
 const listRoute = createRoute({
   method: 'get',

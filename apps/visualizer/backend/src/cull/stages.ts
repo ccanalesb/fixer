@@ -10,7 +10,7 @@ import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getOrCreateStageVersion } from '../db/library/cull-stages.js';
 import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
 import { libraryWrite } from '../db/library/write.js';
-import type { LayaQuestion } from '../laya/rows.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
 import { forecastStageQuestions } from './forecast-questions.js';
 import type { StageModelIds } from './stage-models.js';
 import type { PipelineSettingConfig, ResolvedStage } from './types.js';
@@ -22,7 +22,7 @@ export function profileStageKey(profileSlug: string, levelSet: string): string {
 }
 
 /** What the Score forecast's model is asked now: the current Score forecast questions. */
-export function currentForecastStageQuestions(db: Db): Record<string, LayaQuestion> {
+export function currentForecastStageQuestions(db: Db): Record<string, SystemOneQuestion> {
   return forecastStageQuestions(getForecastQuestions(db).questions);
 }
 
@@ -42,7 +42,7 @@ export function resolveCurrentStages(db: Db, pipeline: PipelineSettingConfig, mo
         if (!entry.rule.level_sets[set.id]) {
           throw new Error(`culling profile ${profile.slug}: the rule has no "fails at" / "strong at" for level set ${set.id}`);
         }
-        const questions: Record<string, LayaQuestion> = {};
+        const questions: Record<string, SystemOneQuestion> = {};
         for (const dim of profile.definition.dimensions) {
           questions[`${set.id}|${dim.slug}`] = { type: 'score', instructions: dim.question, criteria: set.levels[dim.slug] };
         }

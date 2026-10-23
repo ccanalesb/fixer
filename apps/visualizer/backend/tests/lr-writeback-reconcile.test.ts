@@ -37,7 +37,7 @@ beforeEach(() => {
     imageKey: '2024-06-01_filtered-photo',
     verdict: 'filtered',
     filteredBy: 'culling_profile',
-    filteredByStageKey: 'culling_profile:recipe-culling:7',
+    filteredByStageKey: 'culling_profile:default:7',
     cullingProfileVerdict: 'filtered',
     sentByHand: false,
     pendingStages: [],

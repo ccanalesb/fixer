@@ -9,7 +9,7 @@ coverage/
 
 # `tests/fixtures/imaging/regenerate-fixtures.py` is still run by hand after a
 # Pillow upgrade; it drops bytecode next to itself. The only other Python is the
-# Laya setup step, `scripts/laya/export_onnx.py`, run through uv.
+# models' converter, `scripts/app-models/export_onnx.py`, run through uv.
 __pycache__/
 *.py[cod]
 .venv
@@ -35,7 +35,7 @@ library.db.worktree-backup
 instagram-matching-export.json
 library.json
 vision_matching_results.json
-# Laya ONNX files written by `scripts/laya/export_onnx.py`. The repo is public;
+# The models in this app, written by `scripts/app-models/export_onnx.py`. The repo is public;
 # no model is ever committed.
 /models/
 

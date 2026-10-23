@@ -20,9 +20,9 @@ cd apps/visualizer/frontend && npm install --legacy-peer-deps && cd ../../..
 `npm link` puts `lightroom-tagger` on your PATH. Without it, run any of the
 commands below as `npm run cli -- <command>` from `apps/visualizer/backend`.
 
-### Culling models (Laya)
+### Culling models
 
-Culling's stages can run Laya-family models in this app, locally through ONNX
+Culling's stages can run models in this app, locally through ONNX
 ([ADR-0020](docs/adr/0020-laya-in-node-through-onnx.md)). A model is added in
 Processing → Settings → Culling models → "Add a model", from a folder in Hugging
 Face format or a Hugging Face id; a job converts it once, with
@@ -31,10 +31,12 @@ the first model, 430 MB for one that shares its vision tower). The same script b
 hand:
 
 ```bash
-uv run scripts/laya/export_onnx.py thaitea/laya-vision --name laya-base
-uv run scripts/laya/export_onnx.py /path/to/laya-new-checkpoint --name laya-new
+uv run scripts/app-models/export_onnx.py owner/model --name my-model
+uv run scripts/app-models/export_onnx.py /path/to/checkpoint --name my-fine-tune
 lightroom-tagger cull-check
 ```
+
+Today only SmolVLM (Idefics3) models with a decision head convert.
 
 Without a revision (`id@revision`), the commit recorded is the last one that
 changed the model's files. Nothing is uploaded, and no model file belongs in git.
@@ -115,7 +117,7 @@ vision_model: "gemma3:27b"
 ollama_host: "http://localhost:11434"
 stack_burst_delta_ms: 2000
 vision_cache_enabled: true
-laya_models_dir: "./models"
+app_models_dir: "./models"
 ```
 
 All keys above are fields on `LibraryConfig` in `apps/visualizer/backend/src/config.ts`. Unknown keys in an existing `config.yaml` are ignored with a warning.

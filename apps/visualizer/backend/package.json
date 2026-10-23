@@ -19,8 +19,8 @@
     "test:watch": "vitest",
     "//test:parity": "Needs the real library.db, passed via LIBRARY_DB. Reads only, so it cannot modify the catalog.",
     "test:parity": "LT_CLIP_PARITY=1 vitest run",
-    "//test:laya-parity": "Needs models installed in models/ (scripts/laya/export_onnx.py at the repo root).",
-    "test:laya-parity": "LT_LAYA_PARITY=1 vitest run tests/laya-parity.test.ts",
+    "//test:model-parity": "Needs models installed in models/ (scripts/app-models/export_onnx.py at the repo root).",
+    "test:model-parity": "LT_MODEL_PARITY=1 vitest run tests/app-model-parity.test.ts",
     "export:openapi": "tsx scripts/export-openapi.ts"
   },
   "dependencies": {

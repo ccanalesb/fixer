@@ -4,13 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { REPO_ROOT } from '../src/config.js';
 import {
   forecastStageQuestions,
-  questionsFromLaya,
+  forecastQuestionsFrom,
   questionsFromPerspectives,
   scoringLevels,
   validateForecastQuestions,
   type ScoreForecastQuestion,
 } from '../src/cull/forecast-questions.js';
-import { LAYA_QUESTIONS } from '../src/laya/questions.js';
+import { FACTORY_QUESTIONS } from '../src/app-models/factory-questions.js';
 import { canonicalJson } from '../src/utils/canonical-json.js';
 
 const seed = (slug: string) => readFileSync(join(REPO_ROOT, 'prompts', 'perspectives', `${slug}.md`), 'utf8');
@@ -37,8 +37,8 @@ const question = (over: Partial<ScoreForecastQuestion> = {}): ScoreForecastQuest
 describe('Score forecast questions → what the model is asked', () => {
   it("this library's questions come back exactly as questions.json \"new\", so the stage version does not change", () => {
     const names = { framing: 'Framing', 'compositional-cleanliness': 'Compositional Cleanliness' };
-    const questions = questionsFromLaya(LAYA_QUESTIONS.new, names);
-    expect(canonicalJson(forecastStageQuestions(questions))).toBe(canonicalJson(LAYA_QUESTIONS.new));
+    const questions = forecastQuestionsFrom(FACTORY_QUESTIONS.score_forecast, names);
+    expect(canonicalJson(forecastStageQuestions(questions))).toBe(canonicalJson(FACTORY_QUESTIONS.score_forecast));
     expect(questions.map((q) => [q.id, q.name, q.perspective_slug, q.optional])).toEqual([
       ['framing', 'Framing', 'framing', true],
       ['compositional-cleanliness', 'Compositional Cleanliness', 'compositional-cleanliness', false],
@@ -75,7 +75,7 @@ describe('Create questions from my perspectives', () => {
       optional: true,
       applies: 'Does "Framing" apply to this photo? Framing description.',
     });
-    expect(framing.levels).toEqual(LAYA_QUESTIONS.new.framing!.criteria);
+    expect(framing.levels).toEqual(FACTORY_QUESTIONS.score_forecast.framing!.criteria);
   });
 
   it("a factory-seeded optional perspective, whose description is its marker, asks the rubric's first paragraph", () => {

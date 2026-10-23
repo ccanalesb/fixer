@@ -33,7 +33,7 @@ export interface ProfileRowReadout {
   }[];
 }
 
-/** Map stored Laya qids (`{levelSet}|{dim}`) to dimension slugs for readout. */
+/** Map stored question ids (`{levelSet}|{dim}`) to dimension slugs for readout. */
 export function answersForLevelSetDimensions(
   answers: StageAnswers,
   levelSetId: string,

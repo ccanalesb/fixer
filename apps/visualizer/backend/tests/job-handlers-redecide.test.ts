@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { LibraryFixture } from './helpers/library-fixture.js';
-import { fakeLayaRuntimeModule, fakeLayaState, THIS_APP_LAYA_YAML, writeFakeLayaModels, writeFakePhoto } from './helpers/fake-laya.js';
-import { closeAppModels } from '../src/laya/app-models.js';
+import { fakeModelRuntimeModule, fakeModelState, THIS_APP_MODELS_YAML, writeFakeAppModels, writeFakePhoto } from './helpers/fake-app-models.js';
+import { closeAppModels } from '../src/app-models/app-models.js';
 import { createJob, getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
@@ -26,11 +26,11 @@ const FORECAST_BORDER: Script = { levels: [5, 5, 6, 6], p8: 0.12 };
 const PROFILE_CUT: Script = { levels: [5, 5, 3, 3], p8: 0.5 };
 const FORECAST_CUT: Script = { levels: [5, 5, 6, 6], p8: 0.05 };
 
-const laya = vi.hoisted(() => ({}) as import('./helpers/fake-laya.js').FakeLayaState);
+const fakeModels = vi.hoisted(() => ({}) as import('./helpers/fake-app-models.js').FakeModelState);
 
-vi.mock('../src/laya/runtime.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/laya/runtime.js')>();
-  return fakeLayaRuntimeModule(actual, laya);
+vi.mock('../src/app-models/runtime.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/app-models/runtime.js')>();
+  return fakeModelRuntimeModule(actual, fakeModels);
 });
 
 let fx: LibraryFixture;
@@ -51,7 +51,7 @@ async function addPhoto(key: string, script: Script): Promise<void> {
   const path = join(dir, 'vision', `${key}.jpg`);
   await writeFakePhoto(path, key);
   fx.addImage({ key, filepath: `/missing/${key}.NEF` }).addVisionCache(key, path);
-  laya.scripts.set(key, script);
+  fakeModels.scripts.set(key, script);
 }
 
 async function runCull(): Promise<void> {
@@ -78,15 +78,15 @@ beforeEach(async () => {
   mkdirSync(join(dir, 'vision'), { recursive: true });
   jobsDbPath = join(dir, 'visualizer.db');
   modelsDir = join(dir, 'models');
-  writeFakeLayaModels(modelsDir);
+  writeFakeAppModels(modelsDir);
   fx = new LibraryFixture().cullingStagesOn().addForecastQuestions().activate();
   process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(
     join(dir, 'config.yaml'),
-    `vision_cache_dir: ${join(dir, 'vision')}\nlaya_models_dir: ${modelsDir}\n${THIS_APP_LAYA_YAML}`,
+    `vision_cache_dir: ${join(dir, 'vision')}\napp_models_dir: ${modelsDir}\n${THIS_APP_MODELS_YAML}`,
   );
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
-  Object.assign(laya, fakeLayaState());
+  Object.assign(fakeModels, fakeModelState());
 });
 
 afterEach(async () => {
@@ -103,8 +103,8 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     await addPhoto('b', PASS);
     await addPhoto('c', FORECAST_BORDER);
     await runCull();
-    laya.calls.length = 0;
-    laya.starts = 0;
+    fakeModels.calls.length = 0;
+    fakeModels.starts = 0;
     const lib = openLibraryDb(fx.dbPath);
     seedCullingDefaults(lib);
     createPipelineSettingVersion(lib, {
@@ -119,8 +119,8 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     const r = job.result as { changed: number };
     expect(r.changed).toBeGreaterThanOrEqual(1);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'c'")[0]?.verdict).toBe('filtered');
-    expect(laya.calls.length).toBe(0);
-    expect(laya.starts).toBe(0);
+    expect(fakeModels.calls.length).toBe(0);
+    expect(fakeModels.starts).toBe(0);
   });
 
   it('profile rule change via setProfileRule flips profile filters', async () => {
@@ -128,8 +128,8 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     await runCull();
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'a'")[0]?.verdict).toBe('passed');
     const lib = openLibraryDb(fx.dbPath);
-    const base = getCullProfile(lib, 'recipe-culling')!.rule;
-    setProfileRule(lib, 'recipe-culling', {
+    const base = getCullProfile(lib, 'default')!.rule;
+    setProfileRule(lib, 'default', {
       ...base,
       combine: 'any',
       filter_rule: { type: 'mean_fail' },
@@ -139,11 +139,11 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
       },
     });
     lib.close();
-    laya.calls.length = 0;
+    fakeModels.calls.length = 0;
     const job = await runRedecide();
     expect((job.result as { changed: number }).changed).toBeGreaterThanOrEqual(1);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'a'")[0]?.verdict).toBe('filtered');
-    expect(laya.calls.length).toBe(0);
+    expect(fakeModels.calls.length).toBe(0);
   });
 
   it('a switch change re-decides every photo from stored answers, with no model call', async () => {
@@ -151,7 +151,7 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     await addPhoto('f', FORECAST_CUT);
     await runCull();
     rmSync(modelsDir, { recursive: true, force: true });
-    laya.calls.length = 0;
+    fakeModels.calls.length = 0;
     const rows = () =>
       fx.query('SELECT image_key, verdict, filtered_by, culling_profile_verdict FROM cull_verdicts ORDER BY image_key');
     const switchTo = async (change: Partial<PipelineSettingConfig>, forecastEnabled = true) => {
@@ -183,15 +183,15 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
       { image_key: 'f', verdict: 'filtered', filtered_by: 'score_forecast', culling_profile_verdict: null },
       { image_key: 'p', verdict: 'passed', filtered_by: null, culling_profile_verdict: null },
     ]);
-    expect(laya.calls).toEqual([]);
+    expect(fakeModels.calls).toEqual([]);
   });
 
   it('keeps sent-by-hand passed and preserves pending_reason', async () => {
     await addPhoto('filtered', PROFILE_CUT);
     await addPhoto('pend', PASS);
-    laya.failOn = 'pend';
+    fakeModels.failOn = 'pend';
     await runCull();
-    laya.failOn = null;
+    fakeModels.failOn = null;
     const lib = openLibraryDb(fx.dbPath);
     recordCullUserAction(lib, 'filtered', 'sent_by_hand');
     lib.close();

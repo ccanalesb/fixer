@@ -1,4 +1,4 @@
-import { prepareKimiJobCull, resetKimiJobLaya, writeKimiJobConfig } from './helpers/kimi-job-laya.js';
+import { prepareKimiJobCull, resetKimiJobModels, writeKimiJobConfig } from './helpers/kimi-job-models.js';
 /**
  * single_describe and batch_describe handlers via tick() and real job rows.
  * Provider is a real HTTP server; env overrides isolate config paths.
@@ -120,7 +120,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-desc-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().addForecastQuestions().activate();
-  resetKimiJobLaya();
+  resetKimiJobModels();
   onRequest = null;
   process.env.DATABASE_PATH = jobsDbPath;
   await startServer();

@@ -5,8 +5,8 @@
  * stage version follows the text and going back reuses the answers stored under it.
  */
 import { createHash } from 'node:crypto';
-import { questionsFromLaya, type ScoreForecastQuestion } from '../../cull/forecast-questions.js';
-import { LAYA_QUESTIONS } from '../../laya/questions.js';
+import { forecastQuestionsFrom, type ScoreForecastQuestion } from '../../cull/forecast-questions.js';
+import { FACTORY_QUESTIONS } from '../../app-models/factory-questions.js';
 import { canonicalJson } from '../../utils/canonical-json.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import type { Db } from '../connection.js';
@@ -80,7 +80,7 @@ function perspectiveNames(db: Db): Record<string, string> {
   return Object.fromEntries(rows.map((r) => [r.slug, r.display_name]));
 }
 
-/** The questions Laya new was trained on (`questions.json` "new"), tied to this library's perspectives. */
-export function layaNewForecastQuestions(db: Db): ScoreForecastQuestion[] {
-  return questionsFromLaya(LAYA_QUESTIONS.new, perspectiveNames(db));
+/** The factory Score forecast questions (`factory-questions.json`), tied to this library's perspectives. */
+export function factoryForecastQuestions(db: Db): ScoreForecastQuestion[] {
+  return forecastQuestionsFrom(FACTORY_QUESTIONS.score_forecast, perspectiveNames(db));
 }

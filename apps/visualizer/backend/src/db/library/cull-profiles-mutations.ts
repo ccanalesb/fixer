@@ -29,7 +29,6 @@ export function duplicateCullProfile(
   return createCullProfile(db, {
     slug: newSlug,
     name: newName ?? `${src.name} (copy)`,
-    model: src.model,
     definition: structuredClone(src.definition),
     rule: structuredClone(src.rule),
     measured: false,
@@ -40,17 +39,15 @@ export function duplicateCullProfile(
 export function updateCullProfileMeta(
   db: Db,
   slug: string,
-  patch: { name?: string; model?: string; active?: boolean },
+  patch: { name?: string; active?: boolean },
 ): CullProfile {
   return libraryWrite(db, () => {
     const profile = getCullProfile(db, slug);
     if (!profile) throw new Error(`no culling profile ${slug}`);
     const name = patch.name ?? profile.name;
-    const model = patch.model ?? profile.model;
     const active = patch.active ?? profile.active;
-    db.prepare('UPDATE cull_profiles SET name = ?, model = ?, active = ?, updated_at = ? WHERE slug = ?').run(
+    db.prepare('UPDATE cull_profiles SET name = ?, active = ?, updated_at = ? WHERE slug = ?').run(
       name,
-      model,
       active ? 1 : 0,
       nowIsoUtc(),
       slug,

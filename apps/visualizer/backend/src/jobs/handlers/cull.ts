@@ -1,5 +1,5 @@
 /**
- * The culling job, `batch_cull_photos_before_scoring`: Laya answers every stage of the pipeline setting
+ * The culling job, `batch_cull_photos_before_scoring`: each stage's model answers every stage of the pipeline setting
  * for photos with no current verdict, and each photo's summary row is decided from the answers.
  *
  * `runCullPass` lives in `cull-pass.ts` so the in-job cull step can import it without a cycle through

@@ -1,7 +1,6 @@
 {
-  "slug": "recipe-culling",
+  "slug": "default",
   "name": "Default culling profile",
-  "model": "laya-base",
   "measured": true,
   "definition": {
     "dimensions": [

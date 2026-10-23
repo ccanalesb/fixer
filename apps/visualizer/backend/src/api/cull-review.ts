@@ -52,7 +52,7 @@ function thumbnailUrl(imageKey: string): string {
 
 function pipelineFallbackProfile(db: import('../db/connection.js').Db): string {
   const { config: pipe } = getCurrentPipelineSetting(db);
-  return pipe.culling_profiles[0]?.profile_slug ?? 'recipe-culling';
+  return pipe.culling_profiles[0]?.profile_slug ?? 'default';
 }
 
 function shapeReviewRow(

@@ -25,7 +25,7 @@ import { getForecastQuestions } from '../../db/library/score-forecast-questions.
 import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
-import { convertingModelNames } from '../../laya/install.js';
+import { convertingModelNames } from '../../app-models/install.js';
 import { createEventLoopYieldState, pollCancelAndYield } from '../../utils/yield.js';
 import {
   buildBatchCullCheckpointBody,

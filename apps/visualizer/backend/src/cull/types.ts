@@ -5,7 +5,7 @@
  * profile at one level set, or the Score forecast. Stages are what get versioned and stored; the pipeline setting says
  * how their answers become a verdict.
  */
-import type { LayaQuestion } from '../laya/rows.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
 
 export type CullVerdict = 'filtered' | 'passed';
 export type CullSummaryVerdict = CullVerdict | 'pending';
@@ -77,7 +77,7 @@ export interface ResolvedStage {
   profileSlug: string | null;
   levelSet: string | null;
   /** Question id → question. Profile ids are `<level set>|<dimension>`; forecast ids are the Score forecast's own. */
-  questions: Record<string, LayaQuestion>;
+  questions: Record<string, SystemOneQuestion>;
 }
 
 /**

@@ -21,8 +21,8 @@ const app = createApp();
 
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 
-function writeMinimalLaya(modelsDir: string): void {
-  const base = join(modelsDir, 'laya-base');
+function writeMinimalModel(modelsDir: string): void {
+  const base = join(modelsDir, 'culling-model');
   mkdirSync(join(base, 'tokenizer'), { recursive: true });
   writeFileSync(join(base, 'tokenizer', 'tokenizer.json'), JSON.stringify({ model: { vocab: { x: 1 } } }));
   writeFileSync(join(base, 'tokenizer', 'tokenizer_config.json'), '{}');
@@ -44,8 +44,11 @@ beforeEach(() => {
   jobsDir = mkdtempSync(join(tmpdir(), 'lt-cull-profiles-jobs-'));
   jobsDbPath = join(jobsDir, 'visualizer.db');
   const modelsDir = join(jobsDir, 'models');
-  writeMinimalLaya(modelsDir);
-  writeFileSync(join(jobsDir, 'config.yaml'), `laya_models_dir: ${modelsDir}\n`);
+  writeMinimalModel(modelsDir);
+  writeFileSync(
+    join(jobsDir, 'config.yaml'),
+    `app_models_dir: ${modelsDir}\nculling_models:\n  culling_profile: {endpoint: this_app, model: culling-model, api_key: ""}\n`,
+  );
   process.env.DATABASE_PATH = jobsDbPath;
   process.env.LT_CONFIG_YAML = join(jobsDir, 'config.yaml');
   fx = new LibraryFixture().activate();
@@ -70,21 +73,21 @@ describe('GET /api/culling-profiles/pipeline', () => {
 });
 
 describe('GET /api/culling-profiles/', () => {
-  it('lists seeded Recipe culling', async () => {
+  it('lists the seeded Default culling profile', async () => {
     const res = await app.request('/api/culling-profiles/');
     expect(res.status).toBe(200);
     const body = await json<{ profiles: { slug: string; in_pipeline: boolean }[] }>(res);
-    expect(body.profiles.some((r) => r.slug === 'recipe-culling' && r.in_pipeline)).toBe(true);
+    expect(body.profiles.some((r) => r.slug === 'default' && r.in_pipeline)).toBe(true);
   });
 });
 
 describe('PUT /api/culling-profiles/{slug}/rule', () => {
   it('enqueues re-decide when pipeline version changes', async () => {
     const profile = await json<{ rule: Record<string, unknown> }>(
-      await app.request('/api/culling-profiles/recipe-culling'),
+      await app.request('/api/culling-profiles/default'),
     );
     const rule = { ...profile.rule, combine: profile.rule.combine === 'every' ? 'any' : 'every' };
-    const res = await app.request('/api/culling-profiles/recipe-culling/rule', {
+    const res = await app.request('/api/culling-profiles/default/rule', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ rule }),
@@ -107,9 +110,9 @@ type Profile = {
 describe('PUT /api/culling-profiles/{slug}/definition', () => {
   it('save_only returns JSON with hours impact (F16)', async () => {
     const profile = await json<{ definition: Record<string, unknown> }>(
-      await app.request('/api/culling-profiles/recipe-culling'),
+      await app.request('/api/culling-profiles/default'),
     );
-    const res = await app.request('/api/culling-profiles/recipe-culling/definition', {
+    const res = await app.request('/api/culling-profiles/default/definition', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ definition: profile.definition, mode: 'save_only' }),
@@ -122,8 +125,8 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
     expect(Number.isFinite(body.impact.hours_estimate)).toBe(true);
   });
 
-  it('returns validation_errors when Laya rejects the definition', async () => {
-    const baseModel = join(jobsDir, 'models', 'laya-base', 'model.json');
+  it('returns validation_errors when the stage model rejects the definition', async () => {
+    const baseModel = join(jobsDir, 'models', 'culling-model', 'model.json');
     writeFileSync(
       baseModel,
       JSON.stringify({
@@ -137,14 +140,14 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
       }),
     );
     const profile = await json<{ definition: Record<string, unknown> }>(
-      await app.request('/api/culling-profiles/recipe-culling'),
+      await app.request('/api/culling-profiles/default'),
     );
     const bad = structuredClone(profile.definition) as {
       dimensions: { slug: string; name: string; question: string }[];
       level_sets: { id: string; levels: Record<string, string[]> }[];
     };
-    bad.dimensions[0]!.question = 'This question is too long for the Laya row budget.';
-    const res = await app.request('/api/culling-profiles/recipe-culling/definition', {
+    bad.dimensions[0]!.question = "This question is too long for the model's row budget.";
+    const res = await app.request('/api/culling-profiles/default/definition', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ definition: bad, mode: 'save_only' }),
@@ -156,9 +159,9 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
 
   it('save_and_queue_cull enqueues whole-catalog cull job', async () => {
     const profile = await json<{ definition: Record<string, unknown> }>(
-      await app.request('/api/culling-profiles/recipe-culling'),
+      await app.request('/api/culling-profiles/default'),
     );
-    const res = await app.request('/api/culling-profiles/recipe-culling/definition', {
+    const res = await app.request('/api/culling-profiles/default/definition', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ definition: profile.definition, mode: 'save_and_queue_cull' }),
@@ -174,14 +177,14 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
   });
 
   const putDefinition = (body: unknown) =>
-    app.request('/api/culling-profiles/recipe-culling/definition', {
+    app.request('/api/culling-profiles/default/definition', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
 
   it('refuses an empty level text with its set|dimension|level field', async () => {
-    const profile = await json<Profile>(await app.request('/api/culling-profiles/recipe-culling'));
+    const profile = await json<Profile>(await app.request('/api/culling-profiles/default'));
     const def = structuredClone(profile.definition);
     const dim = def.dimensions[0]!.slug;
     def.level_sets[0]!.levels[dim]![2] = '  ';
@@ -192,7 +195,7 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
   });
 
   it('saves a new level set together with its bands and re-decides on save_only', async () => {
-    const profile = await json<Profile>(await app.request('/api/culling-profiles/recipe-culling'));
+    const profile = await json<Profile>(await app.request('/api/culling-profiles/default'));
     const def = structuredClone(profile.definition);
     const src = def.level_sets[0]!;
     const levels = Object.fromEntries(Object.entries(src.levels).map(([k, v]) => [k, v.slice(0, 5)]));
@@ -204,7 +207,7 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
 
     const res = await putDefinition({ definition: def, rule, mode: 'save_only' });
     expect(res.status).toBe(200);
-    const saved = await json<Profile>(await app.request('/api/culling-profiles/recipe-culling'));
+    const saved = await json<Profile>(await app.request('/api/culling-profiles/default'));
     expect(saved.definition.level_sets.map((s) => s.id)).toContain('5');
     expect(saved.rule.level_sets['5']).toEqual({ fails_at_most: 2, strong_at_least: 4 });
     const jobsDb = initJobsDb(jobsDbPath);
@@ -216,10 +219,10 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
 
 describe('PUT /api/culling-profiles/{slug}/rule bands', () => {
   it('refuses strong past the top level of a set', async () => {
-    const profile = await json<Profile>(await app.request('/api/culling-profiles/recipe-culling'));
+    const profile = await json<Profile>(await app.request('/api/culling-profiles/default'));
     const [id, bands] = Object.entries(profile.rule.level_sets)[0]!;
     const rule = { ...profile.rule, level_sets: { ...profile.rule.level_sets, [id]: { ...bands, strong_at_least: 99 } } };
-    const res = await app.request('/api/culling-profiles/recipe-culling/rule', {
+    const res = await app.request('/api/culling-profiles/default/rule', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ rule }),
@@ -305,7 +308,7 @@ describe('PUT /api/culling-profiles/pipeline/culling-profiles', () => {
 
 describe('PATCH /api/culling-profiles/{slug}', () => {
   it('deactivate enqueues re-decide', async () => {
-    const res = await app.request('/api/culling-profiles/recipe-culling', {
+    const res = await app.request('/api/culling-profiles/default', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ active: false }),
@@ -326,7 +329,6 @@ describe('POST /api/culling-profiles/', () => {
       body: JSON.stringify({
         slug: 'new-minimal',
         name: 'New profile',
-        model: 'laya-base',
         definition: {
           dimensions: [{ slug: 'dimension-1', name: 'Dimension 1', question: '' }],
           level_sets: [{ id: '5', levels: { 'dimension-1': ['', '', '', '', ''] } }],
@@ -352,7 +354,6 @@ describe('POST /api/culling-profiles/', () => {
       body: JSON.stringify({
         slug: 'my-profile',
         name: 'My profile',
-        model: 'laya-base',
         definition: {
           dimensions: [{ slug: 'dimension-1', name: 'Dimension 1', question: 'Q?' }],
           level_sets: [{ id: '5', levels: { 'dimension-1': ['', '', '', '', ''] } }],

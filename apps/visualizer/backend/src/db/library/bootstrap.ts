@@ -13,12 +13,13 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { openLibraryDb, type Db } from '../connection.js';
 import { REPO_ROOT } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
+import { upgradeDefaultProfileSlug } from './cull-default-profile-v18.js';
 import { seedCullingDefaults } from './cull-profiles.js';
 import { markdownMarksOptional } from './scores.js';
 import { SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 17;
+export const LIBRARY_SCHEMA_VERSION = 18;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 17;
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS vision_stale (
  * versioned pipeline setting. See `cull/` and the culling terms in `CONTEXT.md`.
  *
  * A stage is a culling profile at one level set, or the Score forecast. Its version changes with the
- * model or the text Laya is asked; a rule or threshold change is a new pipeline-setting version instead,
+ * model or the text the model is asked; a rule or threshold change is a new pipeline-setting version instead,
  * re-decided from the stored answers.
  */
 const CULL_SQL = `
@@ -64,7 +65,6 @@ CREATE TABLE IF NOT EXISTS cull_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    model TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
     -- How answers become filtered / passed; not versioned (cull/types.ts ProfileRule).
     rule_json TEXT NOT NULL,
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS cull_stage_versions (
     profile_slug TEXT,
     level_set TEXT,
     model_id TEXT NOT NULL,
-    -- Exactly what Laya is asked, by question id.
+    -- Exactly what the model is asked, by question id.
     questions_json TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     is_current INTEGER NOT NULL DEFAULT 1,
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS cull_stage_answers (
     source TEXT NOT NULL CHECK (source IN ('job','import')),
     produced_by TEXT NOT NULL DEFAULT '',
     image_path TEXT NOT NULL DEFAULT '',
-    -- size:mtime of the image Laya read, when known.
+    -- size:mtime of the image the model read, when known.
     image_signature TEXT,
     run_id INTEGER NOT NULL,
     answered_at TEXT NOT NULL,
@@ -517,6 +517,7 @@ export function upgradeLibrarySchema(db: Db): void {
     // Read again holding the write lock: a request and a job may open an old library.db at once.
     const version = userVersion(db);
     if (version >= LIBRARY_SCHEMA_VERSION) return;
+    if (version < 18) upgradeDefaultProfileSlug(db);
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   }).immediate();
 }

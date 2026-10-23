@@ -1,18 +1,18 @@
 /**
  * The models this app serves on its own System One endpoint (ADR-0021): every model installed in
- * `laya_models_dir`, by its directory name.
+ * `app_models_dir`, by its directory name.
  *
- * The Laya worker starts on the first request and is closed after two idle minutes, which frees the
+ * The model worker starts on the first request and is closed after two idle minutes, which frees the
  * ~2–3.5 GB it holds; the next request starts it again.
  */
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, loadLibraryConfig } from '../config.js';
-import { LayaSetupError, installedModels, resolveInstalledModel, type InstalledModel } from './files.js';
+import { AppModelSetupError, installedModels, resolveInstalledModel, type InstalledModel } from './files.js';
 import { installedModelId } from './model-id.js';
-import type { LayaQuestion } from './rows.js';
-import { startLayaRuntime, type LayaAnswerRuntime } from './runtime.js';
-import type { LayaImageAnswer } from './sessions.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
+import { startModelRuntime, type AnswerRuntime } from './runtime.js';
+import type { ImageAnswer } from './sessions.js';
 
 export const APP_MODELS_IDLE_MS = 120_000;
 
@@ -39,8 +39,8 @@ function description(m: InstalledModel): string {
 }
 
 export class AppModels {
-  private runtime: LayaAnswerRuntime | null = null;
-  private starting: Promise<LayaAnswerRuntime> | null = null;
+  private runtime: AnswerRuntime | null = null;
+  private starting: Promise<AnswerRuntime> | null = null;
   private inFlight = 0;
   private idleTimer: NodeJS.Timeout | null = null;
 
@@ -63,12 +63,12 @@ export class AppModels {
     return out;
   }
 
-  async answer(name: string, image: Uint8Array, questions: Record<string, LayaQuestion>): Promise<LayaImageAnswer> {
+  async answer(name: string, image: Uint8Array, questions: Record<string, SystemOneQuestion>): Promise<ImageAnswer> {
     let model: InstalledModel;
     try {
       model = resolveInstalledModel(this.modelsDir(), name);
     } catch (e) {
-      if (e instanceof LayaSetupError) throw new AppModelNotListed(e.message);
+      if (e instanceof AppModelSetupError) throw new AppModelNotListed(e.message);
       throw e;
     }
     this.inFlight += 1;
@@ -90,14 +90,14 @@ export class AppModels {
     }
   }
 
-  private async ensure(): Promise<LayaAnswerRuntime> {
+  private async ensure(): Promise<AnswerRuntime> {
     if (this.runtime && !this.runtime.broken) return this.runtime;
     if (this.runtime) {
       const old = this.runtime;
       this.runtime = null;
       await old.close().catch(() => undefined);
     }
-    this.starting ??= startLayaRuntime().finally(() => {
+    this.starting ??= startModelRuntime().finally(() => {
       this.starting = null;
     });
     try {
@@ -135,7 +135,7 @@ export class AppModels {
 let shared: AppModels | null = null;
 
 export function appModels(): AppModels {
-  shared ??= new AppModels(() => loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir);
+  shared ??= new AppModels(() => loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir);
   return shared;
 }
 

@@ -41,7 +41,7 @@ let lrcatPath: string;
 let jobsDbPath: string;
 const imageKey = '2024-06-01_filtered-photo';
 const starsKey = '2024-06-01_star-photo';
-const MODEL_IDS = { culling_profile: 'test-laya-base', score_forecast: 'test-laya-new' };
+const MODEL_IDS = { culling_profile: 'test-culling-model', score_forecast: 'test-forecast-model' };
 const STAR_DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
 
 function levelPick(levelSet: '7' | '10', dim: string, levelIndex: number): Record<string, number[]> {
@@ -54,8 +54,8 @@ function levelPick(levelSet: '7' | '10', dim: string, levelIndex: number): Recor
 function seedStarsEligible(db: ReturnType<typeof openLibraryDb>, imageKey: string, strongDimCount: number): void {
   const pipe = getCurrentPipelineSetting(db);
   const stages = resolveCurrentStages(db, pipe.config, MODEL_IDS);
-  const profile7 = stages.find((s) => s.stageKey === 'culling_profile:recipe-culling:7');
-  const profile10 = stages.find((s) => s.stageKey === 'culling_profile:recipe-culling:10');
+  const profile7 = stages.find((s) => s.stageKey === 'culling_profile:default:7');
+  const profile10 = stages.find((s) => s.stageKey === 'culling_profile:default:10');
   if (!profile7 || !profile10) throw new Error('profile stages missing');
   const seven: Record<string, number[]> = {};
   const ten: Record<string, number[]> = {};
@@ -115,7 +115,7 @@ beforeEach(() => {
     imageKey,
     verdict: 'filtered',
     filteredBy: 'culling_profile',
-    filteredByStageKey: 'culling_profile:recipe-culling:7',
+    filteredByStageKey: 'culling_profile:default:7',
     cullingProfileVerdict: 'filtered',
     sentByHand: false,
     pendingStages: [],

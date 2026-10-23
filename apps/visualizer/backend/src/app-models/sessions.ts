@@ -1,10 +1,10 @@
 /**
- * The installed models as ONNX sessions, each loaded on its first question. Runs inside the Laya worker
+ * The installed models as ONNX sessions, each loaded on its first question. Runs inside the model worker
  * thread (`worker.ts`): `session.run` holds the thread for up to ~0.8 s per pass (ADR-0020).
  *
- * Models with the same vision tower read one vision graph (Laya new reads Laya base's); the last
- * image's features are kept per graph, so asking a second model about the same photo does not encode
- * it again. One decoder pass per question, so answers match the imported ones.
+ * Models with the same vision tower read one vision graph (a fine-tune reads the one of the model it
+ * came from); the last image's features are kept per graph, so asking a second model about the same photo
+ * does not encode it again. One decoder pass per question.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -15,40 +15,40 @@ import * as ort from 'onnxruntime-node';
 import { decodePlaneFromFile } from '../imaging/decode-plane.js';
 import { canonicalJson } from '../utils/canonical-json.js';
 import type { InstalledModel } from './files.js';
-import { LAYA_PIXEL_VALUES_SHAPE, layaPixelValues } from './image.js';
+import { PIXEL_VALUES_SHAPE, imagePixelValues } from './image.js';
 import {
   IMAGE_PREFIX_TEXT,
   buildRow,
   softmax,
   type Encode,
-  type LayaModelMeta,
-  type LayaQuestion,
-  type LayaRow,
+  type ModelMeta,
+  type ModelRow,
 } from './rows.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
 
 /** Level probabilities per question id, lowest level first. */
-export type LayaModelAnswers = Record<string, number[]>;
+export type ModelAnswers = Record<string, number[]>;
 
-export interface LayaSeconds {
+export interface AnswerSeconds {
   prep: number;
   vision: number;
   decoder: number;
   total: number;
 }
 
-export interface LayaImageAnswer {
-  answers: LayaModelAnswers;
-  seconds: LayaSeconds;
+export interface ImageAnswer {
+  answers: ModelAnswers;
+  seconds: AnswerSeconds;
   /** Tokens in the rows asked, image included: the System One `usage`. */
   inputTokens: number;
 }
 
 interface Decoder {
   session: ort.InferenceSession;
-  meta: LayaModelMeta;
+  meta: ModelMeta;
   encode: Encode;
   /** Rows by question text: a row depends on the question alone (image-only state). */
-  rows: Map<string, LayaRow>;
+  rows: Map<string, ModelRow>;
 }
 
 const SESSION_OPTIONS: ort.InferenceSession.SessionOptions = {
@@ -68,8 +68,8 @@ function loadTokenizer(dir: string): PreTrainedTokenizer {
   );
 }
 
-function loadMetaAndEncode(dir: string): { meta: LayaModelMeta; encode: Encode } {
-  const meta = readJson<LayaModelMeta>(join(dir, 'model.json'));
+function loadMetaAndEncode(dir: string): { meta: ModelMeta; encode: Encode } {
+  const meta = readJson<ModelMeta>(join(dir, 'model.json'));
   const tok = loadTokenizer(dir);
   const encode = (s: string): number[] => tok.encode(s, { add_special_tokens: false });
   if (encode(IMAGE_PREFIX_TEXT).join(',') !== meta.prefix_ids.join(',')) {
@@ -81,15 +81,15 @@ function loadMetaAndEncode(dir: string): { meta: LayaModelMeta; encode: Encode }
 /** The rows the setup step's reference checks. */
 export function buildModelRows(
   dir: string,
-  questions: Record<string, LayaQuestion>,
-): { meta: LayaModelMeta; rows: LayaRow[] } {
+  questions: Record<string, SystemOneQuestion>,
+): { meta: ModelMeta; rows: ModelRow[] } {
   const { meta, encode } = loadMetaAndEncode(dir);
   return { meta, rows: Object.entries(questions).map(([qid, q]) => buildRow(encode, meta, qid, q)) };
 }
 
-export async function loadLayaPixelValues(file: string | Uint8Array): Promise<Float32Array> {
+export async function loadPixelValues(file: string | Uint8Array): Promise<Float32Array> {
   const input = typeof file === 'string' ? file : Buffer.from(file.buffer, file.byteOffset, file.byteLength);
-  return layaPixelValues(await decodePlaneFromFile(input, { colourspace: 'srgb', removeAlpha: true }));
+  return imagePixelValues(await decodePlaneFromFile(input, { colourspace: 'srgb', removeAlpha: true }));
 }
 
 interface Vision {
@@ -98,9 +98,9 @@ interface Vision {
 }
 
 /** Where one model's files are: what the worker needs of an installed model. */
-export type LayaModelRef = Pick<InstalledModel, 'name' | 'dir' | 'visionDir'>;
+export type ModelRef = Pick<InstalledModel, 'name' | 'dir' | 'visionDir'>;
 
-export class LayaSessions {
+export class ModelSessions {
   /** By directory: a model is loaded once, whatever it is called. */
   private readonly decoders = new Map<string, Promise<Decoder>>();
   private readonly visions = new Map<string, Promise<Vision>>();
@@ -133,7 +133,7 @@ export class LayaSessions {
   }
 
   /** Every question about one image, asked of one model. */
-  async answerImage(model: LayaModelRef, image: Uint8Array, questions: Record<string, LayaQuestion>): Promise<LayaImageAnswer> {
+  async answerImage(model: ModelRef, image: Uint8Array, questions: Record<string, SystemOneQuestion>): Promise<ImageAnswer> {
     let d: Decoder;
     let vision: Vision;
     try {
@@ -146,14 +146,14 @@ export class LayaSessions {
     const hash = createHash('sha256').update(image).digest('hex');
     let prep = 0;
     if (vision.lastImage?.hash !== hash) {
-      const pv = await loadLayaPixelValues(image);
+      const pv = await loadPixelValues(image);
       prep = (performance.now() - t0) / 1000;
-      const out = await vision.session.run({ pixel_values: new ort.Tensor('float32', pv, [...LAYA_PIXEL_VALUES_SHAPE]) });
+      const out = await vision.session.run({ pixel_values: new ort.Tensor('float32', pv, [...PIXEL_VALUES_SHAPE]) });
       vision.lastImage = { hash, features: out.image_features! };
     }
     const features = vision.lastImage.features;
     const t1 = performance.now();
-    const answers: LayaModelAnswers = {};
+    const answers: ModelAnswers = {};
     for (const r of rows) answers[r.qid] = await this.answerRow(d, r, features);
     const t2 = performance.now();
     return {
@@ -163,7 +163,7 @@ export class LayaSessions {
     };
   }
 
-  private row(d: Decoder, qid: string, q: LayaQuestion): LayaRow {
+  private row(d: Decoder, qid: string, q: SystemOneQuestion): ModelRow {
     const key = canonicalJson(q);
     let row = d.rows.get(key);
     if (!row) {
@@ -173,7 +173,7 @@ export class LayaSessions {
     return { ...row, qid };
   }
 
-  private async answerRow(d: Decoder, r: LayaRow, feats: ort.Tensor): Promise<number[]> {
+  private async answerRow(d: Decoder, r: ModelRow, feats: ort.Tensor): Promise<number[]> {
     const L = r.ids.length;
     const K = r.markers.length;
     const out = await d.session.run({

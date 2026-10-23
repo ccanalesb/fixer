@@ -36,9 +36,9 @@ describe('CullingProfilesSection', () => {
     apiMocks.list.mockResolvedValue({
       profiles: [
         {
-          slug: 'recipe-culling',
-          name: 'Recipe culling',
-          model: 'laya-base',
+          slug: 'default',
+          name: 'Default culling profile',
+          model: 'culling-model',
           active: true,
           measured: true,
           version: 1,
@@ -57,9 +57,9 @@ describe('CullingProfilesSection', () => {
       },
     })
     apiMocks.get.mockResolvedValue({
-      slug: 'recipe-culling',
-      name: 'Recipe culling',
-      model: 'laya-base',
+      slug: 'default',
+      name: 'Default culling profile',
+      model: 'culling-model',
       active: true,
       measured: true,
       version: 1,
@@ -81,7 +81,7 @@ describe('CullingProfilesSection', () => {
     apiMocks.create.mockResolvedValue({
       slug: 'profile-new',
       name: 'New profile',
-      model: 'laya-base',
+      model: 'culling-model',
       active: false,
       measured: false,
       version: 1,
@@ -100,9 +100,9 @@ describe('CullingProfilesSection', () => {
     apiMocks.list.mockResolvedValue({
       profiles: [
         {
-          slug: 'recipe-culling',
-          name: 'Recipe culling',
-          model: 'laya-base',
+          slug: 'default',
+          name: 'Default culling profile',
+          model: 'culling-model',
           active: true,
           measured: true,
           version: 1,
@@ -112,7 +112,7 @@ describe('CullingProfilesSection', () => {
         {
           slug: 'profile-new',
           name: 'New profile',
-          model: 'laya-base',
+          model: 'culling-model',
           active: false,
           measured: false,
           version: 1,
@@ -125,9 +125,9 @@ describe('CullingProfilesSection', () => {
       slug === 'profile-new'
         ? Promise.resolve(apiMocks.create.mock.results[0]?.value)
         : Promise.resolve({
-            slug: 'recipe-culling',
-            name: 'Recipe culling',
-            model: 'laya-base',
+            slug: 'default',
+            name: 'Default culling profile',
+            model: 'culling-model',
             active: true,
             measured: true,
             version: 1,
@@ -152,7 +152,7 @@ describe('CullingProfilesSection', () => {
         </Suspense>,
       )
     })
-    await waitFor(() => expect(screen.getByText(/Recipe culling active/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Default culling profile active/)).toBeInTheDocument())
     expand()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_ADD_PROFILE }))
@@ -183,7 +183,7 @@ describe('CullingProfilesSection', () => {
       return view!
     }
     const first = await mount()
-    await waitFor(() => expect(screen.getByText(/1 profile · Recipe culling active/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/1 profile · Default culling profile active/)).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: CULL_ADD_PROFILE })).not.toBeInTheDocument()
     expand()
     expect(screen.getByRole('button', { name: CULL_ADD_PROFILE })).toBeInTheDocument()

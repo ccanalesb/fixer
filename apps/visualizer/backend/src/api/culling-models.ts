@@ -14,7 +14,7 @@ import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { countCatalogPhotosForCullEstimate } from '../db/library/cull-profiles-mutations.js';
 import { countPhotosAnsweredByCurrentStage, readStoredStageModelIds } from '../db/library/cull-stages.js';
 import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
-import { listAppModels } from '../laya/install.js';
+import { listAppModels } from '../app-models/install.js';
 import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
 import { errorBadRequest } from '../utils/responses.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
@@ -172,7 +172,7 @@ cullingModelsRoutes.openapi(usableRoute, async (c) => {
   const questionCount = getForecastQuestions(libDb).questions.length;
   const on = stagesOn(pipeline);
   const cfg = stagesConfig();
-  const appModels = withJobsDb((db) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir, db));
+  const appModels = withJobsDb((db) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir, db));
   const input = (kind: StageKind) => ({
     on: on[kind],
     cfg: cfg[kind],

@@ -90,7 +90,7 @@ const saved = { version: 2, redecide_job_id: 'job-9' }
 const usableStage = (over: Partial<CullingStageUsability> = {}): CullingStageUsability => ({
   on: true,
   problem: null,
-  model: 'laya-base',
+  model: 'culling-model',
   endpoint: 'this_app',
   job_id: null,
   detail: null,
@@ -119,9 +119,9 @@ beforeEach(() => {
   vi.restoreAllMocks()
   socket.onJobUpdated = null
   pipeline()
-  usable = { culling_profile: usableStage(), score_forecast: usableStage({ model: 'laya-new' }), culling_profile_filter: true }
+  usable = { culling_profile: usableStage(), score_forecast: usableStage({ model: 'forecast-model' }), culling_profile_filter: true }
   stages = { culling_profile: stage(), score_forecast: stage(), total_photos: 3 }
-  appModels = [ready('laya-base'), ready('laya-new')]
+  appModels = [ready('culling-model'), ready('forecast-model')]
   endpoints = { [OLLAMA]: ['intern-decision-2b', 'clef-flash'] }
   questionCount = 4
   vi.spyOn(ScoreForecastQuestionsAPI, 'get').mockImplementation(async () => questionsResponse())
@@ -297,38 +297,38 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     renderSection()
     const cull = await row('culling_profile')
     expect(control(cull, 'combobox', 'Endpoint')).toHaveValue('this_app')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-base' })).toBeInTheDocument())
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'culling-model' })).toBeInTheDocument())
     expect(control(cull, 'combobox', 'Model')).toHaveValue('')
     expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off")
     expect(desc(await row('score_forecast'))).toBe('Off')
   })
 
   it('lists the models in this app, a converting one disabled, and says which model a stage runs', async () => {
-    appModels = [ready('laya-base'), { ...ready('laya-run-best'), status: 'converting', job_id: 'job-2' }]
-    stages.culling_profile = stage({ model: 'laya-base' })
-    stages.score_forecast = stage({ model: 'laya-run-best' })
+    appModels = [ready('culling-model'), { ...ready('my-run-best'), status: 'converting', job_id: 'job-2' }]
+    stages.culling_profile = stage({ model: 'culling-model' })
+    stages.score_forecast = stage({ model: 'my-run-best' })
     renderSection()
     const cull = await row('culling_profile')
-    await waitFor(() => expect(desc(cull)).toBe('laya-base on this app'))
+    await waitFor(() => expect(desc(cull)).toBe('culling-model on this app'))
     const forecast = await row('score_forecast')
-    expect(within(forecast).getByRole('option', { name: 'laya-run-best (converting)' })).toBeDisabled()
-    expect(desc(forecast)).toBe('laya-run-best on this app — still converting · View job')
+    expect(within(forecast).getByRole('option', { name: 'my-run-best (converting)' })).toBeDisabled()
+    expect(desc(forecast)).toBe('my-run-best on this app — still converting · View job')
     expect(within(forecast).getByRole('link', { name: 'View job' })).toHaveAttribute('href', PROCESSING_JOB_QUEUE_ROUTE)
   })
 
   it('choosing a model saves it once and offers to process the photos the previous model answered', async () => {
-    stages.culling_profile = stage({ model: 'laya-base', answered: { photos: 45793, model: 'laya-base' } })
-    appModels = [ready('laya-base'), ready('laya-run-best')]
+    stages.culling_profile = stage({ model: 'culling-model', answered: { photos: 45793, model: 'culling-model' } })
+    appModels = [ready('culling-model'), ready('my-run-best')]
     renderSection()
     const cull = await row('culling_profile')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-run-best' })).toBeInTheDocument())
-    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'laya-run-best' } })
-    expect(await within(cull).findByText('Culling profile now uses laya-run-best.')).toBeInTheDocument()
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'my-run-best' })).toBeInTheDocument())
+    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'my-run-best' } })
+    expect(await within(cull).findByText('Culling profile now uses my-run-best.')).toBeInTheDocument()
     expect(CullingModelsAPI.save).toHaveBeenCalledTimes(1)
-    expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { model: 'laya-run-best' })
+    expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { model: 'my-run-best' })
     expect(
       within(cull).getByText(
-        '45,793 photos were answered by laya-base. Process them with laya-run-best in a background job? Until then their verdicts stay as they are; earlier answers are kept.',
+        '45,793 photos were answered by culling-model. Process them with my-run-best in a background job? Until then their verdicts stay as they are; earlier answers are kept.',
       ),
     ).toBeInTheDocument()
     fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_PROCESS }))
@@ -341,13 +341,13 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
   })
 
   it('Process photos asks first while the other stage cannot run, and can turn it off and start', async () => {
-    stages.culling_profile = stage({ model: 'laya-base', answered: { photos: 45793, model: 'laya-base' } })
-    appModels = [ready('laya-base'), ready('laya-run-best')]
+    stages.culling_profile = stage({ model: 'culling-model', answered: { photos: 45793, model: 'culling-model' } })
+    appModels = [ready('culling-model'), ready('my-run-best')]
     usable = { ...usable, score_forecast: usableStage({ model: null, problem: 'no_model' }) }
     renderSection()
     const cull = await row('culling_profile')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-run-best' })).toBeInTheDocument())
-    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'laya-run-best' } })
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'my-run-best' })).toBeInTheDocument())
+    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'my-run-best' } })
     fireEvent.click(await within(cull).findByRole('button', { name: MODEL_CHANGE_PROCESS }))
     const dialog = await screen.findByRole('dialog', { name: 'Score forecast has no model' })
     expect(
@@ -384,8 +384,8 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
   it('with nothing answered yet the note says so; Later dismisses it', async () => {
     renderSection()
     const cull = await row('culling_profile')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'laya-base' })).toBeInTheDocument())
-    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'laya-base' } })
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'culling-model' })).toBeInTheDocument())
+    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'culling-model' } })
     expect(
       await within(cull).findByText('No photo has been answered by the culling profile yet. Process the 3 photos in a background job?'),
     ).toBeInTheDocument()
@@ -398,21 +398,21 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     pipeline({}, { enabled: false })
     renderSection()
     const forecast = await row('score_forecast')
-    await waitFor(() => expect(within(forecast).getByRole('option', { name: 'laya-new' })).toBeInTheDocument())
-    fireEvent.change(control(forecast, 'combobox', 'Model'), { target: { value: 'laya-new' } })
-    await waitFor(() => expect(desc(forecast)).toBe('Off · laya-new on this app'))
+    await waitFor(() => expect(within(forecast).getByRole('option', { name: 'forecast-model' })).toBeInTheDocument())
+    fireEvent.change(control(forecast, 'combobox', 'Model'), { target: { value: 'forecast-model' } })
+    await waitFor(() => expect(desc(forecast)).toBe('Off · forecast-model on this app'))
     expect(within(forecast).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
   })
 
   it('a conversion job finishing for the model a stage runs offers to process the photos', async () => {
-    appModels = [{ ...ready('laya-base'), status: 'converting', job_id: 'job-1' }]
-    stages.culling_profile = stage({ model: 'laya-base' })
+    appModels = [{ ...ready('culling-model'), status: 'converting', job_id: 'job-1' }]
+    stages.culling_profile = stage({ model: 'culling-model' })
     renderSection()
     const cull = await row('culling_profile')
-    await waitFor(() => expect(desc(cull)).toBe('laya-base on this app — still converting · View job'))
-    appModels = [ready('laya-base')]
-    socket.onJobUpdated?.({ id: 'job-1', type: 'laya_model_install', status: 'completed' } as Job)
-    expect(await within(cull).findByText('Culling profile now uses laya-base.')).toBeInTheDocument()
+    await waitFor(() => expect(desc(cull)).toBe('culling-model on this app — still converting · View job'))
+    appModels = [ready('culling-model')]
+    socket.onJobUpdated?.({ id: 'job-1', type: 'app_model_install', status: 'completed' } as Job)
+    expect(await within(cull).findByText('Culling profile now uses culling-model.')).toBeInTheDocument()
   })
 
   it('another endpoint saves nothing until Check, which saves the URL and key, then lists its models', async () => {
@@ -516,7 +516,7 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
 
 describe('CullingModelsSection — Score forecast questions', () => {
   beforeEach(() => {
-    stages = { ...stages, score_forecast: stage({ model: 'laya-new' }) }
+    stages = { ...stages, score_forecast: stage({ model: 'forecast-model' }) }
   })
 
   it('with the Score forecast on and no questions: says so, explains it, and offers both ways to create them', async () => {

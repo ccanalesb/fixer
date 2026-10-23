@@ -40,8 +40,8 @@ beforeEach(() => {
   pickerAvailable = true
   vi.spyOn(AppModelsAPI, 'list').mockImplementation(async () => ({ models, picker_available: pickerAvailable }))
   vi.spyOn(AppModelsAPI, 'add').mockImplementation(async (source) => {
-    models = [...models, { name: 'laya-base', source, revision: null, status: 'converting', job_id: 'job-1' }]
-    return { name: 'laya-base', job_id: 'job-1' }
+    models = [...models, { name: 'culling-model', source, revision: null, status: 'converting', job_id: 'job-1' }]
+    return { name: 'culling-model', job_id: 'job-1' }
   })
 })
 
@@ -58,16 +58,16 @@ const row = (name: string) => screen.getByText(name, { selector: '.text-sm.font-
 describe('AppModelsSection', () => {
   it('lists each installed model with its source, and a converting one with its job', async () => {
     models = [
-      ready('laya-base', 'thaitea/laya-vision'),
-      { name: 'laya-run-best', source: '/Users/me/laya-run/best', revision: null, status: 'converting', job_id: 'job-7' },
+      ready('culling-model', 'owner/vision-model'),
+      { name: 'my-run-best', source: '/Users/me/my-run/best', revision: null, status: 'converting', job_id: 'job-7' },
     ]
     renderSection()
     expect(await screen.findByText(APP_MODELS_SECTION)).toBeInTheDocument()
-    await screen.findByText('laya-run-best')
-    expect(within(row('laya-base')).getByText('thaitea/laya-vision')).toBeInTheDocument()
-    expect(within(row('laya-base')).getByText(APP_MODEL_READY)).toBeInTheDocument()
-    expect(within(row('laya-run-best')).getByText(APP_MODEL_CONVERTING)).toBeInTheDocument()
-    expect(within(row('laya-run-best')).getByRole('link', { name: APP_MODEL_VIEW_JOB })).toHaveAttribute(
+    await screen.findByText('my-run-best')
+    expect(within(row('culling-model')).getByText('owner/vision-model')).toBeInTheDocument()
+    expect(within(row('culling-model')).getByText(APP_MODEL_READY)).toBeInTheDocument()
+    expect(within(row('my-run-best')).getByText(APP_MODEL_CONVERTING)).toBeInTheDocument()
+    expect(within(row('my-run-best')).getByRole('link', { name: APP_MODEL_VIEW_JOB })).toHaveAttribute(
       'href',
       PROCESSING_JOB_QUEUE_ROUTE,
     )
@@ -78,28 +78,27 @@ describe('AppModelsSection', () => {
     expect(await screen.findByText(APP_MODELS_EMPTY)).toBeInTheDocument()
   })
 
-  it('describes what can be added without calling it a Laya model; the converter’s limit comes after', async () => {
+  it('describes what can be added; the converter’s limit comes after', async () => {
     renderSection()
     await screen.findByText(APP_MODELS_EMPTY)
     const text = screen.getByText(/What this app serves on its own System One endpoint/).textContent
-    expect(text).not.toMatch(/Laya-family/)
-    expect(text).toMatch(/Today only models of the Laya architecture convert\.$/)
+    expect(text).toMatch(/Today only SmolVLM \(Idefics3\) models with a decision head convert\.$/)
   })
 
   it('adds a Hugging Face id typed by hand, which then lists as converting', async () => {
     renderSection()
     fireEvent.click(await screen.findByText(APP_MODEL_MANUAL))
     const input = screen.getByLabelText(APP_MODEL_INPUT_LABEL)
-    fireEvent.change(input, { target: { value: 'thaitea/laya-vision' } })
+    fireEvent.change(input, { target: { value: 'owner/vision-model' } })
     expect(screen.getByText('— not added', { exact: false })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: APP_MODEL_ADD_BUTTON }))
-    await waitFor(() => expect(AppModelsAPI.add).toHaveBeenCalledWith('thaitea/laya-vision'))
+    await waitFor(() => expect(AppModelsAPI.add).toHaveBeenCalledWith('owner/vision-model'))
     expect(await screen.findByText(APP_MODEL_CONVERTING)).toBeInTheDocument()
     expect(screen.queryByText('— not added', { exact: false })).not.toBeInTheDocument()
   })
 
   it('Choose… fills the folder from the backend’s dialog; Add and Cancel sit in the row', async () => {
-    vi.spyOn(AppModelsAPI, 'pick').mockResolvedValue({ path: '/Users/me/laya-run/best' })
+    vi.spyOn(AppModelsAPI, 'pick').mockResolvedValue({ path: '/Users/me/my-run/best' })
     renderSection()
     fireEvent.click(await screen.findByRole('button', { name: APP_MODEL_CHOOSE }))
     expect(await screen.findByText('best')).toBeInTheDocument()
@@ -109,7 +108,7 @@ describe('AppModelsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: APP_MODEL_CHOOSE }))
     await screen.findByText('best')
     fireEvent.click(within(addRow).getAllByRole('button', { name: APP_MODEL_ADD_BUTTON })[0]!)
-    await waitFor(() => expect(AppModelsAPI.add).toHaveBeenCalledWith('/Users/me/laya-run/best'))
+    await waitFor(() => expect(AppModelsAPI.add).toHaveBeenCalledWith('/Users/me/my-run/best'))
   })
 
   it('a dismissed dialog changes nothing', async () => {
@@ -129,24 +128,24 @@ describe('AppModelsSection', () => {
   })
 
   it('shows why a source was refused, and keeps it to correct', async () => {
-    vi.spyOn(AppModelsAPI, 'add').mockRejectedValue(new Error('Already converting as laya-base'))
+    vi.spyOn(AppModelsAPI, 'add').mockRejectedValue(new Error('Already converting as culling-model'))
     pickerAvailable = false
     renderSection()
     const input = await screen.findByLabelText(APP_MODEL_INPUT_LABEL)
-    fireEvent.change(input, { target: { value: 'thaitea/laya-vision' } })
+    fireEvent.change(input, { target: { value: 'owner/vision-model' } })
     fireEvent.click(screen.getByRole('button', { name: APP_MODEL_ADD_BUTTON }))
-    expect(await screen.findByText('Already converting as laya-base')).toBeInTheDocument()
-    expect(input).toHaveValue('thaitea/laya-vision')
+    expect(await screen.findByText('Already converting as culling-model')).toBeInTheDocument()
+    expect(input).toHaveValue('owner/vision-model')
   })
 
   it('refreshes when a conversion job finishes', async () => {
-    models = [{ name: 'laya-base', source: 'thaitea/laya-vision', revision: null, status: 'converting', job_id: 'job-1' }]
+    models = [{ name: 'culling-model', source: 'owner/vision-model', revision: null, status: 'converting', job_id: 'job-1' }]
     renderSection()
     await screen.findByText(APP_MODEL_CONVERTING)
-    models = [ready('laya-base', 'thaitea/laya-vision')]
+    models = [ready('culling-model', 'owner/vision-model')]
     socket.onJobUpdated?.({ id: 'other', type: 'batch_describe', status: 'completed' } as Job)
     expect(AppModelsAPI.list).toHaveBeenCalledTimes(1)
-    socket.onJobUpdated?.({ id: 'job-1', type: 'laya_model_install', status: 'completed' } as Job)
+    socket.onJobUpdated?.({ id: 'job-1', type: 'app_model_install', status: 'completed' } as Job)
     expect(await screen.findByText(APP_MODEL_READY)).toBeInTheDocument()
   })
 })

@@ -46,7 +46,7 @@ vi.mock('../../../services/api', () => ({
   },
   CullingModelsAPI: {
     usable: () => {
-      const ok = { on: true, problem: null, model: 'laya-base', endpoint: 'this_app', job_id: null, detail: null };
+      const ok = { on: true, problem: null, model: 'culling-model', endpoint: 'this_app', job_id: null, detail: null };
       return Promise.resolve({ culling_profile: ok, score_forecast: ok, culling_profile_filter: true });
     },
   },
@@ -190,7 +190,6 @@ describe('AnalyzeTab submit UX (fix #1)', () => {
     expect(screen.queryByText(ANALYZE_FORCE_CULL_HINT)).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Force re-run culling' }));
     expect(screen.getByText(ANALYZE_FORCE_CULL_HINT)).toBeTruthy();
-    expect(ANALYZE_FORCE_CULL_HINT).not.toMatch(/Laya/);
     fireEvent.click(screen.getByRole('button', { name: /^Analyze/i }));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalled());

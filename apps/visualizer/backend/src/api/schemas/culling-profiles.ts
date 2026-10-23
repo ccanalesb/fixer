@@ -31,7 +31,6 @@ export const CullProfileSummary = z
   .object({
     slug: z.string(),
     name: z.string(),
-    model: z.string(),
     active: z.boolean(),
     measured: z.boolean(),
     version: z.number().int(),

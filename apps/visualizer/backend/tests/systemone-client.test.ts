@@ -62,14 +62,14 @@ describe('listSystemOneModels', () => {
     handler = (_q, _b, res) =>
       json(res, 200, {
         models: [
-          { name: 'laya-base', description: 'x', release_date: '2026-09-24', x_model_id: 'thaitea/laya-vision@8b318c9' },
+          { name: 'culling-model', description: 'x', release_date: '2026-09-24', x_model_id: 'owner/vision-model@8b318c9' },
           { name: 'jev-latest', description: 'y', release_date: '2026-10-14' },
         ],
       });
-    const ep = systemOneEndpoint({ endpoint: `${url}/`, model: 'laya-base', apiKey: 'k' });
+    const ep = systemOneEndpoint({ endpoint: `${url}/`, model: 'culling-model', apiKey: 'k' });
     const models = await listSystemOneModels(ep);
     expect(models).toEqual([
-      { name: 'laya-base', modelId: 'thaitea/laya-vision@8b318c9' },
+      { name: 'culling-model', modelId: 'owner/vision-model@8b318c9' },
       { name: 'jev-latest', modelId: null },
     ]);
     expect(seen[0]).toMatchObject({ method: 'GET', path: '/v1/models', auth: 'Bearer k' });
@@ -85,7 +85,7 @@ describe('listSystemOneModels', () => {
   it('names a model by its endpoint when the endpoint gives no identity', () => {
     const ep = systemOneEndpoint({ endpoint: `${url}/`, model: 'clef', apiKey: '' });
     expect(modelIdentity(ep, { name: 'clef', modelId: null })).toBe(`clef@${url}`);
-    expect(modelIdentity(ep, { name: 'laya-base', modelId: 'thaitea/laya-vision@8b318c9' })).toBe('thaitea/laya-vision@8b318c9');
+    expect(modelIdentity(ep, { name: 'culling-model', modelId: 'owner/vision-model@8b318c9' })).toBe('owner/vision-model@8b318c9');
   });
 
   it('an endpoint that does not answer is down', async () => {
@@ -204,7 +204,7 @@ describe('culling_models in config.yaml', () => {
           'culling_models:',
           '  culling_profile:',
           '    endpoint: this_app',
-          '    model: laya-base',
+          '    model: culling-model',
           '    api_key: ""',
           '  score_forecast:',
           '    endpoint: http://localhost:9000',
@@ -227,17 +227,17 @@ describe('culling_models in config.yaml', () => {
 describe('systemOneEndpoint', () => {
   it('this app is reached in-process, never over a socket, and takes no API key', async () => {
     const calls: string[] = [];
-    const ep = systemOneEndpoint({ endpoint: 'this_app', model: 'laya-base', apiKey: 'ignored' }, {
+    const ep = systemOneEndpoint({ endpoint: 'this_app', model: 'culling-model', apiKey: 'ignored' }, {
       thisAppFetch: async (input) => {
         calls.push(String(input instanceof Request ? input.url : input));
-        return new Response(JSON.stringify({ models: [{ name: 'laya-base', description: '', release_date: '' }] }), {
+        return new Response(JSON.stringify({ models: [{ name: 'culling-model', description: '', release_date: '' }] }), {
           headers: { 'content-type': 'application/json' },
         });
       },
     });
     expect(ep.label).toBe('this app');
-    expect(await listSystemOneModels(ep)).toEqual([{ name: 'laya-base', modelId: null }]);
+    expect(await listSystemOneModels(ep)).toEqual([{ name: 'culling-model', modelId: null }]);
     expect(calls).toEqual(['http://this-app/v1/models']);
-    expect(modelIdentity(ep, { name: 'laya-base', modelId: null })).toBe('laya-base@this_app');
+    expect(modelIdentity(ep, { name: 'culling-model', modelId: null })).toBe('culling-model@this_app');
   });
 });

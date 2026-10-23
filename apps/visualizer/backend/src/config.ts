@@ -101,8 +101,8 @@ export interface LibraryConfig {
   visionCacheEnabled: boolean;
   ollamaHost: string;
   stackBurstDeltaMs: number;
-  /** The models installed in this app, one directory each, written by `scripts/laya/export_onnx.py`. */
-  layaModelsDir: string;
+  /** The models installed in this app, one directory each, written by `scripts/app-models/export_onnx.py`. */
+  appModelsDir: string;
   /** The System One endpoint and model each culling stage calls (`culling_models`). */
   cullingModels: CullingModelsConfig;
 }
@@ -159,7 +159,7 @@ const CONFIG_DEFAULTS = {
   visionCacheDir: join(homedir(), '.cache', 'lightroom_tagger', 'vision'),
   visionCacheEnabled: true,
   ollamaHost: 'http://localhost:11434',
-  layaModelsDir: 'models',
+  appModelsDir: 'models',
 } as const;
 
 /**
@@ -203,7 +203,7 @@ export function loadLibraryConfig(configPath = join(REPO_ROOT, 'config.yaml')): 
       typeof raw.stack_burst_delta_ms === 'number'
         ? Math.trunc(raw.stack_burst_delta_ms)
         : CONFIG_DEFAULTS.stackBurstDeltaMs,
-    layaModelsDir: pathField('laya_models_dir') ?? resolvePath(CONFIG_DEFAULTS.layaModelsDir),
+    appModelsDir: pathField('app_models_dir') ?? resolvePath(CONFIG_DEFAULTS.appModelsDir),
     cullingModels: cullingModelsField(raw.culling_models),
   };
 }

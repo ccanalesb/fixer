@@ -10,12 +10,12 @@ import { parse as parseYaml } from 'yaml';
 import { createApp } from '../src/app.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { createJob, initJobsDb } from '../src/db/jobs/jobs.js';
-import { LAYA_INSTALL_JOB_TYPE } from '../src/laya/install.js';
+import { APP_MODEL_INSTALL_JOB_TYPE } from '../src/app-models/install.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { getOrCreateStageVersion, upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { insertCullRun } from '../src/db/library/cull-verdicts.js';
-import { FAKE_LAYA_BASE_MODEL_ID, fakeLayaState, writeFakeLayaModels } from './helpers/fake-laya.js';
+import { FAKE_PROFILE_MODEL_ID, fakeModelState, writeFakeAppModels } from './helpers/fake-app-models.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
@@ -46,7 +46,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-culling-models-'));
   configPath = join(dir, 'config.yaml');
   modelsDir = join(dir, 'models');
-  writeFileSync(configPath, `laya_models_dir: ${modelsDir}\ncatalog_path: /somewhere/catalog.lrcat\n`);
+  writeFileSync(configPath, `app_models_dir: ${modelsDir}\ncatalog_path: /somewhere/catalog.lrcat\n`);
   process.env.LT_CONFIG_YAML = configPath;
   process.env.DATABASE_PATH = join(dir, 'visualizer.db');
   fx = new LibraryFixture().activate();
@@ -73,22 +73,22 @@ describe('GET /api/culling-models', () => {
 
 describe('PUT /api/culling-models/{stage}', () => {
   it('saves the model in config.yaml, keeping every other key', async () => {
-    const res = await put('culling_profile', { model: 'laya-base' });
+    const res = await put('culling_profile', { model: 'culling-model' });
     expect(res.status).toBe(200);
-    expect((await json<StageState>(res)).model).toBe('laya-base');
+    expect((await json<StageState>(res)).model).toBe('culling-model');
     expect(yamlOnDisk()).toEqual({
-      laya_models_dir: modelsDir,
+      app_models_dir: modelsDir,
       catalog_path: '/somewhere/catalog.lrcat',
       culling_models: {
-        culling_profile: { endpoint: 'this_app', model: 'laya-base', api_key: '' },
+        culling_profile: { endpoint: 'this_app', model: 'culling-model', api_key: '' },
         score_forecast: { endpoint: 'this_app', model: '', api_key: '' },
       },
     });
-    expect((await json<Listing>(await app.request('/api/culling-models'))).culling_profile.model).toBe('laya-base');
+    expect((await json<Listing>(await app.request('/api/culling-models'))).culling_profile.model).toBe('culling-model');
   });
 
   it('a new URL clears the model; the API key is saved but never sent back', async () => {
-    await put('score_forecast', { model: 'laya-new' });
+    await put('score_forecast', { model: 'forecast-model' });
     const res = await put('score_forecast', { endpoint: 'http://localhost:11434/', api_key: 'sk-1' });
     expect(await json(res)).toEqual({
       endpoint: 'http://localhost:11434',
@@ -133,7 +133,7 @@ describe('GET /api/culling-models/{stage}/models', () => {
   let server: FakeSystemOneServer;
 
   beforeEach(async () => {
-    server = await startFakeSystemOneServer(fakeLayaState(), ['clef-cull', 'clef-forecast']);
+    server = await startFakeSystemOneServer(fakeModelState(), ['clef-cull', 'clef-forecast']);
   });
   afterEach(() => server.close());
 
@@ -166,10 +166,10 @@ describe('GET /api/culling-models/{stage}/models', () => {
   });
 
   it('this app lists the models installed in it', async () => {
-    writeFakeLayaModels(modelsDir);
+    writeFakeAppModels(modelsDir);
     expect(await json(await app.request('/api/culling-models/score_forecast/models'))).toEqual({
       answers: true,
-      models: ['laya-base', 'laya-new'],
+      models: ['culling-model', 'forecast-model'],
       error: null,
     });
   });
@@ -193,7 +193,7 @@ describe('GET /api/culling-models/usable', () => {
 
   let server: FakeSystemOneServer;
   beforeEach(async () => {
-    server = await startFakeSystemOneServer(fakeLayaState(), ['clef-cull']);
+    server = await startFakeSystemOneServer(fakeModelState(), ['clef-cull']);
   });
   afterEach(() => server.close());
 
@@ -214,24 +214,24 @@ describe('GET /api/culling-models/usable', () => {
 
   it('this app: a listed model is usable, a model it does not list is not', async () => {
     await stagesOn();
-    writeFakeLayaModels(modelsDir);
-    await put('culling_profile', { model: 'laya-base' });
-    await put('score_forecast', { model: 'laya-gone' });
+    writeFakeAppModels(modelsDir);
+    await put('culling_profile', { model: 'culling-model' });
+    await put('score_forecast', { model: 'model-gone' });
     const body = await usable();
-    expect(body.culling_profile).toEqual(ok('laya-base'));
-    expect(body.score_forecast).toMatchObject({ problem: 'not_listed', model: 'laya-gone' });
+    expect(body.culling_profile).toEqual(ok('culling-model'));
+    expect(body.score_forecast).toMatchObject({ problem: 'not_listed', model: 'model-gone' });
   });
 
   it('a model still converting in this app names its job', async () => {
     await stagesOn();
     const jobsDb = initJobsDb(join(dir, 'visualizer.db'));
-    const jobId = createJob(jobsDb, LAYA_INSTALL_JOB_TYPE, { source: '/models/laya-x', name: 'laya-x' });
+    const jobId = createJob(jobsDb, APP_MODEL_INSTALL_JOB_TYPE, { source: '/models/model-x', name: 'model-x' });
     jobsDb.close();
-    await put('culling_profile', { model: 'laya-x' });
+    await put('culling_profile', { model: 'model-x' });
     expect((await usable()).culling_profile).toEqual({
       on: true,
       problem: 'converting',
-      model: 'laya-x',
+      model: 'model-x',
       endpoint: 'this_app',
       job_id: jobId,
       detail: null,
@@ -268,7 +268,7 @@ describe('answered photos', () => {
       const versionId = getOrCreateStageVersion(db, {
         stageKey,
         kind,
-        profileSlug: kind === 'culling_profile' ? 'recipe-culling' : null,
+        profileSlug: kind === 'culling_profile' ? 'default' : null,
         levelSet: kind === 'culling_profile' ? stageKey.split(':').pop()! : null,
         modelId,
         questions: { q: { type: 'score', instructions: 'q', criteria: ['a', 'b'] } },
@@ -292,14 +292,14 @@ describe('answered photos', () => {
   }
 
   it('counts each photo once under the stage’s current versions, naming the model they were made with', async () => {
-    writeFakeLayaModels(modelsDir);
+    writeFakeAppModels(modelsDir);
     fx.addImages('a', 'b', 'c');
-    answer('culling_profile', 'culling_profile:recipe-culling:7', FAKE_LAYA_BASE_MODEL_ID, ['a', 'b']);
-    answer('culling_profile', 'culling_profile:recipe-culling:10', FAKE_LAYA_BASE_MODEL_ID, ['a', 'b', 'c']);
+    answer('culling_profile', 'culling_profile:default:7', FAKE_PROFILE_MODEL_ID, ['a', 'b']);
+    answer('culling_profile', 'culling_profile:default:10', FAKE_PROFILE_MODEL_ID, ['a', 'b', 'c']);
     answer('score_forecast', 'score_forecast', 'clef-forecast@http://h:1', ['a']);
     answer('score_forecast', 'score_forecast', 'other@http://h:1', ['b']);
     const body = await json<Listing>(await app.request('/api/culling-models'));
-    expect(body.culling_profile.answered).toEqual({ photos: 3, model: 'laya-base' });
+    expect(body.culling_profile.answered).toEqual({ photos: 3, model: 'culling-model' });
     expect(body.score_forecast.answered).toEqual({ photos: 1, model: 'other on http://h:1' });
   });
 });

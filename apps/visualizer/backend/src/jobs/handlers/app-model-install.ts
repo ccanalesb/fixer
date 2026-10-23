@@ -1,5 +1,5 @@
 /**
- * `laya_model_install` — convert one model into this app: `scripts/laya/export_onnx.py` through `uv`, as
+ * `app_model_install` — convert one model into this app: `scripts/app-models/export_onnx.py` through `uv`, as
  * a child process the job waits on (the event loop stays free, ADR-0018).
  *
  * Cancelling stops the process group and removes what it had written. A restart re-queues the job (it
@@ -14,17 +14,17 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { REPO_ROOT, config, loadLibraryConfig } from '../../config.js';
-import { LayaSetupError, resolveInstalledModel } from '../../laya/files.js';
-import { LAYA_INSTALL_JOB_TYPE } from '../../laya/install.js';
+import { AppModelSetupError, resolveInstalledModel } from '../../app-models/files.js';
+import { APP_MODEL_INSTALL_JOB_TYPE } from '../../app-models/install.js';
 import type { JobRunner } from '../runner.js';
 import { asMetadata } from './common.js';
 
-const SCRIPT = join(REPO_ROOT, 'scripts', 'laya', 'export_onnx.py');
+const SCRIPT = join(REPO_ROOT, 'scripts', 'app-models', 'export_onnx.py');
 const CANCEL_POLL_MS = 200;
 const KILL_GRACE_MS = 10_000;
 const STEP = /^step: (.+)$/;
 /** The script's last word on a failure it recognises. */
-const SCRIPT_ERROR = /^error: (source|network|not_laya|parity): (.+)$/;
+const SCRIPT_ERROR = /^error: (source|network|unsupported_architecture|parity): (.+)$/;
 const STEP_PROGRESS: [RegExp, number][] = [
   [/^looking up/, 5],
   [/^downloading/, 10],
@@ -36,7 +36,7 @@ const STEP_PROGRESS: [RegExp, number][] = [
 ];
 
 export const UV_MISSING_MESSAGE =
-  "uv is not installed, or not on the backend's PATH: the conversion runs scripts/laya/export_onnx.py " +
+  "uv is not installed, or not on the backend's PATH: the conversion runs scripts/app-models/export_onnx.py " +
   'through uv (https://docs.astral.sh/uv/getting-started/installation/)';
 
 type Outcome = { ok: true } | { cancelled: true } | { error: string };
@@ -136,15 +136,15 @@ function installedByJob(dir: string): string | null {
   }
 }
 
-export async function handleLayaModelInstall(runner: JobRunner, jobId: string, metadata: unknown): Promise<void> {
+export async function handleAppModelInstall(runner: JobRunner, jobId: string, metadata: unknown): Promise<void> {
   const meta = asMetadata(metadata);
   const source = typeof meta.source === 'string' ? meta.source : null;
   const name = typeof meta.name === 'string' ? meta.name : null;
   if (!source || !name) {
-    runner.failJob(jobId, `${LAYA_INSTALL_JOB_TYPE} needs metadata.source and metadata.name`);
+    runner.failJob(jobId, `${APP_MODEL_INSTALL_JOB_TYPE} needs metadata.source and metadata.name`);
     return;
   }
-  const modelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir;
+  const modelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir;
   const finalDir = join(modelsDir, name);
 
   // Re-queued after a restart that came once the files were in place: nothing left to convert.
@@ -166,7 +166,7 @@ export async function handleLayaModelInstall(runner: JobRunner, jobId: string, m
   try {
     model = resolveInstalledModel(modelsDir, name);
   } catch (e) {
-    if (!(e instanceof LayaSetupError)) throw e;
+    if (!(e instanceof AppModelSetupError)) throw e;
     runner.failJob(jobId, `The conversion finished, but ${e.message}`);
     return;
   }

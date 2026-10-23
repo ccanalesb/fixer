@@ -1,27 +1,27 @@
 /**
- * Laya from the main thread: a worker thread that holds the installed models (ADR-0020). Owned by this
+ * The models in this app, from the main thread: a worker thread that holds the installed models (ADR-0020). Owned by this
  * app's System One endpoint (`app-models.ts`), which starts it on its first request and closes it when
  * idle; `close` terminates the worker, which releases the ~2–3.5 GB the sessions hold.
  */
 import { Worker } from 'node:worker_threads';
-import type { LayaQuestion } from './rows.js';
-import type { LayaImageAnswer, LayaModelRef } from './sessions.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
+import type { ImageAnswer, ModelRef } from './sessions.js';
 
-export interface LayaRequest {
+export interface AnswerRequest {
   id: number;
-  model: LayaModelRef;
+  model: ModelRef;
   image: Uint8Array;
-  questions: Record<string, LayaQuestion>;
+  questions: Record<string, SystemOneQuestion>;
 }
 
-export type LayaWorkerMessage =
+export type WorkerMessage =
   | { type: 'ready' }
-  | ({ type: 'answer'; id: number; ok: true } & LayaImageAnswer)
+  | ({ type: 'answer'; id: number; ok: true } & ImageAnswer)
   | { type: 'answer'; id: number; ok: false; message: string };
 
-/** What this app's endpoint needs of Laya; tests fake it. */
-export interface LayaAnswerRuntime {
-  answer(model: LayaModelRef, image: Uint8Array, questions: Record<string, LayaQuestion>): Promise<LayaImageAnswer>;
+/** What this app's endpoint needs of its models; tests fake it. */
+export interface AnswerRuntime {
+  answer(model: ModelRef, image: Uint8Array, questions: Record<string, SystemOneQuestion>): Promise<ImageAnswer>;
   /** The worker died: every later answer fails too. */
   readonly broken: boolean;
   close(): Promise<void>;
@@ -34,13 +34,13 @@ function spawnWorker(): Worker {
   return new Worker(url, { execArgv: fromSource ? ['--import', import.meta.resolve('tsx')] : [] });
 }
 
-export class LayaRuntime implements LayaAnswerRuntime {
+export class ModelRuntime implements AnswerRuntime {
   private nextId = 0;
-  private readonly pending = new Map<number, { resolve: (r: LayaImageAnswer) => void; reject: (e: Error) => void }>();
+  private readonly pending = new Map<number, { resolve: (r: ImageAnswer) => void; reject: (e: Error) => void }>();
   private failure: Error | null = null;
 
   private constructor(private readonly worker: Worker) {
-    worker.on('message', (m: LayaWorkerMessage) => {
+    worker.on('message', (m: WorkerMessage) => {
       if (m.type !== 'answer') return;
       const p = this.pending.get(m.id);
       if (!p) return;
@@ -54,11 +54,11 @@ export class LayaRuntime implements LayaAnswerRuntime {
       this.pending.clear();
     };
     worker.on('error', fail);
-    worker.on('exit', (code) => fail(new Error(`Laya worker exited (code ${code})`)));
+    worker.on('exit', (code) => fail(new Error(`Model worker exited (code ${code})`)));
   }
 
   /** Spawn the worker and wait until onnxruntime has loaded in it. */
-  static async start(): Promise<LayaRuntime> {
+  static async start(): Promise<ModelRuntime> {
     const worker = spawnWorker();
     try {
       await new Promise<void>((resolve, reject) => {
@@ -67,22 +67,22 @@ export class LayaRuntime implements LayaAnswerRuntime {
       });
     } catch (e) {
       await worker.terminate();
-      throw new Error(`The Laya worker failed to start (${e instanceof Error ? e.message : String(e)})`);
+      throw new Error(`The model worker failed to start (${e instanceof Error ? e.message : String(e)})`);
     }
-    return new LayaRuntime(worker);
+    return new ModelRuntime(worker);
   }
 
   get broken(): boolean {
     return this.failure !== null;
   }
 
-  answer(model: LayaModelRef, image: Uint8Array, questions: Record<string, LayaQuestion>): Promise<LayaImageAnswer> {
+  answer(model: ModelRef, image: Uint8Array, questions: Record<string, SystemOneQuestion>): Promise<ImageAnswer> {
     if (this.failure) return Promise.reject(this.failure);
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      const ref: LayaModelRef = { name: model.name, dir: model.dir, visionDir: model.visionDir };
-      this.worker.postMessage({ id, model: ref, image, questions } satisfies LayaRequest);
+      const ref: ModelRef = { name: model.name, dir: model.dir, visionDir: model.visionDir };
+      this.worker.postMessage({ id, model: ref, image, questions } satisfies AnswerRequest);
     });
   }
 
@@ -92,7 +92,7 @@ export class LayaRuntime implements LayaAnswerRuntime {
   }
 }
 
-/** The one place a Laya worker is started. */
-export function startLayaRuntime(): Promise<LayaAnswerRuntime> {
-  return LayaRuntime.start();
+/** The one place a model worker is started. */
+export function startModelRuntime(): Promise<AnswerRuntime> {
+  return ModelRuntime.start();
 }

@@ -1,6 +1,6 @@
 /**
  * Installing a model into this app: the source and name rules, the list with its conversion jobs, and
- * the `laya_model_install` job. A fake `uv` on PATH stands in for the conversion script, so the real
+ * the `app_model_install` job. A fake `uv` on PATH stands in for the conversion script, so the real
  * child process, its output, cancellation and cleanup are exercised without converting anything.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -12,15 +12,15 @@ import { createJob, getJob, initJobsDb, updateJobStatus } from '../src/db/jobs/j
 import { JobRunner } from '../src/jobs/runner.js';
 import { recoverOrphanedJobs, tick } from '../src/jobs/processor.js';
 import { transitionCancel } from '../src/jobs/transitions.js';
-import { stopRunningConversions } from '../src/jobs/handlers/laya-install.js';
+import { stopRunningConversions } from '../src/jobs/handlers/app-model-install.js';
 import {
-  LAYA_INSTALL_JOB_TYPE,
+  APP_MODEL_INSTALL_JOB_TYPE,
   AppModelSourceError,
   addAppModel,
   listAppModels,
   modelNameFor,
   parseModelSource,
-} from '../src/laya/install.js';
+} from '../src/app-models/install.js';
 
 const FAKE_UV = `#!/bin/sh
 # uv run <script> <source> --name <name> --out <out> --job-id <id>
@@ -32,9 +32,9 @@ done
 partial="$out/.install-$name"
 mkdir -p "$partial"
 case "$src" in
-  */not-laya)
+  */not-supported)
     echo "step: looking up $src"
-    echo "error: not_laya: $src is not a Laya-family model: it has no vlm_agent_config.json" >&2
+    echo "error: unsupported_architecture: $src is not a model this app converts: it has no vlm_agent_config.json" >&2
     rm -rf "$partial"; exit 2;;
   */parity)
     echo "error: parity: decoder: the ONNX graph differs from PyTorch by 2.00e-02, above 0.001" >&2; exit 2;;
@@ -67,7 +67,7 @@ beforeEach(() => {
   writeFileSync(join(dir, 'bin', 'uv'), FAKE_UV);
   chmodSync(join(dir, 'bin', 'uv'), 0o755);
   process.env.PATH = `${join(dir, 'bin')}:${originalPath}`;
-  writeFileSync(join(dir, 'config.yaml'), `laya_models_dir: ${modelsDir}\n`);
+  writeFileSync(join(dir, 'config.yaml'), `app_models_dir: ${modelsDir}\n`);
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
   db = initJobsDb(join(dir, 'visualizer.db'));
 });
@@ -90,7 +90,7 @@ const names = () => listAppModels(modelsDir, db).map((m) => [m.name, m.status]);
 
 describe('the source', () => {
   it('is a folder when it is a path, and must be one', () => {
-    const p = folder('laya-run/best');
+    const p = folder('my-run/best');
     expect(parseModelSource(p)).toEqual({ kind: 'folder', source: p });
     expect(parseModelSource(`  '${p}'  `)).toEqual({ kind: 'folder', source: p });
     expect(parseModelSource('~/')).toEqual({ kind: 'folder', source: homedir() });
@@ -100,12 +100,12 @@ describe('the source', () => {
   });
 
   it('is a Hugging Face id otherwise, with or without a revision', () => {
-    expect(parseModelSource('thaitea/laya-vision')).toEqual({ kind: 'hugging_face', source: 'thaitea/laya-vision' });
-    expect(parseModelSource('thaitea/laya-vision@8b318c9')).toEqual({
+    expect(parseModelSource('owner/vision-model')).toEqual({ kind: 'hugging_face', source: 'owner/vision-model' });
+    expect(parseModelSource('owner/vision-model@8b318c9')).toEqual({
       kind: 'hugging_face',
-      source: 'thaitea/laya-vision@8b318c9',
+      source: 'owner/vision-model@8b318c9',
     });
-    for (const bad of ['', 'laya', 'a/b/c', 'thaitea/laya vision', 'thaitea/laya-vision@']) {
+    for (const bad of ['', 'vision', 'a/b/c', 'owner/vision model', 'owner/vision-model@']) {
       expect(() => parseModelSource(bad), bad).toThrow(AppModelSourceError);
     }
   });
@@ -114,51 +114,51 @@ describe('the source', () => {
 describe('the name', () => {
   const name = (raw: string, taken: string[] = []) => modelNameFor(parseModelSource(raw), new Set(taken));
 
-  it('is laya-base for Laya base, the repo name for another Hugging Face model', () => {
-    expect(name('thaitea/laya-vision')).toBe('laya-base');
-    expect(name('Thaitea/Laya-Vision@8b318c9')).toBe('laya-base');
+  it('is the repo name of a Hugging Face model, without its revision', () => {
+    expect(name('owner/vision-model')).toBe('vision-model');
+    expect(name('Owner/Vision-Model@8b318c9')).toBe('vision-model');
     expect(name('someone/My_Model.v2@main')).toBe('my_model.v2');
   });
 
   it('is the folder’s name, with its parent’s before a generic one', () => {
-    expect(name(folder('models/laya-vision'))).toBe('laya-vision');
-    expect(name(folder('laya-run/best'))).toBe('laya-run-best');
+    expect(name(folder('models/vision-model'))).toBe('vision-model');
+    expect(name(folder('my-run/best'))).toBe('my-run-best');
     expect(name(folder('run 3/checkpoint-1200'))).toBe('run-3-checkpoint-1200');
     expect(name(folder('x/Final'))).toBe('x-final');
   });
 
   it('gets -2, -3… when the name is taken', () => {
-    expect(name('thaitea/laya-vision', ['laya-base'])).toBe('laya-base-2');
-    expect(name('thaitea/laya-vision', ['laya-base', 'laya-base-2'])).toBe('laya-base-3');
+    expect(name('owner/vision-model', ['vision-model'])).toBe('vision-model-2');
+    expect(name('owner/vision-model', ['vision-model', 'vision-model-2'])).toBe('vision-model-3');
   });
 });
 
 describe('adding a model', () => {
   it('queues one conversion job and lists the model as converting until it is installed', async () => {
-    const added = addAppModel(db, modelsDir, 'thaitea/laya-vision');
-    expect(added.name).toBe('laya-base');
+    const added = addAppModel(db, modelsDir, 'owner/vision-model');
+    expect(added.name).toBe('vision-model');
     expect(job(added.job_id)).toMatchObject({
-      type: LAYA_INSTALL_JOB_TYPE,
+      type: APP_MODEL_INSTALL_JOB_TYPE,
       status: 'pending',
-      metadata: { source: 'thaitea/laya-vision', name: 'laya-base' },
+      metadata: { source: 'owner/vision-model', name: 'vision-model' },
     });
     expect(listAppModels(modelsDir, db)).toEqual([
-      { name: 'laya-base', source: 'thaitea/laya-vision', revision: null, status: 'converting', job_id: added.job_id },
+      { name: 'vision-model', source: 'owner/vision-model', revision: null, status: 'converting', job_id: added.job_id },
     ]);
 
     await run();
     expect(job(added.job_id).status).toBe('completed');
     expect(listAppModels(modelsDir, db)).toEqual([
-      { name: 'laya-base', source: 'thaitea/laya-vision', revision: 'abc1234', status: 'ready', job_id: added.job_id },
+      { name: 'vision-model', source: 'owner/vision-model', revision: 'abc1234', status: 'ready', job_id: added.job_id },
     ]);
   });
 
   it('refuses a source already converting, and gives the same source a new name once it is installed', async () => {
-    const first = addAppModel(db, modelsDir, 'thaitea/laya-vision');
-    expect(() => addAppModel(db, modelsDir, 'thaitea/laya-vision')).toThrow('Already converting as laya-base');
+    const first = addAppModel(db, modelsDir, 'owner/vision-model');
+    expect(() => addAppModel(db, modelsDir, 'owner/vision-model')).toThrow('Already converting as vision-model');
     await run();
     expect(job(first.job_id).status).toBe('completed');
-    expect(addAppModel(db, modelsDir, 'thaitea/laya-vision').name).toBe('laya-base-2');
+    expect(addAppModel(db, modelsDir, 'owner/vision-model').name).toBe('vision-model-2');
   });
 
   it('does not list a failed or cancelled conversion', () => {
@@ -173,24 +173,24 @@ describe('adding a model', () => {
 
 describe('the conversion job', () => {
   it('runs the script through uv and shows its steps', async () => {
-    const src = folder('laya-run/best');
+    const src = folder('my-run/best');
     const { job_id } = addAppModel(db, modelsDir, src);
     await run();
     const j = getJob(db, job_id, { logsLimit: 50 })!;
     expect(j.status).toBe('completed');
-    expect(j.result).toMatchObject({ name: 'laya-run-best', source: src, revision: null });
+    expect(j.result).toMatchObject({ name: 'my-run-best', source: src, revision: null });
     const messages = j.logs.map((l) => l.message);
     expect(messages).toContain('loading the model');
     expect(messages).not.toContain('step: loading the model');
     expect(messages).not.toContain('');
-    expect(names()).toEqual([['laya-run-best', 'ready']]);
+    expect(names()).toEqual([['my-run-best', 'ready']]);
   });
 
-  it('a non-Laya folder fails with the cause, and nothing half-written is listed or left', async () => {
-    const { job_id } = addAppModel(db, modelsDir, folder('downloads/not-laya'));
+  it('a folder of another architecture fails with the cause, and nothing half-written is listed or left', async () => {
+    const { job_id } = addAppModel(db, modelsDir, folder('downloads/not-supported'));
     await run();
     expect(job(job_id).status).toBe('failed');
-    expect(job(job_id).error).toBe(`${join(dir, 'downloads/not-laya')} is not a Laya-family model: it has no vlm_agent_config.json`);
+    expect(job(job_id).error).toBe(`${join(dir, 'downloads/not-supported')} is not a model this app converts: it has no vlm_agent_config.json`);
     expect(names()).toEqual([]);
     expect(readdirSync(modelsDir)).toEqual([]);
   });
@@ -241,7 +241,7 @@ describe('the conversion job', () => {
   it('resumes after a restart: re-queued, converted from the start', async () => {
     const { job_id } = addAppModel(db, modelsDir, 'someone/a');
     const runner = new JobRunner(db);
-    runner.startJob(job_id, LAYA_INSTALL_JOB_TYPE);
+    runner.startJob(job_id, APP_MODEL_INSTALL_JOB_TYPE);
     runner.persistCheckpoint(job_id, { step: 'converting' });
     mkdirSync(join(modelsDir, '.install-a'), { recursive: true });
     expect(recoverOrphanedJobs(db)).toEqual([job_id]);
@@ -261,8 +261,8 @@ describe('the conversion job', () => {
   });
 
   it('a job queued by hand with no source fails saying so', async () => {
-    const id = createJob(db, LAYA_INSTALL_JOB_TYPE, {});
+    const id = createJob(db, APP_MODEL_INSTALL_JOB_TYPE, {});
     await run();
-    expect(job(id).error).toBe('laya_model_install needs metadata.source and metadata.name');
+    expect(job(id).error).toBe('app_model_install needs metadata.source and metadata.name');
   });
 });

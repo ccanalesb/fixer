@@ -3,7 +3,6 @@ export function minimalNewProfileBody(slug: string, name: string) {
   return {
     slug,
     name,
-    model: 'laya-base',
     definition: {
       dimensions: [{ slug: 'dimension-1', name: 'Dimension 1', question: '' }],
       level_sets: [{ id: '5', levels: { 'dimension-1': ['', '', '', '', ''] } }],

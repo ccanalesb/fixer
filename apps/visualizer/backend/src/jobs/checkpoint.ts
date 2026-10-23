@@ -20,7 +20,7 @@
  * legacy field name.
  *
  * `batch_cull_photos_before_scoring` — `fingerprint`, `done_by_stage` (stage key → photos answered
- * for it so far), `failed_keys` (photos Laya failed on, left pending; a resumed run skips them, a
+ * for it so far), `failed_keys` (photos the model failed on, left pending; a resumed run skips them, a
  * fresh job retries them), `total_at_start`. No list of finished photos: their stored answers are
  * what a restart skips.
  *

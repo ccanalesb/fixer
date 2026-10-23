@@ -1,5 +1,5 @@
 {
- "base": {
+ "culling_profile": {
   "7|immediate-impact": {
    "type": "score",
    "instructions": "Evaluates whether the photograph arrests attention instantly—through color, gesture, framing, or tension—so the viewer stops instead of scrolling past.",
@@ -117,7 +117,7 @@
    ]
   }
  },
- "new": {
+ "score_forecast": {
   "framing-excusal": {
    "type": "noul",
    "instructions": "Does this photo use a natural framing device — foreground elements or structural features such as doorways, windows, arches, branches, railings, or shadows — arranged to encircle or enclose the primary subject?"

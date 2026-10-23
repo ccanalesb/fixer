@@ -1,4 +1,4 @@
-import { prepareKimiJobCull, resetKimiJobLaya, writeKimiJobConfig } from './helpers/kimi-job-laya.js';
+import { prepareKimiJobCull, resetKimiJobModels, writeKimiJobConfig } from './helpers/kimi-job-models.js';
 /**
  * The `batch_analyze` handler: describe and score as two stages of one job.
  *
@@ -194,7 +194,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-analyze-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().addForecastQuestions().activate();
-  resetKimiJobLaya();
+  resetKimiJobModels();
   describeReply = descriptionJson();
   scoreReply = scoreJson();
   describeCalls = 0;

@@ -15,7 +15,7 @@ import { resolveCurrentStages } from '../../cull/stages.js';
 import type { StageKind } from '../../cull/types.js';
 import { initLibraryDb } from '../../db/library/bootstrap.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
-import { AppModels } from '../../laya/app-models.js';
+import { AppModels } from '../../app-models/app-models.js';
 import { THIS_APP_ENDPOINT } from '../../systemone/client.js';
 import { stringFlag } from '../parse.js';
 import type { CommandContext } from '../registry.js';
@@ -24,7 +24,7 @@ const s = (v: number) => v.toFixed(2);
 const KINDS: StageKind[] = ['culling_profile', 'score_forecast'];
 
 export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
-  const local = new AppModels(() => ctx.config.layaModelsDir);
+  const local = new AppModels(() => ctx.config.appModelsDir);
   const app = systemOneApp(() => local);
   const thisAppFetch: typeof fetch = async (input, init) => app.request(input instanceof URL ? input.href : input, init);
   const models = stageModelsFromConfig(ctx.config.cullingModels, { thisAppFetch });
@@ -36,7 +36,7 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
       ctx.out(`${STAGE_NAMES[kind]}: ${m.model || 'no model'} on ${m.endpoint.label}`);
     }
     if (KINDS.some((k) => models[k].endpoint.id === THIS_APP_ENDPOINT)) {
-      ctx.out(`This app's models: ${ctx.config.layaModelsDir}`);
+      ctx.out(`This app's models: ${ctx.config.appModelsDir}`);
     }
     const ids = await resolveStageModelIds(
       models,
