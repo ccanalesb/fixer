@@ -1,8 +1,8 @@
 /**
  * Create a `library.db`.
  *
- * Fresh databases are created at schema version 8 in one script. Legacy upgrade
- * migrations (below version 8) are not carried here.
+ * Fresh databases are created at the current schema version in one script. A
+ * database below version 13 is not upgraded.
  *
  * `image_descriptions_fts` is external-content (`content='image_descriptions'`),
  * matching production; standalone and external-content forms need opposite delete
@@ -14,16 +14,16 @@ import { openLibraryDb, type Db } from '../connection.js';
 import { REPO_ROOT } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { DEFAULT_CULLING_PROFILE_SLUG, seedCullingDefaults } from './cull-profiles.js';
-import { renameCullVocabulary } from './cull-rename-v13.js';
+import { upgradeCullImports } from './cull-imports-v17.js';
 import { addCullingSwitches } from './cull-switches-v14.js';
 import { markdownMarksOptional } from './scores.js';
 import { prepopulateForecastQuestions, SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 16;
+export const LIBRARY_SCHEMA_VERSION = 17;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
-const OLDEST_UPGRADABLE_VERSION = 8;
+const OLDEST_UPGRADABLE_VERSION = 13;
 
 /** Set after the one-time Lightroom keyword backfill in `catalog_sync`. */
 export const KEYWORDS_BACKFILL_META_KEY = 'keywords_backfilled_v1';
@@ -112,7 +112,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cull_stage_versions_current
 
 CREATE TABLE IF NOT EXISTS cull_runs (
     run_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind TEXT NOT NULL CHECK (kind IN ('job','research_import','redecide')),
+    kind TEXT NOT NULL CHECK (kind IN ('job','import','redecide')),
     job_id TEXT,
     started_at TEXT NOT NULL,
     finished_at TEXT,
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS cull_stage_answers (
     -- The rule or threshold that produced the verdict, and the readout.
     decision_json TEXT NOT NULL,
     pipeline_setting_version INTEGER NOT NULL,
-    source TEXT NOT NULL CHECK (source IN ('job','research_import')),
+    source TEXT NOT NULL CHECK (source IN ('job','import')),
     produced_by TEXT NOT NULL DEFAULT '',
     image_path TEXT NOT NULL DEFAULT '',
     -- size:mtime of the image Laya read, when known.
@@ -485,9 +485,8 @@ function assertNotLegacy(db: Db, path: string): void {
   if (version >= OLDEST_UPGRADABLE_VERSION) return;
   if (!tableExists(db, 'images')) return;
   throw new Error(
-    `${path} is at schema version ${version}, below ${OLDEST_UPGRADABLE_VERSION}. ` +
-      'The TypeScript CLI does not carry the upgrade migrations; run the Python ' +
-      '`lightroom-tagger init` against it once first.',
+    `${path} is at schema version ${version}, below ${OLDEST_UPGRADABLE_VERSION}, ` +
+      `the oldest this app upgrades. Start from a new library.db.`,
   );
 }
 
@@ -507,15 +506,6 @@ export function setLibraryMeta(db: Db, key: string, value: string): void {
   ).run(key, value);
 }
 
-/** `ALTER TABLE … ADD COLUMN`, skipped when the table is absent or already has it. */
-function addColumnIfMissing(db: Db, table: string, columnDef: string): void {
-  if (!tableExists(db, table)) return;
-  const name = columnDef.split(' ')[0]!;
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-  if (columns.some((c) => c.name === name)) return;
-  db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`);
-}
-
 /**
  * Upgrade an existing `library.db` to the current schema version. Idempotent, and
  * a no-op on a database with no tables yet.
@@ -529,29 +519,6 @@ export function upgradeLibrarySchema(db: Db): void {
     // Read again holding the write lock: a request and a job may open an old library.db at once.
     const version = userVersion(db);
     if (version >= LIBRARY_SCHEMA_VERSION) return;
-    if (version < 9) {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS library_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-      `);
-    }
-    if (version < 10) {
-      addColumnIfMissing(db, 'images', 'orientation TEXT');
-      addColumnIfMissing(db, 'vision_cache', 'orientation TEXT');
-      db.exec(VISION_STALE_SQL);
-    }
-    if (version < 11) {
-      db.exec(CULL_SQL);
-      seedCullingDefaults(db);
-    }
-    if (version < 12) {
-      db.exec(LR_WRITEBACK_SQL);
-    }
-    if (version < 13) {
-      renameCullVocabulary(db, CULL_SQL);
-    }
     if (version < 14) {
       addCullingSwitches(db);
     }
@@ -566,6 +533,9 @@ export function upgradeLibrarySchema(db: Db): void {
         DEFAULT_CULLING_PROFILE_SLUG,
         'Recipe culling',
       );
+    }
+    if (version < 17) {
+      upgradeCullImports(db, CULL_SQL);
     }
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
   }).immediate();

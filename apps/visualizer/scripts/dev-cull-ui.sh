@@ -2,13 +2,14 @@
 # UI review for culling screens — isolated temp data only; never the user's
 # library.db, jobs DB, thumbnails, providers, or vision cache.
 #
-# From repo root:
-#   bash apps/visualizer/scripts/dev-cull-ui.sh
+# From repo root, with a folder of .jpg photos to review (copied, never changed):
+#   CULL_UI_IMAGES=/path/to/jpgs bash apps/visualizer/scripts/dev-cull-ui.sh
 #
 # Runs in a subshell so nothing is exported to your interactive shell.
 # Pre-set env vars win over backend/.env (node --env-file-if-exists does not overwrite).
 (
   set -euo pipefail
+  : "${CULL_UI_IMAGES:?set CULL_UI_IMAGES to a folder of .jpg photos}"
   ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"; cd "$ROOT" && make dev-down 2>/dev/null || true' EXIT INT TERM

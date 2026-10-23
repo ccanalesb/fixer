@@ -115,24 +115,36 @@ describe('initLibraryDb', () => {
     legacy.pragma('user_version = 5');
     legacy.close();
 
-    expect(() => initLibraryDb(path)).toThrow(/schema version 5, below 8/);
-    expect(() => initLibraryDb(path)).toThrow(/lightroom-tagger init/);
+    expect(() => initLibraryDb(path)).toThrow(/schema version 5, below 13, the oldest this app upgrades/);
   });
 
-  it('upgrades a version 8 database to 9 by adding library_meta', () => {
-    const path = join(dir, 'v8.db');
-    const v8 = new Database(path);
-    v8.exec('CREATE TABLE images (key TEXT PRIMARY KEY)');
-    v8.pragma('user_version = 8');
-    v8.close();
+  it('refuses a version 12 database', () => {
+    const path = join(dir, 'v12.db');
+    const v12 = new Database(path);
+    v12.exec('CREATE TABLE images (key TEXT PRIMARY KEY)');
+    v12.pragma('user_version = 12');
+    v12.close();
+
+    const db = openLibraryDb(path);
+    try {
+      expect(() => upgradeLibrarySchema(db)).toThrow(/schema version 12, below 13/);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('upgrades a version 13 library, once', () => {
+    const path = join(dir, 'v13.db');
+    initLibraryDb(path).close();
+    const v13 = new Database(path);
+    v13.pragma('user_version = 13');
+    v13.close();
 
     const db = openLibraryDb(path);
     try {
       upgradeLibrarySchema(db);
       expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
       setLibraryMeta(db, 'k', 'v');
-      expect(getLibraryMeta(db, 'k')).toBe('v');
-      // Idempotent: a second pass over the already-current db is a no-op.
       upgradeLibrarySchema(db);
       expect(getLibraryMeta(db, 'k')).toBe('v');
     } finally {

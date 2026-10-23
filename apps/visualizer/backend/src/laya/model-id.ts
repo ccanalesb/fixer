@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import type { InstalledModel } from './files.js';
 
 /** The Laya base `cull-import` files culling profile answers under and the setup step installs (`thaitea/laya-vision` at `8b318c9`). */
-export const LAYA_BASE_RESEARCH_MODEL_ID = 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e';
+export const LAYA_BASE_MODEL_ID = 'thaitea/laya-vision@8b318c99d7ad3ce19c24369263463882eada9d1e';
 
 const HASH_CACHE = 'decoder.onnx.sha256.json';
 

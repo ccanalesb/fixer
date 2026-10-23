@@ -40,7 +40,7 @@ export function stageVersionIds(ctx: CullContext): number[] {
 
 export interface FreshAnswers {
   answers: Record<string, StageAnswers>;
-  source: 'job' | 'research_import';
+  source: 'job' | 'import';
   /** The endpoint that answered (`this_app` or its URL), one for all or by stage key. */
   producedBy: string | Readonly<Record<string, string>>;
   imagePath: string;

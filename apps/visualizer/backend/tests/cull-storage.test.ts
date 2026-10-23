@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { REPO_ROOT } from '../src/config.js';
-import { openLibraryDb, type Db } from '../src/db/connection.js';
-import { initLibraryDb, LIBRARY_SCHEMA_VERSION, upgradeLibrarySchema } from '../src/db/library/bootstrap.js';
+import type { Db } from '../src/db/connection.js';
+import { initLibraryDb, LIBRARY_SCHEMA_VERSION } from '../src/db/library/bootstrap.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import {
   CULL_DEFAULTS_SEEDED_META_KEY,
@@ -100,21 +100,12 @@ describe('migration and seed', () => {
     expect(pipeline.config.score_forecast).toEqual({ enabled: false, threshold: 0.111, high_from_level: 8, excused_at: 0.5 });
   });
 
-  it('upgrades a version 10 library, once; a deleted profile is not seeded again', () => {
-    for (const t of CULL_TABLES) db.exec(`DROP TABLE ${t}`);
-    db.prepare('DELETE FROM library_meta WHERE key = ?').run(CULL_DEFAULTS_SEEDED_META_KEY);
-    db.pragma('user_version = 10');
-    db.close();
-
-    db = openLibraryDb(join(dir, 'library.db'));
-    upgradeLibrarySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
-    expect(tables(db)).toEqual(CULL_TABLES);
+  it('a deleted profile is not seeded again', () => {
     expect(listCullProfiles(db).map((r) => r.slug)).toEqual(['recipe-culling']);
-
     db.exec('DELETE FROM cull_profile_versions; DELETE FROM cull_profiles');
     expect(seedCullingDefaults(db)).toBe(false);
-    upgradeLibrarySchema(db);
+    db.close();
+    db = initLibraryDb(join(dir, 'library.db'));
     expect(listCullProfiles(db)).toEqual([]);
   });
 
@@ -135,10 +126,10 @@ describe('migration and seed', () => {
     for (const set of seed.definition.level_sets) {
       const stage = stages.find((s) => s.stageKey === `culling_profile:recipe-culling:${set.id}`)!;
       const asked = Object.values(stage.questions);
-      const research = Object.entries(LAYA_QUESTIONS.base)
+      const expected = Object.entries(LAYA_QUESTIONS.base)
         .filter(([qid]) => qid.startsWith(`${set.id}|`))
         .map(([, q]) => q);
-      expect(asked).toEqual(research);
+      expect(asked).toEqual(expected);
     }
   });
 });

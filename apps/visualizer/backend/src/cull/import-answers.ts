@@ -12,6 +12,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
+import { isAbsolute, relative } from 'node:path';
 import type { Db } from '../db/connection.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { DEFAULT_CULLING_PROFILE_SLUG, seedCullingDefaults } from '../db/library/cull-profiles.js';
@@ -35,15 +36,17 @@ import type { PipelineSettingConfig, ResolvedStage, StageAnswers } from './types
 /** Photos per transaction. */
 const BATCH = 500;
 
-export interface ResearchImportOptions {
+export interface CullImportOptions {
   layaNewPath: string;
   profilePath: string;
   modelIds: { base: string; new: string };
+  /** An image path outside it is not stored: only the app's own images are kept as where an answer came from. */
+  visionCacheDir: string;
   /** Report what would be written, write nothing. */
   dryRun?: boolean;
 }
 
-export interface ResearchImportResult {
+export interface CullImportResult {
   dry_run: boolean;
   lines: { laya_new: number; profile: number };
   /** A half-written last line, skipped: the file is still being appended to. */
@@ -59,12 +62,10 @@ export interface ResearchImportResult {
   run_id: number | null;
 }
 
-interface ResearchPhoto {
+interface ImportedPhoto {
   image: string;
   profile: Record<string, number[]>;
-  profileFrom: string[];
   layaNew: StageAnswers | null;
-  layaNewFrom: string;
 }
 
 interface Jsonl<T> {
@@ -95,16 +96,12 @@ async function readJsonl<T>(path: string): Promise<Jsonl<T>> {
 interface ProfileLine {
   key: string;
   image: string;
-  copied_from: string | null;
   answers: Record<string, { probabilities: number[] }>;
 }
 
 interface LayaNewLine {
   key: string;
   image: string;
-  from?: string;
-  fix?: string;
-  why?: string;
   rows: { slug: string; probs: number[]; p_excused?: number | null; not_attempted?: boolean | null }[];
 }
 
@@ -138,7 +135,7 @@ function assertStagesOn(pipeline: PipelineSettingConfig): void {
 }
 
 /** The answers were asked Laya new's questions; refuse to file them under other Score forecast questions. */
-function assertResearchForecastText(stage: ResolvedStage | undefined): void {
+function assertForecastText(stage: ResolvedStage | undefined): void {
   if (stage && canonicalJson(stage.questions) === canonicalJson(LAYA_QUESTIONS.new)) return;
   throw new Error(
     'score_forecast: the Score forecast questions are no longer the ones these answers were asked; ' +
@@ -147,11 +144,11 @@ function assertResearchForecastText(stage: ResolvedStage | undefined): void {
 }
 
 /** The answers were asked the Default culling profile's text; refuse to file them under other text. */
-function assertResearchText(stage: ResolvedStage): void {
-  const research = Object.fromEntries(
+function assertProfileText(stage: ResolvedStage): void {
+  const asked = Object.fromEntries(
     Object.entries(LAYA_QUESTIONS.base).filter(([qid]) => qid.startsWith(`${stage.levelSet}|`)),
   );
-  if (canonicalJson(research) !== canonicalJson(stage.questions)) {
+  if (canonicalJson(asked) !== canonicalJson(stage.questions)) {
     throw new Error(
       `${stage.stageKey}: the profile's text is no longer the one these answers were asked; ` +
         'they cannot be imported under it',
@@ -159,18 +156,23 @@ function assertResearchText(stage: ResolvedStage): void {
   }
 }
 
-export async function importResearchRuns(db: Db, opts: ResearchImportOptions): Promise<ResearchImportResult> {
+function inside(dir: string, path: string): boolean {
+  const rel = relative(dir, path);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+export async function importCullAnswers(db: Db, opts: CullImportOptions): Promise<CullImportResult> {
   const [profileFile, layaNewFile] = await Promise.all([
     readJsonl<ProfileLine>(opts.profilePath),
     readJsonl<LayaNewLine>(opts.layaNewPath),
   ]);
-  const researchMtime = Math.min(statSync(opts.profilePath).mtimeMs, statSync(opts.layaNewPath).mtimeMs);
+  const filesMtime = Math.min(statSync(opts.profilePath).mtimeMs, statSync(opts.layaNewPath).mtimeMs);
 
-  const photos = new Map<string, ResearchPhoto>();
-  const photo = (key: string, image: string): ResearchPhoto => {
+  const photos = new Map<string, ImportedPhoto>();
+  const photo = (key: string, image: string): ImportedPhoto => {
     let p = photos.get(key);
     if (!p) {
-      p = { image, profile: {}, profileFrom: [], layaNew: null, layaNewFrom: '' };
+      p = { image, profile: {}, layaNew: null };
       photos.set(key, p);
     }
     return p;
@@ -179,7 +181,6 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
   for (const line of profileFile.rows) {
     const p = photo(line.key, line.image);
     for (const [qid, a] of Object.entries(line.answers)) p.profile[qid] = a.probabilities;
-    if (line.copied_from) p.profileFrom.push(line.copied_from);
   }
   // Photos with an incomplete answer kept nowhere complete: counted once, however many lines or sets.
   const partial = new Set<string>();
@@ -188,13 +189,12 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
     const answers = layaNewAnswers(line);
     if (!answers) continue;
     p.layaNew = answers;
-    p.layaNewFrom = [line.from, line.fix, line.why].filter(Boolean).join(' / ');
   }
 
   for (const line of layaNewFile.rows) if (!photos.get(line.key)!.layaNew) partial.add(line.key);
   const inLibrary = new Set((db.prepare('SELECT key FROM images').all() as { key: string }[]).map((r) => r.key));
   const missing = [...photos.keys()].filter((k) => !inLibrary.has(k));
-  const result: ResearchImportResult = {
+  const result: CullImportResult = {
     dry_run: opts.dryRun === true,
     lines: { laya_new: layaNewFile.lines, profile: profileFile.lines },
     truncated_tail: { laya_new: layaNewFile.truncatedTail, profile: profileFile.truncatedTail },
@@ -224,14 +224,14 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
       if (!s) {
         throw new Error(`the pipeline setting does not run the culling profile ${DEFAULT_CULLING_PROFILE_SLUG} at ${set} levels; nothing to import into`);
       }
-      assertResearchText(s);
+      assertProfileText(s);
       return s;
     });
-    assertResearchForecastText(stages.find((s) => s.stageKey === SCORE_FORECAST_STAGE_KEY));
+    assertForecastText(stages.find((s) => s.stageKey === SCORE_FORECAST_STAGE_KEY));
     const ctx: CullContext = { stages, pipeline, scoreForecastAvailable: true };
     const runId = libraryWrite(db, () =>
       insertCullRun(db, {
-        kind: 'research_import',
+        kind: 'import',
         jobId: null,
         pipelineSettingVersion: pipeline.version,
         detail: {
@@ -276,22 +276,16 @@ export async function importResearchRuns(db: Db, opts: ResearchImportOptions): P
               bump(result.inserted, SCORE_FORECAST_STAGE_KEY);
             }
           }
-          const producedBy = [
-            'research (PyTorch)',
-            p.profileFrom.length > 0 ? `profile copied from ${[...new Set(p.profileFrom)].join(', ')}` : '',
-            p.layaNewFrom ? `Laya new image from ${p.layaNewFrom}` : '',
-          ]
-            .filter(Boolean)
-            .join('; ');
+          const ownImage = inside(opts.visionCacheDir, p.image);
           const d = decideAndStorePhoto(db, ctx, {
             imageKey: key,
             stored,
             fresh: {
               answers: fresh,
-              source: 'research_import',
-              producedBy,
-              imagePath: p.image,
-              imageSignature: imageSignature(p.image, researchMtime),
+              source: 'import',
+              producedBy: 'cull-import',
+              imagePath: ownImage ? p.image : '',
+              imageSignature: ownImage ? imageSignature(p.image, filesMtime) : null,
               ifAbsent: true,
             },
             sentByHand: sentByHand.has(key),

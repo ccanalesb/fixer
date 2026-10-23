@@ -67,7 +67,7 @@ export interface StageAnswerRow {
   verdict: CullVerdict;
   decision: Record<string, unknown>;
   pipelineSettingVersion: number;
-  source: 'job' | 'research_import';
+  source: 'job' | 'import';
   producedBy?: string;
   imagePath?: string;
   imageSignature?: string | null;

@@ -3,12 +3,12 @@
  * its model identity, and the default pipeline setting's questions answered on a test image. With
  * `--photo`, also prints each stage's level probabilities for that photo.
  *
- * `cull-import` — culling answers from JSONL files, stored as answered (`cull/import-research.ts`).
+ * `cull-import` — culling answers from JSONL files, stored as answered (`cull/import-answers.ts`).
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { systemOneApp } from '../../api/systemone.js';
-import { importResearchRuns } from '../../cull/import-research.js';
+import { importCullAnswers } from '../../cull/import-answers.js';
 import {
   CullingModels,
   CullingStageError,
@@ -21,7 +21,7 @@ import type { StageKind } from '../../cull/types.js';
 import { initLibraryDb } from '../../db/library/bootstrap.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { AppModels } from '../../laya/app-models.js';
-import { LAYA_BASE_RESEARCH_MODEL_ID, layaNewModelId } from '../../laya/model-id.js';
+import { LAYA_BASE_MODEL_ID, layaNewModelId } from '../../laya/model-id.js';
 import { THIS_APP_ENDPOINT } from '../../systemone/client.js';
 import { CliError, withLibraryDbAsync } from '../library-db.js';
 import { boolFlag, stringFlag } from '../parse.js';
@@ -80,7 +80,7 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
  * Laya new has no revision: imported answers are filed under the exported decoder's hash, which
  * says they came from the same checkpoint the culling job runs. `--laya-new-model-id` names it by hand.
  */
-async function researchLayaNewModelId(ctx: CommandContext): Promise<string> {
+async function importLayaNewModelId(ctx: CommandContext): Promise<string> {
   const given = stringFlag(ctx.args, 'laya-new-model-id');
   if (given) return given;
   const dir = join(ctx.config.layaModelsDir, 'laya-new');
@@ -101,13 +101,19 @@ export async function cmdCullImport(ctx: CommandContext): Promise<number> {
     );
   }
   for (const p of [layaNewPath, profilePath]) if (!existsSync(p)) throw new CliError(`File not found: ${p}`);
-  const modelIds = { base: LAYA_BASE_RESEARCH_MODEL_ID, new: await researchLayaNewModelId(ctx) };
+  const modelIds = { base: LAYA_BASE_MODEL_ID, new: await importLayaNewModelId(ctx) };
   const dryRun = boolFlag(ctx.args, 'dry-run');
   return withLibraryDbAsync(ctx, { mustExist: true }, async (db, dbPath) => {
     ctx.out(`${dryRun ? 'Dry run: nothing is written. ' : ''}Importing culling answers into ${dbPath}`);
     ctx.out(`Laya base: ${modelIds.base}`);
     ctx.out(`Laya new: ${modelIds.new}`);
-    const r = await importResearchRuns(db, { layaNewPath, profilePath, modelIds, dryRun });
+    const r = await importCullAnswers(db, {
+      layaNewPath,
+      profilePath,
+      modelIds,
+      visionCacheDir: ctx.config.visionCacheDir,
+      dryRun,
+    });
     ctx.out(`Lines: Laya new ${r.lines.laya_new}, culling profile ${r.lines.profile}`);
     if (r.truncated_tail.profile || r.truncated_tail.laya_new) {
       ctx.out('Skipped a half-written last line: the file is still being written. Import again when it is done.');

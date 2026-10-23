@@ -15,7 +15,7 @@ import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { getOrCreateStageVersion, upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { insertCullRun } from '../src/db/library/cull-verdicts.js';
-import { LAYA_BASE_RESEARCH_MODEL_ID } from '../src/laya/model-id.js';
+import { LAYA_BASE_MODEL_ID } from '../src/laya/model-id.js';
 import { fakeLayaState, writeFakeLayaModels } from './helpers/fake-laya.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
@@ -295,8 +295,8 @@ describe('answered photos', () => {
   it('counts each photo once under the stage’s current versions, naming the model they were made with', async () => {
     writeFakeLayaModels(modelsDir);
     fx.addImages('a', 'b', 'c');
-    answer('culling_profile', 'culling_profile:recipe-culling:7', LAYA_BASE_RESEARCH_MODEL_ID, ['a', 'b']);
-    answer('culling_profile', 'culling_profile:recipe-culling:10', LAYA_BASE_RESEARCH_MODEL_ID, ['a', 'b', 'c']);
+    answer('culling_profile', 'culling_profile:recipe-culling:7', LAYA_BASE_MODEL_ID, ['a', 'b']);
+    answer('culling_profile', 'culling_profile:recipe-culling:10', LAYA_BASE_MODEL_ID, ['a', 'b', 'c']);
     answer('score_forecast', 'score_forecast', 'clef-forecast@http://h:1', ['a']);
     answer('score_forecast', 'score_forecast', 'other@http://h:1', ['b']);
     const body = await json<Listing>(await app.request('/api/culling-models'));

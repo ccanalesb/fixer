@@ -68,8 +68,7 @@ describe('library schema 16', () => {
 
     const db = initLibraryDb(path);
     try {
-      expect(LIBRARY_SCHEMA_VERSION).toBe(16);
-      expect(db.pragma('user_version', { simple: true })).toBe(16);
+      expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
       expect(getCullProfile(db, DEFAULT_CULLING_PROFILE_SLUG)?.name).toBe('Default culling profile');
       expect(snapshot(db)).toEqual(before);
       expect(getCurrentPipelineSetting(db).config).toMatchObject({
