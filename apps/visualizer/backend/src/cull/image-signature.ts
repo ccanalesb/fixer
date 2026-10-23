@@ -1,5 +1,5 @@
 /**
- * Which file Laya read, cheaply: `size:mtime`, stored with each stage answer so a later run can tell
+ * Which file the model read, cheaply: `size:mtime`, stored with each stage answer so a later run can tell
  * whether it would read the same image.
  */
 import { statSync } from 'node:fs';

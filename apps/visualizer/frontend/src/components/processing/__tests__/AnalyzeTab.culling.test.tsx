@@ -44,13 +44,13 @@ const ok = (model: string): CullingStageUsability => ({
   detail: null,
 })
 const broken = (problem: CullingStageUsability['problem'], extra: Partial<CullingStageUsability> = {}) => ({
-  ...ok('laya-x'),
+  ...ok('model-x'),
   problem,
   ...extra,
 })
 const usable = (u: Partial<CullingModelsUsable> = {}): CullingModelsUsable => ({
-  culling_profile: ok('laya-base'),
-  score_forecast: ok('laya-new'),
+  culling_profile: ok('culling-model'),
+  score_forecast: ok('forecast-model'),
   culling_profile_filter: true,
   ...u,
 })
@@ -125,7 +125,7 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
 
   it('with both stages unusable, asks about the culling profile first, then the Score forecast', async () => {
     mockUsable.mockResolvedValue(
-      usable({ culling_profile: broken('no_model', { model: null }), score_forecast: broken('no_questions', { model: 'laya-new' }) }),
+      usable({ culling_profile: broken('no_model', { model: null }), score_forecast: broken('no_questions', { model: 'forecast-model' }) }),
     )
     await start()
     fireEvent.click(
@@ -168,7 +168,7 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
 
   it('with the Score forecast off, turning the culling profile off sends every photo to the big model', async () => {
     mockUsable.mockResolvedValue(
-      usable({ culling_profile: broken('no_model'), score_forecast: { ...ok('laya-new'), on: false } }),
+      usable({ culling_profile: broken('no_model'), score_forecast: { ...ok('forecast-model'), on: false } }),
     )
     await start()
     expect(

@@ -4,12 +4,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stageUsability } from '../src/cull/stage-usable.js';
-import { fakeLayaState } from './helpers/fake-laya.js';
+import { fakeModelState } from './helpers/fake-app-models.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 
 let server: FakeSystemOneServer;
 beforeEach(async () => {
-  server = await startFakeSystemOneServer(fakeLayaState(), ['clef-forecast']);
+  server = await startFakeSystemOneServer(fakeModelState(), ['clef-forecast']);
 });
 afterEach(() => server.close());
 

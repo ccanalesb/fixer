@@ -8,7 +8,7 @@
  */
 import { z } from 'zod';
 import type { CullingModelConfig } from '../config.js';
-import type { LayaQuestion } from '../laya/rows.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
 
 export const THIS_APP_ENDPOINT = 'this_app';
 const THIS_APP_URL = 'http://this-app';
@@ -146,7 +146,7 @@ export async function listSystemOneModels(ep: SystemOneEndpoint, opts: { timeout
 }
 
 /** Level probabilities in the order the question lists them (score levels, choice keys, noul false/true). */
-function levels(qid: string, q: LayaQuestion, raw: unknown, label: string): number[] {
+function levels(qid: string, q: SystemOneQuestion, raw: unknown, label: string): number[] {
   const bad = (why: string) => new SystemOneError('malformed', `${label} sent a malformed answer to ${qid}: ${why}`);
   const parsed = Answer.safeParse(raw);
   if (!parsed.success) throw bad(raw === undefined ? 'no answer' : 'unreadable answer');
@@ -175,7 +175,7 @@ function imageMime(b: Uint8Array): string {
 /** One image, every question about it; answers by question id. The image goes as a data URL unless told otherwise. */
 export async function askSystemOne(
   ep: SystemOneEndpoint,
-  req: { model: string; image: Uint8Array; questions: Record<string, LayaQuestion>; encoding?: SystemOneImageEncoding },
+  req: { model: string; image: Uint8Array; questions: Record<string, SystemOneQuestion>; encoding?: SystemOneImageEncoding },
 ): Promise<SystemOneAnswers> {
   const base64 = Buffer.from(req.image).toString('base64');
   const body = {

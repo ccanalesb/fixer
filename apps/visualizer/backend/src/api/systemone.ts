@@ -12,8 +12,8 @@ import {
   AppModelsUnavailable,
   appModels,
   type AppModels,
-} from '../laya/app-models.js';
-import type { LayaQuestion } from '../laya/rows.js';
+} from '../app-models/app-models.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
 import { HttpError } from '../utils/responses.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
@@ -48,7 +48,7 @@ function confidence(p: readonly number[]): number {
   return 1 - h / Math.log(p.length);
 }
 
-function toAnswer(q: LayaQuestion, p: number[]): z.infer<typeof SystemOneAnswer> {
+function toAnswer(q: SystemOneQuestion, p: number[]): z.infer<typeof SystemOneAnswer> {
   if (q.type === 'noul') return { type: 'noul', noul: p[1]!, probabilities: { false: p[0]!, true: p[1]! } };
   if (q.type === 'score') {
     const criteria = q.criteria as string[];
@@ -84,7 +84,7 @@ export function systemOneApp(models: () => AppModels) {
   app.openapi(answerRoute, async (c) => {
     const body = c.req.valid('json');
     const image = new Uint8Array(Buffer.from(body.images[0]!.replace(DATA_URL, ''), 'base64'));
-    const questions = body.questions as Record<string, LayaQuestion>;
+    const questions = body.questions as Record<string, SystemOneQuestion>;
     let result;
     try {
       result = await models().answer(body.model, image, questions);

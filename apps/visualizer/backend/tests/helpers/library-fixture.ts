@@ -12,8 +12,8 @@ import * as sqliteVec from 'sqlite-vec';
 import { serializeFloat32 } from '../../src/db/connection.js';
 import { createLibrarySchema } from '../../src/db/library/bootstrap.js';
 import { saveForecastQuestions } from '../../src/db/library/score-forecast-questions.js';
-import { questionsFromLaya } from '../../src/cull/forecast-questions.js';
-import { LAYA_QUESTIONS } from '../../src/laya/questions.js';
+import { forecastQuestionsFrom } from '../../src/cull/forecast-questions.js';
+import { FACTORY_QUESTIONS } from '../../src/app-models/factory-questions.js';
 import { nowIsoLocal, nowIsoUtc } from '../../src/utils/datetime.js';
 import { seedCullingStagesOn } from './culling-stages.js';
 
@@ -300,11 +300,11 @@ export class LibraryFixture {
     }
   }
 
-  /** The Score forecast questions Laya new was trained on, as this library has them. */
+  /** The factory Score forecast questions, as this library has them. */
   addForecastQuestions(): this {
     const db = this.open();
     try {
-      saveForecastQuestions(db, questionsFromLaya(LAYA_QUESTIONS.new, {}));
+      saveForecastQuestions(db, forecastQuestionsFrom(FACTORY_QUESTIONS.score_forecast, {}));
     } finally {
       db.close();
     }

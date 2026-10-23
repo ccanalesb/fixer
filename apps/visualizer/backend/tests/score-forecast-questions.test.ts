@@ -1,5 +1,5 @@
 /**
- * Score forecast questions, stored and versioned: the stage version follows what Laya is asked, so
+ * Score forecast questions, stored and versioned: the stage version follows what the model is asked, so
  * going back to an old text reuses the answers stored under it.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -10,14 +10,14 @@ import type { Db } from '../src/db/connection.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import {
   getForecastQuestions,
-  layaNewForecastQuestions,
+  factoryForecastQuestions,
   saveForecastQuestions,
 } from '../src/db/library/score-forecast-questions.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { seedCullingStagesOn } from './helpers/culling-stages.js';
 
-const MODEL = 'laya-new@sha256:abc';
+const MODEL = 'forecast-model@sha256:abc';
 
 let dir: string;
 let db: Db;
@@ -36,9 +36,9 @@ const forecastStage = () =>
     (s) => s.kind === 'score_forecast',
   );
 
-/** Laya new's questions saved as version 1; returns their stage version's id. */
-function saveLayaNewQuestions(): number {
-  saveForecastQuestions(db, layaNewForecastQuestions(db));
+/** The factory questions saved as version 1; returns their stage version's id. */
+function saveFactoryQuestions(): number {
+  saveForecastQuestions(db, factoryForecastQuestions(db));
   return forecastStage()!.versionId;
 }
 
@@ -49,7 +49,7 @@ describe('editing Score forecast questions', () => {
   });
 
   it('a text change makes a new stage version; going back to the old text reuses its version and answers', () => {
-    const original = saveLayaNewQuestions();
+    const original = saveFactoryQuestions();
     const questions = getForecastQuestions(db).questions;
     const edited = questions.map((q) => (q.id === 'framing' ? { ...q, instructions: `${q.instructions} Be strict.` } : q));
 
@@ -62,7 +62,7 @@ describe('editing Score forecast questions', () => {
   });
 
   it('a name or perspective change is a new version of the questions but not of the stage', () => {
-    const original = saveLayaNewQuestions();
+    const original = saveFactoryQuestions();
     const renamed = getForecastQuestions(db).questions.map((q) => ({ ...q, name: `${q.name}!`, perspective_slug: null }));
     expect(saveForecastQuestions(db, renamed)).toMatchObject({ version: 2, created: true });
     expect(forecastStage()!.versionId).toBe(original);

@@ -18,7 +18,7 @@ const ROW: CullReviewRow = {
   date_taken: '2026-09-11',
   filtered_by: 'culling_profile',
   score_forecast_p8: 0.05,
-  profile: { slug: 'recipe-culling', name: 'Recipe culling', level_sets: [] },
+  profile: { slug: 'default', name: 'Default culling profile', level_sets: [] },
   completion: 'none',
   needs_send_work: true,
   thumbnail_url: '/thumb.jpg',
@@ -26,13 +26,13 @@ const ROW: CullReviewRow = {
 
 const ok = (model: string): CullingStageUsability => ({ on: true, problem: null, model, endpoint: 'this_app', job_id: null, detail: null })
 const broken = (problem: CullingStageUsability['problem'], extra: Partial<CullingStageUsability> = {}) => ({
-  ...ok('laya-x'),
+  ...ok('model-x'),
   problem,
   ...extra,
 })
 const usable = (u: Partial<CullingModelsUsable> = {}): CullingModelsUsable => ({
-  culling_profile: ok('laya-base'),
-  score_forecast: ok('laya-new'),
+  culling_profile: ok('culling-model'),
+  score_forecast: ok('forecast-model'),
   culling_profile_filter: true,
   ...u,
 })
@@ -76,7 +76,7 @@ describe('CullReviewTab: culling stages that cannot run', () => {
   })
 
   it('culling profile off: a page note with Open Settings, no list', async () => {
-    usableSpy.mockResolvedValue(usable({ culling_profile: { ...ok('laya-base'), on: false } }))
+    usableSpy.mockResolvedValue(usable({ culling_profile: { ...ok('culling-model'), on: false } }))
     renderTab()
     expect(await screen.findByText('Culling profile is off.')).toBeInTheDocument()
     expect(
@@ -94,7 +94,7 @@ describe('CullReviewTab: culling stages that cannot run', () => {
     ['down', { endpoint: 'http://h:1' }, "The culling profile's endpoint (http://h:1) does not answer."],
     ['refused', { endpoint: 'http://h:1' }, "The culling profile's endpoint (http://h:1) refused the API key."],
     ['not_listed', { endpoint: 'http://h:1', model: 'clef' }, 'clef is no longer listed by http://h:1.'],
-    ['not_listed', { model: 'laya-x' }, 'laya-x is no longer listed by this app.'],
+    ['not_listed', { model: 'model-x' }, 'model-x is no longer listed by this app.'],
   ] as const)('culling profile %s: a page note in place of the list', async (problem, extra, text) => {
     usableSpy.mockResolvedValue(usable({ culling_profile: broken(problem, extra) }))
     renderTab()
@@ -117,7 +117,7 @@ describe('CullReviewTab: culling stages that cannot run', () => {
   it('"Turn culling profile off" saves the switch and the page says it is off', async () => {
     const save = vi.spyOn(CullingProfilesAPI, 'saveCullingProfileSwitches').mockResolvedValue({ version: 2, redecide_job_id: null })
     usableSpy.mockResolvedValueOnce(usable({ culling_profile: broken('no_model') }))
-    usableSpy.mockResolvedValueOnce(usable({ culling_profile: { ...ok('laya-base'), on: false } }))
+    usableSpy.mockResolvedValueOnce(usable({ culling_profile: { ...ok('culling-model'), on: false } }))
     renderTab()
     fireEvent.click(await screen.findByRole('button', { name: 'Turn culling profile off' }))
     expect(await screen.findByText('Culling profile is off.')).toBeInTheDocument()
@@ -146,7 +146,7 @@ describe('CullReviewTab: culling stages that cannot run', () => {
   it('"Turn Score forecast off" saves the switch and the warning goes', async () => {
     const save = vi.spyOn(CullingProfilesAPI, 'saveScoreForecast').mockResolvedValue({ version: 2, redecide_job_id: null })
     usableSpy.mockResolvedValueOnce(usable({ score_forecast: broken('no_model') }))
-    usableSpy.mockResolvedValueOnce(usable({ score_forecast: { ...ok('laya-new'), on: false } }))
+    usableSpy.mockResolvedValueOnce(usable({ score_forecast: { ...ok('forecast-model'), on: false } }))
     renderTab()
     fireEvent.click(await screen.findByRole('button', { name: 'Turn Score forecast off' }))
     await waitFor(() => expect(screen.queryByText('Score forecast is on but has no model.')).not.toBeInTheDocument())

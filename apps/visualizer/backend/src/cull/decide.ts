@@ -1,5 +1,5 @@
 /**
- * Stored answers → verdicts. Pure: no database, no Laya, so a rule or threshold change re-decides
+ * Stored answers → verdicts. Pure: no database, no model, so a rule or threshold change re-decides
  * every photo from what is stored.
  *
  * A dimension's answer is its top level, the **first** maximum as numpy's argmax takes it; the

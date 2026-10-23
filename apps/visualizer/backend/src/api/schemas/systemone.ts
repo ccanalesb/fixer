@@ -2,7 +2,7 @@
  * The System One wire protocol this app serves (ADR-0021): TypeSafe's `POST /v1/systemone` and
  * `GET /v1/models`, with images as Ollama and oMLX take them (`images: [base64]`).
  *
- * Two additions, `x_`-prefixed as Laya serve's are: a model's identity in the list (`x_model_id`), and a
+ * Two additions, `x_`-prefixed as the contract's extensions are: a model's identity in the list (`x_model_id`), and a
  * noul's false/true probabilities, so a stored answer reads back exactly.
  */
 import { z } from '@hono/zod-openapi';

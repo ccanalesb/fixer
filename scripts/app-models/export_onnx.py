@@ -14,12 +14,12 @@
 # ///
 """Convert one Laya-family model to ONNX (fp32) for this app's System One endpoint.
 
-    uv run scripts/laya/export_onnx.py SOURCE --name NAME [--out models] [--job-id ID]
+    uv run scripts/app-models/export_onnx.py SOURCE --name NAME [--out models] [--job-id ID]
 
 SOURCE is a folder in Hugging Face format (`vlm_agent_config.json`, `model.safetensors`, `processor/`) or a
 Hugging Face id, `id` or `id@revision`. Without a revision, the commit recorded is the last one that changed
 the model's files, so a commit that only touched the README is not a new model. The app's conversion job
-(`laya_model_install`) runs this; it can be run by hand too. Nothing is uploaded. Writes, in
+(`app_model_install`) runs this; it can be run by hand too. Nothing is uploaded. Writes, in
 <out>/.install-<name>/ renamed to <out>/<name>/ once every check has passed:
 
   vision.onnx     pixel_values [1, 3, 512, 512] -> image features [64, 576]; vision tower + connector. Left out
@@ -35,7 +35,7 @@ the model's files, so a commit that only touched the README is not a new model. 
                   backend's parity test.
 
 Each graph is checked against PyTorch before the reference is written. A failure ends with one line
-`error: <kind>: <message>` on stderr and exit status 2; kind is `source`, `network`, `not_laya` or `parity`.
+`error: <kind>: <message>` on stderr and exit status 2; kind is `source`, `network`, `unsupported_architecture` or `parity`.
 """
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 REPO = Path(__file__).resolve().parents[2]
-QUESTIONS = REPO / "apps/visualizer/backend/src/laya/questions.json"
+QUESTIONS = REPO / "apps/visualizer/backend/src/app-models/factory-questions.json"
 MAX_LOGIT_DIFF = 1e-3
 CONFIG_NAME = "vlm_agent_config.json"
 #: What `laya.load_vlm` reads of a checkpoint: the files whose last commit is the model's revision.
@@ -185,7 +185,7 @@ def resolve_source(source: str) -> tuple[Path, str, str | None]:
         if not p.is_dir():
             raise InstallError("source", f"No folder at {p}")
         if not (p / CONFIG_NAME).exists():
-            raise InstallError("not_laya", f"{p} is not a Laya-family model: it has no {CONFIG_NAME}")
+            raise InstallError("unsupported_architecture", f"{p} is not a model this app converts: it has no {CONFIG_NAME}")
         return p.resolve(), str(p.resolve()), None
 
     from huggingface_hub import HfApi, snapshot_download
@@ -198,7 +198,7 @@ def resolve_source(source: str) -> tuple[Path, str, str | None]:
         info = api.model_info(repo, revision=rev or None)
         files = [s.rfilename for s in info.siblings or []]
         if CONFIG_NAME not in files:
-            raise InstallError("not_laya", f"{repo} is not a Laya-family model: it has no {CONFIG_NAME}")
+            raise InstallError("unsupported_architecture", f"{repo} is not a model this app converts: it has no {CONFIG_NAME}")
         commit = info.sha
         if not rev:
             present = [m for m in MODEL_PATHS if any(f == m or f.startswith(f"{m}/") for f in files)]
@@ -237,10 +237,10 @@ def check_backbone(model_dir: Path) -> None:
     except Exception as e:
         if is_network_error(e):
             raise InstallError("network", f"Could not reach Hugging Face for the backbone ({e})")
-        raise InstallError("not_laya", f"Its backbone {cfg.get('backbone')!r} cannot be read ({e})")
+        raise InstallError("unsupported_architecture", f"Its backbone {cfg.get('backbone')!r} cannot be read ({e})")
     if bb.model_type not in SUPPORTED_MODEL_TYPES:
-        raise InstallError("not_laya", f"Its backbone is {cfg.get('backbone')} ({bb.model_type}); this app runs "
-                                       "Laya on SmolVLM (Idefics3) only")
+        raise InstallError("unsupported_architecture", f"Its backbone is {cfg.get('backbone')} ({bb.model_type}); this app "
+                                                       "runs SmolVLM (Idefics3) models with a decision head only")
 
 
 def check_loaded(agent) -> None:
@@ -256,8 +256,8 @@ def check_loaded(agent) -> None:
     if c.get("readout", "terminator") != "terminator":
         problems.append(f"readout {c.get('readout')!r}")
     if problems:
-        raise InstallError("not_laya", f"This app runs Laya on one 512 px image through the processor with a "
-                                       f"terminator readout; this model has {', '.join(problems)}")
+        raise InstallError("unsupported_architecture", f"This app runs a model on one 512 px image through the processor "
+                                                       f"with a terminator readout; this model has {', '.join(problems)}")
 
 
 def vision_sha256(agent) -> str:
@@ -325,14 +325,14 @@ def convert(source_arg: str, name: str, out: Path, partial: Path, job_id: str | 
     except Exception as e:
         if is_network_error(e):
             raise InstallError("network", f"Could not reach Hugging Face while loading ({e})")
-        raise InstallError("not_laya", f"It does not load as a Laya-family model ({type(e).__name__}: {e})")
+        raise InstallError("unsupported_architecture", f"It does not load as a model this app converts ({type(e).__name__}: {e})")
     check_loaded(agent)
     vhash = vision_sha256(agent)
     step("looking for an installed model with the same vision tower")
     shared = installed_vision(out, vhash)
 
     questions = json.loads(QUESTIONS.read_text())
-    qs = {**questions["base"], **questions["new"]}
+    qs = {**questions["culling_profile"], **questions["score_forecast"]}
     tok = agent.processor.tokenizer
     image_token_id = tok.convert_tokens_to_ids(agent.processor.image_token)
     im = test_photo()
@@ -408,7 +408,7 @@ def convert(source_arg: str, name: str, out: Path, partial: Path, job_id: str | 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("source", help="a folder in Hugging Face format, or a Hugging Face id (id or id@revision)")
-    ap.add_argument("--name", required=True, help="the model's name in this app, e.g. laya-base")
+    ap.add_argument("--name", required=True, help="the model's name in this app, e.g. my-model")
     ap.add_argument("--out", type=Path, default=REPO / "models")
     ap.add_argument("--job-id", help="the conversion job running this, recorded in model.json")
     a = ap.parse_args()

@@ -1,4 +1,4 @@
-import { prepareKimiJobCull, resetKimiJobLaya, writeKimiJobConfig } from './helpers/kimi-job-laya.js';
+import { prepareKimiJobCull, resetKimiJobModels, writeKimiJobConfig } from './helpers/kimi-job-models.js';
 /**
  * The `single_score` job handler and the scoring service behind it.
  *
@@ -162,7 +162,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-score-job-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().addForecastQuestions().activate();
-  resetKimiJobLaya();
+  resetKimiJobModels();
   replies = [completion(scoreJson('street', 7))];
   requestBodies = [];
   onRequest = null;

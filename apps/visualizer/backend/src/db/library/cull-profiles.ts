@@ -19,7 +19,7 @@ import { libraryWrite } from './write.js';
 export const CULLING_PROFILE_SEED_DIR = join(REPO_ROOT, 'prompts', 'culling-profiles');
 
 /** The profile the default pipeline setting runs. */
-export const DEFAULT_CULLING_PROFILE_SLUG = 'recipe-culling';
+export const DEFAULT_CULLING_PROFILE_SLUG = 'default';
 
 /**
  * Set once the factory profiles and pipeline setting are in. A one-time default, as for perspectives:
@@ -31,7 +31,6 @@ export interface CullProfile {
   id: number;
   slug: string;
   name: string;
-  model: string;
   active: boolean;
   measured: boolean;
   rule: ProfileRule;
@@ -43,7 +42,6 @@ export interface CullProfile {
 interface SeedFile {
   slug: string;
   name: string;
-  model: string;
   measured?: boolean;
   definition: ProfileDefinition;
   rule: ProfileRule;
@@ -53,7 +51,6 @@ interface ProfileRow {
   id: number;
   slug: string;
   name: string;
-  model: string;
   active: number;
   measured: number;
   rule_json: string;
@@ -63,7 +60,7 @@ interface ProfileRow {
 }
 
 const PROFILE_SELECT = `
-  SELECT r.id, r.slug, r.name, r.model, r.active, r.measured, r.rule_json,
+  SELECT r.id, r.slug, r.name, r.active, r.measured, r.rule_json,
          v.id AS version_id, v.version, v.definition_json
   FROM cull_profiles r
   JOIN cull_profile_versions v ON v.profile_id = r.id AND v.is_current = 1`;
@@ -73,7 +70,6 @@ function toProfile(row: ProfileRow): CullProfile {
     id: row.id,
     slug: row.slug,
     name: row.name,
-    model: row.model,
     active: row.active === 1,
     measured: row.measured === 1,
     rule: parseProfileRule(JSON.parse(row.rule_json)),
@@ -99,7 +95,6 @@ export function getCullProfile(db: Db, slug: string): CullProfile | null {
 export interface NewCullProfile {
   slug: string;
   name: string;
-  model: string;
   definition: ProfileDefinition;
   rule: ProfileRule;
   measured?: boolean;
@@ -113,13 +108,12 @@ export function createCullProfile(db: Db, r: NewCullProfile): CullProfile {
   libraryWrite(db, () => {
     const info = db
       .prepare(
-        `INSERT INTO cull_profiles (slug, name, model, active, rule_json, measured, source_filename, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO cull_profiles (slug, name, active, rule_json, measured, source_filename, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         r.slug,
         r.name,
-        r.model,
         r.active === false ? 0 : 1,
         JSON.stringify(r.rule),
         r.measured ? 1 : 0,

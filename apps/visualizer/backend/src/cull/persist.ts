@@ -3,7 +3,7 @@
  * the summary row — in one `libraryWrite`, so a photo is never half-decided.
  *
  * The culling job and the re-decide job both end here; re-decide passes no
- * new answers and so never needs Laya.
+ * new answers and so never needs a model.
  */
 import type { Db } from '../db/connection.js';
 import type { PipelineSetting } from '../db/library/cull-pipeline.js';
@@ -15,14 +15,12 @@ import type { PhotoDecision, ResolvedStage, StageAnswers } from './types.js';
 
 /**
  * Pending reason of a photo a stage's endpoint stopped answering on. Kept whatever the verdict (a photo
- * sent by hand is `passed` and still stopped it), so the next fresh job asks it last. Photos culled
- * before System One carry the older `laya_worker_died`, read the same way.
+ * sent by hand is `passed` and still stopped it), so the next fresh job asks it last.
  */
 export const ENDPOINT_DOWN_REASON = 'endpoint_down';
-const ASK_LAST_REASONS = new Set([ENDPOINT_DOWN_REASON, 'laya_worker_died']);
 
 export function asksLast(pendingReason: string | undefined): boolean {
-  return pendingReason !== undefined && ASK_LAST_REASONS.has(pendingReason);
+  return pendingReason === ENDPOINT_DOWN_REASON;
 }
 
 /** Everything a decision depends on, resolved once per run. */

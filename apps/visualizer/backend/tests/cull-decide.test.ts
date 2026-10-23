@@ -25,7 +25,7 @@ const VIDEO_LENIENT: ProfileRule = {
 const PIPELINE: PipelineSettingConfig = {
   culling_profiles_enabled: true,
   culling_profiles_filter_enabled: true,
-  culling_profiles: [{ profile_slug: 'recipe-culling', rule: VIDEO_LENIENT }],
+  culling_profiles: [{ profile_slug: 'default', rule: VIDEO_LENIENT }],
   score_forecast: { ...DEFAULT_SCORE_FORECAST, enabled: true },
 };
 
@@ -34,14 +34,14 @@ const stage = (stageKey: string, extra: Partial<ResolvedStage> = {}): ResolvedSt
   kind: 'culling_profile',
   versionId: 1,
   modelId: 'base@1',
-  profileSlug: 'recipe-culling',
+  profileSlug: 'default',
   levelSet: stageKey.split(':')[2] ?? null,
   questions: {},
   ...extra,
 });
 
-const S7 = stage('culling_profile:recipe-culling:7');
-const S10 = stage('culling_profile:recipe-culling:10');
+const S7 = stage('culling_profile:default:7');
+const S10 = stage('culling_profile:default:10');
 const SF = stage('score_forecast', { kind: 'score_forecast', profileSlug: null, levelSet: null });
 const STAGES = [S7, S10, SF];
 
@@ -53,7 +53,7 @@ function profile(n: number, levels: [number, number, number, number]): StageAnsw
   return Object.fromEntries(DIMS.map((d, i) => [d, at(levels[i]!, n)]));
 }
 
-/** Laya new answers with the given P(≥ 8) per perspective and P(no framing device). */
+/** Score forecast answers with the given P(≥ 8) per perspective and P(no framing device). */
 function forecast(p8: Record<string, number>, pExcused = 0): StageAnswers {
   const out: StageAnswers = { 'framing-excusal': [pExcused, 1 - pExcused] };
   for (const [slug, p] of Object.entries(p8)) {
@@ -178,7 +178,7 @@ describe('the photo summary', () => {
     expect(passed.sentByHandOverride).toBe(false);
   });
 
-  it('without Laya new the profile alone decides', () => {
+  it('without the forecast model the profile alone decides', () => {
     const d = decidePhoto(PIPELINE, STAGES, { [S7.stageKey]: pass7, [S10.stageKey]: pass10 }, { scoreForecastAvailable: false });
     expect(d).toMatchObject({ verdict: 'passed', pendingStages: [], scoreForecastP8: null });
   });

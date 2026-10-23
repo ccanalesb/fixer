@@ -1,5 +1,6 @@
 /**
- * Laya's image, prepared exactly as for the imported answers so a new answer matches them.
+ * The image as the model was trained on it, prepared exactly as the converter's reference so an answer
+ * here matches the model's own.
  *
  * `Image.thumbnail((512, 512))` (bicubic), then the Idefics3 processor without splitting: longest edge to
  * 2048 (lanczos), squashed to 512×512 (lanczos), rescaled and normalised with mean = std = 0.5.
@@ -8,8 +9,8 @@ import { pilResize, type Plane } from '../imaging/pil-resample.js';
 
 const THUMBNAIL = 512;
 const PROCESSOR_LONGEST_EDGE = 2048;
-export const LAYA_TILE = 512;
-export const LAYA_PIXEL_VALUES_SHAPE = [1, 3, LAYA_TILE, LAYA_TILE] as const;
+export const IMAGE_TILE = 512;
+export const PIXEL_VALUES_SHAPE = [1, 3, IMAGE_TILE, IMAGE_TILE] as const;
 
 /** PIL `Image.thumbnail` target size, or null when the image already fits. */
 export function thumbnailSize(w: number, h: number, max: number): [number, number] | null {
@@ -41,14 +42,14 @@ export function rescaleToMaxLen(w: number, h: number, maxLen: number): [number, 
 }
 
 /** Planar RGB `[3, 512, 512]` in [-1, 1]. */
-export function layaPixelValues(rgb: Plane): Float32Array {
+export function imagePixelValues(rgb: Plane): Float32Array {
   let img = rgb;
   const th = thumbnailSize(img.width, img.height, THUMBNAIL);
   if (th) img = pilResize(img, th[0], th[1], 'bicubic');
   const [w2, h2] = rescaleToMaxLen(img.width, img.height, PROCESSOR_LONGEST_EDGE);
   img = pilResize(img, w2, h2, 'lanczos');
-  img = pilResize(img, LAYA_TILE, LAYA_TILE, 'lanczos');
-  const plane = LAYA_TILE * LAYA_TILE;
+  img = pilResize(img, IMAGE_TILE, IMAGE_TILE, 'lanczos');
+  const plane = IMAGE_TILE * IMAGE_TILE;
   const out = new Float32Array(3 * plane);
   const { data, channels } = img;
   for (let ch = 0; ch < 3; ch++) {

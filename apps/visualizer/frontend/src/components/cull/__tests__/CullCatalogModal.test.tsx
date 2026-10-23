@@ -125,8 +125,8 @@ describe('Cull catalog modal cull section', () => {
         { name: 'Framing', p8: null, excused: true },
       ],
       profile: {
-        slug: 'recipe-culling',
-        name: 'Recipe culling',
+        slug: 'default',
+        name: 'Default culling profile',
         level_sets: [
           {
             id: '10',
@@ -153,7 +153,7 @@ describe('Cull catalog modal cull section', () => {
     )
 
     await waitFor(() => expect(screen.getByText(CULL_PASSED)).toBeInTheDocument())
-    expect(screen.getByText('Recipe culling')).toBeInTheDocument()
+    expect(screen.getByText('Default culling profile')).toBeInTheDocument()
     expect(screen.getByText('10 levels')).toBeInTheDocument()
     expect(screen.getByText('Immediate impact')).toBeInTheDocument()
     expect(screen.getByText(CULL_SCORE_FORECAST)).toBeInTheDocument()

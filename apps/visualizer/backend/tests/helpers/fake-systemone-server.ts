@@ -1,12 +1,12 @@
 /**
  * A System One server on a local port, for an external endpoint: lists its models OpenAI-style
- * (`data[].id`, no `x_model_id`), answers from the fake Laya scripts, and can refuse the API key or an
+ * (`data[].id`, no `x_model_id`), answers from the fake models' scripts, and can refuse the API key or an
  * image encoding, fail a photo or stop answering.
  */
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { LayaQuestion } from '../../src/laya/rows.js';
-import { fakePhotoKey, scriptedAnswers, type FakeLayaState } from './fake-laya.js';
+import type { SystemOneQuestion } from '../../src/systemone/question.js';
+import { fakePhotoKey, scriptedAnswers, type FakeModelState } from './fake-app-models.js';
 
 export interface FakeSystemOneServer {
   url: string;
@@ -32,14 +32,14 @@ export interface FakeSystemOneServer {
   close(): Promise<void>;
 }
 
-function systemOneAnswer(q: LayaQuestion, p: number[]) {
+function systemOneAnswer(q: SystemOneQuestion, p: number[]) {
   if (q.type === 'noul') return { type: 'noul', noul: p[1], probabilities: { false: p[0], true: p[1] } };
   if (q.type === 'score') return { type: 'score', probabilities: Object.fromEntries(p.map((v, i) => [String(i), v])) };
   const keys = Array.isArray(q.criteria) ? q.criteria : Object.keys(q.criteria ?? {});
   return { type: 'choice', probabilities: Object.fromEntries(keys.map((k, i) => [k, p[i]])) };
 }
 
-export async function startFakeSystemOneServer(state: FakeLayaState, models: string[]): Promise<FakeSystemOneServer> {
+export async function startFakeSystemOneServer(state: FakeModelState, models: string[]): Promise<FakeSystemOneServer> {
   let server: Server;
   const fake: FakeSystemOneServer = {
     url: '',
@@ -72,7 +72,7 @@ export async function startFakeSystemOneServer(state: FakeLayaState, models: str
         model: string;
         state: unknown;
         images: string[];
-        questions: Record<string, LayaQuestion>;
+        questions: Record<string, SystemOneQuestion>;
       };
       const sent = body.images[0]!;
       const encoding = sent.startsWith('data:') ? ('data_url' as const) : ('base64' as const);

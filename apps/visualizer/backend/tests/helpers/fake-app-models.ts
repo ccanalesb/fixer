@@ -1,6 +1,6 @@
 /**
- * Shared fake Laya runtime for job-handler tests: call log, start/close counts, and
- * `vi.mock('../src/laya/runtime.js', …)` wiring. Never loads real models; everything above the worker —
+ * Shared fake model runtime for job-handler tests: call log, start/close counts, and
+ * `vi.mock('../src/app-models/runtime.js', …)` wiring. Never loads real models; everything above the worker —
  * the System One client, this app's endpoint and its model list — is real.
  *
  * The runtime sees image bytes only, so test photos carry their key in EXIF (`writeFakePhoto`).
@@ -8,27 +8,27 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
-import { installedModelId } from '../../src/laya/model-id.js';
-import type { LayaQuestion } from '../../src/laya/rows.js';
+import { installedModelId } from '../../src/app-models/model-id.js';
+import type { SystemOneQuestion } from '../../src/systemone/question.js';
 
 /** Per photo file: profile levels and highest P(≥ 8) for the forecast stage. */
-export interface FakeLayaScript {
+export interface FakeModelScript {
   levels: [number, number, number, number];
   p8: number;
 }
 
-export interface FakeLayaCall {
+export interface FakeModelCall {
   /** `/<key>.jpg`, the photo the bytes came from. */
   file: string;
-  /** The installed model's name (`laya-base`, `laya-new`). */
+  /** The installed model's name (`culling-model`, `forecast-model`). */
   model: string;
   /** Question ids asked, `<stage key>#<question id>`. */
   questions: string[];
 }
 
-export interface FakeLayaState {
-  scripts: Map<string, FakeLayaScript>;
-  calls: FakeLayaCall[];
+export interface FakeModelState {
+  scripts: Map<string, FakeModelScript>;
+  calls: FakeModelCall[];
   /** Start checks: images with no photo key. */
   checks: number;
   starts: number;
@@ -38,11 +38,11 @@ export interface FakeLayaState {
   broken: boolean;
   startError: null | Error;
   cancelAfter: null | (() => void);
-  /** Ordering probe: tests push `laya:<key>` from the mock answer handler. */
+  /** Ordering probe: tests push `model:<key>` from the mock answer handler. */
   sequence: string[];
 }
 
-export function fakeLayaState(): FakeLayaState {
+export function fakeModelState(): FakeModelState {
   return {
     scripts: new Map(),
     calls: [],
@@ -74,13 +74,13 @@ export async function writeFakePhoto(path: string, key: string): Promise<void> {
     .toFile(path);
 }
 
-const LAYA_BASE_SOURCE = 'thaitea/laya-vision';
-const LAYA_BASE_REVISION = '8b318c99d7ad3ce19c24369263463882eada9d1e';
+const PROFILE_MODEL_SOURCE = 'owner/vision-model';
+const PROFILE_MODEL_REVISION = '8b318c99d7ad3ce19c24369263463882eada9d1e';
 
-/** The model identity of the Laya base `writeFakeLayaModels` writes. */
-export const FAKE_LAYA_BASE_MODEL_ID = `${LAYA_BASE_SOURCE}@${LAYA_BASE_REVISION}`;
+/** The model identity of the profile model `writeFakeAppModels` writes. */
+export const FAKE_PROFILE_MODEL_ID = `${PROFILE_MODEL_SOURCE}@${PROFILE_MODEL_REVISION}`;
 
-function writeMinimalLayaTokenizer(dir: string): void {
+function writeMinimalTokenizer(dir: string): void {
   mkdirSync(join(dir, 'tokenizer'), { recursive: true });
   const vocab: Record<string, number> = {};
   for (let i = 0; i < 256; i += 1) vocab[String.fromCharCode(i)] = i + 1;
@@ -96,39 +96,46 @@ function writeMinimalLayaTokenizer(dir: string): void {
       image_token_id: 1,
       pad_token_id: 0,
       prefix_ids: [1, 2, 3],
-      source: LAYA_BASE_SOURCE,
-      revision: LAYA_BASE_REVISION,
+      source: PROFILE_MODEL_SOURCE,
+      revision: PROFILE_MODEL_REVISION,
     }),
   );
 }
 
-/** config.yaml lines putting each culling stage on this app's Laya base and Laya new (a new install has no model). */
-export const THIS_APP_LAYA_YAML =
+/** config.yaml lines putting each culling stage on this app's profile model and forecast model (a new install has no model). */
+export const THIS_APP_MODELS_YAML =
   'culling_models:\n' +
-  '  culling_profile: {endpoint: this_app, model: laya-base, api_key: ""}\n' +
-  '  score_forecast: {endpoint: this_app, model: laya-new, api_key: ""}\n';
+  '  culling_profile: {endpoint: this_app, model: culling-model, api_key: ""}\n' +
+  '  score_forecast: {endpoint: this_app, model: forecast-model, api_key: ""}\n';
 
-export function writeFakeLayaModels(modelsDir: string, opts: { withNew?: boolean } = {}): void {
+export function writeFakeAppModels(modelsDir: string, opts: { withNew?: boolean } = {}): void {
   const withNew = opts.withNew !== false;
-  const base = join(modelsDir, 'laya-base');
+  const base = join(modelsDir, 'culling-model');
   mkdirSync(join(base, 'reference'), { recursive: true });
   for (const f of ['vision.onnx', 'decoder.onnx', 'reference/photo.png']) {
     writeFileSync(join(base, f), '');
   }
-  writeMinimalLayaTokenizer(base);
+  writeMinimalTokenizer(base);
   if (!withNew) return;
-  const neu = join(modelsDir, 'laya-new');
+  const neu = join(modelsDir, 'forecast-model');
   mkdirSync(join(neu, 'tokenizer'), { recursive: true });
   for (const f of ['decoder.onnx', 'tokenizer/tokenizer.json', 'tokenizer/tokenizer_config.json']) {
     writeFileSync(join(neu, f), 'x');
   }
-  writeFileSync(join(neu, 'model.json'), JSON.stringify({ source: '/somewhere/best', revision: null }));
+  writeFileSync(
+    join(neu, 'model.json'),
+    JSON.stringify({
+      source: '/somewhere/best',
+      revision: null,
+      fine_tuned_from: { id: PROFILE_MODEL_SOURCE, revision: PROFILE_MODEL_REVISION },
+    }),
+  );
 }
 
-/** The model identity of the Laya new `writeFakeLayaModels` writes: a folder export, named by its decoder. */
-export function fakeLayaNewModelId(modelsDir: string): Promise<string> {
-  const dir = join(modelsDir, 'laya-new');
-  return installedModelId({ name: 'laya-new', dir, visionDir: dir, source: '/somewhere/best', revision: null, jobId: null });
+/** The model identity of the forecast model `writeFakeAppModels` writes: a folder export, named by its decoder. */
+export function fakeForecastModelId(modelsDir: string): Promise<string> {
+  const dir = join(modelsDir, 'forecast-model');
+  return installedModelId({ name: 'forecast-model', dir, visionDir: dir, source: '/somewhere/best', revision: null, jobId: null });
 }
 
 const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
@@ -138,19 +145,19 @@ const at = (level: number, n: number) => Array.from({ length: n }, (_, i) => (i 
 /** Level `l` of 10 lands on 7 levels at the same position on the scale. */
 const on7 = (l: number) => Math.round(1 + ((l - 1) * 6) / 9);
 
-const DEFAULT_SCRIPT: FakeLayaScript = { levels: [5, 5, 5, 5], p8: 0.5 };
+const DEFAULT_SCRIPT: FakeModelScript = { levels: [5, 5, 5, 5], p8: 0.5 };
 
 /** What the fake answers for photo `key`: its script, level 5 everywhere when it has none. */
 export function scriptedAnswers(
-  state: FakeLayaState,
+  state: FakeModelState,
   key: string | null,
-  questions: Record<string, LayaQuestion>,
+  questions: Record<string, SystemOneQuestion>,
 ): Record<string, number[]> {
   const s = (key !== null && state.scripts.get(key)) || DEFAULT_SCRIPT;
   return Object.fromEntries(Object.entries(questions).map(([qid, q]) => [qid, scriptedAnswer(s, qid, q)]));
 }
 
-function scriptedAnswer(s: FakeLayaScript, qid: string, q: LayaQuestion): number[] {
+function scriptedAnswer(s: FakeModelScript, qid: string, q: SystemOneQuestion): number[] {
   const own = qid.slice(qid.indexOf('#') + 1);
   if (own.includes('|')) {
     const [set, dim] = own.split('|');
@@ -164,14 +171,14 @@ function scriptedAnswer(s: FakeLayaScript, qid: string, q: LayaQuestion): number
   return at(1, k);
 }
 
-/** Vitest mock factory for `src/laya/runtime.js`. */
-export function fakeLayaRuntimeModule(
-  actual: typeof import('../../src/laya/runtime.js'),
-  state: FakeLayaState,
-): typeof import('../../src/laya/runtime.js') {
+/** Vitest mock factory for `src/app-models/runtime.js`. */
+export function fakeModelRuntimeModule(
+  actual: typeof import('../../src/app-models/runtime.js'),
+  state: FakeModelState,
+): typeof import('../../src/app-models/runtime.js') {
   return {
     ...actual,
-    startLayaRuntime: async () => {
+    startModelRuntime: async () => {
       state.starts += 1;
       if (state.startError) throw state.startError;
       return {
@@ -182,13 +189,13 @@ export function fakeLayaRuntimeModule(
           const key = fakePhotoKey(image);
           if (key === null) state.checks += 1;
           else {
-            state.sequence.push(`laya:${key}`);
+            state.sequence.push(`model:${key}`);
             state.calls.push({ file: `/${key}.jpg`, model: model.name, questions: Object.keys(questions) });
           }
-          if (state.broken) throw new Error('Laya worker exited (code 1)');
+          if (state.broken) throw new Error('Model worker exited (code 1)');
           if (key !== null && state.dieOn === key) {
             state.broken = true;
-            throw new Error('Laya worker exited (code 1)');
+            throw new Error('Model worker exited (code 1)');
           }
           if (key !== null && state.failOn === key) throw new Error('decode failed');
           const answers = scriptedAnswers(state, key, questions);

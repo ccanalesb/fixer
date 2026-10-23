@@ -4,10 +4,11 @@
  *
  * Each question is asked as a 10-level `score` question under its own id. An optional question is also
  * asked "applies?" as a `noul` under `<id>-excusal`; when the photo is excused the question is left out
- * (`decide.ts`). This library's questions are the rows Laya new was trained on, so turning them into
- * what the model is asked must give `questions.json` "new" back exactly: its stage version hashes it.
+ * (`decide.ts`). A new library's questions are the factory ones (`factory-questions.json`
+ * "score_forecast"), so turning them into what the model is asked must give those back exactly: its stage
+ * version hashes them.
  */
-import type { LayaQuestion } from '../laya/rows.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
 
 export const LEVELS_PER_QUESTION = 10;
 export const EXCUSAL_SUFFIX = '-excusal';
@@ -28,8 +29,8 @@ export interface ScoreForecastQuestion {
 export const excusalId = (id: string): string => `${id}${EXCUSAL_SUFFIX}`;
 
 /** Exactly what the model is asked, by question id. */
-export function forecastStageQuestions(questions: readonly ScoreForecastQuestion[]): Record<string, LayaQuestion> {
-  const out: Record<string, LayaQuestion> = {};
+export function forecastStageQuestions(questions: readonly ScoreForecastQuestion[]): Record<string, SystemOneQuestion> {
+  const out: Record<string, SystemOneQuestion> = {};
   for (const q of questions) {
     if (q.optional) out[excusalId(q.id)] = { type: 'noul', instructions: q.applies ?? '' };
     out[q.id] = { type: 'score', instructions: q.instructions, criteria: q.levels };
@@ -41,8 +42,8 @@ export function forecastStageQuestions(questions: readonly ScoreForecastQuestion
  * Questions that ask exactly `asked`: each `score` row a question, tied to the perspective of the same
  * slug when there is one, optional when an `<id>-excusal` row comes with it.
  */
-export function questionsFromLaya(
-  asked: Readonly<Record<string, LayaQuestion>>,
+export function forecastQuestionsFrom(
+  asked: Readonly<Record<string, SystemOneQuestion>>,
   perspectiveNames: Readonly<Record<string, string>>,
 ): ScoreForecastQuestion[] {
   return Object.entries(asked)
@@ -65,8 +66,8 @@ const RANGE_FIRST = /^\s*[-*]\s+\*\*([^*]+?)\*\*\s*\((\d+)\s*[-–]\s*(\d+)\)\s*
 const RANGE_IN_LABEL = /^\s*[-*]\s+\*\*(\d+)\s*[-–]\s*(\d+)\s+([^*]+?)\*\*\s*[—–-]\s*(.+?)\s*$/;
 
 /**
- * A perspective's scoring bands as 10 levels, `N of 10 — <band>: <text>` (the form Laya new was trained
- * on). Reads `**weak** (1-3): …` and `**9–10 Iconic** — …`; a single-score band such as
+ * A perspective's scoring bands as 10 levels, `N of 10 — <band>: <text>` (the form of the factory
+ * questions). Reads `**weak** (1-3): …` and `**9–10 Iconic** — …`; a single-score band such as
  * `not_applicable` is not a range and is left out. Null unless the bands cover 1 to 10 once each.
  */
 export function scoringLevels(markdown: string): string[] | null {

@@ -1,5 +1,5 @@
 /**
- * Profile row readout maps Laya qids to dimension fail bands.
+ * Profile row readout maps question ids to dimension fail bands.
  */
 import { describe, expect, it } from 'vitest';
 import { buildProfileRowReadout } from '../src/cull/review.js';
@@ -21,16 +21,15 @@ const rule: ProfileRule = {
 };
 
 const profile = {
-  slug: 'recipe-culling',
-  name: 'Recipe culling',
-  model: 'laya-base',
+  slug: 'default',
+  name: 'Default culling profile',
   definition,
   rule,
 } as CullProfile;
 
 describe('buildProfileRowReadout', () => {
   it('marks fails when stored answers use levelSet|dimension qids', () => {
-    const stageKey = 'culling_profile:recipe-culling:7';
+    const stageKey = 'culling_profile:default:7';
     const answersByStage = {
       [stageKey]: {
         '7|immediate-impact': [0, 1, 0, 0, 0, 0, 0],

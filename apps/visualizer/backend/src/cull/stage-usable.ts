@@ -3,7 +3,7 @@
  * cannot. A job started anyway still fails naming the stage (`resolveStageModelIds`).
  */
 import type { CullingModelConfig } from '../config.js';
-import type { AppModelStatus } from '../laya/install.js';
+import type { AppModelStatus } from '../app-models/install.js';
 import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
 import type { StageKind } from './types.js';
 

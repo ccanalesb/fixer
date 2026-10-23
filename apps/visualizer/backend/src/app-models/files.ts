@@ -1,6 +1,6 @@
 /**
- * The models installed in this app: one directory per model in `laya_models_dir`, written by
- * `scripts/laya/export_onnx.py` (through the conversion job or by hand), and the error that names what
+ * The models installed in this app: one directory per model in `app_models_dir`, written by
+ * `scripts/app-models/export_onnx.py` (through the conversion job or by hand), and the error that names what
  * is missing.
  *
  * `models/` is git-ignored: the repo is public and no model is committed, so on a fresh checkout this
@@ -9,11 +9,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const LAYA_SETUP_COMMAND = 'uv run scripts/laya/export_onnx.py <folder or Hugging Face id> --name <name>';
+export const APP_MODEL_SETUP_COMMAND = 'uv run scripts/app-models/export_onnx.py <folder or Hugging Face id> --name <name>';
 
 /** A model this app does not have, or has with files missing; the message says what and how to add it. */
-export class LayaSetupError extends Error {
-  override readonly name = 'LayaSetupError';
+export class AppModelSetupError extends Error {
+  override readonly name = 'AppModelSetupError';
 }
 
 export interface InstalledModel {
@@ -36,14 +36,34 @@ const MODEL_FILES = ['decoder.onnx', 'model.json', 'tokenizer/tokenizer.json', '
 const isInstallInProgress = (name: string) => name.startsWith('.');
 
 export function setupErrorMessage(problem: string): string {
-  return `${problem}. Add it in Processing → Settings → Culling models, or from the repo root: ${LAYA_SETUP_COMMAND}`;
+  return `${problem}. Add it in Processing → Settings → Culling models, or from the repo root: ${APP_MODEL_SETUP_COMMAND}`;
 }
 
 interface ModelJson {
   source?: string | null;
   revision?: string | null;
   vision?: string;
+  fine_tuned_from?: { id?: string; revision?: string } | null;
   job_id?: string | null;
+}
+
+function readModelJson(dir: string): ModelJson | null {
+  try {
+    return JSON.parse(readFileSync(join(dir, 'model.json'), 'utf8')) as ModelJson;
+  } catch {
+    return null;
+  }
+}
+
+/** The installed model a fine-tune came from, by its source and revision: it has the same vision tower. */
+function fineTunedFromName(modelsDir: string, from: ModelJson['fine_tuned_from']): string | null {
+  if (!from?.id) return null;
+  for (const e of readdirSync(modelsDir, { withFileTypes: true })) {
+    if (!e.isDirectory() || isInstallInProgress(e.name)) continue;
+    const meta = readModelJson(join(modelsDir, e.name));
+    if (meta?.source === from.id && (meta.revision ?? null) === (from.revision ?? null)) return e.name;
+  }
+  return null;
 }
 
 /** The model and the files it is missing, if any. */
@@ -52,14 +72,12 @@ function readModel(modelsDir: string, name: string): { model: InstalledModel; mi
   const missing = MODEL_FILES.map((f) => join(dir, f)).filter((p) => !existsSync(p));
   let meta: ModelJson = {};
   if (!missing.includes(join(dir, 'model.json'))) {
-    try {
-      meta = JSON.parse(readFileSync(join(dir, 'model.json'), 'utf8')) as ModelJson;
-    } catch {
-      missing.push(`${join(dir, 'model.json')} (unreadable)`);
-    }
+    const read = readModelJson(dir);
+    if (read) meta = read;
+    else missing.push(`${join(dir, 'model.json')} (unreadable)`);
   }
-  // The setup step's earlier layout: Laya new had no vision.onnx and read Laya base's.
-  const visionDir = join(modelsDir, meta.vision ?? (existsSync(join(dir, 'vision.onnx')) ? name : 'laya-base'));
+  const own = existsSync(join(dir, 'vision.onnx')) ? name : null;
+  const visionDir = join(modelsDir, meta.vision ?? own ?? fineTunedFromName(modelsDir, meta.fine_tuned_from) ?? name);
   if (!existsSync(join(visionDir, 'vision.onnx'))) missing.push(join(visionDir, 'vision.onnx'));
   return {
     model: {
@@ -87,11 +105,11 @@ export function installedModels(modelsDir: string): InstalledModel[] {
 
 export function resolveInstalledModel(modelsDir: string, name: string): InstalledModel {
   if (isInstallInProgress(name) || name.includes('/') || !existsSync(join(modelsDir, name))) {
-    throw new LayaSetupError(setupErrorMessage(`${name} is not listed by this app`));
+    throw new AppModelSetupError(setupErrorMessage(`${name} is not listed by this app`));
   }
   const { model, missing } = readModel(modelsDir, name);
   if (missing.length > 0) {
-    throw new LayaSetupError(
+    throw new AppModelSetupError(
       setupErrorMessage(`${name} is not listed by this app: model files missing: ${missing.join(', ')}`),
     );
   }

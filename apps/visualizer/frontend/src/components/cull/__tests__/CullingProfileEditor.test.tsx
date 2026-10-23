@@ -36,9 +36,9 @@ vi.mock('../../../services/api', async (importOriginal) => {
 })
 
 const baseProfile = {
-  slug: 'recipe-culling',
-  name: 'Recipe culling',
-  model: 'laya-base',
+  slug: 'default',
+  name: 'Default culling profile',
+  model: 'culling-model',
   active: true,
   measured: true,
   version: 1,

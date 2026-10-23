@@ -2935,7 +2935,6 @@ export interface paths {
                     "application/json": {
                         slug: string;
                         name: string;
-                        model: string;
                         definition: {
                             dimensions: {
                                 slug: string;
@@ -3241,7 +3240,6 @@ export interface paths {
                 content: {
                     "application/json": {
                         name?: string;
-                        model?: string;
                         active?: boolean;
                     };
                 };
@@ -6042,7 +6040,6 @@ export interface components {
         CullProfileSummary: {
             slug: string;
             name: string;
-            model: string;
             active: boolean;
             measured: boolean;
             version: number;
@@ -6092,7 +6089,6 @@ export interface components {
         CullProfileDetail: {
             slug: string;
             name: string;
-            model: string;
             active: boolean;
             measured: boolean;
             version: number;

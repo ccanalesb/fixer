@@ -9,8 +9,8 @@ import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
 import type { CullingModelsConfig } from '../config.js';
-import { setupErrorMessage } from '../laya/files.js';
-import type { LayaQuestion } from '../laya/rows.js';
+import { setupErrorMessage } from '../app-models/files.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
 import {
   askSystemOne,
   listSystemOneModels,
@@ -139,8 +139,8 @@ export function assertForecastHasQuestions(on: Record<StageKind, boolean>, quest
 /** Question ids sent to a model: prefixed with the stage key, since two profiles may share a level set. */
 const sentQid = (stage: ResolvedStage, qid: string): string => `${stage.stageKey}#${qid}`;
 
-export function stageQuestions(stages: readonly ResolvedStage[]): Record<string, LayaQuestion> {
-  const out: Record<string, LayaQuestion> = {};
+export function stageQuestions(stages: readonly ResolvedStage[]): Record<string, SystemOneQuestion> {
+  const out: Record<string, SystemOneQuestion> = {};
   for (const s of stages) for (const [qid, q] of Object.entries(s.questions)) out[sentQid(s, qid)] = q;
   return out;
 }

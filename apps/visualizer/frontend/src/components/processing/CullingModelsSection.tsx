@@ -76,7 +76,7 @@ type Stage = 'culling_profile' | 'score_forecast'
 const STAGES: readonly Stage[] = ['culling_profile', 'score_forecast']
 const STAGE_NAME: Record<Stage, string> = { culling_profile: CULLING_PROFILE_STAGE, score_forecast: SCORE_FORECAST_STAGE }
 const LEVELS = [5, 6, 7, 8, 9]
-const INSTALL_JOB_TYPE = 'laya_model_install'
+const INSTALL_JOB_TYPE = 'app_model_install'
 const CULLING_JOB_TYPE = 'batch_cull_photos_before_scoring'
 const LINK_BUTTON =
   'inline-flex items-center rounded-base border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover'

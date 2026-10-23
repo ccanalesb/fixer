@@ -11,7 +11,7 @@ import { resolveCurrentStages } from '../src/cull/stages.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
-import { layaNewForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
+import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import { getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { getCullVerdict, upsertCullVerdict, type CullVerdictInput } from '../src/db/library/cull-verdicts.js';
 import { listCullUserActions, recordCullUserAction } from '../src/db/library/cull-user-actions.js';
@@ -35,7 +35,7 @@ const filteredBase = (imageKey: string, p8: number | null, filteredBy: 'culling_
   imageKey,
   verdict: 'filtered',
   filteredBy,
-  filteredByStageKey: filteredBy === 'score_forecast' ? 'score_forecast' : 'culling_profile:recipe-culling:7',
+  filteredByStageKey: filteredBy === 'score_forecast' ? 'score_forecast' : 'culling_profile:default:7',
   cullingProfileVerdict: filteredBy === 'culling_profile' ? 'filtered' : null,
   sentByHand: false,
   pendingStages: [],
@@ -82,8 +82,8 @@ afterEach(() => {
 function seedFailingProfileAnswers(fx: LibraryFixture, imageKey: string, levelIndex: number): void {
   const db = new Database(fx.dbPath);
   const pipe = getCurrentPipelineSetting(db);
-  const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'laya-base', score_forecast: 'laya-new' });
-  const stage = stages.find((s) => s.stageKey === 'culling_profile:recipe-culling:7');
+  const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
+  const stage = stages.find((s) => s.stageKey === 'culling_profile:default:7');
   if (!stage) throw new Error('expected profile 7 stage');
   const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
   const answers: Record<string, number[]> = {};
@@ -276,7 +276,7 @@ describe('GET /api/cull/photos/{image_key}', () => {
   it("lists the Score forecast per question, named by its perspective, an excused one as not applying", async () => {
     const db = new Database(fx.dbPath);
     saveForecastQuestions(db, [
-      ...layaNewForecastQuestions(db).filter((q) => q.id === 'framing' || q.id === 'compositional-cleanliness'),
+      ...factoryForecastQuestions(db).filter((q) => q.id === 'framing' || q.id === 'compositional-cleanliness'),
       {
         id: 'own',
         name: 'My own question',
@@ -288,7 +288,7 @@ describe('GET /api/cull/photos/{image_key}', () => {
       },
     ]);
     const pipe = getCurrentPipelineSetting(db);
-    const stage = resolveCurrentStages(db, pipe.config, { culling_profile: 'laya-base', score_forecast: 'laya-new' }).find(
+    const stage = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' }).find(
       (s) => s.kind === 'score_forecast',
     )!;
     const tenth = (i: number) => Array.from({ length: 10 }, (_, k) => (k === i ? 1 : 0));

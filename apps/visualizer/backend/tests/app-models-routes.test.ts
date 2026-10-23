@@ -1,6 +1,6 @@
 /**
  * `/api/app-models`: the models installed in this app with their conversion jobs, adding one, and the
- * folder dialog. Jobs go to a temp `visualizer.db`; nothing is converted here (see laya-install.test.ts).
+ * folder dialog. Jobs go to a temp `visualizer.db`; nothing is converted here (see app-model-install.test.ts).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app.js';
 import { getJob, initJobsDb } from '../src/db/jobs/jobs.js';
-import { writeFakeLayaModels } from './helpers/fake-laya.js';
+import { writeFakeAppModels } from './helpers/fake-app-models.js';
 
 let dir: string;
 let modelsDir: string;
@@ -24,7 +24,7 @@ const add = (source: unknown) =>
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-app-models-'));
   modelsDir = join(dir, 'models');
-  writeFileSync(join(dir, 'config.yaml'), `laya_models_dir: ${modelsDir}\n`);
+  writeFileSync(join(dir, 'config.yaml'), `app_models_dir: ${modelsDir}\n`);
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
   process.env.DATABASE_PATH = join(dir, 'visualizer.db');
 });
@@ -45,57 +45,57 @@ describe('GET /api/app-models', () => {
   });
 
   it('lists the installed models with their source and revision', async () => {
-    writeFakeLayaModels(modelsDir);
+    writeFakeAppModels(modelsDir);
     const body = await json<Listed>(await app.request('/api/app-models'));
     expect(body.models).toEqual([
       {
-        name: 'laya-base',
-        source: 'thaitea/laya-vision',
+        name: 'culling-model',
+        source: 'owner/vision-model',
         revision: '8b318c99d7ad3ce19c24369263463882eada9d1e',
         status: 'ready',
         job_id: null,
       },
-      { name: 'laya-new', source: '/somewhere/best', revision: null, status: 'ready', job_id: null },
+      { name: 'forecast-model', source: '/somewhere/best', revision: null, status: 'ready', job_id: null },
     ]);
   });
 });
 
 describe('POST /api/app-models', () => {
   it('queues the conversion job and lists the model as converting', async () => {
-    const res = await add('thaitea/laya-vision');
+    const res = await add('owner/vision-model');
     expect(res.status).toBe(200);
     const { name, job_id } = await json<{ name: string; job_id: string }>(res);
-    expect(name).toBe('laya-base');
+    expect(name).toBe('vision-model');
     const db = initJobsDb(join(dir, 'visualizer.db'));
     try {
-      expect(getJob(db, job_id)).toMatchObject({ type: 'laya_model_install', status: 'pending' });
+      expect(getJob(db, job_id)).toMatchObject({ type: 'app_model_install', status: 'pending' });
     } finally {
       db.close();
     }
     const body = await json<Listed>(await app.request('/api/app-models'));
     expect(body.models).toEqual([
-      { name: 'laya-base', source: 'thaitea/laya-vision', revision: null, status: 'converting', job_id },
+      { name: 'vision-model', source: 'owner/vision-model', revision: null, status: 'converting', job_id },
     ]);
   });
 
   it('names a folder after it, and a name taken by an installed model gets -2', async () => {
-    writeFakeLayaModels(modelsDir);
-    const best = join(dir, 'laya-run', 'best');
+    writeFakeAppModels(modelsDir);
+    const best = join(dir, 'my-run', 'best');
     mkdirSync(best, { recursive: true });
-    expect(await json(await add(best))).toMatchObject({ name: 'laya-run-best' });
-    expect(await json(await add('thaitea/laya-vision@8b318c9'))).toMatchObject({ name: 'laya-base-2' });
+    expect(await json(await add(best))).toMatchObject({ name: 'my-run-best' });
+    expect(await json(await add('owner/culling-model@8b318c9'))).toMatchObject({ name: 'culling-model-2' });
   });
 
   it('refuses what is not a folder or a Hugging Face id (400), and a source already converting (409)', async () => {
     let res = await add(join(dir, 'nowhere'));
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error: `No folder at ${join(dir, 'nowhere')}` });
-    expect((await add('laya')).status).toBe(400);
+    expect((await add('vision')).status).toBe(400);
     expect((await add(42)).status).toBe(422);
-    expect((await add('thaitea/laya-vision')).status).toBe(200);
-    res = await add('thaitea/laya-vision');
+    expect((await add('owner/vision-model')).status).toBe(200);
+    res = await add('owner/vision-model');
     expect(res.status).toBe(409);
-    expect(await json(res)).toEqual({ error: 'Already converting as laya-base' });
+    expect(await json(res)).toEqual({ error: 'Already converting as vision-model' });
   });
 });
 

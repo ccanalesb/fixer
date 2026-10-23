@@ -10,7 +10,7 @@ import { basename, join } from 'node:path';
 import { resolveCurrentStages } from '../backend/src/cull/stages.js';
 import { initLibraryDb } from '../backend/src/db/library/bootstrap.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../backend/src/db/library/cull-pipeline.js';
-import { layaNewForecastQuestions, saveForecastQuestions } from '../backend/src/db/library/score-forecast-questions.js';
+import { factoryForecastQuestions, saveForecastQuestions } from '../backend/src/db/library/score-forecast-questions.js';
 import { upsertStageAnswer } from '../backend/src/db/library/cull-stages.js';
 import {
   finishCullRun,
@@ -21,7 +21,7 @@ import {
 import { recordCullUserAction } from '../backend/src/db/library/cull-user-actions.js';
 import type { ResolvedStage } from '../backend/src/cull/types.js';
 import { computePromptVersion } from '../backend/src/vision/scoring-service.js';
-import { writeFakeLayaModels } from '../backend/tests/helpers/fake-laya.js';
+import { writeFakeAppModels } from '../backend/tests/helpers/fake-app-models.js';
 
 const libPath = process.env.LIBRARY_DB;
 const tmpRoot = process.env.CULL_UI_TMP;
@@ -35,7 +35,7 @@ if (!libPath || !tmpRoot || !IMAGES) {
 const vision = join(tmpRoot, 'vision');
 const models = join(tmpRoot, 'models');
 mkdirSync(vision, { recursive: true });
-writeFakeLayaModels(models, { withNew: true });
+writeFakeAppModels(models, { withNew: true });
 
 const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
 
@@ -54,7 +54,7 @@ function profileAnswers(levelSet: '7' | '10', levelIndex: number): Record<string
   return out;
 }
 
-/** Strong on `strongDimCount` dimensions (recipe-culling bands: level 6+ on 7-set, 8+ on 10-set). */
+/** Strong on `strongDimCount` dimensions (default bands: level 6+ on 7-set, 8+ on 10-set). */
 function profileAnswersStrongDims(strongDimCount: number): { seven: Record<string, number[]>; ten: Record<string, number[]> } {
   const seven: Record<string, number[]> = {};
   const ten: Record<string, number[]> = {};
@@ -117,7 +117,7 @@ for (const file of files) {
   cacheIns.run(key, dest);
 }
 
-saveForecastQuestions(db, layaNewForecastQuestions(db));
+saveForecastQuestions(db, factoryForecastQuestions(db));
 const initial = getCurrentPipelineSetting(db).config;
 createPipelineSettingVersion(db, {
   ...initial,
@@ -125,10 +125,10 @@ createPipelineSettingVersion(db, {
   score_forecast: { ...initial.score_forecast, enabled: true },
 });
 const pipe = getCurrentPipelineSetting(db);
-const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'laya-base', score_forecast: 'laya-new' });
+const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
 const stageByKey = new Map(stages.map((s) => [s.stageKey, s]));
-const profile7 = stageByKey.get('culling_profile:recipe-culling:7');
-const profile10 = stageByKey.get('culling_profile:recipe-culling:10');
+const profile7 = stageByKey.get('culling_profile:default:7');
+const profile10 = stageByKey.get('culling_profile:default:10');
 const scoreForecast = stageByKey.get('score_forecast');
 if (!profile7 || !profile10 || !scoreForecast) throw new Error('Expected cull stages missing');
 
@@ -246,7 +246,7 @@ files.forEach((file, i) => {
       baseVerdict(key, {
         verdict: 'filtered',
         filteredBy: 'culling_profile',
-        filteredByStageKey: 'culling_profile:recipe-culling:7',
+        filteredByStageKey: 'culling_profile:default:7',
         scoreForecastP8: 0.08,
       }),
     );
@@ -260,7 +260,7 @@ files.forEach((file, i) => {
       baseVerdict(key, {
         verdict: 'filtered',
         filteredBy: 'culling_profile',
-        filteredByStageKey: 'culling_profile:recipe-culling:7',
+        filteredByStageKey: 'culling_profile:default:7',
         scoreForecastP8: 0.15,
         pendingStages: ['score_forecast'],
         pendingReason: 'awaiting forecast',
@@ -275,7 +275,7 @@ files.forEach((file, i) => {
       baseVerdict(key, {
         verdict: 'filtered',
         filteredBy: 'culling_profile',
-        filteredByStageKey: 'culling_profile:recipe-culling:7',
+        filteredByStageKey: 'culling_profile:default:7',
         scoreForecastP8: 0.12,
       }),
     );
@@ -289,7 +289,7 @@ files.forEach((file, i) => {
       baseVerdict(key, {
         verdict: 'filtered',
         filteredBy: 'culling_profile',
-        filteredByStageKey: 'culling_profile:recipe-culling:7',
+        filteredByStageKey: 'culling_profile:default:7',
         scoreForecastP8: 0.1,
       }),
     );
@@ -303,7 +303,7 @@ files.forEach((file, i) => {
       baseVerdict(key, {
         verdict: 'filtered',
         filteredBy: byForecast ? 'score_forecast' : 'culling_profile',
-        filteredByStageKey: byForecast ? 'score_forecast' : 'culling_profile:recipe-culling:7',
+        filteredByStageKey: byForecast ? 'score_forecast' : 'culling_profile:default:7',
         scoreForecastP8: byForecast ? 0.06 + (i % 5) * 0.02 : 0.14 + (i % 4) * 0.03,
       }),
     );
@@ -320,7 +320,7 @@ files.forEach((file, i) => {
       baseVerdict(key, {
         verdict: 'filtered',
         filteredBy: 'culling_profile',
-        filteredByStageKey: 'culling_profile:recipe-culling:7',
+        filteredByStageKey: 'culling_profile:default:7',
         scoreForecastP8: 0.09,
       }),
     );
@@ -333,7 +333,7 @@ files.forEach((file, i) => {
       baseVerdict(key, {
         verdict: 'filtered',
         filteredBy: 'culling_profile',
-        filteredByStageKey: 'culling_profile:recipe-culling:7',
+        filteredByStageKey: 'culling_profile:default:7',
         scoreForecastP8: 0.11,
       }),
     );
@@ -385,7 +385,7 @@ files.forEach((file, i) => {
     baseVerdict(key, {
       verdict: 'filtered',
       filteredBy: 'culling_profile',
-      filteredByStageKey: 'culling_profile:recipe-culling:7',
+      filteredByStageKey: 'culling_profile:default:7',
       scoreForecastP8: 0.05 + (i % 7) * 0.015,
     }),
   );

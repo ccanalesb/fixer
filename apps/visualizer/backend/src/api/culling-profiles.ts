@@ -4,7 +4,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { config } from '../config.js';
 import { validateProfileShape } from '../cull/profile-shape.js';
-import { validateProfileDefinitionForLaya, type ProfileValidationError } from '../cull/profile-validate.js';
+import { validateProfileDefinition, type ProfileValidationError } from '../cull/profile-validate.js';
 import type { PipelineSettingConfig } from '../cull/types.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import {
@@ -66,7 +66,6 @@ function profileSummary(db: import('../db/connection.js').Db, profile: ReturnTyp
   return {
     slug: profile.slug,
     name: profile.name,
-    model: profile.model,
     active: profile.active,
     measured: profile.measured,
     version: profile.version,
@@ -227,7 +226,6 @@ const createRouteDef = createRoute({
           .object({
             slug: z.string(),
             name: z.string(),
-            model: z.string(),
             definition: ProfileDefinitionSchema,
             rule: ProfileRuleSchema,
             active: z.boolean().optional(),
@@ -251,7 +249,7 @@ cullingProfilesRoutes.openapi(createRouteDef, (c) => {
   if (getCullProfile(db, body.slug)) return c.json({ error: 'slug already exists' }, 409);
   const shape = validateProfileShape(body.definition, body.rule, { requireText: false });
   if (shape.length) return c.json(validationFailed(shape), 400);
-  const v = validateProfileDefinitionForLaya(body.definition, body.model);
+  const v = validateProfileDefinition(body.definition);
   if (!v.ok) return c.json(validationFailed(v.errors), 400);
   createCullProfile(db, { ...body, measured: false, active: body.active !== false });
   if (body.active !== false) setCullProfilePipelineActive(db, body.slug, true);
@@ -338,7 +336,7 @@ cullingProfilesRoutes.openapi(definitionRoute, (c) => {
   const { definition, rule, mode } = c.req.valid('json');
   const shape = validateProfileShape(definition, rule ?? profile.rule, { requireText: true });
   if (shape.length) return c.json(validationFailed(shape), 400);
-  const v = validateProfileDefinitionForLaya(definition, profile.model);
+  const v = validateProfileDefinition(definition);
   if (!v.ok) return c.json(validationFailed(v.errors), 400);
   const saved = saveProfileDefinition(db, slug, definition);
   const ruleVersion = rule ? setProfileRule(db, slug, rule) : null;
@@ -437,7 +435,7 @@ const patchRoute = createRoute({
     params: z.object({ slug: z.string() }),
     body: {
       content: jsonBody(
-        z.object({ name: z.string().optional(), model: z.string().optional(), active: z.boolean().optional() }).strict(),
+        z.object({ name: z.string().optional(), active: z.boolean().optional() }).strict(),
       ),
     },
   },
@@ -469,12 +467,11 @@ cullingProfilesRoutes.openapi(patchRoute, (c) => {
   return c.json(profileDetail(db, slug)!, 200);
 });
 
-/** Default body for POST when client sends minimal create (F19). */
+/** Default body for POST when the client sends a minimal create. */
 export function minimalNewProfileBody(slug: string, name: string) {
   return {
     slug,
     name,
-    model: 'laya-base',
     definition: defaultMinimalProfileDefinition(),
     rule: defaultMinimalProfileRule(),
     active: false,

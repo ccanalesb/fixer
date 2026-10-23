@@ -177,7 +177,7 @@ export function filterVoidSubstanceFromScoringSelection(
 export interface CullHeldBack {
   filtered_by_culling_profile: number;
   filtered_by_score_forecast: number;
-  /** A stage still unanswered (Laya failed on it, or no image to read): retried by the next job. */
+  /** A stage still unanswered (the model failed on it, or no image to read): retried by the next job. */
   pending: number;
   /** Never culled: only when the culling step could not reach the photo. */
   no_verdict: number;

@@ -1,10 +1,13 @@
 /**
- * Reject culling profile text that would not fit in a Laya row at runtime.
+ * Reject culling profile text that would not fit in a row of the culling profile stage's model. Only a
+ * model in this app has a known budget; with another endpoint, or no model yet, only the shape is checked.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, loadLibraryConfig } from '../config.js';
-import { buildRow, type LayaModelMeta, type LayaQuestion } from '../laya/rows.js';
+import { buildRow, type ModelMeta } from '../app-models/rows.js';
+import type { SystemOneQuestion } from '../systemone/question.js';
+import { THIS_APP_ENDPOINT } from '../systemone/client.js';
 import type { ProfileDefinition } from './types.js';
 
 export interface ProfileValidationError {
@@ -17,8 +20,8 @@ export interface ProfileValidationResult {
   errors: ProfileValidationError[];
 }
 
-function questionsForDefinition(definition: ProfileDefinition): Record<string, LayaQuestion> {
-  const out: Record<string, LayaQuestion> = {};
+function questionsForDefinition(definition: ProfileDefinition): Record<string, SystemOneQuestion> {
+  const out: Record<string, SystemOneQuestion> = {};
   for (const set of definition.level_sets) {
     for (const dim of definition.dimensions) {
       const criteria = set.levels[dim.slug];
@@ -35,10 +38,17 @@ function questionsForDefinition(definition: ProfileDefinition): Record<string, L
   return out;
 }
 
-function loadBaseMetaAndEncode(modelSlug: string): { meta: LayaModelMeta; encode: (s: string) => number[] } {
-  const modelsRoot = loadLibraryConfig(config.LT_CONFIG_YAML).layaModelsDir;
-  const dir = join(modelsRoot, modelSlug === 'laya-base' ? 'laya-base' : modelSlug);
-  const meta = JSON.parse(readFileSync(join(dir, 'model.json'), 'utf8')) as LayaModelMeta;
+/** The culling profile stage's model when it is installed in this app; null otherwise. */
+function stageModelDir(): string | null {
+  const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
+  const stage = cfg.cullingModels.culling_profile;
+  if (stage.endpoint !== THIS_APP_ENDPOINT || !stage.model) return null;
+  const dir = join(cfg.appModelsDir, stage.model);
+  return existsSync(join(dir, 'model.json')) ? dir : null;
+}
+
+function loadMetaAndEncode(dir: string): { meta: ModelMeta; encode: (s: string) => number[] } {
+  const meta = JSON.parse(readFileSync(join(dir, 'model.json'), 'utf8')) as ModelMeta;
   const tokJson = JSON.parse(readFileSync(join(dir, 'tokenizer', 'tokenizer.json'), 'utf8')) as {
     model?: { vocab?: Record<string, number> };
   };
@@ -54,36 +64,29 @@ function loadBaseMetaAndEncode(modelSlug: string): { meta: LayaModelMeta; encode
   return { meta, encode };
 }
 
-/** Validate every question/level set row against the profile model's Laya budget. */
-export function validateProfileDefinitionForLaya(
-  definition: ProfileDefinition,
-  modelSlug: string,
-): ProfileValidationResult {
-  const errors: ProfileValidationError[] = [];
-  let meta: LayaModelMeta;
-  let encode: (s: string) => number[];
+/** Validate every question/level set row against the culling profile stage model's budget, when known. */
+export function validateProfileDefinition(definition: ProfileDefinition): ProfileValidationResult {
+  let questions: Record<string, SystemOneQuestion>;
   try {
-    ({ meta, encode } = loadBaseMetaAndEncode(modelSlug));
+    questions = questionsForDefinition(definition);
   } catch (e) {
-    return {
-      ok: false,
-      errors: [{ field: 'model', message: e instanceof Error ? e.message : String(e) }],
-    };
+    return { ok: false, errors: [{ field: 'definition', message: e instanceof Error ? e.message : String(e) }] };
   }
+  const dir = stageModelDir();
+  if (!dir) return { ok: true, errors: [] };
+  let model: ReturnType<typeof loadMetaAndEncode>;
   try {
-    const questions = questionsForDefinition(definition);
-    for (const [qid, q] of Object.entries(questions)) {
-      try {
-        buildRow(encode, meta, qid, q);
-      } catch (err) {
-        errors.push({
-          field: qid,
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    model = loadMetaAndEncode(dir);
   } catch (e) {
-    errors.push({ field: 'definition', message: e instanceof Error ? e.message : String(e) });
+    return { ok: false, errors: [{ field: 'model', message: e instanceof Error ? e.message : String(e) }] };
+  }
+  const errors: ProfileValidationError[] = [];
+  for (const [qid, q] of Object.entries(questions)) {
+    try {
+      buildRow(model.encode, model.meta, qid, q);
+    } catch (err) {
+      errors.push({ field: qid, message: err instanceof Error ? err.message : String(err) });
+    }
   }
   return { ok: errors.length === 0, errors };
 }

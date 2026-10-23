@@ -1,21 +1,15 @@
 /**
- * Laya's token rows, ported from `laya/vlm.py` `build_vlm_inputs` (prompt format "1", terminator readout)
- * for an image-only state: with no state text, a row depends on the question alone, so each model's rows
- * are built once at load.
+ * A model's token rows, built as the model was trained (prompt format "1", terminator readout) for an
+ * image-only state: with no state text, a row depends on the question alone, so each model's rows are
+ * built once at load.
  *
- * Must stay token-for-token equal to Python's; `reference/rows.json` from the setup step is the check.
+ * Must stay token-for-token equal to the converter's; `reference/rows.json` from the setup step is the check.
  */
 
-export type QuestionType = 'choice' | 'score' | 'noul';
+import type { QuestionType, SystemOneQuestion } from '../systemone/question.js';
 
-export interface LayaQuestion {
-  type: QuestionType;
-  instructions: string;
-  criteria?: string[] | Record<string, string | null> | null;
-}
-
-/** `model.json` written by `scripts/laya/export_onnx.py`. */
-export interface LayaModelMeta {
+/** `model.json` written by `scripts/app-models/export_onnx.py`. */
+export interface ModelMeta {
   temperature: number[];
   temperature_by_options: Record<string, number>;
   max_len: number;
@@ -25,7 +19,7 @@ export interface LayaModelMeta {
   prefix_ids: number[];
 }
 
-export interface LayaRow {
+export interface ModelRow {
   qid: string;
   ids: number[];
   markers: number[];
@@ -59,7 +53,7 @@ function questionText(type: QuestionType, instructions: string): string {
   return `\n${type} question: ${instructions}<end_of_utterance>\nAssistant: Options:\n`;
 }
 
-export function renderOptions(q: LayaQuestion): string[] {
+export function renderOptions(q: SystemOneQuestion): string[] {
   if (q.type === 'choice') {
     const crit = Array.isArray(q.criteria)
       ? Object.fromEntries(q.criteria.map((c) => [c, null]))
@@ -74,14 +68,14 @@ export function renderOptions(q: LayaQuestion): string[] {
   ];
 }
 
-/** `laya.common.temp_bucket`: the key of a per-option-count temperature. */
+/** The key of a per-option-count temperature in `model.json`. */
 export function tempBucket(qtype: number, k: number): string {
   const size = k <= 2 ? '2' : k <= 5 ? '3-5' : k <= 10 ? '6-10' : '11+';
   return `${qtypeName(qtype)}:${size}`;
 }
 
 /** Options capped at 48 tokens each; past the head budget, options shrink first, then the question is cut in the middle. */
-export function buildRow(encode: Encode, meta: LayaModelMeta, qid: string, q: LayaQuestion): LayaRow {
+export function buildRow(encode: Encode, meta: ModelMeta, qid: string, q: SystemOneQuestion): ModelRow {
   const endIds = encode(OPTION_END);
   if (endIds.length !== 1) throw new Error('option terminator must be a single token');
   const endId = endIds[0]!;

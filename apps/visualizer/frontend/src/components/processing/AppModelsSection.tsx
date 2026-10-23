@@ -28,7 +28,7 @@ import { Button } from '../ui/Button/Button'
 import { Input } from '../ui/Input/Input'
 import { PathSummary, SettingRow } from './SettingRow'
 
-const INSTALL_JOB_TYPE = 'laya_model_install'
+const INSTALL_JOB_TYPE = 'app_model_install'
 
 /** Where a stage row's "Add a model to this app" scrolls to. */
 export const APP_MODELS_SECTION_ID = 'app-models'
@@ -90,7 +90,7 @@ export function AppModelsSection() {
         <p className="mt-1 text-sm text-text-secondary">
           What this app serves on its own System One endpoint. Add one as a folder in Hugging Face format
           (<code>model.safetensors</code>, <code>processor/</code>, config) or a Hugging Face id; it is converted once in
-          a job, which needs <code>uv</code>. Today only models of the Laya architecture convert.
+          a job, which needs <code>uv</code>. Today only SmolVLM (Idefics3) models with a decision head convert.
         </p>
       </div>
 

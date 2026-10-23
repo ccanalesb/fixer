@@ -10,7 +10,7 @@ import { cullPhoto } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import type { StageAnswerer } from '../src/cull/stage-models.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
-import { layaNewForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
+import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import type { PipelineSettingConfig } from '../src/cull/types.js';
 import type { Db } from '../src/db/connection.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
@@ -33,7 +33,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-lrw-switches-'));
   db = initLibraryDb(join(dir, 'library.db'));
   seedCullingStagesOn(db);
-  saveForecastQuestions(db, layaNewForecastQuestions(db));
+  saveForecastQuestions(db, factoryForecastQuestions(db));
   runId = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
   patchLrWritebackSettings(db, { write_stars: true, write_reject: true });
 });
@@ -67,16 +67,16 @@ function fakeModels(levels10: number[], p8 = 0.5): StageAnswerer {
   };
 }
 
-async function cull(imageKey: string, laya: StageAnswerer, change?: (cfg: PipelineSettingConfig) => PipelineSettingConfig) {
+async function cull(imageKey: string, answerer: StageAnswerer, change?: (cfg: PipelineSettingConfig) => PipelineSettingConfig) {
   if (change) createPipelineSettingVersion(db, change(getCurrentPipelineSetting(db).config));
   const pipeline = getCurrentPipelineSetting(db);
   const ctx: CullContext = { stages: resolveCurrentStages(db, pipeline.config, MODEL_IDS), pipeline, scoreForecastAvailable: true };
-  await cullPhoto(db, ctx, laya, { imageKey, sentByHand: false, runId, resolveImage: async () => '/cache/x.jpg' });
+  await cullPhoto(db, ctx, answerer, { imageKey, sentByHand: false, runId, resolveImage: async () => '/cache/x.jpg' });
 }
 
 const settings = () => getLrWritebackSettings(db);
 const reject = (key: string) => desiredReject(settings(), getCullVerdict(db, key));
-const stars = (key: string) => desiredStarsRating(db, settings(), key, 'recipe-culling');
+const stars = (key: string) => desiredStarsRating(db, settings(), key, 'default');
 
 describe('Lightroom write-back under the switches', () => {
   it('everything on: reject where the rule filters, stars where the profile is strong', async () => {

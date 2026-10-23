@@ -1,5 +1,5 @@
 /**
- * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/profile rule changes, no Laya.
+ * `batch_redecide_cull_verdicts_from_stored_answers` — threshold/profile rule changes, no model.
  */
 import { redecideAllPhotos, RedecideCancelled } from '../../cull/redecide.js';
 import type { Db } from '../../db/connection.js';

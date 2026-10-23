@@ -48,7 +48,7 @@ export function selectPhotosToCull(
 
   const work: string[] = [];
   const diedOn: string[] = [];
-  const needsLaya = new Set<string>();
+  const toAsk = new Set<string>();
   for (const key of keys) {
     const stamp = stamps.get(key);
     const stale =
@@ -56,10 +56,10 @@ export function selectPhotosToCull(
       stamp.pipelineSettingVersion !== ctx.pipeline.version ||
       !sameIds(stamp.stageVersionIds, currentIds);
     if (!stale && !needsAnswers(key)) continue;
-    if (needsAnswers(key)) needsLaya.add(key);
+    if (needsAnswers(key)) toAsk.add(key);
     (asksLast(stamp?.pendingReason) ? diedOn : work).push(key);
   }
-  return { keys: [...work, ...diedOn], needsAnswers: needsLaya };
+  return { keys: [...work, ...diedOn], needsAnswers: toAsk };
 }
 
 function selectAllPhotosToCull(db: Db, keys: readonly string[], doneByRuns: ReadonlySet<number>): SelectPhotosToCullResult {

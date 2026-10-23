@@ -1,6 +1,6 @@
 /**
  * Adding a model to this app: what the source is, what the model is called, and the conversion job
- * (`laya_model_install`) that runs `scripts/laya/export_onnx.py` through `uv`.
+ * (`app_model_install`) that runs `scripts/app-models/export_onnx.py` through `uv`.
  *
  * A model being converted is its job; an installed one is its directory (`files.ts`). The script writes
  * under a dot directory and renames it when every check has passed, so a failed or cancelled conversion
@@ -13,7 +13,7 @@ import type { Db } from '../db/connection.js';
 import { createJob, getActiveJobs, type JobRow } from '../db/jobs/jobs.js';
 import { installedModels } from './files.js';
 
-export const LAYA_INSTALL_JOB_TYPE = 'laya_model_install';
+export const APP_MODEL_INSTALL_JOB_TYPE = 'app_model_install';
 
 /** A source that is neither a folder nor a Hugging Face id, or one already converting (HTTP 400 / 409). */
 export class AppModelSourceError extends Error {
@@ -32,8 +32,6 @@ export type ModelSource =
 const HUGGING_FACE_ID = /^[A-Za-z0-9][\w.-]*\/[\w.-]+(@[\w./-]+)?$/;
 /** Checkpoint folder names that say nothing about the model: the parent's name goes before them. */
 const GENERIC_FOLDER = /^(best|last|latest|final|model|checkpoint([-_]\d+)?)$/i;
-/** The glossary's name for `thaitea/laya-vision`. */
-const LAYA_BASE_ID = 'thaitea/laya-vision';
 
 /** Finder's "Copy as Pathname" wraps paths with spaces in single quotes. */
 function unquote(raw: string): string {
@@ -67,7 +65,7 @@ export function modelNameFor(src: ModelSource, taken: ReadonlySet<string>): stri
   let name: string;
   if (src.kind === 'hugging_face') {
     const repo = src.source.split('@')[0]!;
-    name = repo.toLowerCase() === LAYA_BASE_ID ? 'laya-base' : slug(repo.split('/')[1]!);
+    name = slug(repo.split('/')[1]!);
   } else {
     const leaf = basename(src.source);
     name = slug(GENERIC_FOLDER.test(leaf) ? `${basename(dirname(src.source))}-${leaf}` : leaf);
@@ -93,7 +91,7 @@ export interface InstallJobMetadata {
 
 function installJobs(activeJobs: readonly JobRow[]): (JobRow & { metadata: Partial<InstallJobMetadata> })[] {
   return activeJobs
-    .filter((j) => j.type === LAYA_INSTALL_JOB_TYPE)
+    .filter((j) => j.type === APP_MODEL_INSTALL_JOB_TYPE)
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
@@ -134,5 +132,5 @@ export function addAppModel(jobsDb: Db, modelsDir: string, raw: string): { name:
   if (existsSync(modelsDir)) for (const d of readdirSync(modelsDir)) taken.add(d.replace(/^\.install-/, ''));
   const name = modelNameFor(src, taken);
   const metadata: InstallJobMetadata = { source: src.source, name };
-  return { name, job_id: createJob(jobsDb, LAYA_INSTALL_JOB_TYPE, metadata) };
+  return { name, job_id: createJob(jobsDb, APP_MODEL_INSTALL_JOB_TYPE, metadata) };
 }

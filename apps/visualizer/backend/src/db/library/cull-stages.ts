@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import type { StageModelIds } from '../../cull/stage-models.js';
 import type { CullVerdict, ResolvedStage, StageAnswers, StageKind } from '../../cull/types.js';
-import type { LayaQuestion } from '../../laya/rows.js';
+import type { SystemOneQuestion } from '../../systemone/question.js';
 import { canonicalJson } from '../../utils/canonical-json.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import type { Db } from '../connection.js';
@@ -17,7 +17,7 @@ export interface StageVersionSpec {
   profileSlug: string | null;
   levelSet: string | null;
   modelId: string;
-  questions: Record<string, LayaQuestion>;
+  questions: Record<string, SystemOneQuestion>;
 }
 
 /** The model and exactly what it is asked: a change to either is a new version. */

@@ -11,7 +11,7 @@ const ROW: CullReviewRow = {
   date_taken: '2026-09-11',
   filtered_by: 'culling_profile',
   score_forecast_p8: 0.05,
-  profile: { slug: 'recipe-culling', name: 'Recipe culling', level_sets: [] },
+  profile: { slug: 'default', name: 'Default culling profile', level_sets: [] },
   completion: 'none',
   needs_send_work: true,
   thumbnail_url: '/thumb.jpg',
@@ -27,7 +27,7 @@ describe('CullReviewTab', () => {
       last_checked_at: null,
     })
     vi.spyOn(CullAPI, 'listPhotos').mockResolvedValue({ data: [ROW], total: 1, limit: 50, offset: 0 })
-    const ok = { on: true, problem: null, model: 'laya-base', endpoint: 'this_app', job_id: null, detail: null }
+    const ok = { on: true, problem: null, model: 'culling-model', endpoint: 'this_app', job_id: null, detail: null }
     vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue({ culling_profile: ok, score_forecast: ok, culling_profile_filter: true })
   })
 

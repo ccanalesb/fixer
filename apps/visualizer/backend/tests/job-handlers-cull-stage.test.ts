@@ -2,11 +2,11 @@
  * In-job cull step before kimi: describe, score, and analyze handlers.
  */
 import {
-  getKimiJobLaya,
+  getKimiJobModels,
   prepareKimiJobCull,
-  resetKimiJobLaya,
+  resetKimiJobModels,
   writeKimiJobConfig,
-} from './helpers/kimi-job-laya.js';
+} from './helpers/kimi-job-models.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,8 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { LibraryFixture } from './helpers/library-fixture.js';
-import { writeFakePhoto } from './helpers/fake-laya.js';
-import { closeAppModels } from '../src/laya/app-models.js';
+import { writeFakePhoto } from './helpers/fake-app-models.js';
+import { closeAppModels } from '../src/app-models/app-models.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
 import { openLibraryDb } from '../src/db/connection.js';
@@ -24,7 +24,7 @@ import { tick } from '../src/jobs/processor.js';
 import { fingerprintBatchScore } from '../src/jobs/checkpoint.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { saveProfileDefinition, getCullProfile } from '../src/db/library/cull-profiles.js';
-import { LAYA_SETUP_COMMAND } from '../src/laya/files.js';
+import { APP_MODEL_SETUP_COMMAND } from '../src/app-models/files.js';
 
 const RUBRIC = 'RUBRIC-SENTINEL';
 
@@ -50,10 +50,10 @@ const completion = (content: string) => ({
   body: { choices: [{ message: { content } }] },
 });
 
-const laya = () => getKimiJobLaya();
+const fakeModels = () => getKimiJobModels();
 
 function pushKimi(kind: 'describe' | 'score', key: string): void {
-  laya().sequence.push(`kimi:${kind}:${key}`);
+  fakeModels().sequence.push(`kimi:${kind}:${key}`);
 }
 
 function startServer(): Promise<void> {
@@ -125,7 +125,7 @@ async function seedCullPhoto(key: string, script: Script): Promise<void> {
   const path = join(dir, 'vision', `${key}.jpg`);
   await writeFakePhoto(path, key);
   fx.addImage({ key, filepath: `/missing/${key}.NEF`, date_taken: '2024-01-01' }).addVisionCache(key, path);
-  laya().scripts.set(key, script);
+  fakeModels().scripts.set(key, script);
 }
 
 async function seedVoidBlack(key: string): Promise<void> {
@@ -154,9 +154,9 @@ async function seedHeldBackQuartet(): Promise<void> {
   fx.addFrameSubstance('void', 'void');
 }
 
-function lastLayaBeforeFirstKimi(): boolean {
-  const seq = laya().sequence;
-  const li = seq.reduce((best, s, i) => (s.startsWith('laya:') ? i : best), -1);
+function lastModelCallBeforeFirstKimi(): boolean {
+  const seq = fakeModels().sequence;
+  const li = seq.reduce((best, s, i) => (s.startsWith('model:') ? i : best), -1);
   const ki = seq.findIndex((s) => s.startsWith('kimi:'));
   return li >= 0 && ki >= 0 && li < ki;
 }
@@ -171,7 +171,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cull-stage-'));
   jobsDbPath = join(dir, 'visualizer.db');
   fx = new LibraryFixture().cullingStagesOn().addForecastQuestions().activate();
-  resetKimiJobLaya();
+  resetKimiJobModels();
   onRequest = null;
   describeReply = completion(JSON.stringify({ summary: 'A scene', subjects: ['x'] }));
   scoreReply = completion(JSON.stringify({ perspective_slug: 'street', score: 7, rationale: 'ok' }));
@@ -209,8 +209,8 @@ describe('in-job cull step (batch_describe)', () => {
     });
     const described = fx.query<{ image_key: string }>('SELECT image_key FROM image_descriptions').map((x) => x.image_key);
     expect(described).toEqual(['pass']);
-    expect(laya().calls.some((c) => c.file.includes('/void.jpg'))).toBe(false);
-    expect(laya().sequence.some((s) => s.startsWith('kimi:describe:void'))).toBe(false);
+    expect(fakeModels().calls.some((c) => c.file.includes('/void.jpg'))).toBe(false);
+    expect(fakeModels().sequence.some((s) => s.startsWith('kimi:describe:void'))).toBe(false);
   });
 });
 
@@ -247,24 +247,24 @@ describe('in-job cull step (batch_analyze)', () => {
   });
 });
 
-describe('laya before kimi ordering', () => {
-  it('batch_describe finishes every laya call before the first kimi call', async () => {
+describe('culling before kimi ordering', () => {
+  it('batch_describe finishes every fakeModels call before the first kimi call', async () => {
     await seedHeldBackQuartet();
     await runJob('batch_describe', { max_workers: 1 });
-    expect(lastLayaBeforeFirstKimi()).toBe(true);
+    expect(lastModelCallBeforeFirstKimi()).toBe(true);
   });
 
-  it('batch_score finishes every laya call before the first kimi call', async () => {
+  it('batch_score finishes every fakeModels call before the first kimi call', async () => {
     await seedCullPhoto('pass', PASS);
     markDescribed('pass');
     await runJob('batch_score', { max_workers: 1, perspective_slugs: ['street'] });
-    expect(lastLayaBeforeFirstKimi()).toBe(true);
+    expect(lastModelCallBeforeFirstKimi()).toBe(true);
   });
 
-  it('batch_analyze finishes every laya call before the first kimi call', async () => {
+  it('batch_analyze finishes every fakeModels call before the first kimi call', async () => {
     await seedHeldBackQuartet();
     await runJob('batch_analyze', { max_workers: 1 });
-    expect(lastLayaBeforeFirstKimi()).toBe(true);
+    expect(lastModelCallBeforeFirstKimi()).toBe(true);
   });
 });
 
@@ -312,10 +312,10 @@ describe('sent by hand across stage versions', () => {
     recordCullUserAction(lib, 'hand', 'sent_by_hand');
     lib.close();
     await runJob('batch_score', { max_workers: 1, perspective_slugs: ['street'] });
-    laya().calls.length = 0;
+    fakeModels().calls.length = 0;
     const db = openLibraryDb(fx.dbPath);
-    const def = getCullProfile(db, 'recipe-culling')!.definition;
-    saveProfileDefinition(db, 'recipe-culling', def);
+    const def = getCullProfile(db, 'default')!.definition;
+    saveProfileDefinition(db, 'default', def);
     db.close();
     const job = await runJob('batch_score', { force: true, max_workers: 1, perspective_slugs: ['street'] });
     expect(job.status).toBe('completed');
@@ -326,20 +326,20 @@ describe('sent by hand across stage versions', () => {
 });
 
 describe('no re-cull when verdicts are current', () => {
-  it('second batch_score does not start Laya', async () => {
+  it('second batch_score does not start the models', async () => {
     await seedCullPhoto('pass', PASS);
     markDescribed('pass');
     await runJob('batch_score', { max_workers: 1, perspective_slugs: ['street'] });
-    laya().calls.length = 0;
-    laya().starts = 0;
+    fakeModels().calls.length = 0;
+    fakeModels().starts = 0;
     await runJob('batch_score', { max_workers: 1, perspective_slugs: ['street'] });
-    expect(laya().calls.length).toBe(0);
-    expect(laya().starts).toBe(0);
+    expect(fakeModels().calls.length).toBe(0);
+    expect(fakeModels().starts).toBe(0);
   });
 });
 
 describe('batch_analyze force_cull', () => {
-  it('asks Laya again on photos already culled and described, but not on those sent by hand', async () => {
+  it('asks the models again on photos already culled and described, but not on those sent by hand', async () => {
     await seedCullPhoto('pass', PASS);
     await seedCullPhoto('hand', PROFILE_CUT);
     const lib = openLibraryDb(fx.dbPath);
@@ -348,14 +348,14 @@ describe('batch_analyze force_cull', () => {
     await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('passed');
 
-    laya().scripts.set('pass', PROFILE_CUT);
-    laya().calls.length = 0;
+    fakeModels().scripts.set('pass', PROFILE_CUT);
+    fakeModels().calls.length = 0;
     await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
-    expect(laya().calls).toHaveLength(0);
+    expect(fakeModels().calls).toHaveLength(0);
 
     const job = await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'], force_cull: true });
     expect(job.status).toBe('completed');
-    expect([...new Set(laya().calls.map((c) => c.file.split('/').at(-1)))]).toEqual(['pass.jpg']);
+    expect([...new Set(fakeModels().calls.map((c) => c.file.split('/').at(-1)))]).toEqual(['pass.jpg']);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('filtered');
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('passed');
   });
@@ -367,9 +367,9 @@ describe('culling stage setup failures fail the job', () => {
     rmSync(modelsDir, { recursive: true, force: true });
     const job = await runJob('batch_describe', { max_workers: 1 });
     expect(job.status).toBe('failed');
-    expect(job.error).toContain(LAYA_SETUP_COMMAND);
+    expect(job.error).toContain(APP_MODEL_SETUP_COMMAND);
     expect(job.error_severity).toBe('warning');
-    expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
+    expect(fakeModels().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
   });
 
   it('batch_score fails with warning when models are missing', async () => {
@@ -379,15 +379,15 @@ describe('culling stage setup failures fail the job', () => {
     const job = await runJob('batch_score', { max_workers: 1, perspective_slugs: ['street'] });
     expect(job.status).toBe('failed');
     expect(job.error_severity).toBe('warning');
-    expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
+    expect(fakeModels().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
   });
 
   it('start check failure fails describe with no provider call', async () => {
     await seedCullPhoto('pass', PASS);
-    laya().startError = new Error('start failed');
+    fakeModels().startError = new Error('start failed');
     const job = await runJob('batch_describe', { max_workers: 1 });
     expect(job.status).toBe('failed');
-    expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
+    expect(fakeModels().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
   });
 });
 
@@ -395,14 +395,14 @@ describe('per-photo model failure', () => {
   it('stays pending, held back, retried on the next job', async () => {
     await seedCullPhoto('pass', PASS);
     await seedCullPhoto('bad', PASS);
-    laya().failOn = 'bad';
+    fakeModels().failOn = 'bad';
     const job = await runJob('batch_describe', { max_workers: 1 });
     expect((job.result as JobCullResult).held_back?.pending).toBe(1);
-    expect(laya().sequence.some((s) => s.startsWith('kimi:describe:bad'))).toBe(false);
-    laya().failOn = null;
-    laya().calls.length = 0;
+    expect(fakeModels().sequence.some((s) => s.startsWith('kimi:describe:bad'))).toBe(false);
+    fakeModels().failOn = null;
+    fakeModels().calls.length = 0;
     await runJob('batch_describe', { max_workers: 1 });
-    expect(laya().calls.some((c) => c.file.includes('/bad.jpg'))).toBe(true);
+    expect(fakeModels().calls.some((c) => c.file.includes('/bad.jpg'))).toBe(true);
   });
 });
 
@@ -413,7 +413,7 @@ describe('G3 void without cache', () => {
     expect(job.status).toBe('completed');
     expect(fx.query('SELECT image_key FROM image_descriptions')).toEqual([]);
     expect((job.result as JobCullResult).held_back?.void).toBe(1);
-    expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
+    expect(fakeModels().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
   });
 
   it('unknown with no image is not re-detected on a second describe job', async () => {
@@ -458,11 +458,11 @@ describe('cancel during cull step', () => {
     await withJobsDb(async (db) => {
       const jobId = createJob(db, 'batch_describe', { max_workers: 1 });
       const runner = new JobRunner(db);
-      laya().cancelAfter = () => runner.signalCancel(jobId);
+      fakeModels().cancelAfter = () => runner.signalCancel(jobId);
       await tick(db, runner);
       const job = getJob(db, jobId)!;
       expect(job.status).toBe('cancelled');
-      expect(laya().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
+      expect(fakeModels().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
       expect((job.metadata.checkpoint as Record<string, unknown> | null)?.['cull']).toBeTruthy();
     });
   });
