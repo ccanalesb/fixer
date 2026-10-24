@@ -28,14 +28,16 @@ jobs:
             id: macos-arm64
             hide_git: false
 
-    env:
-      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
-      HF_HOME: ${{ runner.temp }}/hf-home
-      SPIKE_OUT_DIR: ${{ runner.temp }}/spike-model-out
-      SPIKE_LOG_DIR: ${{ runner.temp }}/spike-logs
-
     steps:
       - uses: actions/checkout@v4
+
+      - name: Spike paths (runner temp)
+        shell: bash
+        run: |
+          echo "UV_CACHE_DIR=${RUNNER_TEMP}/uv-cache" >> "$GITHUB_ENV"
+          echo "HF_HOME=${RUNNER_TEMP}/hf-home" >> "$GITHUB_ENV"
+          echo "SPIKE_OUT_DIR=${RUNNER_TEMP}/spike-model-out" >> "$GITHUB_ENV"
+          echo "SPIKE_LOG_DIR=${RUNNER_TEMP}/spike-logs" >> "$GITHUB_ENV"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -168,10 +170,10 @@ jobs:
         with:
           name: spike-405-${{ matrix.id }}-logs
           path: |
-            ${{ env.SPIKE_LOG_DIR }}/spike-${{ matrix.id }}-summary.json
-            ${{ env.SPIKE_LOG_DIR }}/uv-resolve.log
-            ${{ env.SPIKE_LOG_DIR }}/convert.log
-            ${{ env.SPIKE_LOG_DIR }}/timing.env
-            ${{ env.SPIKE_LOG_DIR }}/uv-cache-*.txt
-            ${{ env.SPIKE_LOG_DIR }}/hf-cache-*.txt
+            ${{ runner.temp }}/spike-logs/spike-${{ matrix.id }}-summary.json
+            ${{ runner.temp }}/spike-logs/uv-resolve.log
+            ${{ runner.temp }}/spike-logs/convert.log
+            ${{ runner.temp }}/spike-logs/timing.env
+            ${{ runner.temp }}/spike-logs/uv-cache-*.txt
+            ${{ runner.temp }}/spike-logs/hf-cache-*.txt
           retention-days: 14
