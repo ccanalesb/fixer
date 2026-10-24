@@ -1,0 +1,56 @@
+{
+  "name": "lt-electron-native-spike",
+  "private": true,
+  "version": "0.0.0-spike",
+  "description": "Throwaway Electron 45 spike for issue #401 — not shipped",
+  "main": "main.mjs",
+  "type": "module",
+  "scripts": {
+    "prepare-backend": "node scripts/prepare-backend.mjs",
+    "prebuild": "npm run prepare-backend",
+    "prepack:dir": "npm run prepare-backend",
+    "start": "electron .",
+    "start:headless": "SPIKE_HEADLESS=1 electron .",
+    "pack:dir": "electron-builder --dir",
+    "pack": "electron-builder",
+    "smoke:packaged": "node scripts/run-packaged-smoke.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.lightroomtagger.spike.electron",
+    "productName": "LT Electron Spike",
+    "directories": {
+      "output": "out"
+    },
+    "files": [
+      "main.mjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend-pack",
+        "to": "backend",
+        "filter": ["**/*", "!node_modules", "!node_modules/**"]
+      },
+      {
+        "from": "backend-pack/node_modules",
+        "to": "backend/node_modules"
+      }
+    ],
+    "asar": true,
+    "mac": {
+      "target": ["dir"],
+      "identity": null
+    },
+    "win": {
+      "target": ["dir"]
+    },
+    "linux": {
+      "target": ["dir"],
+      "category": "Utility"
+    }
+  }
+}
