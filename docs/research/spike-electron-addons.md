@@ -4,61 +4,71 @@ Research date: **2026-10-24**. Throwaway harness: `spike/electron/` on branch `s
 
 ## TL;DR
 
-**Confirmed on macOS arm64 (local, dir-packaged app):** the compiled visualizer backend starts in a **child of Electron 45** (`ELECTRON_RUN_AS_NODE=1` on the app binary, cwd = `Resources/backend`), serves **`GET /api/status`**, and **sharp**, **better-sqlite3 + sqlite-vec**, and **onnxruntime-node** all pass an in-process smoke test **without `@electron/rebuild`**.
+**Confirmed on all three targets (packaged dir builds):** the compiled visualizer backend starts in a **child of Electron 45.0.0** (`ELECTRON_RUN_AS_NODE=1`, cwd = `Resources/backend`), serves **`GET /api/status`**, and **sharp**, **better-sqlite3 + sqlite-vec**, and **onnxruntime-node** pass an in-process smoke test **without `@electron/rebuild`**.
 
-**Also confirmed on macOS arm64:** the same backend starts via **`utilityProcess.fork`** (Electron’s utility process API) with identical native results.
+**Also confirmed on macOS arm64 (local):** the same backend starts via **`utilityProcess.fork`** with identical native results.
 
-**Packaging gotcha:** electron-builder **strips `node_modules` from a single `extraResources` tree**; a **second** `extraResources` entry copying `backend-pack/node_modules` → `Resources/backend/node_modules` is required (N-API `.node` files and ORT/sharp libs must live on disk under `Resources/`, not inside `app.asar`).
+**Packaging gotcha:** electron-builder **drops `node_modules` from a single `extraResources` tree**; a **second** `extraResources` entry must copy `backend-pack/node_modules` → `Resources/backend/node_modules`.
 
-**Linux / Windows:** CI workflow `.github/workflows/spike-electron-addons.yml` runs on push to `spike/electron-addons` only — see per-platform table below (filled from CI artifacts).
+**Linux CI:** packaged app launch requires **`--no-sandbox`** (GitHub Actions cannot configure setuid `chrome-sandbox`); sharp still runs in the **backend child**, not the Chromium UI process — this spike does **not** reproduce electron#46323 (glib in the **same** process as Electron’s UI).
 
-**Process model recommendation for #382:** prefer **`ELECTRON_RUN_AS_NODE` child** or **`utilityProcess`** hosting **`dist/src/server.js`** with backend deps in **`Resources/backend/`**; temp user data via env (`DATABASE_PATH`, `LIBRARY_DB`, `LT_CONFIG_YAML`, etc.). Linux sharp-in-**Electron-main** glib issue (#46323) was **not** retested here because sharp runs in the **Node child**, not the browser/main process.
+**Process model for #382:** `ELECTRON_RUN_AS_NODE` child or `utilityProcess` + backend in `Resources/backend/`; user data only via env overrides (`DATABASE_PATH`, `LIBRARY_DB`, `LT_CONFIG_YAML`, …).
 
 ---
 
 ## Per-platform results
 
+CI: workflow run [40107875409](https://github.com/ccanalesb/lightroom-tagger/actions/runs/40107875409) on branch `spike/electron-addons`.
+
 | Addon / check | macOS arm64 | Windows x64 | Linux x64 |
 |---------------|-------------|-------------|-----------|
-| Backend HTTP `/api/status` | **Pass** (packaged + unpachaged) | _CI_ | _CI_ |
-| **sharp** resize | **Pass** | _CI_ | _CI_ |
-| **better-sqlite3** + **sqlite-vec** KNN | **Pass** | _CI_ | _CI_ |
-| **onnxruntime-node** (CPU, tiny Identity ONNX) | **Pass** | _CI_ | _CI_ |
-| Notes | No `@electron/rebuild`; Node **24.22** / Electron **45.0.0** | | Linux: sharp in **child** process (not renderer) |
+| Backend HTTP `/api/status` | **Pass** | **Pass** | **Pass** |
+| **sharp** resize | **Pass** | **Pass** | **Pass** |
+| **better-sqlite3** + **sqlite-vec** KNN | **Pass** | **Pass** | **Pass** |
+| **onnxruntime-node** (CPU, tiny Identity ONNX) | **Pass** | **Pass** | **Pass** |
+| `@electron/rebuild` | Not used | Not used | Not used |
+| Spawn mode in CI/local packaged smoke | `ELECTRON_RUN_AS_NODE` | same | same (+ `--no-sandbox` for app launch) |
+| `utilityProcess.fork` | **Pass** (macOS local only) | Not tested in CI | Not tested in CI |
 
-_Update this table from `spike-result-*.json` CI artifacts after workflow completes._
+### macOS arm64 (local packaged `.app`)
 
-### macOS arm64 (local)
+- Electron **45.0.0**, Node **24.22.0**
+- Dir package **~798 MB** (`du -sh out/mac-arm64/*.app`)
 
-| Check | Result |
-|-------|--------|
-| `ELECTRON_RUN_AS_NODE` | Pass |
-| `utilityProcess.fork` | Pass |
-| Rebuild | Not required (stock npm prebuilds) |
+### Windows x64 (CI)
+
+- Dir package **~859 MB** (`out/win-unpacked`)
+- Artifact: `spike-result-windows.json` from workflow
+
+### Linux x64 (CI, Ubuntu 24.04 + xvfb)
+
+- Dir package **~1.1 GB** (`out/linux-unpacked`)
+- Artifact: `spike-result-linux.json` from workflow
+- **Headless launch:** `ELECTRON_DISABLE_SANDBOX` + `--no-sandbox` (see `scripts/run-packaged-smoke.mjs`)
 
 ---
 
 ## Process models tried
 
-| Model | macOS arm64 packaged | Notes |
-|-------|----------------------|-------|
-| **`spawn(execPath, [spike-entry.mjs], { env: { ELECTRON_RUN_AS_NODE: '1' }, cwd: Resources/backend })`** | **Pass** | Matches research doc “reuse one binary”; native modules resolve from `Resources/backend/node_modules`. |
-| **`utilityProcess.fork(spike-entry.mjs, { cwd: Resources/backend })`** | **Pass** | No `ELECTRON_RUN_AS_NODE` in child; same native smoke + server. |
-| Backend inside `app.asar` | **Not used** | Backend + natives live in **`extraResources`**, not ASAR. |
+| Model | Result | Notes |
+|-------|--------|-------|
+| **`spawn(appBinary, [spike-entry.mjs], { ELECTRON_RUN_AS_NODE: '1', cwd: Resources/backend })`** | **Pass** (all platforms) | Primary CI path; stock npm N-API prebuilds load under Electron’s Node 24.22. |
+| **`utilityProcess.fork(spike-entry.mjs, { cwd: Resources/backend })`** | **Pass** (macOS local) | Same smoke + server; child is not `ELECTRON_RUN_AS_NODE`. |
+| Natives inside `app.asar` | **Avoided** | Backend + `node_modules` live under **`Resources/backend/`** (outside ASAR). |
 
-Child entry: `Resources/backend/spike-entry.mjs` → `native-smoke.mjs` → dynamic import `dist/src/server.js`.
+Child flow: `spike-entry.mjs` → `native-smoke.mjs` → `import('dist/src/server.js')`.
 
 ---
 
-## Package size (dir target, includes full backend `node_modules`)
+## Package size (dir target, full backend `node_modules`)
 
-| Platform | Size (approx.) |
-|----------|----------------|
-| macOS arm64 `.app` | **~798 MB** (`du -sh out/mac-arm64/*.app`) |
-| Windows x64 | _CI `spike-win-size.txt`_ |
-| Linux x64 | _CI `spike-linux-size.txt`_ |
+| Platform | Size |
+|----------|------|
+| macOS arm64 | **~798 MB** |
+| Windows x64 | **~859 MB** |
+| Linux x64 | **~1.1 GB** |
 
-Dominant weight: **onnxruntime-node**, **@img/sharp-libvips**, **@huggingface/transformers** transitive tree — spike ships the **entire** backend production `node_modules`, not a pruned subset.
+Weight is dominated by **onnxruntime-node**, **@img/sharp-libvips**, and the rest of the backend dependency tree (spike does not prune).
 
 ---
 
@@ -68,7 +78,7 @@ From `spike/electron/package.json` `build` section (abridged):
 
 ```json
 {
-  "electron": "45.0.0",
+  "devDependencies": { "electron": "45.0.0" },
   "build": {
     "files": ["main.mjs", "package.json"],
     "extraResources": [
@@ -82,26 +92,23 @@ From `spike/electron/package.json` `build` section (abridged):
         "to": "backend/node_modules"
       }
     ],
-    "asar": true
+    "asar": true,
+    "win": { "target": ["dir"], "executableName": "LTElectronSpike" },
+    "linux": { "target": ["dir"], "executableName": "lt-electron-spike" }
   }
 }
 ```
 
-Prepare step (`npm run prepare-backend`): `npm ci` + `npm run build` in `apps/visualizer/backend`, copy `dist/`, `node_modules/`, `providers.json`, `fixtures/tiny.onnx`, `spike-entry.mjs`, `native-smoke.mjs` into `backend-pack/`.
-
-**Not needed for this spike:** `asarUnpack` on the main app ASAR (natives are outside ASAR in `Resources/backend/`). A production app might still want unpack globs if any native deps are linked from the main process.
+Prepare: `npm run prepare-backend` → `npm ci` + `npm run build` in `apps/visualizer/backend`, copy `dist/`, `node_modules/`, smoke scripts, `fixtures/tiny.onnx`, `providers.json`.
 
 ---
 
 ## Smoke harness
 
-- **Health:** poll `http://127.0.0.1:<ephemeral>/api/status` until `{ "status": "ok" }`.
-- **Data dir:** temp only (`DATABASE_PATH`, `LIBRARY_DB`, `LT_CONFIG_YAML`, `THUMBNAIL_DIR`); never repo-root `library.db` / `config.yaml`.
-- **Port:** ephemeral (never 5001).
-- **Native smoke:** 8×8 PNG → sharp 4×4; in-memory `vec0` KNN; ORT Identity on `fixtures/tiny.onnx` (73 bytes, generated once via Python `onnx` helper).
-- **Headless exit:** `SPIKE_HEADLESS=1`; JSON written to `SPIKE_OUTPUT_JSON` or temp `final-spike-result.json`; process exit 0/1.
-
-Run locally after pack:
+- Poll `GET /api/status` on an ephemeral port (never 5001).
+- Temp data dir only for `DATABASE_PATH`, `LIBRARY_DB`, `LT_CONFIG_YAML`, `THUMBNAIL_DIR`.
+- Native smoke: sharp 8→4 resize; in-memory `vec0` KNN; ORT Identity on 73-byte `fixtures/tiny.onnx`.
+- Exit code 0/1; JSON at `SPIKE_OUTPUT_JSON` or logged `SPIKE_RESULT_JSON=…`.
 
 ```bash
 cd spike/electron && npm ci && npm run pack:dir && SPIKE_HEADLESS=1 npm run smoke:packaged
@@ -109,20 +116,20 @@ cd spike/electron && npm ci && npm run pack:dir && SPIKE_HEADLESS=1 npm run smok
 
 ---
 
-## Open problems / follow-ups for implementation
+## Open problems / follow-ups
 
-1. **Prune backend dependencies** for desktop (CLIP/Laya paths not exercised in spike) — size likely still dominated by ORT + sharp.
-2. **`@electron/rebuild` policy:** spike did not need rebuild on macOS arm64; **Windows/Linux CI must confirm** N-API prebuilds under `ELECTRON_RUN_AS_NODE`.
-3. **Linux sharp vs Electron glib (#46323):** spike runs sharp in the **backend child** only; still validate on Ubuntu CI and on distros where users run the full UI in-process with any sharp usage in **Electron** process.
-4. **Laya `worker_threads` + ORT inside worker** — not exercised (only main-thread ORT smoke).
-5. **`--env-file-if-exists` via `utilityProcess` `execArgv`** — not tested; spike uses explicit env vars from the main process.
-6. **electron-builder `node_modules` copy** — production pipeline should document the **two-step `extraResources`** pattern or an `afterPack` copy so natives are never silently dropped.
-7. **Compiled server path** is `dist/src/server.js` (backend `tsc` `rootDir: "."`).
+1. **Dependency pruning** for shipping size (ORT + sharp + transformers dominate).
+2. **Laya `worker_threads` + ORT in worker** — not exercised in this spike.
+3. **Linux sharp vs Electron glib (#46323)** — only avoided by process separation; not tested with sharp in Electron **main** process on Linux.
+4. **`utilityProcess` on Windows/Linux** — works on macOS; not re-run in CI.
+5. **`--env-file-if-exists` via `utilityProcess.execArgv`** — not tested; spike passes env from main.
+6. **Linux desktop installs** — real users need working sandbox or documented `--no-sandbox` policy (distinct from CI).
+7. Server entry path: **`dist/src/server.js`** (backend `tsc` layout).
 
 ---
 
 ## References
 
-- Prior research: [electron-native-addons.md](electron-native-addons.md) (branch `research/electron-native-addons`)
+- Prior research: [electron-native-addons.md](https://github.com/ccanalesb/lightroom-tagger/blob/research/electron-native-addons/docs/research/electron-native-addons.md)
 - Harness: `spike/electron/`
-- CI: `.github/workflows/spike-electron-addons.yml` (branch `spike/electron-addons` only)
+- CI: `.github/workflows/spike-electron-addons.yml` (push to `spike/electron-addons` only)
