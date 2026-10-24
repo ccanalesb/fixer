@@ -260,8 +260,7 @@ pub fn run() {
                 let backend_root = backend_resources_path(&handle)?;
                 let data_dir = tempfile::tempdir()
                     .map_err(|e| e.to_string())?
-                    .keep()
-                    .map_err(|e| e.to_string())?;
+                    .keep();
                 write_minimal_config(&data_dir)?;
                 let port = pick_port()?;
 
