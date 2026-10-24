@@ -7,7 +7,7 @@ on:
       - spike/convert-win-linux
 
 concurrency:
-  group: spike-convert-win-linux
+  group: spike/convert-win-linux
   cancel-in-progress: false
 
 jobs:
@@ -20,6 +20,9 @@ jobs:
         include:
           - runner: ubuntu-latest
             id: linux
+            hide_git: false
+          - runner: ubuntu-latest
+            id: linux-no-git
             hide_git: true
           - runner: windows-latest
             id: windows
@@ -31,38 +34,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Spike paths (runner temp)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+
+      - name: Spike paths (runner temp; override setup-uv cache dir)
         shell: bash
         run: |
           echo "UV_CACHE_DIR=${RUNNER_TEMP}/uv-cache" >> "$GITHUB_ENV"
           echo "HF_HOME=${RUNNER_TEMP}/hf-home" >> "$GITHUB_ENV"
           echo "SPIKE_OUT_DIR=${RUNNER_TEMP}/spike-model-out" >> "$GITHUB_ENV"
           echo "SPIKE_LOG_DIR=${RUNNER_TEMP}/spike-logs" >> "$GITHUB_ENV"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: false
+          echo "PYTHONUTF8=1" >> "$GITHUB_ENV"
+          echo "PYTHONIOENCODING=utf-8" >> "$GITHUB_ENV"
 
       - name: Prepare log dir
         shell: bash
-        run: mkdir -p "$SPIKE_LOG_DIR"
+        run: mkdir -p "$SPIKE_LOG_DIR" "$UV_CACHE_DIR" "$HF_HOME"
 
-      - name: Hide git from PATH (prove archive dep needs no git)
+      - name: Hide git from PATH (archive dep must not need git)
+        if: matrix.hide_git
+        shell: bash
+        run: |
+          echo "PATH=/usr/local/bin:/bin" >> "$GITHUB_ENV"
+          echo "Stripped PATH for later steps (git lives under /usr/bin on Ubuntu)." | tee "$SPIKE_LOG_DIR/git-hidden.txt"
+
+      - name: Verify git absent
         if: matrix.hide_git
         shell: bash
         run: |
           set -euo pipefail
           if command -v git >/dev/null 2>&1; then
-            echo "git was on PATH: $(command -v git)"
-          fi
-          # Minimal PATH without /usr/bin (where git lives on Ubuntu runners).
-          echo "PATH=/usr/local/bin:/bin" >> "$GITHUB_ENV"
-          if command -v git >/dev/null 2>&1; then
-            echo "git still reachable after PATH strip" >&2
+            echo "git still on PATH: $(command -v git)" >&2
             exit 1
           fi
-          echo "git not on PATH (ok)" | tee "$SPIKE_LOG_DIR/git-hidden.txt"
+          echo "git not on PATH (ok)"
 
       - name: Record uv version
         shell: bash
@@ -77,6 +84,10 @@ jobs:
           UV_LOG=info uv run scripts/app-models/export_onnx.py --help 2>&1 | tee "$SPIKE_LOG_DIR/uv-resolve.log"
           END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "resolve_end=$END" >> "$SPIKE_LOG_DIR/timing.env"
+          if grep -qi 'git+https' "$SPIKE_LOG_DIR/uv-resolve.log"; then
+            echo "uv resolve log mentions git+https (unexpected)" >&2
+            exit 1
+          fi
 
       - name: Cache sizes after resolve
         shell: bash
@@ -132,15 +143,14 @@ jobs:
                       k, v = line.split("=", 1)
                       timing[k] = v
           convert_log = (log / "convert.log").read_text(errors="replace") if (log / "convert.log").exists() else ""
-          peak = None
-          for pat in (
-              r"Maximum resident set size \(kbytes\):\s*(\d+)",
-              r"\s+(\d+)\s+maximum resident set size",
-          ):
-              m = re.search(pat, convert_log)
+          peak_kib = None
+          m = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", convert_log)
+          if m:
+              peak_kib = int(m.group(1))
+          else:
+              m = re.search(r"\s+(\d+)\s+maximum resident set size", convert_log)
               if m:
-                  peak = int(m.group(1))
-                  break
+                  peak_kib = int(int(m.group(1)) / 1024)  # macOS /usr/bin/time -l uses bytes
           def du_file(name):
               p = log / name
               return p.read_text().strip() if p.exists() else ""
@@ -150,7 +160,7 @@ jobs:
               "hide_git": os.environ["HIDE_GIT"] == "true",
               "outcome": os.environ["JOB_STATUS"],
               "timing": timing,
-              "peak_rss_kib": peak,
+              "peak_rss_kib": peak_kib,
               "uv_cache_after_resolve": du_file("uv-cache-after-resolve.txt"),
               "hf_cache_after_resolve": du_file("hf-cache-after-resolve.txt"),
               "uv_cache_after_convert": du_file("uv-cache-after-convert.txt"),
@@ -176,4 +186,5 @@ jobs:
             ${{ runner.temp }}/spike-logs/timing.env
             ${{ runner.temp }}/spike-logs/uv-cache-*.txt
             ${{ runner.temp }}/spike-logs/hf-cache-*.txt
+            ${{ runner.temp }}/spike-logs/git-hidden.txt
           retention-days: 14
