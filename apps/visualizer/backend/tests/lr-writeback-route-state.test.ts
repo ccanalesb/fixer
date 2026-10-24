@@ -444,6 +444,17 @@ describe('switch job stars state', () => {
     expect(stateOf(starsKey, 'reject')).toBe('written');
   });
 
+  it('the photo detail says a void frame gets no stars, and gives the count again once overridden', async () => {
+    const line = async () =>
+      ((await (await app.request(`/api/cull/lightroom-writeback/photos/${starsKey}`)).json()) as {
+        strong_dimensions_line: string | null;
+      }).strong_dimensions_line;
+    fx.addFrameSubstance(starsKey, 'void');
+    expect(await line()).toBe('No stars: void frame');
+    fx.addFrameSubstanceOverride(starsKey);
+    expect(await line()).toBe('Strong dimensions (Default culling profile): 1 strong → ★');
+  });
+
   it('leaves a void frame the user overrode as any other photo', async () => {
     fx.addFrameSubstance(starsKey, 'void').addFrameSubstanceOverride(starsKey);
     const db = openLibraryDb(fx.dbPath);

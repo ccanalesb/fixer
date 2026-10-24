@@ -3,6 +3,7 @@ import { resolveCurrentStages } from '../cull/stages.js';
 import type { Db } from '../db/connection.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
+import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
 import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
 import { getWritebackState } from '../db/library/lr-writeback-state.js';
 import { resolveStarsProfileSlug, type LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
@@ -36,7 +37,9 @@ export function buildWritebackPhotoDetail(
   }
 
   let strongLine: string | null = null;
-  if (starsSlug) {
+  if (starsSlug && isFrameSubstanceVoid(db, imageKey)) {
+    strongLine = 'No stars: void frame';
+  } else if (starsSlug) {
     const profile = getCullProfile(db, starsSlug);
     if (profile) {
       const modelIds = readStoredStageModelIds(db);
