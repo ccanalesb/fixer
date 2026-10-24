@@ -46,11 +46,13 @@
       "identity": null
     },
     "win": {
-      "target": ["dir"]
+      "target": ["dir"],
+      "executableName": "LTElectronSpike"
     },
     "linux": {
       "target": ["dir"],
-      "category": "Utility"
+      "category": "Utility",
+      "executableName": "lt-electron-spike"
     }
   }
 }

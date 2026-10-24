@@ -13,9 +13,14 @@ const BACKEND = join(REPO_ROOT, 'apps', 'visualizer', 'backend');
 const OUT = join(SPIKE_ROOT, 'backend-pack');
 
 function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', ...opts });
+  const r = spawnSync(cmd, args, {
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    ...opts,
+  });
   if (r.status !== 0) {
-    process.stderr.write(`prepare-backend: ${cmd} ${args.join(' ')} failed\n`);
+    process.stderr.write(`prepare-backend: ${cmd} ${args.join(' ')} failed (status ${r.status})\n`);
+    if (r.error) process.stderr.write(String(r.error) + '\n');
     process.exit(r.status ?? 1);
   }
 }
