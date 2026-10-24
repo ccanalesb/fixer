@@ -27,6 +27,7 @@
     },
     "files": [
       "main.mjs",
+      "systemone-smoke.mjs",
       "package.json"
     ],
     "extraResources": [

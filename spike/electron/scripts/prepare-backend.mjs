@@ -41,9 +41,13 @@ cpSync(join(BACKEND, 'node_modules'), join(OUT, 'node_modules'), { recursive: tr
 cpSync(join(BACKEND, 'package.json'), join(OUT, 'package.json'));
 
 const fixtures = join(SPIKE_ROOT, 'fixtures');
+mkdirSync(join(OUT, 'fixtures'), { recursive: true });
 if (existsSync(join(fixtures, 'tiny.onnx'))) {
-  mkdirSync(join(OUT, 'fixtures'), { recursive: true });
   cpSync(join(fixtures, 'tiny.onnx'), join(OUT, 'fixtures', 'tiny.onnx'));
+}
+const factoryQuestions = join(BACKEND, 'src', 'app-models', 'factory-questions.json');
+if (existsSync(factoryQuestions)) {
+  cpSync(factoryQuestions, join(OUT, 'fixtures', 'factory-questions.json'));
 }
 
 const example = readFileSync(join(BACKEND, 'providers.example.json'), 'utf8');

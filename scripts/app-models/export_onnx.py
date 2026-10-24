@@ -9,7 +9,7 @@
 #   "onnxruntime==1.31.0",
 #   "numpy==2.5.3",
 #   "pillow==12.3.0",
-#   "laya @ git+https://github.com/r33drichards/laya-vision@568feeeada793f70f736756b0f3a7643d1e75910",
+#   "laya @ https://github.com/r33drichards/laya-vision/archive/568feeeada793f70f736756b0f3a7643d1e75910.tar.gz",
 # ]
 # ///
 """Convert one Laya-family model to ONNX (fp32) for this app's System One endpoint.

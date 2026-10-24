@@ -8,6 +8,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runSystemOneSmoke } from './systemone-smoke.mjs';
 
 const HEADLESS = process.env.SPIKE_HEADLESS === '1' || !process.stdout.isTTY;
 const SPAWN_PREF = process.env.SPIKE_SPAWN_MODE ?? 'electron-run-as-node';
@@ -58,9 +59,10 @@ function waitForHttp(url, timeoutMs) {
   });
 }
 
-function writeMinimalConfig(dir) {
+function writeMinimalConfig(dir, appModelsDir) {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'config.yaml'), 'workers: 1\napp_models_dir: fixtures\n', 'utf8');
+  const modelsLine = appModelsDir ? `app_models_dir: ${JSON.stringify(appModelsDir)}\n` : '';
+  writeFileSync(join(dir, 'config.yaml'), `workers: 1\n${modelsLine}`, 'utf8');
 }
 
 /**
@@ -133,8 +135,12 @@ function killChild(handle) {
 
 async function runSpike() {
   const backendRoot = backendResourcesPath();
+  const appModelsDir = process.env.SPIKE_APP_MODELS_DIR?.trim() || '';
+  if (!appModelsDir) {
+    throw new Error('SPIKE_APP_MODELS_DIR is required (absolute path to converted laya-base parent dir)');
+  }
   const dataDir = mkdtempSync(join(tmpdir(), 'lt-spike-data-'));
-  writeMinimalConfig(dataDir);
+  writeMinimalConfig(dataDir, appModelsDir);
 
   const port = await pickPort();
   const resultPath = join(dataDir, 'spike-result.json');
@@ -190,6 +196,23 @@ async function runSpike() {
   }
 
   const nativeOk = smokeOnDisk.ok === true;
+
+  const backendPid =
+    'pid' in spawned.child && typeof spawned.child.pid === 'number' ? spawned.child.pid : undefined;
+
+  let systemOne = { ok: false, error: 'not run' };
+  try {
+    systemOne = await runSystemOneSmoke({
+      port,
+      backendRoot,
+      modelsDir: appModelsDir,
+      modelName: process.env.SPIKE_MODEL_NAME ?? 'laya-base',
+      backendPid,
+    });
+  } catch (e) {
+    systemOne = { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
   const result = {
     platform: process.platform,
     arch: process.arch,
@@ -200,10 +223,12 @@ async function runSpike() {
     utilityProcessNote,
     backendRoot,
     dataDir,
+    appModelsDir,
     port,
     httpStatus: statusBody,
     nativeSmoke: smokeOnDisk,
-    ok: statusBody?.status === 'ok' && nativeOk,
+    systemOne,
+    ok: statusBody?.status === 'ok' && nativeOk && systemOne.ok === true,
   };
 
   const outPath = process.env.SPIKE_OUTPUT_JSON ?? join(dataDir, 'final-spike-result.json');

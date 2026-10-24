@@ -1,0 +1,104 @@
+# Spike for issue #410 — throwaway branch only. Never merge.
+name: Spike electron worker models (410)
+
+on:
+  push:
+    branches:
+      - spike/electron-worker-models
+
+concurrency:
+  group: spike/electron-worker-models
+  cancel-in-progress: false
+
+jobs:
+  spike:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            id: linux
+            smoke_cmd: xvfb-run -a npm run smoke:packaged
+          - runner: windows-2022
+            id: windows
+            smoke_cmd: npm run smoke:packaged
+          - runner: macos-latest
+            id: macos-arm64
+            smoke_cmd: npm run smoke:packaged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+
+      - name: Spike paths (runner temp only; ADR-0020)
+        shell: bash
+        run: |
+          echo "UV_CACHE_DIR=${RUNNER_TEMP}/uv-cache" >> "$GITHUB_ENV"
+          echo "HF_HOME=${RUNNER_TEMP}/hf-home" >> "$GITHUB_ENV"
+          echo "SPIKE_OUT_DIR=${RUNNER_TEMP}/spike-model-out" >> "$GITHUB_ENV"
+          echo "SPIKE_LOG_DIR=${RUNNER_TEMP}/spike-logs" >> "$GITHUB_ENV"
+          echo "PYTHONUTF8=1" >> "$GITHUB_ENV"
+          echo "PYTHONIOENCODING=utf-8" >> "$GITHUB_ENV"
+
+      - name: Prepare log dir
+        shell: bash
+        run: mkdir -p "$SPIKE_LOG_DIR" "$UV_CACHE_DIR" "$HF_HOME" "$SPIKE_OUT_DIR"
+
+      - name: Convert thaitea/laya-vision → laya-base
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONV_START=$(date +%s)
+          if [ "${{ matrix.runner }}" = "ubuntu-24.04" ]; then
+            /usr/bin/time -v uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
+          elif [ "${{ matrix.runner }}" = "macos-latest" ]; then
+            /usr/bin/time -l uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
+          else
+            uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
+          fi
+          CONV_END=$(date +%s)
+          echo "convert_wall_seconds=$((CONV_END - CONV_START))" >> "$SPIKE_LOG_DIR/timing.env"
+          test -d "$SPIKE_OUT_DIR/laya-base"
+
+      - name: Install spike deps and pack
+        working-directory: spike/electron
+        shell: bash
+        run: |
+          npm ci
+          npm run pack:dir
+
+      - name: Run packaged System One smoke
+        working-directory: spike/electron
+        shell: bash
+        env:
+          SPIKE_APP_MODELS_DIR: ${{ runner.temp }}/spike-model-out
+          SPIKE_OUTPUT_JSON: ${{ github.workspace }}/spike-result-${{ matrix.id }}.json
+        run: ${{ matrix.smoke_cmd }}
+
+      - name: Package size
+        working-directory: spike/electron
+        shell: bash
+        run: |
+          if [ "${{ matrix.runner }}" = "ubuntu-24.04" ]; then du -sh out/linux-unpacked | tee spike-size.txt;
+          elif [ "${{ matrix.runner }}" = "macos-latest" ]; then du -sh out/mac-arm64/*.app | tee spike-size.txt;
+          else du -sh out/win-unpacked | tee spike-size.txt; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-410-${{ matrix.id }}-logs
+          path: |
+            spike-result-${{ matrix.id }}.json
+            spike/electron/spike-size.txt
+            ${{ runner.temp }}/spike-logs/timing.env
+            ${{ runner.temp }}/spike-logs/convert.log
+          retention-days: 14
