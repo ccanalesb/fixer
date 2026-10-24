@@ -74,8 +74,18 @@ if (!bin || !existsSync(bin)) {
   process.exit(1);
 }
 
-const r = spawnSync(bin, [], {
-  env: { ...process.env, SPIKE_HEADLESS: '1', ELECTRON_ENABLE_LOGGING: '1' },
+const args =
+  process.platform === 'linux'
+    ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu-sandbox']
+    : [];
+
+const r = spawnSync(bin, args, {
+  env: {
+    ...process.env,
+    SPIKE_HEADLESS: '1',
+    ELECTRON_ENABLE_LOGGING: '1',
+    ...(process.platform === 'linux' ? { ELECTRON_DISABLE_SANDBOX: '1' } : {}),
+  },
   stdio: 'inherit',
 });
 process.exit(r.status ?? 1);
