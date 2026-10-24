@@ -1,6 +1,7 @@
 import type { Db } from '../db/connection.js';
 import { getWritebackState, type LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
 import type { CullVerdictRow } from '../db/library/cull-verdicts.js';
+import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
 import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import {
   AUTO_REJECT_KEYWORD,
@@ -34,7 +35,7 @@ export function planRejectPhoto(
   tally: ReconcileRunTally,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
   const row = getWritebackState(db, imageKey, 'reject');
-  const want = desiredReject(settings, verdict);
+  const want = desiredReject(settings, verdict, isFrameSubstanceVoid(db, imageKey));
 
   if (conn && live === null) {
     return notFoundState(imageKey, 'reject', row, tally);

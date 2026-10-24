@@ -432,6 +432,46 @@ describe('switch job stars state', () => {
     expect(starsRow()).toMatchObject({ status: 'skipped', before_rating: null });
   });
 
+  it('takes back its stars from a void frame and rejects it', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    expect(liveOf('star-photo').rating).toBe(1);
+    fx.addFrameSubstance(starsKey, 'void');
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo')).toMatchObject({ pick: -1, rating: null });
+    expect(stateOf(starsKey, 'reject')).toBe('written');
+  });
+
+  it('leaves a void frame the user overrode as any other photo', async () => {
+    fx.addFrameSubstance(starsKey, 'void').addFrameSubstanceOverride(starsKey);
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo')).toMatchObject({ pick: 0, rating: 1 });
+  });
+
+  it('never rejects a void frame sent by hand', async () => {
+    fx.addFrameSubstance(starsKey, 'void');
+    fx.exec('UPDATE cull_verdicts SET sent_by_hand = 1 WHERE image_key = ?', starsKey);
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo')).toMatchObject({ pick: 0, rating: null });
+  });
+
+  it('keeps stars and no reject on an illegible frame: it still has a subject to judge', async () => {
+    fx.addFrameSubstance(starsKey, 'illegible');
+    const db = openLibraryDb(fx.dbPath);
+    await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
+    db.close();
+
+    expect(liveOf('star-photo')).toMatchObject({ pick: 0, rating: 1 });
+  });
+
   it('takes back its own stars from a row marked skipped, and undo then clears them', async () => {
     const conn = connectCatalog(lrcatPath);
     writeStarsToCatalog(conn, starsKey, 1);

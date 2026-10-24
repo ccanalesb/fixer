@@ -794,10 +794,10 @@ export const LR_WRITEBACK_SECTION_LEAD =
   'What culling writes back to your Lightroom catalog. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'
 export const LR_WRITEBACK_STARS_SWITCH = 'Write stars to Lightroom'
 export const LR_WRITEBACK_STARS_HELP =
-  "Stars from the culling profile's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos with no rating; photos you rated are never touched. Marked with the keyword lrt-auto-stars."
+  "Stars from the culling profile's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos with no rating; photos you rated are never touched. Void frames get none. Marked with the keyword lrt-auto-stars."
 export const LR_WRITEBACK_REJECT_SWITCH = 'Write the reject flag to Lightroom'
 export const LR_WRITEBACK_REJECT_HELP =
-  'Photos the culling profile filtered get the reject flag, only when they have no flag; flags you set are never touched. Photos filtered by the Score forecast are not flagged. Marked with the keyword lrt-auto-reject.'
+  'Photos the culling profile filtered, and void frames, get the reject flag, only when they have no flag; flags you set are never touched. Photos filtered by the Score forecast are not flagged. Marked with the keyword lrt-auto-reject.'
 export const LR_WRITEBACK_STARS_PROFILE = 'Culling profile for stars'
 export const LR_WRITEBACK_STATUS_TITLE = 'Lightroom write-back'
 export const LR_WRITEBACK_STATUS_HELP =

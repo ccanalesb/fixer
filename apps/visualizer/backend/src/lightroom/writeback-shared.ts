@@ -5,6 +5,7 @@ import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getCullVerdict, listDecidedCullImageKeys, type CullVerdictRow } from '../db/library/cull-verdicts.js';
 import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
 import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import type { Db } from '../db/connection.js';
@@ -67,11 +68,15 @@ export function userChangedAfterWrite(kind: WritebackKind, live: LivePickRating,
   return !liveMatchesWritten(kind, live, row);
 }
 
-/** Reject when the culling profile's rule says filtered, whatever decided the photo. */
-export function desiredReject(settings: LrWritebackSettings, verdict: CullVerdictRow | null): boolean {
+/** Reject when the culling profile's rule says filtered, whatever decided the photo, or the frame is void. */
+export function desiredReject(
+  settings: LrWritebackSettings,
+  verdict: CullVerdictRow | null,
+  voidFrame: boolean,
+): boolean {
   if (!settings.write_reject || !verdict) return false;
   if (verdict.sent_by_hand) return false;
-  return verdict.culling_profile_verdict === 'filtered';
+  return verdict.culling_profile_verdict === 'filtered' || voidFrame;
 }
 
 function stagesForStarsProfile(db: Db, starsSlug: string) {
@@ -90,6 +95,7 @@ export function desiredStarsRating(
 ): number | null {
   if (!settings.write_stars || !starsSlug) return null;
   if (!getCurrentPipelineSetting(db).config.culling_profiles_enabled) return null;
+  if (isFrameSubstanceVoid(db, imageKey)) return null;
   const profile = getCullProfile(db, starsSlug);
   if (!profile) return null;
   const stages = stagesForStarsProfile(db, starsSlug);

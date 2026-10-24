@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { isFrameSubstanceVoid } from '../src/db/library/frame-substance.js';
 import { cullPhoto } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import type { StageAnswerer } from '../src/cull/stage-models.js';
@@ -75,7 +76,7 @@ async function cull(imageKey: string, answerer: StageAnswerer, change?: (cfg: Pi
 }
 
 const settings = () => getLrWritebackSettings(db);
-const reject = (key: string) => desiredReject(settings(), getCullVerdict(db, key));
+const reject = (key: string) => desiredReject(settings(), getCullVerdict(db, key), isFrameSubstanceVoid(db, key));
 const stars = (key: string) => desiredStarsRating(db, settings(), key, 'default');
 
 describe('Lightroom write-back under the switches', () => {
