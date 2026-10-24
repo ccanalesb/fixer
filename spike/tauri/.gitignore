@@ -1,0 +1,6 @@
+node_modules/
+dist/
+backend-pack/
+src-tauri/binaries/
+src-tauri/target/
+src-tauri/gen/
