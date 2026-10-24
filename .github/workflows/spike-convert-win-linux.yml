@@ -1,0 +1,177 @@
+# Spike for issue #405 — throwaway branch only. Never merge.
+name: Spike convert win/linux (405)
+
+on:
+  push:
+    branches:
+      - spike/convert-win-linux
+
+concurrency:
+  group: spike-convert-win-linux
+  cancel-in-progress: false
+
+jobs:
+  convert:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            id: linux
+            hide_git: true
+          - runner: windows-latest
+            id: windows
+            hide_git: false
+          - runner: macos-latest
+            id: macos-arm64
+            hide_git: false
+
+    env:
+      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+      HF_HOME: ${{ runner.temp }}/hf-home
+      SPIKE_OUT_DIR: ${{ runner.temp }}/spike-model-out
+      SPIKE_LOG_DIR: ${{ runner.temp }}/spike-logs
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+
+      - name: Prepare log dir
+        shell: bash
+        run: mkdir -p "$SPIKE_LOG_DIR"
+
+      - name: Hide git from PATH (prove archive dep needs no git)
+        if: matrix.hide_git
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v git >/dev/null 2>&1; then
+            echo "git was on PATH: $(command -v git)"
+          fi
+          # Minimal PATH without /usr/bin (where git lives on Ubuntu runners).
+          echo "PATH=/usr/local/bin:/bin" >> "$GITHUB_ENV"
+          if command -v git >/dev/null 2>&1; then
+            echo "git still reachable after PATH strip" >&2
+            exit 1
+          fi
+          echo "git not on PATH (ok)" | tee "$SPIKE_LOG_DIR/git-hidden.txt"
+
+      - name: Record uv version
+        shell: bash
+        run: uv --version | tee "$SPIKE_LOG_DIR/uv-version.txt"
+
+      - name: Resolve script env (verbose)
+        shell: bash
+        run: |
+          set -euo pipefail
+          START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "resolve_start=$START" >> "$SPIKE_LOG_DIR/timing.env"
+          UV_LOG=info uv run scripts/app-models/export_onnx.py --help 2>&1 | tee "$SPIKE_LOG_DIR/uv-resolve.log"
+          END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "resolve_end=$END" >> "$SPIKE_LOG_DIR/timing.env"
+
+      - name: Cache sizes after resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          du -sh "$UV_CACHE_DIR" 2>/dev/null | tee "$SPIKE_LOG_DIR/uv-cache-after-resolve.txt" || echo "0 uv-cache" | tee "$SPIKE_LOG_DIR/uv-cache-after-resolve.txt"
+          du -sh "$HF_HOME" 2>/dev/null | tee "$SPIKE_LOG_DIR/hf-cache-after-resolve.txt" || echo "0 hf-cache" | tee "$SPIKE_LOG_DIR/hf-cache-after-resolve.txt"
+
+      - name: Convert thaitea/laya-vision (parity included)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SPIKE_OUT_DIR"
+          CONV_START=$(date +%s)
+          echo "convert_start_epoch=$CONV_START" >> "$SPIKE_LOG_DIR/timing.env"
+          if [ "${{ matrix.runner }}" = "ubuntu-latest" ]; then
+            /usr/bin/time -v uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
+          elif [ "${{ matrix.runner }}" = "macos-latest" ]; then
+            /usr/bin/time -l uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
+          else
+            uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
+          fi
+          CONV_END=$(date +%s)
+          echo "convert_end_epoch=$CONV_END" >> "$SPIKE_LOG_DIR/timing.env"
+          echo "convert_wall_seconds=$((CONV_END - CONV_START))" >> "$SPIKE_LOG_DIR/timing.env"
+
+      - name: Cache sizes after conversion
+        shell: bash
+        run: |
+          set -euo pipefail
+          du -sh "$UV_CACHE_DIR" | tee "$SPIKE_LOG_DIR/uv-cache-after-convert.txt"
+          du -sh "$HF_HOME" | tee "$SPIKE_LOG_DIR/hf-cache-after-convert.txt"
+          du -sh "$SPIKE_OUT_DIR" | tee "$SPIKE_LOG_DIR/local-out-size.txt"
+
+      - name: Summarize spike metrics (text only)
+        if: always()
+        shell: bash
+        env:
+          MATRIX_ID: ${{ matrix.id }}
+          MATRIX_RUNNER: ${{ matrix.runner }}
+          HIDE_GIT: ${{ matrix.hide_git }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          python3 << 'PY'
+          import json, os, re, pathlib
+          log = pathlib.Path(os.environ["SPIKE_LOG_DIR"])
+          timing = {}
+          te = log / "timing.env"
+          if te.exists():
+              for line in te.read_text().splitlines():
+                  if "=" in line:
+                      k, v = line.split("=", 1)
+                      timing[k] = v
+          convert_log = (log / "convert.log").read_text(errors="replace") if (log / "convert.log").exists() else ""
+          peak = None
+          for pat in (
+              r"Maximum resident set size \(kbytes\):\s*(\d+)",
+              r"\s+(\d+)\s+maximum resident set size",
+          ):
+              m = re.search(pat, convert_log)
+              if m:
+                  peak = int(m.group(1))
+                  break
+          def du_file(name):
+              p = log / name
+              return p.read_text().strip() if p.exists() else ""
+          summary = {
+              "platform": os.environ["MATRIX_ID"],
+              "runner": os.environ["MATRIX_RUNNER"],
+              "hide_git": os.environ["HIDE_GIT"] == "true",
+              "outcome": os.environ["JOB_STATUS"],
+              "timing": timing,
+              "peak_rss_kib": peak,
+              "uv_cache_after_resolve": du_file("uv-cache-after-resolve.txt"),
+              "hf_cache_after_resolve": du_file("hf-cache-after-resolve.txt"),
+              "uv_cache_after_convert": du_file("uv-cache-after-convert.txt"),
+              "hf_cache_after_convert": du_file("hf-cache-after-convert.txt"),
+              "local_out_size": du_file("local-out-size.txt"),
+              "done_line": next((ln for ln in convert_log.splitlines() if ln.startswith("done:")), None),
+              "error_line": next((ln for ln in convert_log.splitlines() if ln.startswith("error:")), None),
+          }
+          out = log / f"spike-{os.environ['MATRIX_ID']}-summary.json"
+          out.write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Upload spike summary only (ADR-0020)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spike-405-${{ matrix.id }}-logs
+          path: |
+            ${{ env.SPIKE_LOG_DIR }}/spike-${{ matrix.id }}-summary.json
+            ${{ env.SPIKE_LOG_DIR }}/uv-resolve.log
+            ${{ env.SPIKE_LOG_DIR }}/convert.log
+            ${{ env.SPIKE_LOG_DIR }}/timing.env
+            ${{ env.SPIKE_LOG_DIR }}/uv-cache-*.txt
+            ${{ env.SPIKE_LOG_DIR }}/hf-cache-*.txt
+          retention-days: 14
