@@ -53,24 +53,6 @@ jobs:
         shell: bash
         run: mkdir -p "$SPIKE_LOG_DIR" "$UV_CACHE_DIR" "$HF_HOME"
 
-      - name: Hide git from PATH (archive dep must not need git)
-        if: matrix.hide_git
-        shell: bash
-        run: |
-          echo "PATH=/usr/local/bin:/bin" >> "$GITHUB_ENV"
-          echo "Stripped PATH for later steps (git lives under /usr/bin on Ubuntu)." | tee "$SPIKE_LOG_DIR/git-hidden.txt"
-
-      - name: Verify git absent
-        if: matrix.hide_git
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v git >/dev/null 2>&1; then
-            echo "git still on PATH: $(command -v git)" >&2
-            exit 1
-          fi
-          echo "git not on PATH (ok)"
-
       - name: Record uv version
         shell: bash
         run: uv --version | tee "$SPIKE_LOG_DIR/uv-version.txt"
@@ -79,6 +61,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ "${{ matrix.hide_git }}" = "true" ]; then
+            export PATH="${HOME}/.local/bin:/usr/local/bin"
+            if command -v git >/dev/null 2>&1; then
+              echo "git still on PATH during resolve: $(command -v git)" >&2
+              exit 1
+            fi
+            echo "git not on PATH during resolve (ok)" | tee "$SPIKE_LOG_DIR/git-hidden.txt"
+          fi
           START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "resolve_start=$START" >> "$SPIKE_LOG_DIR/timing.env"
           UV_LOG=info uv run scripts/app-models/export_onnx.py --help 2>&1 | tee "$SPIKE_LOG_DIR/uv-resolve.log"
@@ -100,6 +90,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ "${{ matrix.hide_git }}" = "true" ]; then
+            export PATH="${HOME}/.local/bin:/usr/local/bin"
+            if command -v git >/dev/null 2>&1; then
+              echo "git still on PATH during convert: $(command -v git)" >&2
+              exit 1
+            fi
+          fi
           mkdir -p "$SPIKE_OUT_DIR"
           CONV_START=$(date +%s)
           echo "convert_start_epoch=$CONV_START" >> "$SPIKE_LOG_DIR/timing.env"
