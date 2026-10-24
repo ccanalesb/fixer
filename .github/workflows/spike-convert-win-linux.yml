@@ -55,7 +55,9 @@ jobs:
 
       - name: Record uv version
         shell: bash
-        run: uv --version | tee "$SPIKE_LOG_DIR/uv-version.txt"
+        run: |
+          echo "UV_EXECUTABLE=$(command -v uv)" >> "$GITHUB_ENV"
+          uv --version | tee "$SPIKE_LOG_DIR/uv-version.txt"
 
       - name: Resolve script env (verbose)
         shell: bash
@@ -63,12 +65,13 @@ jobs:
           set -euo pipefail
           uv_no_git() {
             if [ "${{ matrix.hide_git }}" = "true" ]; then
-              if PATH="${HOME}/.local/bin:/usr/local/bin" command -v git >/dev/null 2>&1; then
+              UV_DIR="$(dirname "$UV_EXECUTABLE")"
+              if PATH="${UV_DIR}:/usr/local/bin" command -v git >/dev/null 2>&1; then
                 echo "git still on PATH during uv (resolve)" >&2
                 exit 1
               fi
               echo "git not on PATH during uv resolve (ok)" >> "$SPIKE_LOG_DIR/git-hidden.txt"
-              PATH="${HOME}/.local/bin:/usr/local/bin" UV_LOG=info uv run "$@"
+              PATH="${UV_DIR}:/usr/local/bin" UV_LOG=info uv run "$@"
             else
               UV_LOG=info uv run "$@"
             fi
@@ -96,12 +99,13 @@ jobs:
           set -euo pipefail
           uv_no_git() {
             if [ "${{ matrix.hide_git }}" = "true" ]; then
-              if PATH="${HOME}/.local/bin:/usr/local/bin" command -v git >/dev/null 2>&1; then
+              UV_DIR="$(dirname "$UV_EXECUTABLE")"
+              if PATH="${UV_DIR}:/usr/local/bin" command -v git >/dev/null 2>&1; then
                 echo "git still on PATH during uv (convert)" >&2
                 exit 1
               fi
               echo "git not on PATH during uv convert (ok)" >> "$SPIKE_LOG_DIR/git-hidden.txt"
-              PATH="${HOME}/.local/bin:/usr/local/bin" uv run "$@"
+              PATH="${UV_DIR}:/usr/local/bin" uv run "$@"
             else
               uv run "$@"
             fi
