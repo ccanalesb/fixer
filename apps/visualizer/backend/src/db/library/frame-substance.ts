@@ -167,6 +167,11 @@ export function isFrameSubstanceFlagged(db: Db, imageKey: string): boolean {
   return !hasFrameSubstanceOverride(db, imageKey);
 }
 
+/** A void verdict with no user override: nothing in the frame for a model to judge. */
+export function isFrameSubstanceVoid(db: Db, imageKey: string): boolean {
+  return getFrameSubstanceVerdict(db, imageKey)?.verdict === 'void' && !hasFrameSubstanceOverride(db, imageKey);
+}
+
 type StalenessVerdict = Pick<FrameSubstanceRow, 'verdict' | 'unknown_reason' | 'judged_at'>;
 type StalenessCache = { compressed_path: string | null; compressed_at: string | null };
 
