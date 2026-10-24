@@ -22,11 +22,8 @@ function findMacApp() {
 }
 
 function findLinuxBin() {
-  const dir = join(OUT, 'appimage');
-  if (existsSync(dir)) {
-    const appimage = readdirSync(dir).find((n) => n.endsWith('.AppImage'));
-    if (appimage) return join(dir, appimage);
-  }
+  const raw = join(SPIKE, 'src-tauri', 'target', 'release', 'lt-tauri-spike');
+  if (existsSync(raw)) return raw;
   const deb = join(OUT, 'deb');
   if (existsSync(deb)) {
     for (const pkg of readdirSync(deb)) {
@@ -37,12 +34,12 @@ function findLinuxBin() {
       }
     }
   }
-  const raw = join(SPIKE, 'src-tauri', 'target', 'release', 'lt-tauri-spike');
-  if (existsSync(raw)) return raw;
   return null;
 }
 
 function findWinExe() {
+  const raw = join(SPIKE, 'src-tauri', 'target', 'release', 'lt-tauri-spike.exe');
+  if (existsSync(raw)) return raw;
   const msi = join(OUT, 'msi');
   if (existsSync(msi)) {
     for (const sub of readdirSync(msi)) {
@@ -50,13 +47,6 @@ function findWinExe() {
       if (existsSync(exe)) return exe;
     }
   }
-  const nsis = join(OUT, 'nsis');
-  if (existsSync(nsis)) {
-    const exe = readdirSync(nsis).find((n) => n.endsWith('-setup.exe'));
-    if (exe) return join(nsis, exe);
-  }
-  const raw = join(SPIKE, 'src-tauri', 'target', 'release', 'lt-tauri-spike.exe');
-  if (existsSync(raw)) return raw;
   return null;
 }
 
