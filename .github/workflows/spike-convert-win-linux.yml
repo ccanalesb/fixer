@@ -61,17 +61,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ matrix.hide_git }}" = "true" ]; then
-            export PATH="${HOME}/.local/bin:/usr/local/bin"
-            if command -v git >/dev/null 2>&1; then
-              echo "git still on PATH during resolve: $(command -v git)" >&2
-              exit 1
+          uv_no_git() {
+            if [ "${{ matrix.hide_git }}" = "true" ]; then
+              if PATH="${HOME}/.local/bin:/usr/local/bin" command -v git >/dev/null 2>&1; then
+                echo "git still on PATH during uv (resolve)" >&2
+                exit 1
+              fi
+              echo "git not on PATH during uv resolve (ok)" >> "$SPIKE_LOG_DIR/git-hidden.txt"
+              PATH="${HOME}/.local/bin:/usr/local/bin" UV_LOG=info uv run "$@"
+            else
+              UV_LOG=info uv run "$@"
             fi
-            echo "git not on PATH during resolve (ok)" | tee "$SPIKE_LOG_DIR/git-hidden.txt"
-          fi
+          }
           START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "resolve_start=$START" >> "$SPIKE_LOG_DIR/timing.env"
-          UV_LOG=info uv run scripts/app-models/export_onnx.py --help 2>&1 | tee "$SPIKE_LOG_DIR/uv-resolve.log"
+          uv_no_git scripts/app-models/export_onnx.py --help 2>&1 | tee "$SPIKE_LOG_DIR/uv-resolve.log"
           END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "resolve_end=$END" >> "$SPIKE_LOG_DIR/timing.env"
           if grep -qi 'git+https' "$SPIKE_LOG_DIR/uv-resolve.log"; then
@@ -90,18 +94,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ matrix.hide_git }}" = "true" ]; then
-            export PATH="${HOME}/.local/bin:/usr/local/bin"
-            if command -v git >/dev/null 2>&1; then
-              echo "git still on PATH during convert: $(command -v git)" >&2
-              exit 1
+          uv_no_git() {
+            if [ "${{ matrix.hide_git }}" = "true" ]; then
+              if PATH="${HOME}/.local/bin:/usr/local/bin" command -v git >/dev/null 2>&1; then
+                echo "git still on PATH during uv (convert)" >&2
+                exit 1
+              fi
+              echo "git not on PATH during uv convert (ok)" >> "$SPIKE_LOG_DIR/git-hidden.txt"
+              PATH="${HOME}/.local/bin:/usr/local/bin" uv run "$@"
+            else
+              uv run "$@"
             fi
-          fi
+          }
           mkdir -p "$SPIKE_OUT_DIR"
           CONV_START=$(date +%s)
           echo "convert_start_epoch=$CONV_START" >> "$SPIKE_LOG_DIR/timing.env"
-          if [ "${{ matrix.runner }}" = "ubuntu-latest" ]; then
+          if [ "${{ matrix.runner }}" = "ubuntu-latest" ] && [ "${{ matrix.hide_git }}" = "false" ]; then
             /usr/bin/time -v uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
+          elif [ "${{ matrix.runner }}" = "ubuntu-latest" ]; then
+            uv_no_git scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
           elif [ "${{ matrix.runner }}" = "macos-latest" ]; then
             /usr/bin/time -l uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR" 2>&1 | tee "$SPIKE_LOG_DIR/convert.log"
           else
