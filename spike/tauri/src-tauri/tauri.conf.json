@@ -11,15 +11,7 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "LT Tauri Spike",
-        "width": 1280,
-        "height": 800,
-        "visible": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'self' http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://127.0.0.1:* http://localhost:* ws://localhost:*; script-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*",
       "capabilities": ["default", "remote-loopback-spa"]

@@ -1,120 +1,60 @@
 # Spike: production SPA + model worker in Tauri 2 webviews (#418)
 
-Research date: **2026-10-26**. Throwaway harness extends `spike/tauri/` on branch `spike/tauri-real-spa` (not merged). Sidecar baseline: [spike-tauri-sidecar.md](spike-tauri-sidecar.md). Model worker recipe: [spike-electron-worker-models.md](spike-electron-worker-models.md) on `spike/electron-worker-models`.
+Research date: **2026-10-26** (rerun with honest render gate). Throwaway branch `spike/tauri-real-spa` (not merged). Prior notes on sidecar baseline: [spike-tauri-sidecar.md](spike-tauri-sidecar.md).
 
 ## TL;DR
 
-**Packaged Tauri 2.12** still runs the **Node 24.11 sidecar** with the real backend; this spike adds **`spike-server.mjs`** so loopback serves the **production** `apps/visualizer/frontend` build (`backend-pack/frontend-dist/`) and the window navigates to `http://127.0.0.1:<ephemeral>/` instead of the minimal Vite harness page.
+**Root cause of empty `#root` (first CI run):** `spike-server.mjs` mounted `serveStatic` with `root: frontend-dist/assets`, so `/assets/*.js` missed on disk and fell through to the SPA **`index.html` fallback** (HTTP 200, `text/html`). The module script never executed. **Fix:** `serveStatic({ root: frontendRoot })` and do not SPA-fallback `/assets/*`.
 
-**Headless smoke (all targets):** native addons, `GET /api/status`, **socket.io `connected`** from the loopback page, **`pick_catalog_path`** via `tauri-plugin-dialog` (stub path in CI with `SPIKE_DIALOG_STUB=1`), and **ONNX worker** `GET /v1/models` + `POST /v1/systemone` for CI-converted **`laya-base`** (ADR-0020 — no weights in git).
+**After fix — does the production SPA render?**
 
-**macOS arm64 (local packaged `.app`, measured):** end-to-end smoke **`ok: true`** after stripping Vite’s `crossorigin` attributes from the built `index.html` (WebKit otherwise left `#root` empty with no console errors). Automated **route / layout probes** still reported **`rootChildCount: 0`** / no nav links in the inject script — treat main-view rendering as **partially verified** (see below).
+| Webview | Renders (shell + `#root` + routes) | Evidence |
+|---------|-------------------------------------|----------|
+| **WKWebView** (macOS arm64 local packaged) | **Yes** | `mount.mounted: true`, `rootChildCount: 1`, all four routes `rendered: true`; screenshot `spike/tauri/spike-screenshot-macos.png` (local run) |
+| **WebView2** (Windows CI) | *(see latest CI artifacts)* | `spike-screenshot-windows.png`, `spike-result-windows.json` → `spa_smoke.productionSpaRendered` |
+| **WebKitGTK** (Linux CI) | *(see latest CI artifacts)* | `spike-screenshot-linux.png`, `spike-result-linux.json` |
 
-**CI:** workflow [`.github/workflows/spike-tauri-real-spa.yml`](../.github/workflows/spike-tauri-real-spa.yml) on push to `spike/tauri-real-spa` — Linux (xvfb) + Windows; macOS local only.
+**Honest `spa_smoke.ok`:** **false** when the app logs **`console.error`** (e.g. `ApiRequestError: Library database not found` without a catalog) even if the shell renders. **`productionSpaRendered`** is the render gate used in the probe.
 
----
+**`crossorigin` strip:** Playwright A/B against the same spike-server (CI artifact `playwright-mount-*.json`) compares Vite default vs stripped `index.html`. With the **asset-path fix**, both variants should mount in Chromium/WebKit; the first run’s empty `#root` was **not** fixed by strip alone — it was **wrong asset URLs**.
 
-## Per-platform results
-
-| Check | macOS arm64 (local `.app`) | Windows x64 (CI) | Linux x64 (CI) |
-|-------|---------------------------|------------------|----------------|
-| Backend `/api/status` | **Pass** | **Pass** | **Pass** |
-| Native addons (sharp / sqlite-vec / ORT) | **Pass** | **Pass** | **Pass** |
-| Packaged smoke `ok` | **Pass** | **Pass** | **Pass** |
-| Production SPA on loopback | **Partial** — socket + IPC; DOM probe empty `#root` in headless inject (all three) | **Partial** (same probe) | **Partial** (same probe) |
-| Console errors (inject harness) | **None** | **None** | **None** |
-| socket.io `connected` (loopback page) | **Pass** | **Pass** | **Pass** |
-| `tauri-plugin-dialog` → `pick_catalog_path` | **Pass** (stub path) | **Pass** (stub) | **Pass** (stub) |
-| `useCatalogPicker` fetch bridge | **Wired**; UI not clicked | same | same |
-| `POST /v1/systemone` wall | **~1.5 s** | **~4.5 s** | **~3.4 s** |
-| Live job progress in SPA | **Not exercised** — only `connected` event | same | same |
-
-Webview UA from smoke JSON: **WKWebView** (macOS local); **WebView2** Edge 131 (Windows); **WebKitGTK** 605.1.15 / Safari 605 UA (Linux).
+**System One** on Node sidecar still passes when `SPIKE_APP_MODELS_DIR` points at CI-converted `laya-base` (ADR-0020).
 
 ---
 
-## What broke and why (evidence)
+## Per-platform results (fill from CI artifact JSON)
 
-### 1. Production SPA did not mount in WebKit with stock Vite `index.html`
-
-**Symptom:** `document.title` was `Lightroom Tagger` but injected probe showed `rootChildCount: 0`, `hasHeaderH1: false`, and no `nav` links, with **empty `consoleErrors`**.
-
-**Cause (spike fix):** Vite 5 production build emitted `<script type="module" crossorigin src="...">`. Served from loopback inside WKWebView, the module did not hydrate `#root` (silent failure). **`prepare-backend.mjs` strips `crossorigin` from script/link tags** in the copied `frontend-dist/index.html`.
-
-**After fix (local):** packaged smoke **`ok: true`**, socket.io and System One pass; DOM probe still **0 children** in the automated inject (timing/isolation — see open problems).
-
-### 2. Backend did not serve the SPA (pre-spike product gap)
-
-**Symptom:** N/A in product today — dev uses Vite proxy; packaged spike needed a server.
-
-**Fix (spike-only):** `spike-server.mjs` mounts `createApp()` API routes, `/assets/*` static, and SPA fallback HTML for client routes.
-
-### 3. Tauri IPC from loopback origin
-
-**Requirement:** `app.withGlobalTauri: true`, capability `remote-loopback-spa` with `remote.urls` `http://127.0.0.1:*` / `http://localhost:*`, and permissions for `pick_catalog_path`, `report_spa_smoke`, `spike_port`.
-
-**Evidence:** `catalogDialog.ok: true` with `invoke pick_catalog_path from loopback SPA` in macOS artifact `/tmp/spike-result-macos8.json` (local run).
-
-### 4. Catalog picker vs backend macOS dialog
-
-**Product today:** `useCatalogPicker` → `ConfigAPI.pickCatalog()` → backend **AppleScript** dialog (macOS only).
-
-**Spike:** `catalog-bridge-snippet.html` patches `fetch` for POST `/api/config/catalog/pick` to **`pick_catalog_path`** (Rust + `tauri-plugin-dialog`). **Interactive** “Choose catalog…” in the UI was **not** clicked locally or in CI.
+| Check | macOS arm64 (local) | Windows x64 | Linux x64 |
+|-------|---------------------|-------------|-----------|
+| HTTP `/assets/*.js` is JavaScript | **Pass** (`text/javascript`, ~1.1 MB) | CI | CI |
+| HTTP bogus asset | **404** (not HTML) | CI | CI |
+| `productionSpaRendered` | **true** | CI | CI |
+| `spa_smoke.ok` | **false** (library API console errors) | CI | CI |
+| socket.io `connected` | **Pass** | CI | CI |
+| System One worker | **Pass** | CI | CI |
+| Screenshot artifact | local PNG path above | `spike-screenshot-windows.png` | `spike-screenshot-linux.png` |
 
 ---
 
-## Minimal config that worked
+## Harness (rerun)
 
-**Serve SPA from sidecar** — env on backend child:
-
-- `SPIKE_FRONTEND_DIST=<backend>/frontend-dist`
-- `spike-entry.mjs` → `spike-server.mjs` (not `dist/src/server.js`)
-
-**Prepare bundle** — `npm run prepare-spike` in `spike/tauri/`:
-
-- `npm ci` + build backend and frontend (`npm ci --legacy-peer-deps` for frontend)
-- Copy `frontend-dist/`, strip `crossorigin`, append catalog bridge before `</body>`
-- Copy `spike-entry.mjs`, `spike-server.mjs`, `systemone-smoke.mjs`, `run-systemone-smoke.mjs`
-
-**Tauri** — unchanged sidecar/resources pattern from #413; window **`navigate()`** to loopback after `/api/status`; inject `spa-smoke-inject.js` via `webview.eval`.
-
-**CI model** — same conversion as #410:
-
-```bash
-uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR"
-```
-
-**Headless env:** `SPIKE_DIALOG_STUB=1`, `SPIKE_APP_MODELS_DIR`, `SPIKE_OUTPUT_JSON`, `xvfb-run` on Linux.
+- **`spike-init-script.js`:** Tauri `initialization_script` — error log from navigation start; probe only on `http://127.0.0.1:<port>`; **30 s** mount poll; **`productionSpaRendered`**; invokes `report_spa_smoke`.
+- **Window:** created in Rust (`1280×800`), navigates to loopback (not the bundled Vite harness page).
+- **`http_probe`:** Rust `reqwest` documents `/`, JS, CSS, missing asset, `/images` fallback.
+- **Playwright:** `scripts/playwright-spa-mount.mjs` — crossorigin A/B vs standalone spike-server.
+- **CI run:** *(updated on push)*
 
 ---
 
-## Size / timing (local macOS, unpacked `.app`)
+## Open problems
 
-| Metric | Value |
-|--------|--------|
-| `.app` bundle (`du -sh`, after real SPA in resources) | **~621 MB** (`620.64 MiB` from `tauri build` log) |
-| System One POST wall (local, `laya-base`) | **~1.4–1.6 s** |
-| Backend RSS after inference (sidecar pid sample) | **~1.5 GB** (model worker + ORT) |
-
-Compare Electron/Tauri sidecar sizes using the same **unpacked** backend tree as #413 — this spike adds **~1.1 MB** frontend JS/CSS gzip aside from unchanged backend `node_modules`.
-
----
-
-## Open problems / follow-ups
-
-1. **Automated main-view proof** — inject probe still sees empty `#root` on macOS headless even when smoke passes; need Playwright-in-webview, longer hydration wait, or manual QA for Insights/Images/Identity/Processing.
-2. **Ship SPA from backend in product** — replace `spike-server.mjs` with a supported static mount in `server.ts` (or reverse proxy) and Vite `base` / `crossorigin` policy for WebKit.
-3. **`useCatalogPicker` product integration** — spike uses fetch patch; product should call Tauri when `window.__TAURI__` is present (and keep backend dialog for browser-only).
-4. **Job progress in SPA** — only `connected` verified; no cheap job enqueued in smoke.
-5. **Interactive native dialog** — CI uses stub path; real `.lrcat` pick not exercised on macOS locally (needs human or scripted dialog).
-6. **Linux CPU torch pin** — inherited from #405 conversion recipe in CI (not re-measured this spike).
+1. **Smoke pass criteria vs empty library** — rendering works; strict `spa_smoke.ok` fails on expected API errors until smoke seeds a minimal library or allowlists known messages.
+2. **Interactive catalog dialog** — still stubbed in CI (`SPIKE_DIALOG_STUB=1`).
+3. **Product static serving** — replace `spike-server.mjs` with supported backend static mount before ship.
 
 ---
 
 ## References
 
-- Map: issue #382 (parent session)
-- Sidecar spike: [spike-tauri-sidecar.md](spike-tauri-sidecar.md), branch `spike/tauri-sidecar`
-- Worker spike: `spike/electron-worker-models`, workflow `spike-electron-worker-models.yml`
-- ADR desktop shell: [0022-desktop-app-is-tauri-with-a-node-sidecar.md](../adr/0022-desktop-app-is-tauri-with-a-node-sidecar.md)
-- **CI run URL:** [40337493692](https://github.com/ccanalesb/lightroom-tagger/actions/runs/40337493692) (Linux ~8m49s, Windows ~16m40s, both green)
+- CI workflow: `.github/workflows/spike-tauri-real-spa.yml`
+- Worker conversion recipe: `spike/electron-worker-models` / #410

@@ -37,23 +37,33 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
-            patchelf xvfb
+            patchelf xvfb imagemagick
       - name: Build packaged spike
         working-directory: spike/tauri
         run: |
           npm ci
           npm run build:release
+      - name: Playwright mount A/B (Chromium + WebKit vs spike-server)
+        working-directory: apps/visualizer/frontend
+        run: |
+          npx playwright install chromium webkit
+          SPIKE_PLAYWRIGHT_JSON=${{ github.workspace }}/playwright-mount-linux.json \
+            node ../../spike/tauri/scripts/playwright-spa-mount.mjs
       - name: Run packaged smoke (xvfb)
         working-directory: spike/tauri
         env:
           SPIKE_APP_MODELS_DIR: ${{ runner.temp }}/spike-model-out
           SPIKE_OUTPUT_JSON: ${{ github.workspace }}/spike-result-linux.json
+          SPIKE_SCREENSHOT_PATH: ${{ github.workspace }}/spike-screenshot-linux.png
         run: xvfb-run -a npm run smoke:packaged
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: spike-418-linux
-          path: spike-result-linux.json
+          path: |
+            spike-result-linux.json
+            spike-screenshot-linux.png
+            playwright-mount-linux.json
           retention-days: 14
 
   spike-windows:
@@ -91,16 +101,27 @@ jobs:
         run: |
           npm ci
           npm run build:release
+      - name: Playwright mount A/B (Chromium + WebKit vs spike-server)
+        working-directory: apps/visualizer/frontend
+        shell: bash
+        run: |
+          npx playwright install chromium webkit
+          SPIKE_PLAYWRIGHT_JSON=${{ github.workspace }}/playwright-mount-windows.json \
+            node ../../spike/tauri/scripts/playwright-spa-mount.mjs
       - name: Run packaged smoke
         working-directory: spike/tauri
         shell: bash
         env:
           SPIKE_APP_MODELS_DIR: ${{ runner.temp }}/spike-model-out
           SPIKE_OUTPUT_JSON: ${{ github.workspace }}/spike-result-windows.json
+          SPIKE_SCREENSHOT_PATH: ${{ github.workspace }}/spike-screenshot-windows.png
         run: npm run smoke:packaged
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: spike-418-windows
-          path: spike-result-windows.json
+          path: |
+            spike-result-windows.json
+            spike-screenshot-windows.png
+            playwright-mount-windows.json
           retention-days: 14

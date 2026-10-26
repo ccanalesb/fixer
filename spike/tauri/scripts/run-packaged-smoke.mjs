@@ -68,9 +68,13 @@ const smokeEnv = {
   ...process.env,
   SPIKE_HEADLESS: '1',
   SPIKE_DIALOG_STUB: process.env.SPIKE_DIALOG_STUB ?? '1',
+  SPIKE_SCREENSHOT_PATH: process.env.SPIKE_SCREENSHOT_PATH,
 };
 if (process.env.SPIKE_APP_MODELS_DIR) {
   smokeEnv.SPIKE_APP_MODELS_DIR = process.env.SPIKE_APP_MODELS_DIR;
+}
+if (!smokeEnv.SPIKE_SCREENSHOT_PATH) {
+  smokeEnv.SPIKE_SCREENSHOT_PATH = join(SPIKE, 'spike-window-screenshot.png');
 }
 
 const r = spawnSync(bin, [], {

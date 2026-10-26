@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Manager, RunEvent, State};
-use url::Url;
+use tauri::{AppHandle, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
+use url::Url;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct SpikeResult {
@@ -23,9 +23,12 @@ struct SpikeResult {
     app_models_dir: Option<String>,
     port: u16,
     http_status: Value,
+    http_probe: Value,
     native_smoke: Value,
     spa_smoke: Value,
     system_one: Value,
+    screenshot_path: Option<String>,
+    strip_crossorigin: bool,
     sidecar_killed_on_exit: bool,
     ok: bool,
 }
@@ -38,6 +41,7 @@ struct SpikeRuntime {
     sidecar: Mutex<Option<CommandChild>>,
     sidecar_pid: Mutex<Option<u32>>,
     finished: Mutex<bool>,
+    strip_crossorigin: bool,
 }
 
 fn pick_port() -> Result<u16, String> {
@@ -59,6 +63,13 @@ fn backend_resources_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .resolve("backend", BaseDirectory::Resource)
         .map_err(|e| e.to_string())
+}
+
+fn strip_crossorigin_enabled() -> bool {
+    match std::env::var("SPIKE_STRIP_CROSSORIGIN").ok() {
+        None => true,
+        Some(v) => matches!(v.as_str(), "1" | "true" | "yes"),
+    }
 }
 
 fn write_minimal_config(dir: &Path, app_models_dir: Option<&str>) -> Result<(), String> {
@@ -88,6 +99,107 @@ async fn wait_for_http(url: &str, timeout: Duration) -> Result<Value, String> {
             }
         }
     }
+}
+
+async fn probe_http(port: u16, backend_root: &Path, data_dir: &Path) -> Value {
+    let base = format!("http://127.0.0.1:{port}");
+    let index_path = backend_root.join("frontend-dist/index.html");
+    let index_html = std::fs::read_to_string(&index_path).unwrap_or_default();
+    let js_path = index_html
+        .split("src=\"")
+        .find_map(|s| s.strip_prefix("/assets/").and_then(|r| r.split('"').next()))
+        .map(|p| format!("/assets/{p}"))
+        .unwrap_or_else(|| "/assets/missing.js".into());
+    let css_path = index_html
+        .split("href=\"")
+        .find_map(|s| s.strip_prefix("/assets/").and_then(|r| r.split('"').next()))
+        .map(|p| format!("/assets/{p}"))
+        .unwrap_or_else(|| "/assets/missing.css".into());
+
+    async fn one(client: &reqwest::Client, url: String) -> Value {
+        match client.get(&url).send().await {
+            Ok(res) => {
+                let status = res.status().as_u16();
+                let ct = res
+                    .headers()
+                    .get("content-type")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                let csp = res
+                    .headers()
+                    .get("content-security-policy")
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
+                let body = res.bytes().await.unwrap_or_default();
+                let head = String::from_utf8_lossy(&body[..body.len().min(120)]).to_string();
+                let looks_like_html = head.trim_start().starts_with("<!")
+                    || head.to_ascii_lowercase().contains("<html");
+                json!({
+                    "url": url,
+                    "status": status,
+                    "contentType": ct,
+                    "bytes": body.len(),
+                    "looksLikeHtml": looks_like_html,
+                    "headSample": &head[..head.len().min(80)],
+                    "csp": csp,
+                })
+            }
+            Err(e) => json!({ "url": url, "error": e.to_string() }),
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let requests = vec![
+        one(&client, format!("{base}/")).await,
+        one(&client, format!("{base}{js_path}")).await,
+        one(&client, format!("{base}{css_path}")).await,
+        one(&client, format!("{base}/assets/nonexistent-spike-probe.js")).await,
+        one(&client, format!("{base}/images")).await,
+    ];
+
+    let probe = json!({
+        "base": base,
+        "indexHasCrossoriginAttr": index_html.contains("crossorigin"),
+        "requests": requests,
+    });
+
+    let out = data_dir.join("spike-http-probe.json");
+    let _ = std::fs::write(&out, serde_json::to_string_pretty(&probe).unwrap());
+    probe
+}
+
+async fn capture_screenshot(path: &Path) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let p = path.to_string_lossy().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("screencapture")
+                .args(["-x", &p])
+                .status();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("import")
+                .args(["-window", "root", &p])
+                .status();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let ps = format!(
+                r#"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $i=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($i); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $i.Save('{p}');"#
+            );
+            let _ = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", &ps])
+                .status();
+        }
+    })
+    .await
+    .ok();
 }
 
 fn kill_sidecar(child: &mut Option<CommandChild>) {
@@ -134,6 +246,20 @@ async fn report_spa_smoke(
         return Ok(());
     }
     *state.finished.lock().unwrap() = true;
+
+    let shot = std::env::var("SPIKE_SCREENSHOT_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| state.data_dir.join("spike-window.png"));
+    capture_screenshot(&shot).await;
+
+    let mut payload = payload;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert(
+            "screenshotPath".into(),
+            json!(shot.display().to_string()),
+        );
+    }
+
     finish_spike(app, state.inner().clone(), payload).await;
     Ok(())
 }
@@ -142,7 +268,7 @@ async fn run_systemone_via_sidecar(app: &AppHandle, rt: &SpikeRuntime) -> Value 
     let models_dir = match rt.app_models_dir.as_deref() {
         Some(d) if !d.is_empty() => d.to_string(),
         _ => {
-            return serde_json::json!({
+            return json!({
                 "ok": false,
                 "error": "SPIKE_APP_MODELS_DIR not set"
             });
@@ -161,7 +287,7 @@ async fn run_systemone_via_sidecar(app: &AppHandle, rt: &SpikeRuntime) -> Value 
     let sidecar = match app.shell().sidecar("node") {
         Ok(c) => c,
         Err(e) => {
-            return serde_json::json!({
+            return json!({
                 "ok": false,
                 "error": format!("sidecar node unavailable: {e}")
             });
@@ -180,7 +306,7 @@ async fn run_systemone_via_sidecar(app: &AppHandle, rt: &SpikeRuntime) -> Value 
     {
         Ok(v) => v,
         Err(e) => {
-            return serde_json::json!({
+            return json!({
                 "ok": false,
                 "error": format!("systemone sidecar spawn failed: {e}")
             });
@@ -193,10 +319,7 @@ async fn run_systemone_via_sidecar(app: &AppHandle, rt: &SpikeRuntime) -> Value 
         if let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) | CommandEvent::Stderr(line) => {
-                    eprint!(
-                        "[systemone] {}",
-                        String::from_utf8_lossy(&line)
-                    );
+                    eprint!("[systemone] {}", String::from_utf8_lossy(&line));
                 }
                 CommandEvent::Terminated(payload) => {
                     exit_code = payload.code;
@@ -215,14 +338,14 @@ async fn run_systemone_via_sidecar(app: &AppHandle, rt: &SpikeRuntime) -> Value 
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_else(|| {
-                serde_json::json!({
+                json!({
                     "ok": false,
                     "error": "invalid systemone-smoke.json",
                     "exit_code": exit_code,
                 })
             })
     } else {
-        serde_json::json!({
+        json!({
             "ok": false,
             "error": "systemone smoke produced no JSON",
             "exit_code": exit_code,
@@ -235,6 +358,11 @@ async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, spa_smoke: Value) {
     let http_status = wait_for_http(&status_url, Duration::from_secs(10))
         .await
         .unwrap_or(Value::String("unavailable".into()));
+
+    let http_probe: Value = std::fs::read_to_string(rt.data_dir.join("spike-http-probe.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(json!("missing spike-http-probe.json"));
 
     let result_path = rt.data_dir.join("spike-result.json");
     let native_smoke: Value = std::fs::read_to_string(&result_path)
@@ -257,6 +385,11 @@ async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, spa_smoke: Value) {
         .and_then(|v| v.as_str())
         .map(String::from);
 
+    let screenshot_path = spa_smoke
+        .get("screenshotPath")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
     let mut sidecar = rt.sidecar.lock().unwrap();
     kill_sidecar(&mut *sidecar);
 
@@ -273,9 +406,12 @@ async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, spa_smoke: Value) {
         app_models_dir: rt.app_models_dir.clone(),
         port: rt.port,
         http_status,
+        http_probe,
         native_smoke,
         spa_smoke: spa_smoke.clone(),
         system_one,
+        screenshot_path,
+        strip_crossorigin: rt.strip_crossorigin,
         sidecar_killed_on_exit: true,
         ok: http_ok && native_ok && spa_ok && system_ok,
     };
@@ -294,23 +430,14 @@ async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, spa_smoke: Value) {
     app.exit(if result.ok { 0 } else { 1 });
 }
 
-async fn start_spa_smoke(app: AppHandle, rt: Arc<SpikeRuntime>) {
-    let url = format!("http://127.0.0.1:{}/", rt.port);
+async fn navigate_to_loopback(app: &AppHandle, port: u16) {
+    let url = format!("http://127.0.0.1:{port}/");
     let Some(win) = app.get_webview_window("main") else {
-        eprintln!("spa smoke: main window missing");
+        eprintln!("navigate: main window missing");
         return;
     };
-
     if let Err(e) = win.navigate(Url::parse(&url).expect("valid loopback url")) {
-        eprintln!("spa smoke: navigate failed: {e}");
-        return;
-    }
-
-    tokio::time::sleep(Duration::from_secs(6)).await;
-
-    let script = include_str!("../../spa-smoke-inject.js");
-    if let Err(e) = win.eval(script) {
-        eprintln!("spa smoke: eval failed: {e}");
+        eprintln!("navigate failed: {e}");
     }
 }
 
@@ -382,16 +509,15 @@ async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result
     let status_url = format!("http://127.0.0.1:{}/api/status", rt.port);
     wait_for_http(&status_url, Duration::from_secs(180)).await?;
 
-    let app_nav = app.clone();
-    let rt_nav = rt.clone();
-    tauri::async_runtime::spawn(async move {
-        start_spa_smoke(app_nav, rt_nav).await;
-    });
+    let probe = probe_http(rt.port, &rt.backend_root, &rt.data_dir).await;
+    eprintln!("SPIKE_HTTP_PROBE={}", serde_json::to_string(&probe).unwrap_or_default());
+
+    navigate_to_loopback(app, rt.port).await;
 
     let app_timeout = app.clone();
     let rt_timeout = rt.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(180)).await;
+        tokio::time::sleep(Duration::from_secs(240)).await;
         if *rt_timeout.finished.lock().unwrap() {
             return;
         }
@@ -399,7 +525,7 @@ async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result
         finish_spike(
             app_timeout,
             rt_timeout,
-            serde_json::json!({ "ok": false, "error": "spa smoke timeout (180s)" }),
+            json!({ "ok": false, "error": "spa smoke timeout (240s)" }),
         )
         .await;
     });
@@ -420,6 +546,19 @@ pub fn run() {
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
+            let init_script = include_str!("../../spike-init-script.js");
+
+            WebviewWindowBuilder::new(
+                app,
+                "main",
+                WebviewUrl::App("index.html".into()),
+            )
+            .title("LT Tauri Real SPA Spike")
+            .inner_size(1280.0, 800.0)
+            .initialization_script(init_script)
+            .visible(true)
+            .build()
+            .map_err(|e| e.to_string())?;
 
             tauri::async_runtime::block_on(async {
                 let backend_root = backend_resources_path(&handle)?;
@@ -431,6 +570,7 @@ pub fn run() {
                     .keep();
                 write_minimal_config(&data_dir, app_models_dir.as_deref())?;
                 let port = pick_port()?;
+                let strip_crossorigin = strip_crossorigin_enabled();
 
                 let rt = Arc::new(SpikeRuntime {
                     port,
@@ -440,6 +580,7 @@ pub fn run() {
                     sidecar: Mutex::new(None),
                     sidecar_pid: Mutex::new(None),
                     finished: Mutex::new(false),
+                    strip_crossorigin,
                 });
 
                 handle.manage(rt.clone());

@@ -63,8 +63,17 @@ const bridge = readFileSync(join(SPIKE_ROOT, 'catalog-bridge-snippet.html'), 'ut
 if (!indexHtml.includes('pick_catalog_path')) {
   indexHtml = indexHtml.replace('</body>', `${bridge}\n</body>`);
 }
-indexHtml = indexHtml.replace(/\s+crossorigin/g, '');
+const stripCross =
+  process.env.SPIKE_STRIP_CROSSORIGIN === undefined ||
+  process.env.SPIKE_STRIP_CROSSORIGIN === '1' ||
+  process.env.SPIKE_STRIP_CROSSORIGIN === 'true';
+if (stripCross) {
+  indexHtml = indexHtml.replace(/\s+crossorigin/g, '');
+}
 writeFileSync(indexHtmlPath, indexHtml, 'utf8');
+process.stdout.write(
+  `prepare-backend: frontend index crossorigin stripped=${stripCross}\n`,
+);
 
 mkdirSync(join(OUT, 'fixtures'), { recursive: true });
 const fixtures = join(ELECTRON_SPIKE, 'fixtures');

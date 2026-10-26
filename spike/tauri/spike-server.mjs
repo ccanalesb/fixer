@@ -46,7 +46,7 @@ try {
 
 const app = createApp();
 
-app.use('/assets/*', serveStatic({ root: join(frontendRoot, 'assets') }));
+app.use('/assets/*', serveStatic({ root: frontendRoot }));
 
 app.get('/', (c) => c.html(readFileSync(join(frontendRoot, 'index.html'), 'utf8')));
 
@@ -56,7 +56,8 @@ app.get('*', (c) => {
     p.startsWith('/api') ||
     p.startsWith('/v1') ||
     p.startsWith('/apidoc') ||
-    p.startsWith('/socket.io')
+    p.startsWith('/socket.io') ||
+    p.startsWith('/assets/')
   ) {
     return c.notFound();
   }
