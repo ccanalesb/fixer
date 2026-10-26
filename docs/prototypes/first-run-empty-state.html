@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE — First-run empty state that asks for the catalog</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  PROTOTYPE — throwaway. Four variants of where the packaged app asks for the
+  Lightroom catalog on first run (empty library.db, no catalog set), switchable
+  via ?variant=A|B|C|D and the bottom bar. Fake data; nothing is persisted.
+-->
+<style>
+  /* Tokens copied verbatim from apps/visualizer/frontend/src/index.css */
+  :root {
+    --color-background:#ffffff; --color-surface:#f6f5f4; --color-surface-hover:#f1f0ed;
+    --color-text-primary:rgba(0,0,0,0.95); --color-text-secondary:#4a4642; --color-text-tertiary:#847f7a;
+    --color-border:rgba(0,0,0,0.12); --color-border-strong:rgba(0,0,0,0.2);
+    --color-accent:#0075de; --color-accent-hover:#005bab; --color-accent-light:#f2f9ff;
+    --color-success:#1aae39; --color-warning:#dd5b00; --color-error:#e03e3e;
+  }
+  .dark {
+    --color-background:#191919; --color-surface:#31302e; --color-surface-hover:#3d3b38;
+    --color-text-primary:#f7f6f5; --color-text-secondary:#b8b7b4; --color-text-tertiary:#8a8985;
+    --color-border:rgba(255,255,255,0.12); --color-border-strong:rgba(255,255,255,0.25);
+    --color-accent:#4A9EFF; --color-accent-hover:#7AB8FF; --color-accent-light:rgba(74,158,255,0.15);
+    --color-success:#3db39a; --color-warning:#ff8c42; --color-error:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,system-ui,'Segoe UI',sans-serif;
+    background:var(--color-background);color:var(--color-text-primary);
+    -webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5;padding-bottom:120px;
+    transition:background-color .2s ease,color .2s ease}
+  p{margin:0} h1,h2,h3{margin:0}
+  code{background:var(--color-surface);padding:1px 5px;border-radius:4px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em}
+
+  /* Layout.tsx */
+  header.app{position:sticky;top:0;z-index:50;background:var(--color-background);border-bottom:1px solid var(--color-border)}
+  .container{max-width:80rem;margin:0 auto;padding:0 2rem}
+  .hdr{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .hdr-left{display:flex;align-items:center;gap:2rem}
+  .hdr-right{display:flex;align-items:center;gap:8px;position:relative}
+  .brand{font-size:18px;font-weight:600}
+  nav.pills{display:flex;gap:4px}
+  nav.pills a{padding:6px 12px;border-radius:8px;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer;
+    color:var(--color-text-secondary);transition:all .15s}
+  nav.pills a:hover{background:var(--color-surface);color:var(--color-text-primary)}
+  nav.pills a.on{background:var(--color-accent);color:#fff;font-weight:600}
+  main{max-width:80rem;margin:0 auto;padding:2rem}
+
+  /* BackendConnectivityBanner.tsx grammar */
+  .banner{border-bottom:1px solid var(--color-accent);background:var(--color-accent-light);padding:12px 2rem}
+  .banner.ok{border-color:var(--color-success);background:rgba(26,174,57,.08)}
+  .banner .in{max-width:80rem;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+  .title{font-size:26px;font-weight:700;letter-spacing:-.25px;margin-bottom:8px}
+  .sub{color:var(--color-text-secondary)}
+  .h2{font-size:18px;font-weight:600;margin-bottom:12px}
+  .s{font-size:14px} .s2{font-size:14px;color:var(--color-text-secondary)} .t3{font-size:12px;color:var(--color-text-tertiary)}
+  .sem{font-weight:600}
+  .stack > * + *{margin-top:32px}
+  .stack3 > * + *{margin-top:12px}
+  .row{display:flex;align-items:center;gap:12px}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+  .card{background:var(--color-background);border:1px solid var(--color-border);border-radius:12px;padding:16px;
+    box-shadow:rgba(0,0,0,.04) 0 4px 18px,rgba(0,0,0,.027) 0 2.025px 7.84688px,rgba(0,0,0,.02) 0 .8px 2.925px}
+  .card.hl{outline:2px solid var(--color-accent);outline-offset:-1px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .kpi .n{font-size:28px;font-weight:700}
+  .actions{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+
+  /* Button.tsx */
+  button.btn{font:500 14px Inter,sans-serif;border-radius:8px;padding:6px 12px;cursor:pointer;
+    background:var(--color-surface);color:var(--color-text-primary);border:1px solid var(--color-border);transition:all .15s;white-space:nowrap}
+  button.btn:hover:not(:disabled){background:var(--color-surface-hover);border-color:var(--color-border-strong)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  button.btn.primary{background:var(--color-accent);color:#fff;border:2px solid var(--color-background);font-weight:600}
+  button.btn.primary:hover:not(:disabled){background:var(--color-accent-hover)}
+  button.btn.ghost{background:transparent;border-color:transparent}
+  button.btn.lg{font-size:16px;padding:10px 20px}
+  a.lnk{color:var(--color-accent);font-size:14px;cursor:pointer;text-decoration:none;font-weight:500}
+  a.lnk:hover{text-decoration:underline}
+
+  .badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:9999px;font-size:12px;font-weight:600;
+    border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-secondary);white-space:nowrap}
+  .badge.accent{background:var(--color-accent-light);color:var(--color-accent)}
+  .badge.success{background:rgba(26,174,57,.08);color:var(--color-success)}
+  .badge.warning{background:rgba(221,91,0,.08);color:var(--color-warning)}
+
+  .bar{height:6px;border-radius:9999px;background:var(--color-surface);overflow:hidden}
+  .bar > i{display:block;height:100%;background:var(--color-accent);transition:width .3s}
+  ol.stages{list-style:none;margin:0;padding:0}
+  ol.stages li{display:flex;align-items:center;gap:10px;font-size:14px;padding:4px 0;color:var(--color-text-tertiary)}
+  ol.stages li .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--color-border-strong);flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+  ol.stages li.done{color:var(--color-text-secondary)}
+  ol.stages li.done .dot{background:var(--color-success);border-color:var(--color-success);color:#fff}
+  ol.stages li.cur{color:var(--color-text-primary);font-weight:600}
+  ol.stages li.cur .dot{border-color:var(--color-accent);border-top-color:transparent;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .empty{text-align:center;padding:48px 16px}
+  .empty .ico{width:48px;height:48px;border-radius:12px;background:var(--color-surface);margin:0 auto 16px;
+    display:flex;align-items:center;justify-content:center;font-size:22px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+  .tile{aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,var(--color-surface),var(--color-surface-hover));border:1px solid var(--color-border)}
+
+  .tabstrip{border-bottom:1px solid var(--color-border);margin-bottom:24px;display:flex;gap:4px;overflow-x:auto}
+  .tabstrip button{padding:8px 16px;font:600 14px Inter,sans-serif;white-space:nowrap;background:none;border:0;
+    border-bottom:3px solid transparent;cursor:pointer;color:var(--color-text-primary);opacity:.6}
+  .tabstrip button.on{border-bottom-color:var(--color-accent);color:var(--color-accent);opacity:1}
+  .tabstrip button.off{cursor:default;opacity:.3}
+  .setrow{display:flex;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--color-border)}
+
+  /* Variant B welcome */
+  .welcome{max-width:560px;margin:24px auto 0;text-align:center}
+  .steps{text-align:left;margin-top:32px}
+  .step{display:flex;gap:16px;padding:20px;border:1px solid var(--color-border);border-radius:12px;margin-bottom:12px}
+  .step .num{width:28px;height:28px;border-radius:50%;background:var(--color-surface);font-weight:700;font-size:14px;
+    display:flex;align-items:center;justify-content:center;flex:none}
+  .step.active{border-color:var(--color-accent);box-shadow:0 0 0 3px var(--color-accent-light)}
+  .step.active .num{background:var(--color-accent);color:#fff}
+  .step.done .num{background:var(--color-success);color:#fff}
+  .step.locked{opacity:.5}
+
+  /* Variant D chip + popover */
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:9999px;font:600 13px Inter,sans-serif;
+    border:1px solid var(--color-border);background:var(--color-background);color:var(--color-text-primary);cursor:pointer}
+  .chip:hover{background:var(--color-surface)}
+  .chip .led{width:8px;height:8px;border-radius:50%;background:var(--color-warning)}
+  .chip.go{border-color:var(--color-accent);color:var(--color-accent)}
+  .chip.go .led{background:var(--color-accent)}
+  .chip.ok .led{background:var(--color-success)}
+  .ring{width:16px;height:16px}
+  .pop{position:absolute;top:44px;right:40px;width:360px;z-index:60;padding:16px}
+  .pop:before{content:'';position:absolute;top:-6px;right:60px;width:10px;height:10px;transform:rotate(45deg);
+    background:var(--color-background);border-left:1px solid var(--color-border);border-top:1px solid var(--color-border)}
+
+  /* Simulated native open dialog (macOS sheet look) */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:90;display:flex;justify-content:center;align-items:flex-start}
+  .ndlg{margin-top:64px;width:620px;background:#ececec;color:#1d1d1f;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.35);
+    font:13px -apple-system,system-ui,sans-serif;overflow:hidden}
+  .ndlg .top{padding:10px 14px;border-bottom:1px solid #d0d0d0;display:flex;justify-content:space-between;align-items:center}
+  .ndlg .side{width:150px;background:#e3e3e3;padding:10px;border-right:1px solid #d0d0d0;font-size:12px;color:#555}
+  .ndlg .files{flex:1;background:#fff;min-height:200px}
+  .ndlg .f{padding:4px 12px;display:flex;gap:8px;cursor:default}
+  .ndlg .f.dim{color:#aaa}
+  .ndlg .f.sel{background:#0064e1;color:#fff}
+  .ndlg .bot{padding:10px 14px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #d0d0d0}
+  .ndlg button{font:13px -apple-system,system-ui,sans-serif;padding:3px 14px;border-radius:5px;border:1px solid #c0c0c0;background:#fff}
+  .ndlg button.def{background:#0064e1;color:#fff;border-color:#0064e1}
+  .ndlg .tag{font-size:11px;color:#888}
+
+  /* Prototype chrome — deliberately not app-styled */
+  #switcher{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:4px;
+    background:#111;color:#fff;border-radius:9999px;padding:6px;box-shadow:0 8px 30px rgba(0,0,0,.35);font:600 13px Inter,sans-serif}
+  #switcher button{background:#333;color:#fff;border:0;border-radius:9999px;width:32px;height:32px;cursor:pointer;font-size:16px}
+  #switcher span{padding:0 14px;min-width:280px;text-align:center}
+  #proto{position:fixed;bottom:20px;right:20px;z-index:100;background:#111;color:#ddd;border-radius:12px;padding:12px;width:250px;
+    font:12px ui-monospace,Menlo,monospace;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  #proto b{color:#fff} #proto button{font:600 11px Inter,sans-serif;background:#333;color:#fff;border:0;border-radius:6px;padding:4px 8px;cursor:pointer;margin:6px 4px 0 0}
+  #proto .k{color:#8fd}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="dialog"></div>
+<div id="switcher"></div>
+<div id="proto"></div>
+
+<script>
+const VARIANTS = {
+  A: 'Global banner on every page',
+  B: 'Dedicated setup screen on Insights',
+  C: "Each page's own empty state",
+  D: 'Header status chip + popover',
+};
+const KEYS = Object.keys(VARIANTS);
+const CATALOG = '~/Pictures/Lightroom/Lightroom Catalog.lrcat';
+const TOTAL = 8312; // fake
+const STAGES = [
+  { key: 'sync', label: 'Reading the catalog' },
+  { key: 'embed', label: 'Computing image embeddings' },
+  { key: 'stack', label: 'Detecting burst stacks' },
+  { key: 'similarity', label: 'Grouping near-duplicates' },
+];
+
+const params = new URLSearchParams(location.search);
+const S = {
+  variant: KEYS.includes(params.get('variant')) ? params.get('variant') : 'A',
+  page: 'insights', procTab: 'cache',
+  catalog: null, dialog: false,
+  imp: 'none',            // none | running | done
+  stage: 0, pct: 0,       // stage index and % within it while running
+  bannerDismissed: false, popOpen: true, offerDeclined: false,
+};
+let timer = null;
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (n) => n.toLocaleString('en-US');
+const overall = () => S.imp === 'done' ? 100 : S.imp === 'running' ? Math.round(5 + (S.stage * 25 + S.pct / 4) * 0.95) : 0;
+const syncDone = () => S.imp === 'done' || (S.imp === 'running' && S.stage > 0);
+const photos = () => syncDone() ? TOTAL : 0;
+const empty = () => S.imp !== 'done';
+
+/* ---------- actions ---------- */
+function openDialog() { S.dialog = true; render(); }
+function dialogCancel() { S.dialog = false; render(); }
+function dialogOpen() { S.dialog = false; S.catalog = CATALOG; S.offerDeclined = false; S.popOpen = true; render(); }
+function startImport() {
+  S.imp = 'running'; S.stage = 0; S.pct = 0; S.offerDeclined = false;
+  clearInterval(timer);
+  timer = setInterval(() => {
+    S.pct += 5;
+    if (S.pct >= 100) { S.pct = 0; S.stage++; }
+    if (S.stage >= STAGES.length) { finish(); return; }
+    render();
+  }, 250);
+  render();
+}
+function nextStage() { if (S.imp !== 'running') return; S.stage++; S.pct = 0; if (S.stage >= STAGES.length) finish(); else render(); }
+function finish() { clearInterval(timer); S.imp = 'done'; S.stage = 4; S.pct = 0; render(); }
+function later() { S.offerDeclined = true; S.popOpen = false; render(); }
+function reset() { clearInterval(timer); Object.assign(S, { catalog: null, dialog: false, imp: 'none', stage: 0, pct: 0, bannerDismissed: false, popOpen: true, offerDeclined: false, page: 'insights' }); render(); }
+function go(page, tab) { S.page = page; if (tab) S.procTab = tab; render(); }
+function setVariant(v) { S.variant = v; const u = new URL(location); u.searchParams.set('variant', v); history.replaceState(null, '', u); render(); }
+function cycle(d) { setVariant(KEYS[(KEYS.indexOf(S.variant) + d + KEYS.length) % KEYS.length]); }
+
+/* ---------- shared fragments ---------- */
+const chooseBtn = (label = 'Choose catalog…', cls = 'primary') => `<button class="btn ${cls}" onclick="openDialog()">${label}</button>`;
+const importBtn = (cls = 'primary') => `<button class="btn ${cls}" onclick="startImport()">Import catalog</button>`;
+const changeLink = () => `<a class="lnk" onclick="openDialog()">Change…</a>`;
+const stageLine = () => S.imp === 'running'
+  ? `Step ${S.stage + 1} of 4 — ${STAGES[S.stage].label}${S.stage === 1 ? ` · ${fmt(Math.round(TOTAL * S.pct / 100))} / ${fmt(TOTAL)}` : ''}`
+  : '';
+const bar = (pct) => `<div class="bar"><i style="width:${pct}%"></i></div>`;
+const stageList = () => `<ol class="stages">${STAGES.map((st, i) => {
+  const cls = S.imp === 'done' || (S.imp === 'running' && i < S.stage) ? 'done' : S.imp === 'running' && i === S.stage ? 'cur' : '';
+  return `<li class="${cls}"><span class="dot">${cls === 'done' ? '✓' : ''}</span>${st.label}${cls === 'cur' && i === 1 ? ` <span class="t3">${fmt(Math.round(TOTAL * S.pct / 100))} / ${fmt(TOTAL)}</span>` : ''}</li>`;
+}).join('')}</ol>`;
+const ring = (pct) => { const c = 2 * Math.PI * 6; return `<svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--color-border)" stroke-width="2.5"/><circle cx="8" cy="8" r="6" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct / 100)}" transform="rotate(-90 8 8)"/></svg>`; };
+
+/* ---------- pages (today's content, with slots for variant-specific asks) ---------- */
+function kpiRow(note) {
+  const p = photos();
+  const k = [
+    ['Catalog photos', fmt(p), 'Lightroom catalog entries'],
+    ['Scoring 9+', '0', 'Best on an active perspective'],
+    ['Burst stacks to cull', S.imp === 'done' ? '214' : '0', 'Pick a keeper, reject the rest'],
+    ['Unscored on active perspectives', fmt(p), 'Missing at least one active lens'],
+  ];
+  return `<div class="kpis">${k.map(([l, n, d]) => `<div class="card kpi"><p class="s2">${l}</p><p class="n">${n}</p><p class="t3">${note || d}</p></div>`).join('')}</div>`;
+}
+function actionCards(first) {
+  const cards = [
+    ['Cull a burst stack', 'Pick a keeper from photos taken in a burst.'],
+    ['Score unscored photos', 'Run perspectives on photos missing a score.'],
+    ['Review near-duplicates', 'Merge or reject photos that look the same.'],
+  ];
+  return `<div class="actions">${first || ''}${cards.slice(first ? 1 : 0).map(([t, d]) => `<div class="card"><p class="sem s">${t}</p><p class="s2">${d}</p></div>`).join('')}</div>`;
+}
+function insightsPage(slots = {}) {
+  return `<div class="stack">
+    <div><h1 class="title">Insights</h1><p class="sub">Actionable catalog signals — top highlights, next steps, and shortcuts to Identity and Processing.</p></div>
+    ${slots.top || ''}
+    ${kpiRow(slots.kpiNote)}
+    <section><h2 class="h2">Top scored photos</h2><div class="card"><p class="s2 empty" style="padding:24px">${slots.topEmpty || 'No eligible ranked photos yet. Run scoring on more perspectives per image to meet coverage.'}</p></div></section>
+    <section><h2 class="h2">Next actions</h2>${actionCards(slots.firstAction)}</section>
+  </div>`;
+}
+function imagesPage(slots = {}) {
+  const head = `<div><h1 class="title">Images</h1><p class="sub">${photos() ? fmt(photos()) + ' photos' : 'Browse your catalog.'}</p></div>`;
+  const body = photos()
+    ? `${slots.gridNote || ''}<div class="grid">${'<div class="tile"></div>'.repeat(24)}</div>`
+    : (slots.empty || `<div class="empty"><p class="sub">No images found.</p></div>`);
+  return `<div class="stack">${head}${body}</div>`;
+}
+function identityPage(slots = {}) {
+  return `<div class="stack">
+    <div><h1 class="title">Identity</h1><p class="sub">Your photographic signature from critique scores, and what to post next.</p></div>
+    ${slots.top || ''}
+    <section><h2 class="h2">Mirror</h2><div class="card"><p class="s2">Not enough multi-lens scored catalog data yet. Score images on at least two active perspectives.</p></div></section>
+    <section><h2 class="h2">What to post next</h2><div class="card"><p class="s2">No suggestions right now.</p></div></section>
+  </div>`;
+}
+function processingPage() {
+  const tabs = [['Analyze'], ['Culling'], ['Perspectives'], ['Catalog Cache', 'cache'], ['Job Queue', 'jobs'], ['Providers'], ['Settings', 'settings']];
+  const strip = `<div class="tabstrip">${tabs.map(([l, id]) => `<button class="${id ? (S.procTab === id ? 'on' : '') : 'off'}" ${id ? `onclick="go('processing','${id}')"` : 'title="Not part of this prototype"'}>${l}</button>`).join('')}</div>`;
+  let body = '';
+  if (S.procTab === 'settings') {
+    body = `<div class="card"><div class="setrow" style="border:0;padding:0">
+      <div><p class="sem s">Lightroom catalog</p>${S.catalog ? `<p class="s2"><code>${esc(S.catalog)}</code></p>` : `<p class="s" style="color:var(--color-error)">Not set</p>`}</div>
+      <div>${chooseBtn('Choose…', S.catalog ? '' : 'primary')}</div></div></div>`;
+  } else if (S.procTab === 'jobs') {
+    body = S.imp === 'none' ? `<div class="empty"><p class="sub">No jobs found. Start a job to see it here.</p></div>`
+      : `<div class="card"><div class="between"><div><p class="sem s">catalog_cache_build</p><p class="t3">${S.imp === 'running' ? `[${STAGES[S.stage].key}] ${stageLine()}` : 'sync, embed, stack, similarity'}</p></div>
+         <span class="badge ${S.imp === 'running' ? 'accent' : 'success'}">${S.imp === 'running' ? 'running ' + overall() + '%' : 'completed'}</span></div>${S.imp === 'running' ? `<div style="margin-top:12px">${bar(overall())}</div>` : ''}</div>`;
+  } else {
+    body = `<div class="card stack3"><h2 class="h2" style="margin:0">Catalog Vision Cache</h2>
+      <p class="s2">The vision cache stores preprocessed Lightroom catalog images for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.</p>
+      ${S.imp === 'running' ? `${bar(overall())}<p class="t3">${stageLine()}</p>` : `<div><button class="btn primary" ${S.catalog ? 'onclick="startImport()"' : 'disabled title="Choose a catalog first"'}>Build catalog cache</button></div>`}
+      ${!S.catalog ? `<p class="t3">No catalog set — choose one in Settings.</p>` : ''}</div>`;
+  }
+  return `<div><h1 class="title">Processing</h1>${strip}${body}</div>`;
+}
+
+/* ---------- variant A: global banner ---------- */
+function bannerA() {
+  if (S.imp === 'done') {
+    if (S.bannerDismissed) return '';
+    return `<div class="banner ok"><div class="in"><p class="s"><span class="sem">Catalog imported.</span> ${fmt(TOTAL)} photos are in your library.</p>
+      <button class="btn ghost" onclick="S.bannerDismissed=true;render()">Dismiss</button></div></div>`;
+  }
+  if (S.imp === 'running') {
+    return `<div class="banner"><div class="in" style="display:block"><div class="between" style="margin-bottom:8px">
+      <p class="s"><span class="sem">Importing your catalog</span> · ${stageLine()}</p><a class="lnk" onclick="go('processing','jobs')">View in Job Queue</a></div>${bar(overall())}</div></div>`;
+  }
+  if (S.catalog) {
+    return `<div class="banner"><div class="in"><p class="s"><span class="sem">Import your catalog to see your photos.</span> <code>${esc(S.catalog)}</code></p>
+      <div class="btns">${changeLink()}${importBtn()}</div></div></div>`;
+  }
+  return `<div class="banner"><div class="in"><p class="s"><span class="sem">Choose your Lightroom Classic catalog to get started.</span> Fixer reads it; your photos stay where they are.</p>
+    <div class="btns">${chooseBtn()}</div></div></div>`;
+}
+function pageA() {
+  const p = { insights: insightsPage, images: imagesPage, identity: identityPage, processing: processingPage }[S.page];
+  return p();
+}
+
+/* ---------- variant B: dedicated setup screen ---------- */
+function setupScreenB() {
+  const s1 = S.catalog ? 'done' : 'active';
+  const s2 = !S.catalog ? 'locked' : S.imp === 'none' ? 'active' : S.imp === 'running' ? 'active' : 'done';
+  return `<div class="welcome">
+    <h1 class="title" style="font-size:32px">Welcome to Fixer</h1>
+    <p class="sub">Fixer works on your Lightroom Classic catalog. Two steps and your photos are here.</p>
+    <div class="steps">
+      <div class="step ${s1}"><div class="num">${s1 === 'done' ? '✓' : 1}</div><div style="flex:1" class="stack3">
+        <p class="sem">Choose your catalog</p>
+        ${S.catalog ? `<div class="between"><code>${esc(S.catalog)}</code>${S.imp === 'none' ? changeLink() : ''}</div>`
+          : `<p class="s2">The <code>.lrcat</code> file, usually in Pictures › Lightroom.</p><div>${chooseBtn()}</div>`}
+      </div></div>
+      <div class="step ${s2}"><div class="num">${s2 === 'done' ? '✓' : 2}</div><div style="flex:1" class="stack3">
+        <p class="sem">Import it</p>
+        ${S.imp === 'running' ? `${bar(overall())}${stageList()}<p class="t3">You can keep using the app; Images fills in after the first step.</p>`
+          : `<p class="s2">Reads your photos, then prepares them for culling. Large catalogs take a while.</p><div>${S.catalog ? importBtn() : '<button class="btn" disabled>Import catalog</button>'}</div>`}
+      </div></div>
+    </div>
+  </div>`;
+}
+function pointerB(what) {
+  return `<div class="empty"><div class="ico">◎</div><p class="sem">Your library is empty</p>
+    <p class="s2" style="margin:4px 0 16px">${what}</p><button class="btn primary" onclick="go('insights')">Go to setup</button></div>`;
+}
+function pageB() {
+  if (S.page === 'insights') return empty() ? setupScreenB() : insightsPage();
+  if (S.page === 'images') return imagesPage({
+    empty: S.imp === 'running' ? `<div class="empty"><p class="sub">Reading your catalog… photos appear here when that step finishes.</p></div>` : pointerB('Choose and import your Lightroom catalog to browse your photos.'),
+    gridNote: S.imp === 'running' ? `<p class="t3">Import still running — <a class="lnk" onclick="go('insights')">see progress</a></p>` : '',
+  });
+  if (S.page === 'identity') return empty() && !syncDone() ? `<div class="stack"><div><h1 class="title">Identity</h1></div>${pointerB('Identity is built from scores on your photos. Start by importing your catalog.')}</div>` : identityPage();
+  return processingPage();
+}
+
+/* ---------- variant C: each page's own empty state ---------- */
+function inlineAskC(context) {
+  if (S.imp === 'running') {
+    return `<div class="card stack3"><div class="between"><p class="sem s">Importing your catalog</p><span class="badge accent">${overall()}%</span></div>${bar(overall())}<p class="t3">${stageLine()}</p></div>`;
+  }
+  if (S.catalog) {
+    return `<div class="card hl stack3"><p class="sem s">Import your catalog</p><p class="s2"><code>${esc(S.catalog)}</code></p><div class="btns">${importBtn()}${changeLink()}</div></div>`;
+  }
+  return `<div class="card hl stack3"><p class="sem s">Connect your Lightroom catalog</p><p class="s2">${context}</p><div>${chooseBtn()}</div></div>`;
+}
+function pageC() {
+  if (S.page === 'insights') {
+    if (!empty()) return insightsPage();
+    return insightsPage({ firstAction: inlineAskC('Insights come from the photos in your Lightroom Classic catalog.'), kpiNote: S.imp === 'running' ? 'Filling in as the import runs' : 'No catalog yet' });
+  }
+  if (S.page === 'images') {
+    const big = S.imp === 'running'
+      ? `<div class="empty"><div class="ico">⟳</div><p class="sem">Reading your catalog…</p><p class="s2" style="margin:4px 0 16px">Photos appear here when this step finishes.</p><div style="max-width:320px;margin:0 auto">${bar(S.pct)}</div></div>`
+      : S.catalog
+        ? `<div class="empty"><div class="ico">▦</div><p class="sem">Your catalog is chosen but not imported</p><p class="s2" style="margin:4px 0 16px"><code>${esc(S.catalog)}</code></p>${importBtn()}</div>`
+        : `<div class="empty"><div class="ico">▦</div><p class="sem">No photos yet</p><p class="s2" style="margin:4px 0 16px">Fixer shows the photos in your Lightroom Classic catalog. Your photos stay where they are.</p>${chooseBtn()}</div>`;
+    return imagesPage({ empty: big, gridNote: S.imp === 'running' ? `<div class="card row" style="padding:10px 16px"><span class="badge accent">${overall()}%</span><p class="s2">Still importing · ${stageLine()}</p></div>` : '' });
+  }
+  if (S.page === 'identity') return identityPage({ top: empty() ? inlineAskC('Identity is built from scores on your photos. It starts with your catalog.') : '' });
+  return processingPage();
+}
+
+/* ---------- variant D: header chip + popover ---------- */
+function chipD() {
+  if (S.imp === 'done') return `<button class="chip ok" onclick="S.popOpen=!S.popOpen;render()"><span class="led"></span>${fmt(TOTAL)} photos</button>`;
+  if (S.imp === 'running') return `<button class="chip go" onclick="S.popOpen=!S.popOpen;render()">${ring(overall())}Importing ${overall()}%</button>`;
+  if (S.catalog) return `<button class="chip go" onclick="S.popOpen=!S.popOpen;render()"><span class="led"></span>Import catalog</button>`;
+  return `<button class="chip" onclick="S.popOpen=!S.popOpen;render()"><span class="led"></span>No catalog</button>`;
+}
+function popD() {
+  if (!S.popOpen) return '';
+  let body;
+  if (S.imp === 'done') body = `<p class="sem s">Catalog imported</p><p class="s2"><code>${esc(S.catalog)}</code></p><p class="s2">${fmt(TOTAL)} photos</p>`;
+  else if (S.imp === 'running') body = `<div class="between"><p class="sem s">Importing your catalog</p><span class="t3">${overall()}%</span></div>${bar(overall())}${stageList()}<a class="lnk" onclick="go('processing','jobs')">View in Job Queue</a>`;
+  else if (S.catalog) body = `<p class="sem s">Import your catalog</p><p class="s2"><code>${esc(S.catalog)}</code></p><div class="btns">${importBtn()}<button class="btn ghost" onclick="later()">Later</button>${changeLink()}</div>`;
+  else body = `<p class="sem s">Choose your Lightroom Classic catalog</p><p class="s2">Fixer reads the <code>.lrcat</code> file. Your photos stay where they are.</p><div>${chooseBtn()}</div>`;
+  return `<div class="card pop stack3">${body}</div>`;
+}
+function pageD() { return pageA(); }
+
+/* ---------- shell ---------- */
+function header() {
+  const nav = [['insights', 'Insights'], ['images', 'Images'], ['identity', 'Identity'], ['processing', 'Processing']];
+  const dark = document.documentElement.classList.contains('dark');
+  return `<header class="app"><div class="container"><div class="hdr">
+    <div class="hdr-left"><span class="brand">Fixer</span><nav class="pills">${nav.map(([id, l]) => `<a class="${S.page === id ? 'on' : ''}" onclick="go('${id}')">${l}</a>`).join('')}</nav></div>
+    <div class="hdr-right">${S.variant === 'D' ? chipD() + popD() : ''}<button class="btn ghost" onclick="document.documentElement.classList.toggle('dark');render()" title="Theme">${dark ? '☀' : '☾'}</button></div>
+  </div></div></header>`;
+}
+function dialog() {
+  if (!S.dialog) return '';
+  return `<div class="scrim"><div class="ndlg">
+    <div class="top"><b>Choose your Lightroom catalog</b><span class="tag">native dialog — tauri-plugin-dialog (simulated)</span></div>
+    <div style="display:flex"><div class="side"><p style="margin-bottom:6px;font-weight:600">Favourites</p><p>Desktop</p><p>Documents</p><p style="color:#0064e1">Pictures</p><p>Downloads</p></div>
+    <div class="files"><div class="f dim">📁 Lightroom Catalog Previews.lrdata</div><div class="f dim">📁 Lightroom Catalog Helper.lrdata</div>
+      <div class="f sel">🗂 Lightroom Catalog.lrcat</div><div class="f dim">📁 Backups</div></div></div>
+    <div class="bot"><button onclick="dialogCancel()">Cancel</button><button class="def" onclick="dialogOpen()">Open</button></div>
+  </div></div>`;
+}
+function render() {
+  const page = { A: pageA, B: pageB, C: pageC, D: pageD }[S.variant]();
+  document.getElementById('app').innerHTML = header() + (S.variant === 'A' ? bannerA() : '') + `<main>${page}</main>`;
+  document.getElementById('dialog').innerHTML = dialog();
+  document.getElementById('switcher').innerHTML = `<button onclick="cycle(-1)">‹</button><span>${S.variant} — ${VARIANTS[S.variant]}</span><button onclick="cycle(1)">›</button>`;
+  document.getElementById('proto').innerHTML = `<b>PROTOTYPE STATE</b><br>
+    catalog: <span class="k">${S.catalog ? 'set' : 'null'}</span><br>
+    library.db: <span class="k">${photos() ? fmt(photos()) + ' rows' : 'empty'}</span><br>
+    import: <span class="k">${S.imp}${S.imp === 'running' ? ' [' + STAGES[S.stage].key + '] ' + overall() + '%' : ''}</span><br>
+    <button onclick="reset()">First run</button><button onclick="nextStage()">Next stage</button><button onclick="finish()">Finish</button>`;
+}
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input,textarea,[contenteditable]')) return;
+  if (e.key === 'ArrowLeft') cycle(-1);
+  if (e.key === 'ArrowRight') cycle(1);
+  if (e.key === 'Escape' && S.dialog) dialogCancel();
+});
+render();
+</script>
+</body>
+</html>
