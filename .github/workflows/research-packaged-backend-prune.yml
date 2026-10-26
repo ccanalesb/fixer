@@ -42,21 +42,32 @@ jobs:
         shell: bash
         run: npm prune --omit=dev
 
-      - name: Measure and smoke production tree (unpruned)
+      - name: Measure production tree before prune
         working-directory: apps/visualizer/backend
         shell: bash
-        timeout-minutes: 25
         run: |
-          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs smoke-unpruned \
+          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs measure-only \
             | tee "${{ runner.temp }}/report-prod-unpruned.json"
 
-      - name: Prune, measure again, smoke pruned tree
+      - name: Prune and measure pruned tree
+        working-directory: apps/visualizer/backend
+        shell: bash
+        run: |
+          node ../../../research/packaged-backend-prune/scripts/prune-backend.mjs . \
+            | tee "${{ runner.temp }}/prune-result.json"
+          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs measure-only \
+            | tee "${{ runner.temp }}/report-prod-pruned.json"
+
+      - name: Smoke pruned tree
         working-directory: apps/visualizer/backend
         shell: bash
         timeout-minutes: 25
+        env:
+          HF_HOME: ${{ runner.temp }}/hf-cache
+          TRANSFORMERS_CACHE: ${{ runner.temp }}/hf-cache
         run: |
-          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs full \
-            | tee "${{ runner.temp }}/report-pruned.json"
+          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs smoke-unpruned \
+            | tee "${{ runner.temp }}/report-smoke.json"
 
       - name: Summarize sizes for artifact
         shell: bash
@@ -67,19 +78,22 @@ jobs:
           const temp = process.env.RUNNER_TEMP;
           const full = JSON.parse(fs.readFileSync(path.join(temp, 'report-full-ci.json'), 'utf8'));
           const unpr = JSON.parse(fs.readFileSync(path.join(temp, 'report-prod-unpruned.json'), 'utf8'));
-          const pr = JSON.parse(fs.readFileSync(path.join(temp, 'report-pruned.json'), 'utf8'));
+          const pruned = JSON.parse(fs.readFileSync(path.join(temp, 'report-prod-pruned.json'), 'utf8'));
+          const pruneMeta = JSON.parse(fs.readFileSync(path.join(temp, 'prune-result.json'), 'utf8'));
+          const smoke = JSON.parse(fs.readFileSync(path.join(temp, 'report-smoke.json'), 'utf8'));
+          const removedMib = Math.round((pruneMeta.removedBytes / (1024 * 1024)) * 10) / 10;
           const summary = {
             label: process.env.LABEL,
             full_ci_node_modules_mib: full.measures.node_modules_mib,
             prod_unpruned_node_modules_mib: unpr.measures.node_modules_mib,
             prod_unpruned_tree_mib: unpr.measures.production_tree_mib,
-            pruned_node_modules_mib: pr.measures.after_prune_node_modules_mib,
-            pruned_tree_mib: pr.measures.after_prune_production_tree_mib,
-            prune_steps: pr.prune?.steps ?? [],
-            prune_removed_mib: pr.prune?.removed_mib,
+            pruned_node_modules_mib: pruned.measures.node_modules_mib,
+            pruned_tree_mib: pruned.measures.production_tree_mib,
+            prune_steps: pruneMeta.steps ?? [],
+            prune_removed_mib: removedMib,
             dev_deps_saved_mib: Math.round((full.measures.node_modules_mib - unpr.measures.node_modules_mib) * 10) / 10,
             top_packages_unpruned: unpr.topPackages,
-            smoke_after_prune: pr.smokeAfterPrune,
+            smoke_on_pruned: smoke.smokeBeforePrune,
           };
           fs.writeFileSync('research-packaged-backend-prune-summary.json', JSON.stringify(summary, null, 2));
           console.log(JSON.stringify(summary, null, 2));

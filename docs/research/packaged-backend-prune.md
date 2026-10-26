@@ -2,130 +2,107 @@
 
 Research for the self-contained Tauri 2 download (ADR-0022): what `apps/visualizer/backend` can omit from the resource tree copied beside the Node 24 sidecar, per target, without breaking runtime behaviour.
 
-Harness: branch `research/packaged-backend-prune`, workflow [Research packaged backend prune](../../.github/workflows/research-packaged-backend-prune.yml), scripts under `research/packaged-backend-prune/scripts/`.
+Harness: branch `research/packaged-backend-prune`, workflow `.github/workflows/research-packaged-backend-prune.yml`, scripts under `research/packaged-backend-prune/scripts/`.
+
+**CI run (green, all three targets):** https://github.com/ccanalesb/lightroom-tagger/actions/runs/40375800174
 
 ---
 
 ## TL;DR
 
-| Target | Production tree before prune (MiB) | After prune (MiB) | Savings (MiB) | Smoke after prune |
-|--------|-----------------------------------:|------------------:|--------------:|:------------------|
-| darwin-arm64 | _see CI_ | _see CI_ | _see CI_ | native + HTTP + CLIP + tokenizer |
-| win32-x64 | _see CI_ | _see CI_ | _see CI_ | same |
-| linux-x64 | _see CI_ | _see CI_ | _see CI_ | same |
+| Target | Prod. `node_modules` before prune (MiB) | Pruned `node_modules` (MiB) | Total prune savings (MiB) | Smoke on pruned tree |
+|--------|------------------------------------------:|------------------------------:|--------------------------:|:---------------------|
+| darwin-arm64 | **410.7** MEASURED | **103.7** MEASURED (410.7 − 307.0) | **307.0** | pass |
+| linux-x64 | **411.4** MEASURED | **103.7** MEASURED (411.4 − 307.7) | **307.7** | pass |
+| win32-x64 | **414.2** MEASURED | **131.9** MEASURED (414.2 − 282.3) | **282.3** | pass |
 
-**Safe to drop on every shipped target (measured + smoke-tested in CI):**
+Prod. tree = `npm ci` + `npm run build` + `npm prune --omit=dev`, with `ONNXRUNTIME_NODE_INSTALL=skip` during install. Dist adds **~3.5 MiB** on each target (MEASURED).
 
-1. **Foreign `onnxruntime-node` prebuilds** under `node_modules/onnxruntime-node/bin/napi-v6/` — keep only the host `platform/arch` directory.
-2. **The entire `onnxruntime-web` package** — Node loads `@huggingface/transformers` via `dist/transformers.node.mjs`, which binds ONNX Runtime to `onnxruntime-node` at runtime; the npm `onnxruntime-web` tree is not resolved on that path (see below).
-3. **Browser-only `@huggingface/transformers` dist files** (`transformers.web.js`, `transformers.min.js`, `transformers.js`, `ort-wasm-simd-threaded.jsep.mjs`, …).
-4. **devDependencies** — do not ship them: build with full `npm ci`, then `npm prune --omit=dev` (or install with `--omit=dev` only after compiling `dist/` elsewhere).
+**Spike-style mistake to avoid:** plain `npm ci` without `--omit=dev` adds **~72–92 MiB** devDependencies (MEASURED: full vs prod on CI). The sidecar spikes copied that whole tree (**CITED:** `prepare-backend.mjs` on `spike/tauri-sidecar` runs `npm ci` with no prune — verified via `git show origin/spike/tauri-sidecar:spike/tauri/scripts/prepare-backend.mjs`).
 
-**Linux-only install knob (not a post-pack prune):** set `ONNXRUNTIME_NODE_INSTALL=skip` (or `npm_config_onnxruntime_node_install=skip`) during `npm ci` on `linux/x64`. Otherwise `onnxruntime-node@1.24.3` postinstall pulls CUDA/TensorRT provider `.so` files from NuGet (~hundreds of MiB) that the backend never uses (`executionProviders: ['cpu']` everywhere).
+### Prune list (safe on all shipped targets)
 
-**Not worth custom pruning:** platform-specific `@img/sharp-*` optional packages — npm only installs the host pair on each runner (MEASURED: macOS arm64 tree had no foreign `@img/*`).
+| Item | Approx. saving (MiB) | Rule |
+|------|---------------------:|------|
+| Foreign `onnxruntime-node` prebuilds | **~151–176** per target | Delete `node_modules/onnxruntime-node/bin/napi-v6/*/*` except host triple (see below). |
+| `onnxruntime-web` npm package | **~128.2** | Delete `node_modules/onnxruntime-web/`. |
+| `@huggingface/transformers` web dist | **~3.3** | Delete browser/WASM bundles under `node_modules/@huggingface/transformers/dist/` (listed in `prune-backend.mjs`). |
+| `@huggingface/transformers/.cache` | **0 at pack time** (up to **~347** if a build/smoke downloaded models into `node_modules`) | Delete `node_modules/@huggingface/transformers/.cache/`. Runtime should set `HF_HOME` to user data, not pack this cache. |
+| devDependencies | **~71–92** | `npm prune --omit=dev` after `tsc`, not a path prune. |
 
-**Where it runs in release CI:** after backend `npm ci` + `tsc` on each matrix runner, before copying `dist/` + `node_modules/` into Tauri bundle resources (same slot as `prepare-backend.mjs` today). No npm/Tauri built-in equivalent for cross-platform ORT stripping — use a small script (`research/packaged-backend-prune/scripts/prune-backend.mjs`).
+**Host ORT directory to keep:**
 
----
+| Target | Keep under `bin/napi-v6/` |
+|--------|---------------------------|
+| darwin-arm64 | `darwin/arm64` |
+| linux-x64 | `linux/x64` |
+| win32-x64 | `win32/x64` |
 
-## Measurement method
+**Foreign ORT sizes on a macOS dev install (MEASURED, `du -sm`, `/Users/ccanales/projects/lightroom-tagger/apps/visualizer/backend`, 2026-10-26):** `darwin/arm64` 35, `linux/arm64` 19, `linux/x64` 34, `win32/x64` 60, `win32/arm64` 65 — sum foreign to darwin-arm64 **178 MiB**; whole `onnxruntime-node` **211 MiB**. Ticket range **~160–175 MiB foreign** is **correct for darwin-arm64** (MEASURED).
 
-Workflow matrix: `macos-15` (darwin-arm64), `windows-latest` (win32-x64), `ubuntu-22.04` (linux-x64).
+**Install env (required on linux/x64):**
 
-Per job:
+| Variable | Value |
+|----------|-------|
+| `ONNXRUNTIME_NODE_INSTALL` | `skip` |
 
-1. `npm ci` with `ONNXRUNTIME_NODE_INSTALL=skip`, `npm run build`, measure **full spike-style tree** (includes devDependencies).
-2. `npm prune --omit=dev` → **production tree** (what we should ship instead of the spike’s raw `npm ci`).
-3. Smoke unpruned: sharp, better-sqlite3 + sqlite-vec, onnxruntime-node, `GET /api/status`, CLIP embed (`encodePixels`), `PreTrainedTokenizer` (files from `Xenova/clip-vit-base-patch32` on Hugging Face).
-4. Run `prune-backend.mjs`, re-measure, repeat smoke.
-
-Figures in tables below labelled **MEASURED** include the GitHub Actions run URL once the workflow has completed.
-
----
-
-## Prune rules (concrete)
-
-Run from `apps/visualizer/backend` (or pass backend root as argv):
-
-```bash
-node research/packaged-backend-prune/scripts/prune-backend.mjs .
-```
-
-| Rule ID | Action |
-|---------|--------|
-| `onnxruntime-node-foreign-binaries` | Delete `node_modules/onnxruntime-node/bin/napi-v6/<platform>/<arch>` except: **darwin/arm64**, **linux/x64**, **win32/x64** on the matching runner. |
-| `onnxruntime-web-package` | Delete `node_modules/onnxruntime-web/`. |
-| `transformers-web-dist-artifacts` | Delete listed files under `node_modules/@huggingface/transformers/dist/` (web/WASM builds). |
-
-**Install-time env (all platforms, required on Linux x64):**
-
-| Variable | Value | Effect |
-|----------|-------|--------|
-| `ONNXRUNTIME_NODE_INSTALL` | `skip` | Skips NuGet download of CUDA/TensorRT ORT providers on `linux/x64` (see `onnxruntime-node/script/install-metadata.js` requirements). |
-| Alternative | `--onnxruntime-node-install=skip` | Same (parsed in `onnxruntime-node/script/install.js`). |
+Otherwise postinstall pulls CUDA/TensorRT ORT providers from NuGet for `linux/x64` only (**CITED:** `onnxruntime-node@1.24.3` `script/install-metadata.js` → `requirements['linux/x64']: ['cuda12']`). Backend uses CPU EP only; those libs are unused.
 
 ---
 
-## `@huggingface/transformers` and `onnxruntime-web`
+## `@huggingface/transformers` vs `onnxruntime-web`
 
-**Verdict:** the backend Node entry never loads the `onnxruntime-web` npm package. Runtime ONNX for transformers goes through **`onnxruntime-node`**. Removing `node_modules/onnxruntime-web` is safe after the above smoke tests.
+**Verdict:** Node does **not** load the `onnxruntime-web` package at runtime. **`onnxruntime-node`** backs ONNX for transformers on Node. Removing `node_modules/onnxruntime-web` is safe (MEASURED: CI smoke after prune — CLIP `encodePixels` + `PreTrainedTokenizer` on all three OSes, run 40375800174).
 
-**Sources (CITED, verified in `@huggingface/transformers@4.2.0` installed tree):**
+**Proof in upstream (CITED, `@huggingface/transformers@4.2.0`, verified in installed `dist/transformers.node.mjs`):**
 
-- Package exports send Node to `./dist/transformers.node.mjs` (`package.json` `"exports"."node"`).
-- `src/backends/onnx.js` documents that both packages are imported in source for bundling, but the **Node build selects `onnxruntime-node`** when `apis.IS_NODE_ENV` is true:
+- Node resolves `"exports"."node"` → `dist/transformers.node.mjs` (`package.json`).
+- Source comment in `src/backends/onnx.js` states both ORT packages exist for bundling, but Node uses `onnxruntime-node` when `apis.IS_NODE_ENV` is true.
+- Compiled branch:
 
 ```11553:11554:node_modules/@huggingface/transformers/dist/transformers.node.mjs
 } else if (apis.IS_NODE_ENV) {
   ONNX = ONNX_NODE;
 ```
 
-- The Node bundle inlines a minified web build for browser code paths; it does **not** `import 'onnxruntime-web'` at runtime on Node (MEASURED: smoke passes with the `onnxruntime-web` directory deleted).
+The Node bundle inlines a minified web build for non-Node branches; it does not `import 'onnxruntime-web'` from `node_modules` on Node (MEASURED: delete `node_modules/onnxruntime-web` — smoke passes).
 
-Backend call sites (repo):
-
-- `apps/visualizer/backend/src/imaging/clip-embed.ts` — `CLIPVisionModelWithProjection`, `Tensor`, `env`.
-- `apps/visualizer/backend/src/app-models/sessions.ts` — `PreTrainedTokenizer` + direct `onnxruntime-node` in the worker thread.
+**Backend usage (repo):** `src/imaging/clip-embed.ts` (`CLIPVisionModelWithProjection`, …), `src/app-models/sessions.ts` (`PreTrainedTokenizer` + direct `onnxruntime-node` in the worker).
 
 ---
 
-## devDependencies
+## Per-target prune step bytes (MEASURED, run 40375800174)
 
-The Tauri/Electron spikes’ `prepare-backend.mjs` runs plain `npm ci` (includes devDependencies) and copies the whole `node_modules` tree (**CITED:** `spike/tauri-sidecar` / `spike/electron-addons` scripts — not re-verified as MEASURED spike artifact sizes here).
-
-Production should use **`npm prune --omit=dev`** after build (or equivalent) so `typescript`, `vitest`, `tsx`, and `@types/*` are not bundled.
+| Step | darwin-arm64 (MiB) | linux-x64 (MiB) | win32-x64 (MiB) |
+|------|-------------------:|----------------:|----------------:|
+| `onnxruntime-node-foreign-binaries` | 175.5 | 176.2 | 150.8 |
+| `onnxruntime-web-package` | 128.2 | 128.2 | 128.2 |
+| `transformers-web-dist-artifacts` | 3.3 | 3.3 | 3.3 |
 
 ---
 
-## Linux vs macOS backend weight (~300 MiB claim)
+## Linux vs macOS ~300 MiB backend delta
 
 **Ticket claim:** Linux package carries ~300 MiB more backend than macOS.
 
-**Findings:**
+**Finding:** **Not true for the backend `node_modules` tree** when both are installed on their native runners with `ONNXRUNTIME_NODE_INSTALL=skip` — **411.4 vs 410.7 MiB** (MEASURED, run 40375800174). The **~300 MiB gap** appears in **whole Electron/Tauri app dir** comparisons (**CITED:** spike docs: Electron mac ~798 MiB vs Linux ~1.1 GiB; Tauri spike mac ~636 MiB `.app` vs Linux ~407 MiB `.deb` — different packaging layers, not backend-only `du`).
 
-1. **Spike CI did not log `du` on backend resource trees** — only installer/binary sizes (**CITED:** workflow logs for run `40114156774`; no backend `du` lines).
-2. **Electron spike dir packages** (**CITED:** `docs/research/spike-electron-addons.md` on `spike/electron-addons`): macOS ~798 MiB, Linux ~1.1 GB → **~300 MiB delta for the whole Electron app**, not isolated backend-only (**not verified** as backend-only delta).
-3. **Mechanism for extra Linux backend weight when install env is wrong:** `onnxruntime-node` postinstall on `linux/x64` installs CUDA/TensorRT provider shared libraries from NuGet (`install-metadata.js` → requirement `cuda12`). macOS arm64 and Windows x64 lists are empty — no extra download. **MEASURED** on a fresh macOS dev install with skip: foreign ORT binaries ~175.5 MiB; `onnxruntime-web` ~128.2 MiB; combined prune ~307 MiB before dev-deps (local `/tmp/lt-research-419` run, darwin-arm64 — see parent agent summary for run link after CI).
-
-**MEASURED cross-platform comparison:** see workflow artifact `research-packaged-backend-prune-summary.json` per OS (linux vs darwin production tree MiB before/after prune and `ONNXRUNTIME_NODE_INSTALL=skip`).
+**Mechanism when Linux backend *is* heavier:** default `onnxruntime-node` postinstall on `linux/x64` without `ONNXRUNTIME_NODE_INSTALL=skip` downloads CUDA/TensorRT provider `.so` files (**CITED:** `script/install-metadata.js`). That does not run on macOS/Windows CI requirements (empty arrays). **MEASURED size of those downloads on CI with skip:** absent; prod linux and mac ORT top-level package both **210.1 MiB** before prune (run 40375800174).
 
 ---
 
-## Release pipeline placement
+## Where this runs in the release pipeline
 
-From [tauri-release-pipeline research](tauri-release-pipeline.md) (**CITED**):
+From [tauri-release-pipeline.md](tauri-release-pipeline.md) (**CITED**), per matrix job:
 
-Per matrix job, order should be:
-
-1. Checkout + Node 24 + `ONNXRUNTIME_NODE_INSTALL=skip`.
-2. `npm ci` in `apps/visualizer/backend` → `npm run build` (`tsc`).
+1. `npm ci` in `apps/visualizer/backend` with `ONNXRUNTIME_NODE_INSTALL=skip`.
+2. `npm run build` (`tsc`).
 3. `npm prune --omit=dev`.
-4. **`node research/.../prune-backend.mjs`** (this research script; to be wired into production `prepare-backend`).
-5. Copy `dist/`, pruned `node_modules/`, `package.json`, user-facing config seeds into `backend-pack/` / Tauri `resources`.
-6. Fetch sidecar Node + `tauri build`.
+4. **`node research/packaged-backend-prune/scripts/prune-backend.mjs`** (or production copy under `scripts/`).
+5. Copy `dist/`, pruned `node_modules/`, `package.json`, config seeds → Tauri `resources` / `backend-pack/`.
+6. Sidecar Node fetch + `tauri build`.
 
-npm has no flag to omit foreign ORT platforms. Tauri only bundles paths you copy — pruning before copy is the practical hook.
+npm has no switch to drop foreign ORT platforms. Tauri bundles whatever you copy — pruning before copy is the practical hook.
 
 ---
 
@@ -133,29 +110,31 @@ npm has no flag to omit foreign ORT platforms. Tauri only bundles paths you copy
 
 | Risk | Mitigation |
 |------|------------|
-| `@huggingface/transformers` upgrade switches Node entry to dynamic-import `onnxruntime-web` | Re-run matrix smoke; grep `transformers.node.mjs` for `onnxruntime-web` import. |
-| `onnxruntime-node` upgrade changes bundled platforms or postinstall | Re-measure `bin/napi-v6/*`; re-read `script/install-metadata.js`. |
-| Accidental `--omit=dev` before `tsc` | Always compile before `npm prune --omit=dev`. |
-| Linux CI without `ONNXRUNTIME_NODE_INSTALL=skip` | Assert `du` on `linux/x64` ORT folder or check for `libonnxruntime_providers_cuda.so`. |
+| Transformers upgrade imports `onnxruntime-web` on Node | Grep `transformers.node.mjs`; re-run matrix smoke. |
+| ORT postinstall/metadata changes | Re-read `install-metadata.js`; assert `ONNXRUNTIME_NODE_INSTALL=skip` in CI. |
+| Hub models cached under `node_modules/@huggingface/transformers/.cache` | Prune rule + set `HF_HOME` to user data at runtime. |
+| Prune before vs after smoke conflates sizes | Measure prod tree **before** download smoke; keep HF cache outside `node_modules` in CI (`HF_HOME` in workflow smoke step). |
 
 ---
 
-## Appendix: darwin-arm64 local sanity (MEASURED)
+## Scripts
 
-Host: `/tmp/lt-research-419`, `ONNXRUNTIME_NODE_INSTALL=skip`, Node 24, 2026-10-26.
+| Script | Role |
+|--------|------|
+| `research/packaged-backend-prune/scripts/prune-backend.mjs` | Path rules + byte counts. |
+| `research/packaged-backend-prune/scripts/measure-and-smoke.mjs` | `du` top packages, native + HTTP + transformers smoke. |
+| `research/packaged-backend-prune/scripts/transformers-smoke-entry.mjs` | Copied into backend root for smoke so one transformers module graph is used. |
+
+---
+
+## Appendix: local darwin-arm64 sanity (MEASURED)
+
+Host: `/tmp/lt-research-419`, `ONNXRUNTIME_NODE_INSTALL=skip`, Node 24, 2026-10-26 (same commit family as CI).
 
 | Stage | `node_modules` (MiB) |
 |-------|---------------------:|
 | After `npm ci` (with dev) | 496.5 |
 | After `npm prune --omit=dev` | 410.7 |
-| After `prune-backend.mjs` | 103.7 |
+| After `prune-backend.mjs` (no prior CLIP cache in tree) | 103.7 |
 
-Prune step bytes (bytes → MiB):
-
-| Step | MiB |
-|------|----:|
-| `onnxruntime-node-foreign-binaries` | 175.5 |
-| `onnxruntime-web-package` | 128.2 |
-| `transformers-web-dist-artifacts` | 3.3 |
-
-CI matrix replaces this table with per-OS MEASURED rows and run links.
+Cross-checks CI darwin prod **410.7** and post-prune **103.7** (computed from prod − removed).

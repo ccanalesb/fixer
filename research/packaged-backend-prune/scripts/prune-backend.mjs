@@ -91,6 +91,9 @@ export function pruneBackendTree(backendRoot, opts = {}) {
     steps.push({ id: 'transformers-web-dist-artifacts', bytes: tfWeb });
   }
 
+  const tfCache = join(nm, '@huggingface', 'transformers', '.cache');
+  removePath('transformers-hub-cache-under-node_modules', tfCache);
+
   return { removedBytes, steps, target };
 }
 
