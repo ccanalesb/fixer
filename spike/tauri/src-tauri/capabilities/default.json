@@ -16,6 +16,8 @@
         }
       ]
     },
-    "shell:allow-kill"
+    "shell:allow-kill",
+    "dialog:default",
+    "allow-pick-catalog-path"
   ]
 }

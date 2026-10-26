@@ -64,11 +64,17 @@ if (!bin || !existsSync(bin)) {
 
 process.stderr.write(`smoke: launching ${bin}\n`);
 
+const smokeEnv = {
+  ...process.env,
+  SPIKE_HEADLESS: '1',
+  SPIKE_DIALOG_STUB: process.env.SPIKE_DIALOG_STUB ?? '1',
+};
+if (process.env.SPIKE_APP_MODELS_DIR) {
+  smokeEnv.SPIKE_APP_MODELS_DIR = process.env.SPIKE_APP_MODELS_DIR;
+}
+
 const r = spawnSync(bin, [], {
-  env: {
-    ...process.env,
-    SPIKE_HEADLESS: '1',
-  },
+  env: smokeEnv,
   stdio: 'inherit',
 });
 process.exit(r.status ?? 1);

@@ -1,0 +1,106 @@
+name: Spike Tauri real SPA (#418)
+
+on:
+  push:
+    branches: [spike/tauri-real-spa]
+
+jobs:
+  spike-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - name: Spike paths (runner temp only; ADR-0020)
+        run: |
+          echo "UV_CACHE_DIR=${RUNNER_TEMP}/uv-cache" >> "$GITHUB_ENV"
+          echo "HF_HOME=${RUNNER_TEMP}/hf-home" >> "$GITHUB_ENV"
+          echo "SPIKE_OUT_DIR=${RUNNER_TEMP}/spike-model-out" >> "$GITHUB_ENV"
+          echo "SPIKE_DIALOG_STUB=1" >> "$GITHUB_ENV"
+          echo "PYTHONUTF8=1" >> "$GITHUB_ENV"
+          echo "PYTHONIOENCODING=utf-8" >> "$GITHUB_ENV"
+      - name: Convert thaitea/laya-vision → laya-base
+        run: |
+          set -euo pipefail
+          mkdir -p "$UV_CACHE_DIR" "$HF_HOME" "$SPIKE_OUT_DIR"
+          uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR"
+          test -d "$SPIKE_OUT_DIR/laya-base"
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Linux system deps (Tauri / WebKit)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf xvfb
+      - name: Build packaged spike
+        working-directory: spike/tauri
+        run: |
+          npm ci
+          npm run build:release
+      - name: Run packaged smoke (xvfb)
+        working-directory: spike/tauri
+        env:
+          SPIKE_APP_MODELS_DIR: ${{ runner.temp }}/spike-model-out
+          SPIKE_OUTPUT_JSON: ${{ github.workspace }}/spike-result-linux.json
+        run: xvfb-run -a npm run smoke:packaged
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-418-linux
+          path: spike-result-linux.json
+          retention-days: 14
+
+  spike-windows:
+    runs-on: windows-2022
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - name: Spike paths (runner temp only; ADR-0020)
+        shell: bash
+        run: |
+          echo "UV_CACHE_DIR=${RUNNER_TEMP}/uv-cache" >> "$GITHUB_ENV"
+          echo "HF_HOME=${RUNNER_TEMP}/hf-home" >> "$GITHUB_ENV"
+          echo "SPIKE_OUT_DIR=${RUNNER_TEMP}/spike-model-out" >> "$GITHUB_ENV"
+          echo "SPIKE_DIALOG_STUB=1" >> "$GITHUB_ENV"
+          echo "PYTHONUTF8=1" >> "$GITHUB_ENV"
+          echo "PYTHONIOENCODING=utf-8" >> "$GITHUB_ENV"
+      - name: Convert thaitea/laya-vision → laya-base
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$UV_CACHE_DIR" "$HF_HOME" "$SPIKE_OUT_DIR"
+          uv run scripts/app-models/export_onnx.py thaitea/laya-vision --name laya-base --out "$SPIKE_OUT_DIR"
+          test -d "$SPIKE_OUT_DIR/laya-base"
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build packaged spike
+        working-directory: spike/tauri
+        shell: bash
+        run: |
+          npm ci
+          npm run build:release
+      - name: Run packaged smoke
+        working-directory: spike/tauri
+        shell: bash
+        env:
+          SPIKE_APP_MODELS_DIR: ${{ runner.temp }}/spike-model-out
+          SPIKE_OUTPUT_JSON: ${{ github.workspace }}/spike-result-windows.json
+        run: npm run smoke:packaged
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-418-windows
+          path: spike-result-windows.json
+          retention-days: 14

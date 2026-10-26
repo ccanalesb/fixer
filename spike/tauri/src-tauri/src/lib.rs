@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager, RunEvent, State};
+use url::Url;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
@@ -19,10 +20,12 @@ struct SpikeResult {
     spawn_mode: String,
     backend_root: String,
     data_dir: String,
+    app_models_dir: Option<String>,
     port: u16,
     http_status: Value,
     native_smoke: Value,
-    socket_io: Value,
+    spa_smoke: Value,
+    system_one: Value,
     sidecar_killed_on_exit: bool,
     ok: bool,
 }
@@ -31,7 +34,9 @@ struct SpikeRuntime {
     port: u16,
     data_dir: PathBuf,
     backend_root: PathBuf,
+    app_models_dir: Option<String>,
     sidecar: Mutex<Option<CommandChild>>,
+    sidecar_pid: Mutex<Option<u32>>,
     finished: Mutex<bool>,
 }
 
@@ -56,11 +61,14 @@ fn backend_resources_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| e.to_string())
 }
 
-fn write_minimal_config(dir: &Path) -> Result<(), String> {
+fn write_minimal_config(dir: &Path, app_models_dir: Option<&str>) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let models_line = app_models_dir
+        .map(|d| format!("app_models_dir: {d}\n"))
+        .unwrap_or_default();
     std::fs::write(
         dir.join("config.yaml"),
-        "workers: 1\napp_models_dir: fixtures\n",
+        format!("workers: 1\n{models_line}"),
     )
     .map_err(|e| e.to_string())
 }
@@ -94,7 +102,30 @@ fn spike_port(state: State<'_, Arc<SpikeRuntime>>) -> u16 {
 }
 
 #[tauri::command]
-async fn report_socket_smoke(
+async fn pick_catalog_path(app: AppHandle) -> Result<String, String> {
+    if std::env::var("SPIKE_DIALOG_STUB")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        return Ok("/tmp/spike-stub-catalog.lrcat".into());
+    }
+
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .add_filter("Lightroom catalog", &["lrcat"])
+        .blocking_pick_file();
+
+    match path {
+        Some(p) => Ok(p.to_string()),
+        None => Err("dialog dismissed".into()),
+    }
+}
+
+#[tauri::command]
+async fn report_spa_smoke(
     app: AppHandle,
     state: State<'_, Arc<SpikeRuntime>>,
     payload: Value,
@@ -107,7 +138,99 @@ async fn report_socket_smoke(
     Ok(())
 }
 
-async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, socket_io: Value) {
+async fn run_systemone_via_sidecar(app: &AppHandle, rt: &SpikeRuntime) -> Value {
+    let models_dir = match rt.app_models_dir.as_deref() {
+        Some(d) if !d.is_empty() => d.to_string(),
+        _ => {
+            return serde_json::json!({
+                "ok": false,
+                "error": "SPIKE_APP_MODELS_DIR not set"
+            });
+        }
+    };
+
+    let out_path = rt.data_dir.join("systemone-smoke.json");
+    let port_s = rt.port.to_string();
+    let pid_s = rt
+        .sidecar_pid
+        .lock()
+        .unwrap()
+        .map(|p| p.to_string())
+        .unwrap_or_default();
+
+    let sidecar = match app.shell().sidecar("node") {
+        Ok(c) => c,
+        Err(e) => {
+            return serde_json::json!({
+                "ok": false,
+                "error": format!("sidecar node unavailable: {e}")
+            });
+        }
+    };
+
+    let (mut rx, child) = match sidecar
+        .args(["run-systemone-smoke.mjs"])
+        .current_dir(&rt.backend_root)
+        .env("SPIKE_PORT", &port_s)
+        .env("SPIKE_BACKEND_ROOT", rt.backend_root.display().to_string())
+        .env("SPIKE_APP_MODELS_DIR", &models_dir)
+        .env("SPIKE_SYSTEMONE_JSON", out_path.display().to_string())
+        .env("SPIKE_BACKEND_PID", &pid_s)
+        .spawn()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            return serde_json::json!({
+                "ok": false,
+                "error": format!("systemone sidecar spawn failed: {e}")
+            });
+        }
+    };
+
+    let mut exit_code: Option<i32> = None;
+    let deadline = std::time::Instant::now() + Duration::from_secs(600);
+    while std::time::Instant::now() < deadline {
+        if let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) | CommandEvent::Stderr(line) => {
+                    eprint!(
+                        "[systemone] {}",
+                        String::from_utf8_lossy(&line)
+                    );
+                }
+                CommandEvent::Terminated(payload) => {
+                    exit_code = payload.code;
+                    break;
+                }
+                _ => {}
+            }
+        } else {
+            break;
+        }
+    }
+    let _ = child.kill();
+
+    if out_path.is_file() {
+        std::fs::read_to_string(&out_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| {
+                serde_json::json!({
+                    "ok": false,
+                    "error": "invalid systemone-smoke.json",
+                    "exit_code": exit_code,
+                })
+            })
+    } else {
+        serde_json::json!({
+            "ok": false,
+            "error": "systemone smoke produced no JSON",
+            "exit_code": exit_code,
+        })
+    }
+}
+
+async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, spa_smoke: Value) {
     let status_url = format!("http://127.0.0.1:{}/api/status", rt.port);
     let http_status = wait_for_http(&status_url, Duration::from_secs(10))
         .await
@@ -119,14 +242,17 @@ async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, socket_io: Value) {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(Value::String("missing spike-result.json".into()));
 
+    let system_one = run_systemone_via_sidecar(&app, &rt).await;
+
     let native_ok = native_smoke
         .get("ok")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let socket_ok = socket_io.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let spa_ok = spa_smoke.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let system_ok = system_one.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     let http_ok = http_status.get("status").and_then(|v| v.as_str()) == Some("ok");
 
-    let webview_user_agent = socket_io
+    let webview_user_agent = spa_smoke
         .get("userAgent")
         .and_then(|v| v.as_str())
         .map(String::from);
@@ -144,12 +270,14 @@ async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, socket_io: Value) {
         spawn_mode: "tauri-plugin-shell sidecar".into(),
         backend_root: rt.backend_root.display().to_string(),
         data_dir: rt.data_dir.display().to_string(),
+        app_models_dir: rt.app_models_dir.clone(),
         port: rt.port,
         http_status,
         native_smoke,
-        socket_io,
+        spa_smoke: spa_smoke.clone(),
+        system_one,
         sidecar_killed_on_exit: true,
-        ok: http_ok && native_ok && socket_ok,
+        ok: http_ok && native_ok && spa_ok && system_ok,
     };
 
     let out_path = std::env::var("SPIKE_OUTPUT_JSON").unwrap_or_else(|_| {
@@ -166,6 +294,26 @@ async fn finish_spike(app: AppHandle, rt: Arc<SpikeRuntime>, socket_io: Value) {
     app.exit(if result.ok { 0 } else { 1 });
 }
 
+async fn start_spa_smoke(app: AppHandle, rt: Arc<SpikeRuntime>) {
+    let url = format!("http://127.0.0.1:{}/", rt.port);
+    let Some(win) = app.get_webview_window("main") else {
+        eprintln!("spa smoke: main window missing");
+        return;
+    };
+
+    if let Err(e) = win.navigate(Url::parse(&url).expect("valid loopback url")) {
+        eprintln!("spa smoke: navigate failed: {e}");
+        return;
+    }
+
+    tokio::time::sleep(Duration::from_secs(6)).await;
+
+    let script = include_str!("../../spa-smoke-inject.js");
+    if let Err(e) = win.eval(script) {
+        eprintln!("spa smoke: eval failed: {e}");
+    }
+}
+
 async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result<(), String> {
     let entry = rt.backend_root.join("spike-entry.mjs");
     if !entry.is_file() {
@@ -173,6 +321,7 @@ async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result
     }
 
     let port_s = rt.port.to_string();
+    let frontend_dist = rt.backend_root.join("frontend-dist");
     let sidecar_cmd = app
         .shell()
         .sidecar("node")
@@ -185,6 +334,10 @@ async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result
         .env(
             "SPIKE_RESULT_PATH",
             rt.data_dir.join("spike-result.json").display().to_string(),
+        )
+        .env(
+            "SPIKE_FRONTEND_DIST",
+            frontend_dist.display().to_string(),
         )
         .env(
             "DATABASE_PATH",
@@ -208,6 +361,7 @@ async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result
         );
 
     let (mut rx, child) = sidecar_cmd.spawn().map_err(|e| e.to_string())?;
+    *rt.sidecar_pid.lock().unwrap() = Some(child.pid());
     *rt.sidecar.lock().unwrap() = Some(child);
 
     tauri::async_runtime::spawn(async move {
@@ -226,12 +380,18 @@ async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result
     });
 
     let status_url = format!("http://127.0.0.1:{}/api/status", rt.port);
-    wait_for_http(&status_url, Duration::from_secs(120)).await?;
+    wait_for_http(&status_url, Duration::from_secs(180)).await?;
+
+    let app_nav = app.clone();
+    let rt_nav = rt.clone();
+    tauri::async_runtime::spawn(async move {
+        start_spa_smoke(app_nav, rt_nav).await;
+    });
 
     let app_timeout = app.clone();
     let rt_timeout = rt.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(90)).await;
+        tokio::time::sleep(Duration::from_secs(180)).await;
         if *rt_timeout.finished.lock().unwrap() {
             return;
         }
@@ -239,7 +399,7 @@ async fn spawn_backend_sidecar(app: &AppHandle, rt: Arc<SpikeRuntime>) -> Result
         finish_spike(
             app_timeout,
             rt_timeout,
-            serde_json::json!({ "ok": false, "error": "webview/socket smoke timeout (90s)" }),
+            serde_json::json!({ "ok": false, "error": "spa smoke timeout (180s)" }),
         )
         .await;
     });
@@ -252,23 +412,33 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![spike_port, report_socket_smoke])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            spike_port,
+            pick_catalog_path,
+            report_spa_smoke
+        ])
         .setup(move |app| {
             let handle = app.handle().clone();
 
             tauri::async_runtime::block_on(async {
                 let backend_root = backend_resources_path(&handle)?;
+                let app_models_dir = std::env::var("SPIKE_APP_MODELS_DIR")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty());
                 let data_dir = tempfile::tempdir()
                     .map_err(|e| e.to_string())?
                     .keep();
-                write_minimal_config(&data_dir)?;
+                write_minimal_config(&data_dir, app_models_dir.as_deref())?;
                 let port = pick_port()?;
 
                 let rt = Arc::new(SpikeRuntime {
                     port,
                     data_dir: data_dir.clone(),
                     backend_root: backend_root.clone(),
+                    app_models_dir,
                     sidecar: Mutex::new(None),
+                    sidecar_pid: Mutex::new(None),
                     finished: Mutex::new(false),
                 });
 

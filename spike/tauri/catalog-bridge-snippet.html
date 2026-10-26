@@ -1,0 +1,32 @@
+<script>
+(function () {
+  function install() {
+    if (!window.__TAURI__?.core?.invoke) {
+      window.setTimeout(install, 50);
+      return;
+    }
+    const origFetch = window.fetch.bind(window);
+    window.fetch = async function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      const method = (init && init.method) || (typeof input !== 'string' && input.method) || 'GET';
+      if (method.toUpperCase() === 'POST' && url.includes('/api/config/catalog/pick')) {
+        try {
+          const catalog_path = await window.__TAURI__.core.invoke('pick_catalog_path');
+          return new Response(JSON.stringify({ catalog_path }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: String(e) }), { status: 501 });
+        }
+      }
+      return origFetch(input, init);
+    };
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install);
+  } else {
+    install();
+  }
+})();
+</script>

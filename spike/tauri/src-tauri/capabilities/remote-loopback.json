@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-loopback-spa",
+  "description": "Allow Tauri IPC from the backend loopback SPA origin",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "allow-pick-catalog-path"
+  ]
+}

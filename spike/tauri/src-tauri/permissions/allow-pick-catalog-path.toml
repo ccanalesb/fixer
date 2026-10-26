@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-pick-catalog-path"
+description = "Spike catalog picker command for loopback SPA"
+commands.allow = ["pick_catalog_path", "report_spa_smoke", "spike_port"]

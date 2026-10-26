@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "LT Tauri Spike",
+  "productName": "LT Tauri Real SPA Spike",
   "version": "0.1.0",
   "identifier": "com.lightroomtagger.spike.tauri",
   "build": {
@@ -15,13 +15,14 @@
       {
         "label": "main",
         "title": "LT Tauri Spike",
-        "width": 900,
-        "height": 640,
+        "width": 1280,
+        "height": 800,
         "visible": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://127.0.0.1:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self' http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://127.0.0.1:* http://localhost:* ws://localhost:*; script-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*",
+      "capabilities": ["default", "remote-loopback-spa"]
     }
   },
   "bundle": {
