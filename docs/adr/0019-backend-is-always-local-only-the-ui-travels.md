@@ -3,6 +3,9 @@
 **Status:** Accepted (2026-09-18)
 **Date:** 2026-09-18
 
+The desktop shell is Tauri ([ADR-0022](0022-desktop-app-is-tauri-with-a-node-sidecar.md));
+where this ADR says Electron, read the desktop shell.
+
 ## Context
 
 The product goal is a standalone application other photographers install, with
