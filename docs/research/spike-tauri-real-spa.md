@@ -18,17 +18,18 @@ Research date: **2026-10-26**. Throwaway harness extends `spike/tauri/` on branc
 
 | Check | macOS arm64 (local `.app`) | Windows x64 (CI) | Linux x64 (CI) |
 |-------|---------------------------|------------------|----------------|
-| Backend `/api/status` | **Pass** | *(see CI run)* | *(see CI run)* |
-| Native addons (sharp / sqlite-vec / ORT) | **Pass** | *(CI)* | *(CI)* |
-| Production SPA on loopback | **Partial** — socket + IPC; DOM probe empty `#root` in headless inject | *(CI)* | *(CI)* |
-| Console errors (inject harness) | **None captured** | *(CI)* | *(CI)* |
-| socket.io `connected` (loopback page) | **Pass** | *(CI)* | *(CI)* |
-| `tauri-plugin-dialog` → `pick_catalog_path` | **Pass** (stub path locally/CI; interactive picker not exercised) | *(CI stub)* | *(CI stub)* |
-| `useCatalogPicker` fetch bridge | **Wired** (POST `/api/config/catalog/pick` → invoke); not UI-click tested | *(CI)* | *(CI)* |
-| `GET /v1/models` + `POST /v1/systemone` (worker) | **Pass** (~1.5 s wall on M-series) | *(CI)* | *(CI)* |
-| Live job progress in SPA | **Not exercised** — only backend `connected` event | same | same |
+| Backend `/api/status` | **Pass** | **Pass** | **Pass** |
+| Native addons (sharp / sqlite-vec / ORT) | **Pass** | **Pass** | **Pass** |
+| Packaged smoke `ok` | **Pass** | **Pass** | **Pass** |
+| Production SPA on loopback | **Partial** — socket + IPC; DOM probe empty `#root` in headless inject (all three) | **Partial** (same probe) | **Partial** (same probe) |
+| Console errors (inject harness) | **None** | **None** | **None** |
+| socket.io `connected` (loopback page) | **Pass** | **Pass** | **Pass** |
+| `tauri-plugin-dialog` → `pick_catalog_path` | **Pass** (stub path) | **Pass** (stub) | **Pass** (stub) |
+| `useCatalogPicker` fetch bridge | **Wired**; UI not clicked | same | same |
+| `POST /v1/systemone` wall | **~1.5 s** | **~4.5 s** | **~3.4 s** |
+| Live job progress in SPA | **Not exercised** — only `connected` event | same | same |
 
-Webview engines (from smoke `userAgent` where present): **WKWebView** on macOS; CI expects **WebView2** / **WebKitGTK 4.1** as in #413.
+Webview UA from smoke JSON: **WKWebView** (macOS local); **WebView2** Edge 131 (Windows); **WebKitGTK** 605.1.15 / Safari 605 UA (Linux).
 
 ---
 
@@ -116,4 +117,4 @@ Compare Electron/Tauri sidecar sizes using the same **unpacked** backend tree as
 - Sidecar spike: [spike-tauri-sidecar.md](spike-tauri-sidecar.md), branch `spike/tauri-sidecar`
 - Worker spike: `spike/electron-worker-models`, workflow `spike-electron-worker-models.yml`
 - ADR desktop shell: [0022-desktop-app-is-tauri-with-a-node-sidecar.md](../adr/0022-desktop-app-is-tauri-with-a-node-sidecar.md)
-- **CI run URL:** *(fill from `gh run list --branch spike/tauri-real-spa` after push)*
+- **CI run URL:** [40337493692](https://github.com/ccanalesb/lightroom-tagger/actions/runs/40337493692) (Linux ~8m49s, Windows ~16m40s, both green)
