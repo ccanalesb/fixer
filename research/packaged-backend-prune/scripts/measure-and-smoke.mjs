@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hostPackTarget, pruneBackendTree } from './prune-backend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -61,7 +61,7 @@ function topLevelPackageSizes(nodeModulesDir, limit = 30) {
 async function runNativeSmoke(backendRoot) {
   const entry = join(RESEARCH_ROOT, 'scripts', 'native-smoke.mjs');
   const onnxPath = join(RESEARCH_ROOT, 'fixtures', 'tiny.onnx');
-  const mod = await import(entry);
+  const mod = await import(pathToFileURL(entry).href);
   return mod.runNativeSmoke({ backendRoot, onnxPath });
 }
 
@@ -91,6 +91,7 @@ function runTransformersSmoke(backendRoot) {
           parsed.ok = false;
           parsed.error = err.trim() || `exit ${code}`;
         }
+        if (err.trim()) parsed.stderr = err.trim().slice(-2000);
         resolvePromise(parsed);
       } catch {
         resolvePromise({
