@@ -4,7 +4,7 @@ Research for the self-contained Tauri 2 download (ADR-0022): what `apps/visualiz
 
 Harness: branch `research/packaged-backend-prune`, workflow `.github/workflows/research-packaged-backend-prune.yml`, scripts under `research/packaged-backend-prune/scripts/`.
 
-**CI run (green, all three targets):** https://github.com/ccanalesb/lightroom-tagger/actions/runs/40375800174
+**CI run (green, all three targets):** https://github.com/ccanalesb/lightroom-tagger/actions/runs/40376254320 (commit `b68171d`). Every "MEASURED" CI figure below comes from this run's summary artifacts unless another run is named. The earlier green run [40375800174](https://github.com/ccanalesb/lightroom-tagger/actions/runs/40375800174) (commit `1c7516e`) gives the same prod and per-step bytes, but measured the pruned tree after a smoke had cached the CLIP model inside `node_modules` (pruned 439.1 / 439.1 / 467.3 MiB), so its pruned totals are not usable.
 
 ---
 
@@ -18,7 +18,7 @@ Harness: branch `research/packaged-backend-prune`, workflow `.github/workflows/r
 
 Prod. tree = `npm ci` + `npm run build` + `npm prune --omit=dev`, with `ONNXRUNTIME_NODE_INSTALL=skip` during install. Dist adds **~3.5 MiB** on each target (MEASURED).
 
-**Spike-style mistake to avoid:** plain `npm ci` without `--omit=dev` adds **~72–92 MiB** devDependencies (MEASURED: full vs prod on CI). The sidecar spikes copied that whole tree (**CITED:** `prepare-backend.mjs` on `spike/tauri-sidecar` runs `npm ci` with no prune — verified via `git show origin/spike/tauri-sidecar:spike/tauri/scripts/prepare-backend.mjs`).
+**Spike-style mistake to avoid:** plain `npm ci` without `--omit=dev` adds **~71–92 MiB** devDependencies (MEASURED: full vs prod on CI). The sidecar spikes copied that whole tree (**CITED:** `prepare-backend.mjs` on `spike/tauri-sidecar` runs `npm ci` with no prune — verified via `git show origin/spike/tauri-sidecar:spike/tauri/scripts/prepare-backend.mjs`).
 
 ### Prune list (safe on all shipped targets)
 
@@ -27,7 +27,7 @@ Prod. tree = `npm ci` + `npm run build` + `npm prune --omit=dev`, with `ONNXRUNT
 | Foreign `onnxruntime-node` prebuilds | **~151–176** per target | Delete `node_modules/onnxruntime-node/bin/napi-v6/*/*` except host triple (see below). |
 | `onnxruntime-web` npm package | **~128.2** | Delete `node_modules/onnxruntime-web/`. |
 | `@huggingface/transformers` web dist | **~3.3** | Delete browser/WASM bundles under `node_modules/@huggingface/transformers/dist/` (listed in `prune-backend.mjs`). |
-| `@huggingface/transformers/.cache` | **0 at pack time** (up to **~347** if a build/smoke downloaded models into `node_modules`) | Delete `node_modules/@huggingface/transformers/.cache/`. Runtime should set `HF_HOME` to user data, not pack this cache. |
+| `@huggingface/transformers/.cache` | **0 at pack time** (**335.4** on every target when the smoke had downloaded the CLIP model into `node_modules` — MEASURED, run 40375800174 pruned minus run 40376254320 pruned) | Delete `node_modules/@huggingface/transformers/.cache/`. Runtime should set `HF_HOME` to user data, not pack this cache. |
 | devDependencies | **~71–92** | `npm prune --omit=dev` after `tsc`, not a path prune. |
 
 **Host ORT directory to keep:**
@@ -46,13 +46,13 @@ Prod. tree = `npm ci` + `npm run build` + `npm prune --omit=dev`, with `ONNXRUNT
 |----------|-------|
 | `ONNXRUNTIME_NODE_INSTALL` | `skip` |
 
-Otherwise postinstall pulls CUDA/TensorRT ORT providers from NuGet for `linux/x64` only (**CITED:** `onnxruntime-node@1.24.3` `script/install-metadata.js` → `requirements['linux/x64']: ['cuda12']`). Backend uses CPU EP only; those libs are unused.
+Otherwise postinstall pulls CUDA/TensorRT ORT providers from NuGet for `linux/x64` only (**CITED:** `onnxruntime-node@1.24.3` `script/install-metadata.js` → `requirements['linux/x64']: ['cuda12']`, package `Microsoft.ML.OnnxRuntime.Gpu.Linux` 1.24.3 per `install-metadata-versions.js`). That adds **301.9 MiB** to `onnxruntime-node` (MEASURED: `libonnxruntime_providers_cuda.so` 301.1 + `_tensorrt.so` 0.8 + `_shared.so` 0.0 MiB, from `unzip -l` of the 196.0 MiB nupkg on api.nuget.org). Backend uses CPU EP only (`executionProviders: ['cpu']` in `src/app-models/sessions.ts`); those libs are unused.
 
 ---
 
 ## `@huggingface/transformers` vs `onnxruntime-web`
 
-**Verdict:** Node does **not** load the `onnxruntime-web` package at runtime. **`onnxruntime-node`** backs ONNX for transformers on Node. Removing `node_modules/onnxruntime-web` is safe (MEASURED: CI smoke after prune — CLIP `encodePixels` + `PreTrainedTokenizer` on all three OSes, run 40375800174).
+**Verdict:** Node does **not** load the `onnxruntime-web` package at runtime. **`onnxruntime-node`** backs ONNX for transformers on Node. Removing `node_modules/onnxruntime-web` is safe (MEASURED: CI smoke after prune — CLIP `encodePixels` (512-dim output) + `PreTrainedTokenizer` and `GET /api/status` 200 on all three OSes, run 40376254320).
 
 **Proof in upstream (CITED, `@huggingface/transformers@4.2.0`, verified in installed `dist/transformers.node.mjs`):**
 
@@ -71,7 +71,7 @@ The Node bundle inlines a minified web build for non-Node branches; it does not 
 
 ---
 
-## Per-target prune step bytes (MEASURED, run 40375800174)
+## Per-target prune step bytes (MEASURED, run 40376254320)
 
 | Step | darwin-arm64 (MiB) | linux-x64 (MiB) | win32-x64 (MiB) |
 |------|-------------------:|----------------:|----------------:|
@@ -85,9 +85,9 @@ The Node bundle inlines a minified web build for non-Node branches; it does not 
 
 **Ticket claim:** Linux package carries ~300 MiB more backend than macOS.
 
-**Finding:** **Not true for the backend `node_modules` tree** when both are installed on their native runners with `ONNXRUNTIME_NODE_INSTALL=skip` — **411.4 vs 410.7 MiB** (MEASURED, run 40375800174). The **~300 MiB gap** appears in **whole Electron/Tauri app dir** comparisons (**CITED:** spike docs: Electron mac ~798 MiB vs Linux ~1.1 GiB; Tauri spike mac ~636 MiB `.app` vs Linux ~407 MiB `.deb` — different packaging layers, not backend-only `du`).
+**Finding:** **True for the spikes, and it is the CUDA providers.** The spikes ran plain `npm ci` (**CITED:** `prepare-backend.mjs` on `spike/electron-addons` and `spike/tauri-sidecar`, no `ONNXRUNTIME_NODE_INSTALL`), so on `linux/x64` the `onnxruntime-node` postinstall downloaded the CUDA/TensorRT providers: **301.9 MiB** (MEASURED, see the install env section). That matches the Electron spike gap: dir packages ~798 MB macOS vs ~1.1 GB Linux (**CITED:** `docs/research/spike-electron-addons.md` on `spike/electron-addons`, `du -sh`), while Electron itself differs by only ~16 MB between the two (258 vs 274 MB unpacked, **CITED:** resolution of the Electron-or-Tauri ticket). The Tauri spike's ~407 MB Linux `.deb` is compressed and not comparable to the ~636 MB macOS `.app`.
 
-**Mechanism when Linux backend *is* heavier:** default `onnxruntime-node` postinstall on `linux/x64` without `ONNXRUNTIME_NODE_INSTALL=skip` downloads CUDA/TensorRT provider `.so` files (**CITED:** `script/install-metadata.js`). That does not run on macOS/Windows CI requirements (empty arrays). **MEASURED size of those downloads on CI with skip:** absent; prod linux and mac ORT top-level package both **210.1 MiB** before prune (run 40375800174).
+With `ONNXRUNTIME_NODE_INSTALL=skip` the gap is gone: prod `node_modules` **411.4 MiB** linux-x64 vs **410.7 MiB** darwin-arm64, and `onnxruntime-node` **210.1 MiB** on both before prune (MEASURED). macOS and Windows have no postinstall download (`requirements` is `[]` for `darwin/arm64` and `win32/x64`, **CITED** `install-metadata.js`).
 
 ---
 
