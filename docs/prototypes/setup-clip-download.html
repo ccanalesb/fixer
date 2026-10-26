@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE — How the setup screen shows the CLIP download and a failed import</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  PROTOTYPE — throwaway. Three variants (?variant=A|B|C) of step 2 of the
+  first-run setup screen (Insights, variant B of first-run-empty-state):
+  where the warning about the image model download sits, how the download
+  reads inside the embeddings stage, and how a failed import reads with
+  Retry import. The bottom-right panel switches the network between online,
+  offline and a connection that drops mid-download. Fake data; nothing persisted.
+-->
+<style>
+  /* Tokens copied verbatim from apps/visualizer/frontend/src/index.css */
+  :root {
+    --color-background:#ffffff; --color-surface:#f6f5f4; --color-surface-hover:#f1f0ed;
+    --color-text-primary:rgba(0,0,0,0.95); --color-text-secondary:#4a4642; --color-text-tertiary:#847f7a;
+    --color-border:rgba(0,0,0,0.12); --color-border-strong:rgba(0,0,0,0.2);
+    --color-accent:#0075de; --color-accent-hover:#005bab; --color-accent-light:#f2f9ff;
+    --color-success:#1aae39; --color-warning:#dd5b00; --color-error:#e03e3e;
+  }
+  .dark {
+    --color-background:#191919; --color-surface:#31302e; --color-surface-hover:#3d3b38;
+    --color-text-primary:#f7f6f5; --color-text-secondary:#b8b7b4; --color-text-tertiary:#8a8985;
+    --color-border:rgba(255,255,255,0.12); --color-border-strong:rgba(255,255,255,0.25);
+    --color-accent:#4A9EFF; --color-accent-hover:#7AB8FF; --color-accent-light:rgba(74,158,255,0.15);
+    --color-success:#3db39a; --color-warning:#ff8c42; --color-error:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,system-ui,'Segoe UI',sans-serif;
+    background:var(--color-background);color:var(--color-text-primary);
+    -webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5;padding-bottom:160px;
+    transition:background-color .2s ease,color .2s ease}
+  p{margin:0} h1,h2,h3{margin:0}
+  code{background:var(--color-surface);padding:1px 5px;border-radius:4px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em}
+
+  /* Layout.tsx */
+  header.app{position:sticky;top:0;z-index:50;background:var(--color-background);border-bottom:1px solid var(--color-border)}
+  .container{max-width:80rem;margin:0 auto;padding:0 2rem}
+  .hdr{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .hdr-left{display:flex;align-items:center;gap:2rem}
+  .brand{font-size:18px;font-weight:600}
+  nav.pills{display:flex;gap:4px}
+  nav.pills a{padding:6px 12px;border-radius:8px;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer;
+    color:var(--color-text-secondary);transition:all .15s}
+  nav.pills a:hover{background:var(--color-surface);color:var(--color-text-primary)}
+  nav.pills a.on{background:var(--color-accent);color:#fff;font-weight:600}
+  main{max-width:80rem;margin:0 auto;padding:2rem}
+
+  .title{font-size:26px;font-weight:700;letter-spacing:-.25px;margin-bottom:8px}
+  .sub{color:var(--color-text-secondary)}
+  .h2{font-size:18px;font-weight:600;margin-bottom:12px}
+  .s{font-size:14px} .s2{font-size:14px;color:var(--color-text-secondary)} .t3{font-size:12px;color:var(--color-text-tertiary)}
+  .sem{font-weight:600}
+  .stack > * + *{margin-top:32px}
+  .stack3 > * + *{margin-top:12px}
+  .row{display:flex;align-items:center;gap:12px}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .btns{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+
+  .card{background:var(--color-background);border:1px solid var(--color-border);border-radius:12px;padding:16px;
+    box-shadow:rgba(0,0,0,.04) 0 4px 18px,rgba(0,0,0,.027) 0 2.025px 7.84688px,rgba(0,0,0,.02) 0 .8px 2.925px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .kpi .n{font-size:28px;font-weight:700}
+
+  /* Button.tsx */
+  button.btn{font:500 14px Inter,sans-serif;border-radius:8px;padding:6px 12px;cursor:pointer;
+    background:var(--color-surface);color:var(--color-text-primary);border:1px solid var(--color-border);transition:all .15s;white-space:nowrap}
+  button.btn:hover:not(:disabled){background:var(--color-surface-hover);border-color:var(--color-border-strong)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  button.btn.primary{background:var(--color-accent);color:#fff;border:2px solid var(--color-background);font-weight:600}
+  button.btn.primary:hover:not(:disabled){background:var(--color-accent-hover)}
+  button.btn.ghost{background:transparent;border-color:transparent}
+  button.btn.two{display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.25;padding:7px 14px}
+  button.btn.two small{font-weight:500;font-size:12px;opacity:.85}
+  a.lnk{color:var(--color-accent);font-size:14px;cursor:pointer;text-decoration:none;font-weight:500}
+  a.lnk:hover{text-decoration:underline}
+
+  .badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:9999px;font-size:12px;font-weight:600;
+    border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-secondary);white-space:nowrap}
+  .badge.accent{background:var(--color-accent-light);color:var(--color-accent)}
+  .badge.success{background:rgba(26,174,57,.08);color:var(--color-success)}
+  .badge.error{background:rgba(224,62,62,.08);color:var(--color-error)}
+
+  .bar{height:6px;border-radius:9999px;background:var(--color-surface);overflow:hidden}
+  .bar > i{display:block;height:100%;background:var(--color-accent);transition:width .3s}
+  .bar.err > i{background:var(--color-error)}
+  .bar.thin{height:4px}
+  ol.stages{list-style:none;margin:0;padding:0}
+  ol.stages li{display:flex;align-items:center;gap:10px;font-size:14px;padding:4px 0;color:var(--color-text-tertiary)}
+  ol.stages li .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--color-border-strong);flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+  ol.stages li.done{color:var(--color-text-secondary)}
+  ol.stages li.done .dot{background:var(--color-success);border-color:var(--color-success);color:#fff}
+  ol.stages li.cur{color:var(--color-text-primary);font-weight:600}
+  ol.stages li.cur .dot{border-color:var(--color-accent);border-top-color:transparent;animation:spin 1s linear infinite}
+  ol.stages li.fail{color:var(--color-error);font-weight:600}
+  ol.stages li.fail .dot{background:var(--color-error);border-color:var(--color-error);color:#fff}
+  ol.stages li .grow{flex:1}
+  ol.stages li.subrow{padding:2px 0 6px 28px;display:block;font-weight:400}
+  ol.stages li.inlerr{padding:0 0 8px 28px;display:block;font-weight:400;color:var(--color-text-secondary)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .empty{text-align:center;padding:48px 16px}
+  .empty .ico{width:48px;height:48px;border-radius:12px;background:var(--color-surface);margin:0 auto 16px;
+    display:flex;align-items:center;justify-content:center;font-size:22px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+  .tile{aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,var(--color-surface),var(--color-surface-hover));border:1px solid var(--color-border)}
+
+  .tabstrip{border-bottom:1px solid var(--color-border);margin-bottom:24px;display:flex;gap:4px;overflow-x:auto}
+  .tabstrip button{padding:8px 16px;font:600 14px Inter,sans-serif;white-space:nowrap;background:none;border:0;
+    border-bottom:3px solid transparent;cursor:pointer;color:var(--color-text-primary);opacity:.6}
+  .tabstrip button.on{border-bottom-color:var(--color-accent);color:var(--color-accent);opacity:1}
+  .tabstrip button.off{cursor:default;opacity:.3}
+
+  /* Setup screen (first-run-empty-state, variant B) */
+  .welcome{max-width:600px;margin:24px auto 0;text-align:center}
+  .steps{text-align:left;margin-top:32px}
+  .step{display:flex;gap:16px;padding:20px;border:1px solid var(--color-border);border-radius:12px;margin-bottom:12px}
+  .step .num{width:28px;height:28px;border-radius:50%;background:var(--color-surface);font-weight:700;font-size:14px;
+    display:flex;align-items:center;justify-content:center;flex:none}
+  .step.active{border-color:var(--color-accent);box-shadow:0 0 0 3px var(--color-accent-light)}
+  .step.active .num{background:var(--color-accent);color:#fff}
+  .step.done .num{background:var(--color-success);color:#fff}
+  .step.locked{opacity:.5}
+  .step.error{border-color:var(--color-error);box-shadow:0 0 0 3px rgba(224,62,62,.10)}
+  .step.error .num{background:var(--color-error);color:#fff}
+
+  .note{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;
+    background:var(--color-accent-light);color:var(--color-text-secondary);font-size:14px}
+  .note .i{color:var(--color-accent);font-weight:700}
+  .errbox{border:1px solid var(--color-error);background:rgba(224,62,62,.06);border-radius:8px;padding:12px 14px}
+  .errbox .t{color:var(--color-error);font-weight:600;font-size:14px;margin-bottom:4px}
+  .warnline{border:1px solid var(--color-warning);background:rgba(221,91,0,.06);border-radius:12px;padding:12px 16px}
+
+  /* In-app confirm */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:90;display:flex;justify-content:center;align-items:flex-start}
+  .modal{margin-top:120px;width:460px;padding:24px}
+  .modal ul{margin:12px 0 0;padding-left:18px} .modal li{font-size:14px;color:var(--color-text-secondary);margin-bottom:6px}
+
+  /* Prototype chrome — deliberately not app-styled */
+  #switcher{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:4px;
+    background:#111;color:#fff;border-radius:9999px;padding:6px;box-shadow:0 8px 30px rgba(0,0,0,.35);font:600 13px Inter,sans-serif}
+  #switcher button{background:#333;color:#fff;border:0;border-radius:9999px;width:32px;height:32px;cursor:pointer;font-size:16px}
+  #switcher span{padding:0 14px;min-width:300px;text-align:center}
+  #proto{position:fixed;bottom:20px;right:20px;z-index:100;background:#111;color:#ddd;border-radius:12px;padding:12px;width:270px;
+    font:12px ui-monospace,Menlo,monospace;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  #proto b{color:#fff} #proto button{font:600 11px Inter,sans-serif;background:#333;color:#fff;border:0;border-radius:6px;padding:4px 8px;cursor:pointer;margin:6px 4px 0 0}
+  #proto button.on{background:#0075de}
+  #proto .k{color:#8fd}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="switcher"></div>
+<div id="proto"></div>
+
+<script>
+const VARIANTS = {
+  A: 'Said in the step · sub-row · error under the checklist',
+  B: 'On the button · stage label swaps · step resets with the error',
+  C: 'Confirm first · own checklist row · error on the failed row',
+};
+const KEYS = Object.keys(VARIANTS);
+const CATALOG = '~/Pictures/Lightroom/Lightroom Catalog.lrcat';
+const TOTAL = 8312;      // fake
+const MODEL_MB = 352;    // onnx/vision_model.onnx = 351,685,709 bytes (335.4 MiB)
+const SIZE = 'about 350 MB';
+const DROP_AT = 141;
+const STAGES = [
+  { key: 'sync', label: 'Reading the catalog' },
+  { key: 'embed', label: 'Computing image embeddings' },
+  { key: 'stack', label: 'Detecting burst stacks' },
+  { key: 'similarity', label: 'Grouping near-duplicates' },
+];
+
+const params = new URLSearchParams(location.search);
+const S = {
+  variant: KEYS.includes(params.get('variant')) ? params.get('variant') : 'A',
+  page: 'insights', procTab: 'jobs',
+  catalog: CATALOG,
+  imp: 'none',          // none | running | failed | done
+  stage: 0, pct: 0,     // stage index and % within it
+  mb: 0,                // MB downloaded in this attempt
+  modelOnDisk: false,
+  net: 'online',        // online | offline | drop
+  fail: null,           // null | { kind: 'offline' | 'drop', at }
+  confirm: false, confirmed: false, attempts: 0,
+};
+let timer = null;
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (n) => n.toLocaleString('en-US');
+const downloading = () => S.imp === 'running' && S.stage === 1 && !S.modelOnDisk;
+const overall = () => S.imp === 'done' ? 100 : Math.round(5 + (S.stage * 25 + (S.stage === 1 && !S.modelOnDisk ? 0 : S.pct) / 4) * 0.95);
+const syncDone = () => S.imp === 'done' || ((S.imp === 'running' || S.imp === 'failed') && S.stage > 0) || S.attempts > 1;
+const photos = () => syncDone() ? TOTAL : 0;
+const empty = () => S.imp !== 'done';
+
+/* ---------- simulation ---------- */
+function tick() {
+  if (S.stage === 1 && !S.modelOnDisk) {
+    if (S.net === 'offline' && S.mb === 0) { S.pct++; if (S.pct >= 3) return failNow('offline'); return render(); }
+    S.mb = Math.min(MODEL_MB, S.mb + 17);
+    if (S.net === 'drop' && S.mb >= DROP_AT) { S.mb = DROP_AT; return failNow('drop'); }
+    if (S.mb >= MODEL_MB) { S.modelOnDisk = true; S.dlThisRun = true; S.pct = 0; }
+    return render();
+  }
+  S.pct += S.stage === 1 ? 4 : S.attempts > 1 && S.stage === 0 ? 34 : 10;
+  if (S.pct >= 100) { S.pct = 0; S.stage++; }
+  if (S.stage >= STAGES.length) return finish();
+  render();
+}
+function failNow(kind) { clearInterval(timer); S.imp = 'failed'; S.fail = { kind, at: S.mb }; render(); }
+function askImport() {
+  if (S.variant === 'C' && !S.modelOnDisk && !S.confirmed) { S.confirm = true; return render(); }
+  startImport();
+}
+function startImport() {
+  S.confirm = false; S.confirmed = true;
+  S.imp = 'running'; S.stage = 0; S.pct = 0; S.mb = 0; S.fail = null; S.dlThisRun = false; S.attempts++;
+  clearInterval(timer); timer = setInterval(tick, 250); render();
+}
+function finish() { clearInterval(timer); S.imp = 'done'; S.stage = 4; render(); }
+function setNet(n) { S.net = n; render(); }
+function reset(keepCatalog = true) {
+  clearInterval(timer);
+  Object.assign(S, { catalog: keepCatalog ? CATALOG : null, imp: 'none', stage: 0, pct: 0, mb: 0, modelOnDisk: false,
+    fail: null, confirm: false, confirmed: false, attempts: 0, page: 'insights' });
+  render();
+}
+function go(page, tab) { S.page = page; if (tab) S.procTab = tab; render(); }
+function setVariant(v) { S.variant = v; const u = new URL(location); u.searchParams.set('variant', v); history.replaceState(null, '', u); render(); }
+function cycle(d) { setVariant(KEYS[(KEYS.indexOf(S.variant) + d + KEYS.length) % KEYS.length]); }
+
+/* ---------- shared copy ---------- */
+const failMsg = () => S.fail.kind === 'offline'
+  ? `Fixer couldn't reach huggingface.co to download the image model it needs (${SIZE}). Check your internet connection and try again.`
+  : `The download of the image model from huggingface.co stopped at ${S.fail.at} of ${MODEL_MB} MB. Check your internet connection and try again; the download starts over.`;
+const keptLine = () => `Your ${fmt(TOTAL)} photos were read and are in Images.`;
+const credit = () => `<p class="t3">Fixer downloads CLIP ViT-B/32 (OpenAI, MIT license) from Hugging Face.</p>`;
+const bar = (pct, cls = '') => `<div class="bar ${cls}"><i style="width:${pct}%"></i></div>`;
+const embedCount = () => `<span class="t3">${fmt(Math.round(TOTAL * S.pct / 100))} / ${fmt(TOTAL)}</span>`;
+const stoppedAt = () => S.fail.at === 0 ? "couldn't connect" : `stopped at ${S.fail.at} / ${MODEL_MB} MB`;
+const mbLine = () => `${S.mb === 0 ? 'Connecting to huggingface.co…' : `${S.mb} / ${MODEL_MB} MB`}`;
+
+function stageCls(i) {
+  if (S.imp === 'done' || i < S.stage) return 'done';
+  if (S.imp === 'failed' && i === S.stage) return 'fail';
+  if (S.imp === 'running' && i === S.stage) return 'cur';
+  return '';
+}
+const dot = (cls) => `<span class="dot">${cls === 'done' ? '✓' : cls === 'fail' ? '!' : ''}</span>`;
+
+/* ---------- variant A: said in the step ---------- */
+function checklistA() {
+  return `<ol class="stages">${STAGES.map((st, i) => {
+    const c = stageCls(i);
+    let extra = '';
+    if (i === 1 && c === 'cur' && !S.modelOnDisk) {
+      extra = `<li class="subrow"><div class="between" style="margin-bottom:4px"><span class="s2">Downloading the image model (once)</span><span class="t3">${mbLine()}</span></div>${bar(S.mb / MODEL_MB * 100, 'thin')}</li>`;
+    }
+    if (i === 1 && c === 'fail') {
+      extra = `<li class="subrow"><div class="between" style="margin-bottom:4px"><span class="s2">Downloading the image model (once)</span><span class="t3">${stoppedAt()}</span></div>${bar(S.fail.at / MODEL_MB * 100, 'thin err')}</li>`;
+    }
+    const right = i === 1 && c === 'cur' && S.modelOnDisk ? embedCount() : '';
+    return `<li class="${c}">${dot(c)}<span class="grow">${st.label}</span>${right}</li>${extra}`;
+  }).join('')}</ol>`;
+}
+function step2A() {
+  if (S.imp === 'running') {
+    return `${bar(overall())}${checklistA()}<p class="t3">You can keep using the app; Images fills in after the first step.</p>`;
+  }
+  if (S.imp === 'failed') {
+    return `${bar(overall(), 'err')}${checklistA()}
+      <div class="errbox"><p class="t">The import stopped</p><p class="s2">${failMsg()}</p><p class="s2" style="margin-top:6px">${keptLine()}</p></div>
+      <div class="btns"><button class="btn primary" onclick="askImport()">Retry import</button><a class="lnk" onclick="go('processing','jobs')">See the log in Job Queue</a></div>`;
+  }
+  return `<p class="s2">Reads your photos, then prepares them for culling. Large catalogs take a while.</p>
+    ${S.modelOnDisk ? '' : `<div class="note"><span class="i">i</span><span>The first import downloads an image model from huggingface.co — ${SIZE}, once. It needs an internet connection.</span></div>`}
+    <div>${S.catalog ? `<button class="btn primary" onclick="askImport()">Import catalog</button>` : '<button class="btn" disabled>Import catalog</button>'}</div>
+    ${credit()}`;
+}
+
+/* ---------- variant B: on the button ---------- */
+function checklistB() {
+  return `<ol class="stages">${STAGES.map((st, i) => {
+    const c = stageCls(i);
+    let label = st.label, right = '';
+    if (i === 1 && c === 'cur') {
+      if (!S.modelOnDisk) { label = 'Downloading the image model (once)'; right = `<span class="t3">${mbLine()}</span>`; }
+      else right = embedCount();
+    }
+    return `<li class="${c}">${dot(c)}<span class="grow">${label}</span>${right}</li>`;
+  }).join('')}</ol>`;
+}
+const importBtnB = (label) => S.modelOnDisk
+  ? `<button class="btn primary" onclick="askImport()">${label}</button>`
+  : `<button class="btn primary two" onclick="askImport()">${label}<small>One-time download, ${SIZE}</small></button>`;
+function step2B() {
+  if (S.imp === 'running') {
+    const head = downloading()
+      ? `<div class="between"><span class="s2">Downloading the image model</span><span class="t3">${Math.round(S.mb / MODEL_MB * 100)}%</span></div>${bar(S.mb / MODEL_MB * 100)}`
+      : bar(overall());
+    return `${head}${checklistB()}<p class="t3">You can keep using the app; Images fills in after the first step.</p>`;
+  }
+  if (S.imp === 'failed') {
+    return `<div class="errbox"><p class="t">Import didn't finish — stopped while downloading the image model</p><p class="s2">${failMsg()}</p></div>
+      <p class="s2">✓ ${keptLine()} Burst stacks and near-duplicates come after the image model.</p>
+      <div>${importBtnB('Retry import')}</div>${credit()}`;
+  }
+  return `<p class="s2">Reads your photos, then prepares them for culling. Large catalogs take a while.</p>
+    <div>${S.catalog ? importBtnB('Import catalog') : '<button class="btn" disabled>Import catalog</button>'}</div>${credit()}`;
+}
+
+/* ---------- variant C: confirm first ---------- */
+function checklistC() {
+  const rows = [];
+  const showDl = !S.modelOnDisk || S.dlThisRun;
+  const dlState = S.modelOnDisk ? 'done'
+    : S.imp === 'failed' && S.stage === 1 ? 'fail'
+    : S.imp === 'running' && S.stage === 1 ? 'cur' : '';
+  STAGES.forEach((st, i) => {
+    if (i === 1 && showDl && S.attempts > 0) {
+      rows.push(`<li class="${dlState}">${dot(dlState)}<span class="grow">Downloading the image model (once)</span><span class="t3">${dlState === 'cur' ? mbLine() : dlState === 'done' ? `${MODEL_MB} MB` : dlState === 'fail' ? stoppedAt() : ''}</span></li>`);
+      if (dlState === 'fail') rows.push(`<li class="inlerr">${failMsg()}</li>`);
+    }
+    let c = stageCls(i);
+    if (i === 1 && (c === 'fail' || (c === 'cur' && !S.modelOnDisk))) c = '';
+    rows.push(`<li class="${c}">${dot(c)}<span class="grow">${st.label}</span>${i === 1 && c === 'cur' ? embedCount() : ''}</li>`);
+  });
+  return `<ol class="stages">${rows.join('')}</ol>`;
+}
+function step2C() {
+  if (S.imp === 'running') {
+    return `${bar(overall())}${checklistC()}<p class="t3">You can keep using the app; Images fills in after the first step.</p>`;
+  }
+  if (S.imp === 'failed') {
+    return `${checklistC()}<p class="s2">${keptLine()}</p>
+      <div class="btns"><button class="btn primary" onclick="askImport()">Retry import</button><a class="lnk" onclick="go('processing','jobs')">See the log in Job Queue</a></div>`;
+  }
+  return `<p class="s2">Reads your photos, then prepares them for culling. Large catalogs take a while.</p>
+    <div>${S.catalog ? `<button class="btn primary" onclick="askImport()">Import catalog</button>` : '<button class="btn" disabled>Import catalog</button>'}</div>`;
+}
+function modalC() {
+  if (!S.confirm) return '';
+  return `<div class="scrim" onclick="if(event.target===this){S.confirm=false;render()}"><div class="card modal stack3">
+    <p class="sem" style="font-size:18px">Before you import</p>
+    <ul>
+      <li>Fixer reads your catalog. Your photos stay where they are.</li>
+      <li>The first import downloads an image model from huggingface.co — <b>${SIZE}</b>, once.</li>
+      <li>That step needs an internet connection.</li>
+    </ul>
+    ${credit()}
+    <div class="btns" style="justify-content:flex-end;margin-top:20px"><button class="btn ghost" onclick="S.confirm=false;render()">Cancel</button><button class="btn primary" onclick="startImport()">Download and import</button></div>
+  </div></div>`;
+}
+
+/* ---------- setup screen ---------- */
+function setupScreen() {
+  const s1 = S.catalog ? 'done' : 'active';
+  const failedC = S.variant === 'C' && S.imp === 'failed';
+  const failedA = S.variant === 'A' && S.imp === 'failed';
+  const s2 = !S.catalog ? 'locked' : (failedC || failedA) ? 'error' : 'active';
+  const body = { A: step2A, B: step2B, C: step2C }[S.variant]();
+  return `<div class="welcome">
+    <h1 class="title" style="font-size:32px">Welcome to Fixer</h1>
+    <p class="sub">Fixer works on your Lightroom Classic catalog. Two steps and your photos are here.</p>
+    <div class="steps">
+      <div class="step ${s1}"><div class="num">${s1 === 'done' ? '✓' : 1}</div><div style="flex:1" class="stack3">
+        <p class="sem">Choose your catalog</p>
+        ${S.catalog ? `<div class="between"><code>${esc(S.catalog)}</code>${S.imp === 'none' || S.imp === 'failed' ? `<a class="lnk" onclick="S.catalog=CATALOG;render()">Change…</a>` : ''}</div>`
+          : `<p class="s2">The <code>.lrcat</code> file, usually in Pictures › Lightroom.</p><div><button class="btn primary" onclick="S.catalog=CATALOG;render()">Choose catalog…</button></div>`}
+      </div></div>
+      <div class="step ${s2}"><div class="num">${s2 === 'error' ? '!' : 2}</div><div style="flex:1" class="stack3">
+        <p class="sem">${S.variant === 'C' && S.imp === 'failed' ? 'Import it — stopped' : 'Import it'}</p>
+        ${S.catalog ? body : '<p class="s2">Reads your photos, then prepares them for culling.</p>'}
+      </div></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- other pages ---------- */
+function insightsPage() {
+  const k = [['Catalog photos', fmt(TOTAL)], ['Scoring 9+', '0'], ['Burst stacks to cull', '214'], ['Unscored on active perspectives', fmt(TOTAL)]];
+  return `<div class="stack"><div><h1 class="title">Insights</h1><p class="sub">Actionable catalog signals — top highlights, next steps, and shortcuts to Identity and Processing.</p></div>
+    <div class="kpis">${k.map(([l, n]) => `<div class="card kpi"><p class="s2">${l}</p><p class="n">${n}</p></div>`).join('')}</div></div>`;
+}
+function imagesNote() {
+  if (S.imp === 'running') return `<p class="t3">Import still running — <a class="lnk" onclick="go('insights')">see progress</a></p>`;
+  if (S.imp !== 'failed') return '';
+  if (S.variant === 'A') return `<p class="t3">The import didn't finish — <a class="lnk" onclick="go('insights')">finish setup</a></p>`;
+  if (S.variant === 'B') return `<div class="warnline between"><p class="s"><span class="sem">The import didn't finish.</span> Your photos are here; burst stacks and near-duplicates aren't ready yet.</p><button class="btn" onclick="go('insights')">Go to setup</button></div>`;
+  return '';
+}
+function imagesPage() {
+  const head = `<div><h1 class="title">Images</h1><p class="sub">${photos() ? fmt(photos()) + ' photos' : 'Browse your catalog.'}</p></div>`;
+  if (photos()) return `<div class="stack">${head}${imagesNote()}<div class="grid">${'<div class="tile"></div>'.repeat(24)}</div></div>`;
+  const e = S.imp === 'running'
+    ? `<div class="empty"><p class="sub">Reading your catalog… photos appear here when that step finishes.</p></div>`
+    : `<div class="empty"><div class="ico">◎</div><p class="sem">Your library is empty</p><p class="s2" style="margin:4px 0 16px">Choose and import your Lightroom catalog to browse your photos.</p><button class="btn primary" onclick="go('insights')">Go to setup</button></div>`;
+  return `<div class="stack">${head}${e}</div>`;
+}
+function identityPage() {
+  if (!photos()) return `<div class="stack"><div><h1 class="title">Identity</h1></div><div class="empty"><div class="ico">◎</div><p class="sem">Your library is empty</p><p class="s2" style="margin:4px 0 16px">Identity is built from scores on your photos. Start by importing your catalog.</p><button class="btn primary" onclick="go('insights')">Go to setup</button></div></div>`;
+  return `<div class="stack"><div><h1 class="title">Identity</h1><p class="sub">Your photographic signature from critique scores, and what to post next.</p></div>
+    <section><h2 class="h2">Mirror</h2><div class="card"><p class="s2">Not enough multi-lens scored catalog data yet. Score images on at least two active perspectives.</p></div></section></div>`;
+}
+function processingPage() {
+  const tabs = [['Analyze'], ['Culling'], ['Perspectives'], ['Catalog Cache'], ['Job Queue', 'jobs'], ['Providers'], ['Settings']];
+  const strip = `<div class="tabstrip">${tabs.map(([l, id]) => `<button class="${id ? 'on' : 'off'}" ${id ? '' : 'title="Not part of this prototype"'}>${l}</button>`).join('')}</div>`;
+  let body;
+  if (S.imp === 'none') body = `<div class="empty"><p class="sub">No jobs found. Start a job to see it here.</p></div>`;
+  else {
+    const badge = { running: ['accent', 'running ' + overall() + '%'], failed: ['error', 'failed'], done: ['success', 'completed'] }[S.imp];
+    const line = S.imp === 'failed'
+      ? `<p class="s" style="color:var(--color-error);margin-top:8px">CLIP model ${CLIP()} could not be downloaded from huggingface.co (${SIZE}): ${S.fail.kind === 'offline' ? 'fetch failed (ENOTFOUND huggingface.co)' : 'terminated (ECONNRESET)'}</p>`
+      : `<p class="t3">${S.imp === 'running' ? `[${STAGES[Math.min(S.stage, 3)].key}] ${downloading() ? 'downloading Xenova/clip-vit-base-patch32 ' + mbLine() : STAGES[Math.min(S.stage, 3)].label}` : 'sync, embed, stack, similarity'}</p>`;
+    body = `<div class="card"><div class="between"><div><p class="sem s">catalog_cache_build</p>${line}</div><span class="badge ${badge[0]}">${badge[1]}</span></div></div>`;
+  }
+  return `<div><h1 class="title">Processing</h1>${strip}${body}</div>`;
+}
+const CLIP = () => 'Xenova/clip-vit-base-patch32';
+
+/* ---------- shell ---------- */
+function header() {
+  const nav = [['insights', 'Insights'], ['images', 'Images'], ['identity', 'Identity'], ['processing', 'Processing']];
+  const dark = document.documentElement.classList.contains('dark');
+  return `<header class="app"><div class="container"><div class="hdr">
+    <div class="hdr-left"><span class="brand">Fixer</span><nav class="pills">${nav.map(([id, l]) => `<a class="${S.page === id ? 'on' : ''}" onclick="go('${id}')">${l}</a>`).join('')}</nav></div>
+    <button class="btn ghost" onclick="document.documentElement.classList.toggle('dark');render()" title="Theme">${dark ? '☀' : '☾'}</button>
+  </div></div></header>`;
+}
+function render() {
+  const page = S.page === 'insights' ? (empty() ? setupScreen() : insightsPage())
+    : S.page === 'images' ? imagesPage() : S.page === 'identity' ? identityPage() : processingPage();
+  document.getElementById('app').innerHTML = header() + `<main>${page}</main>`;
+  document.getElementById('modal').innerHTML = S.variant === 'C' ? modalC() : '';
+  document.getElementById('switcher').innerHTML = `<button onclick="cycle(-1)">‹</button><span>${S.variant} — ${VARIANTS[S.variant]}</span><button onclick="cycle(1)">›</button>`;
+  const nb = (n, l) => `<button class="${S.net === n ? 'on' : ''}" onclick="setNet('${n}')">${l}</button>`;
+  document.getElementById('proto').innerHTML = `<b>PROTOTYPE STATE</b><br>
+    import: <span class="k">${S.imp}${S.imp === 'running' ? ' [' + STAGES[S.stage].key + '] ' + overall() + '%' : ''}</span><br>
+    model on disk: <span class="k">${S.modelOnDisk}</span>${downloading() ? ` <span class="k">${S.mb}/${MODEL_MB} MB</span>` : ''}<br>
+    library.db: <span class="k">${photos() ? fmt(photos()) + ' rows' : 'empty'}</span> · attempt <span class="k">${S.attempts}</span><br>
+    <b>network</b><br>${nb('online', 'Online')}${nb('offline', 'Offline')}${nb('drop', 'Drops at 40%')}<br>
+    <button onclick="reset(false)">First run</button><button onclick="reset(true)">Catalog chosen</button><button onclick="finish()">Finish</button>`;
+}
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input,textarea,[contenteditable]')) return;
+  if (e.key === 'ArrowLeft') cycle(-1);
+  if (e.key === 'ArrowRight') cycle(1);
+  if (e.key === 'Escape' && S.confirm) { S.confirm = false; render(); }
+});
+render();
+</script>
+</body>
+</html>
