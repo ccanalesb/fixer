@@ -27,7 +27,7 @@ Prod. tree = `npm ci` + `npm run build` + `npm prune --omit=dev`, with `ONNXRUNT
 | Foreign `onnxruntime-node` prebuilds | **~151–176** per target | Delete `node_modules/onnxruntime-node/bin/napi-v6/*/*` except host triple (see below). |
 | `onnxruntime-web` npm package | **~128.2** | Delete `node_modules/onnxruntime-web/`. |
 | `@huggingface/transformers` web dist | **~3.3** | Delete browser/WASM bundles under `node_modules/@huggingface/transformers/dist/` (listed in `prune-backend.mjs`). |
-| `@huggingface/transformers/.cache` | **0 at pack time** (**335.4** on every target when the smoke had downloaded the CLIP model into `node_modules` — MEASURED, run 40375800174 pruned minus run 40376254320 pruned) | Delete `node_modules/@huggingface/transformers/.cache/`. Runtime should set `HF_HOME` to user data, not pack this cache. |
+| `@huggingface/transformers/.cache` | **0 at pack time** (**335.4** on every target when the smoke had downloaded the CLIP model into `node_modules` — MEASURED, run 40375800174 pruned minus run 40376254320 pruned) | Delete `node_modules/@huggingface/transformers/.cache/`. See "Where transformers caches models" below: this is also where the packaged backend would download CLIP at runtime. |
 | devDependencies | **~71–92** | `npm prune --omit=dev` after `tsc`, not a path prune. |
 
 **Host ORT directory to keep:**
@@ -112,8 +112,14 @@ npm has no switch to drop foreign ORT platforms. Tauri bundles whatever you copy
 |------|------------|
 | Transformers upgrade imports `onnxruntime-web` on Node | Grep `transformers.node.mjs`; re-run matrix smoke. |
 | ORT postinstall/metadata changes | Re-read `install-metadata.js`; assert `ONNXRUNTIME_NODE_INSTALL=skip` in CI. |
-| Hub models cached under `node_modules/@huggingface/transformers/.cache` | Prune rule + set `HF_HOME` to user data at runtime. |
-| Prune before vs after smoke conflates sizes | Measure prod tree **before** download smoke; keep HF cache outside `node_modules` in CI (`HF_HOME` in workflow smoke step). |
+| Hub models cached under `node_modules/@huggingface/transformers/.cache` | Prune rule at pack time; the runtime location is a separate decision (next section). |
+| Prune before vs after smoke conflates sizes | Measure the pruned tree **before** any smoke that downloads a model. The `HF_HOME` / `TRANSFORMERS_CACHE` env in the workflow smoke step has no effect on transformers.js (next section). |
+
+---
+
+## Where transformers caches models
+
+transformers.js does not read `HF_HOME` or `TRANSFORMERS_CACHE`. In Node its default `env.cacheDir` is `path.join(dirname__, "/.cache/")`, i.e. `node_modules/@huggingface/transformers/.cache/` (**CITED:** `dist/transformers.node.mjs` lines 96 and 140, `@huggingface/transformers@4.2.0`). `src/imaging/clip-embed.ts` sets only `env.allowLocalModels = false` and loads `Xenova/clip-vit-base-patch32` (fp32) from the Hub, so the packaged backend as it stands would download the CLIP model (**335.4 MiB** in the cache, MEASURED as the difference between the two runs' pruned trees) into its own bundle resources on first use. Those are read-only for a `.deb` install and for a per-machine Windows install, and are replaced on update. Whether the model is downloaded into the data folder (`env.cacheDir`) or shipped in the installer is outside this prune list.
 
 ---
 
