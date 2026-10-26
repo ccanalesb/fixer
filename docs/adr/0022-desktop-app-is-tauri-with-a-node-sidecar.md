@@ -32,8 +32,8 @@ adds, unpacked:
 The desktop app is **Tauri 2**. The backend runs as a sidecar on a Node 24
 binary from nodejs.org, shipped per target triple; the backend's `dist/` and
 production `node_modules` ship as bundle resources. The window loads the SPA
-from the backend's loopback origin, so the app and a local browser hit the same
-server.
+from the backend's loopback origin, the same shape as in development; a local
+browser is supported from a source install, not from the packaged app.
 
 Two reasons:
 
