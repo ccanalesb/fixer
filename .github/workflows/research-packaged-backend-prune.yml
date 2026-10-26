@@ -1,0 +1,91 @@
+name: Research packaged backend prune
+
+on:
+  push:
+    branches: [research/packaged-backend-prune]
+
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            label: darwin-arm64
+          - os: windows-latest
+            label: win32-x64
+          - os: ubuntu-22.04
+            label: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install, build, and measure spike-style full npm ci tree
+        working-directory: apps/visualizer/backend
+        shell: bash
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
+        run: |
+          npm ci
+          npm run build
+          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs measure-only \
+            | tee "${{ runner.temp }}/report-full-ci.json"
+
+      - name: Drop devDependencies (production install shape)
+        working-directory: apps/visualizer/backend
+        shell: bash
+        run: npm prune --omit=dev
+
+      - name: Measure and smoke production tree (unpruned)
+        working-directory: apps/visualizer/backend
+        shell: bash
+        run: |
+          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs smoke-unpruned \
+            | tee "${{ runner.temp }}/report-prod-unpruned.json"
+
+      - name: Prune, measure again, smoke pruned tree
+        working-directory: apps/visualizer/backend
+        shell: bash
+        run: |
+          node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs full \
+            | tee "${{ runner.temp }}/report-pruned.json"
+
+      - name: Summarize sizes for artifact
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const temp = process.env.RUNNER_TEMP;
+          const full = JSON.parse(fs.readFileSync(path.join(temp, 'report-full-ci.json'), 'utf8'));
+          const unpr = JSON.parse(fs.readFileSync(path.join(temp, 'report-prod-unpruned.json'), 'utf8'));
+          const pr = JSON.parse(fs.readFileSync(path.join(temp, 'report-pruned.json'), 'utf8'));
+          const summary = {
+            label: process.env.LABEL,
+            full_ci_node_modules_mib: full.measures.node_modules_mib,
+            prod_unpruned_node_modules_mib: unpr.measures.node_modules_mib,
+            prod_unpruned_tree_mib: unpr.measures.production_tree_mib,
+            pruned_node_modules_mib: pr.measures.after_prune_node_modules_mib,
+            pruned_tree_mib: pr.measures.after_prune_production_tree_mib,
+            prune_steps: pr.prune?.steps ?? [],
+            prune_removed_mib: pr.prune?.removed_mib,
+            dev_deps_saved_mib: Math.round((full.measures.node_modules_mib - unpr.measures.node_modules_mib) * 10) / 10,
+            top_packages_unpruned: unpr.topPackages,
+            smoke_after_prune: pr.smokeAfterPrune,
+          };
+          fs.writeFileSync('research-packaged-backend-prune-summary.json', JSON.stringify(summary, null, 2));
+          console.log(JSON.stringify(summary, null, 2));
+          NODE
+        env:
+          LABEL: ${{ matrix.label }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-packaged-backend-prune-${{ matrix.label }}
+          path: |
+            research-packaged-backend-prune-summary.json
+          retention-days: 14
