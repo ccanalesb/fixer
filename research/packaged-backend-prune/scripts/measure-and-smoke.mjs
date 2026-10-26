@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { hostPackTarget, pruneBackendTree } from './prune-backend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -65,61 +65,41 @@ async function runNativeSmoke(backendRoot) {
   return mod.runNativeSmoke({ backendRoot, onnxPath });
 }
 
-async function loadTransformers(backendRoot) {
-  const entry = join(
-    backendRoot,
-    'node_modules',
-    '@huggingface',
-    'transformers',
-    'dist',
-    'transformers.node.mjs',
-  );
-  return import(pathToFileURL(entry).href);
-}
-
-async function runTransformersSmoke(backendRoot) {
-  const prevCwd = process.cwd();
-  process.chdir(backendRoot);
-  try {
-    const { PreTrainedTokenizer } = await loadTransformers(backendRoot);
-    const cache = mkdtempSync(join(tmpdir(), 'lt-tok-'));
-    const base = 'https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main';
-    for (const file of ['tokenizer.json', 'tokenizer_config.json']) {
-      const res = await fetch(`${base}/${file}`);
-      if (!res.ok) throw new Error(`tokenizer download failed: ${file} ${res.status}`);
-      writeFileSync(join(cache, file), Buffer.from(await res.arrayBuffer()));
-    }
-    const tok = new PreTrainedTokenizer(
-      JSON.parse(readFileSync(join(cache, 'tokenizer.json'), 'utf8')),
-      JSON.parse(readFileSync(join(cache, 'tokenizer_config.json'), 'utf8')),
-    );
-    const ids = tok.encode('a photo of a cat', { add_special_tokens: false });
-    if (!ids.length) throw new Error('tokenizer returned empty ids');
-
-    const { encodePixels } = await import(
-      join(backendRoot, 'dist', 'src', 'imaging', 'clip-embed.js')
-    );
-    const rgb = {
-      width: 32,
-      height: 32,
-      data: new Uint8Array(32 * 32 * 3).fill(128),
-    };
-    const vec = await encodePixels(rgb);
-    if (vec.length !== 512) throw new Error(`expected 512-d CLIP vector, got ${vec.length}`);
-    if (!Number.isFinite(vec[0])) throw new Error('CLIP vector not finite');
-
-    rmSync(cache, { recursive: true, force: true });
-    return {
-      ok: true,
-      tokenizerIds: ids.length,
-      clipDim: vec.length,
-      clipSample: vec[0],
-    };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  } finally {
-    process.chdir(prevCwd);
-  }
+function runTransformersSmoke(backendRoot) {
+  return new Promise((resolvePromise) => {
+    const template = join(RESEARCH_ROOT, 'scripts', 'transformers-smoke-entry.mjs');
+    const entry = join(backendRoot, '.research-transformers-smoke.mjs');
+    copyFileSync(template, entry);
+    const child = spawn(process.execPath, [entry], {
+      cwd: backendRoot,
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    child.stdout?.on('data', (c) => {
+      out += c.toString();
+    });
+    child.stderr?.on('data', (c) => {
+      err += c.toString();
+    });
+    child.on('close', (code) => {
+      rmSync(entry, { force: true });
+      try {
+        const parsed = JSON.parse(out.trim() || '{}');
+        if (code !== 0 && !parsed.error) {
+          parsed.ok = false;
+          parsed.error = err.trim() || `exit ${code}`;
+        }
+        resolvePromise(parsed);
+      } catch {
+        resolvePromise({
+          ok: false,
+          error: err.trim() || out.trim() || `transformers smoke exit ${code}`,
+        });
+      }
+    });
+  });
 }
 
 function runHttpStatusSmoke(backendRoot) {

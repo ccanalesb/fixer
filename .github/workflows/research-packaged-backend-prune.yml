@@ -43,6 +43,7 @@ jobs:
       - name: Measure and smoke production tree (unpruned)
         working-directory: apps/visualizer/backend
         shell: bash
+        timeout-minutes: 25
         run: |
           node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs smoke-unpruned \
             | tee "${{ runner.temp }}/report-prod-unpruned.json"
@@ -50,6 +51,7 @@ jobs:
       - name: Prune, measure again, smoke pruned tree
         working-directory: apps/visualizer/backend
         shell: bash
+        timeout-minutes: 25
         run: |
           node ../../../research/packaged-backend-prune/scripts/measure-and-smoke.mjs full \
             | tee "${{ runner.temp }}/report-pruned.json"
