@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { SettingsTab } from '../SettingsTab'
 
+vi.mock('../AppPortSettingRow', () => ({ AppPortSettingRow: () => null }))
 vi.mock('../CatalogSettingRow', () => ({ CatalogSettingRow: () => <div>catalog</div> }))
 vi.mock('../StackDetectionSettingRow', () => ({ StackDetectionSettingRow: () => <div>stacks</div> }))
 vi.mock('../CullingModelsSection', () => ({ CullingModelsSection: () => <div>culling models</div> }))

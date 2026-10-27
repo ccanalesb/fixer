@@ -1,28 +1,100 @@
 use crate::log_rotate::RotatingLog;
-use crate::port::app_port;
+use crate::port::{is_loopback_port_in_use, resolve_port};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::AppHandle;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidecarExitKind {
+    PortInUse,
+    Other,
+}
+
+pub struct SidecarSpawnContext {
+    pub resources_dir: PathBuf,
+    pub data_dir: PathBuf,
+    pub log_dir: PathBuf,
+}
+
 pub struct SidecarHandle {
     child: Mutex<Option<Child>>,
     stdin: Mutex<Option<std::process::ChildStdin>>,
+    ctx: SidecarSpawnContext,
+    port: Mutex<u16>,
+    shutting_down: AtomicBool,
+    exit_hook: Mutex<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
 }
 
 impl SidecarHandle {
-    pub fn spawn(
-        app: &AppHandle,
-        resources_dir: &Path,
-        data_dir: &Path,
-        log_dir: &Path,
-    ) -> std::io::Result<Arc<Self>> {
-        fs_create_dir(data_dir)?;
-        let node = node_binary_path(app)?;
-        let server_js = resources_dir.join("dist/src/server.js");
+    pub fn new(ctx: SidecarSpawnContext) -> std::io::Result<Arc<Self>> {
+        fs_create_dir(&ctx.data_dir)?;
+        let port = resolve_port(&ctx.data_dir);
+        Ok(Arc::new(Self {
+            child: Mutex::new(None),
+            stdin: Mutex::new(None),
+            ctx,
+            port: Mutex::new(port),
+            shutting_down: AtomicBool::new(false),
+            exit_hook: Mutex::new(None),
+        }))
+    }
+
+    pub fn start(self: &Arc<Self>, app: &AppHandle) -> std::io::Result<()> {
+        self.start_child(app)
+    }
+
+    pub fn configured_port(&self) -> u16 {
+        *self.port.lock().expect("port lock")
+    }
+
+    pub fn has_live_child(&self) -> bool {
+        let mut guard = self.child.lock().expect("child lock");
+        match guard.as_mut() {
+            Some(child) => child.try_wait().ok().flatten().is_none(),
+            None => false,
+        }
+    }
+
+    pub fn set_exit_hook(&self, hook: Arc<dyn Fn(&str) + Send + Sync>) {
+        *self.exit_hook.lock().expect("exit hook") = Some(hook);
+    }
+
+    fn notify_exit(&self, kind: &str) {
+        if let Some(hook) = self.exit_hook.lock().expect("exit hook").as_ref() {
+            hook(kind);
+        }
+    }
+
+    pub fn respawn(self: &Arc<Self>, app: &AppHandle, port: u16) -> std::io::Result<()> {
+        {
+            let mut guard = self.port.lock().expect("port lock");
+            *guard = port;
+        }
+        self.shutdown_child();
+        self.shutting_down.store(false, Ordering::SeqCst);
+        self.start_child(app)
+    }
+
+    pub fn shutdown(&self) {
+        self.shutting_down.store(true, Ordering::SeqCst);
+        self.shutdown_child();
+    }
+
+    fn start_child(self: &Arc<Self>, app: &AppHandle) -> std::io::Result<()> {
+        let port = self.configured_port();
+        if is_loopback_port_in_use(port) {
+            self.notify_exit("port_in_use");
+            let _ = app;
+            return Ok(());
+        }
+
+        let node = node_binary_path()?;
+        let server_js = self.ctx.resources_dir.join("dist/src/server.js");
         if !server_js.is_file() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -30,23 +102,19 @@ impl SidecarHandle {
             ));
         }
 
-        let port = app_port();
         let mut cmd = Command::new(&node);
         cmd.arg(&server_js)
-            .current_dir(resources_dir)
+            .current_dir(&self.ctx.resources_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("LT_DATA_DIR", data_dir)
-            .env("LT_RESOURCES_DIR", resources_dir)
+            .env("LT_DATA_DIR", &self.ctx.data_dir)
+            .env("LT_RESOURCES_DIR", &self.ctx.resources_dir)
             .env("FLASK_HOST", "127.0.0.1")
             .env("FLASK_PORT", port.to_string())
             .env("FLASK_DEBUG", "false")
             .env("LT_EXIT_ON_STDIN_EOF", "1")
-            .env(
-                "FRONTEND_URL",
-                format!("http://127.0.0.1:{port}"),
-            );
+            .env("FRONTEND_URL", format!("http://127.0.0.1:{port}"));
 
         #[cfg(unix)]
         {
@@ -70,24 +138,71 @@ impl SidecarHandle {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        let log = Arc::new(Mutex::new(RotatingLog::open(log_dir, "backend.log")?));
+        let log = Arc::new(Mutex::new(RotatingLog::open(&self.ctx.log_dir, "backend.log")?));
         spawn_log_pipe(stdout, Arc::clone(&log));
-        spawn_log_pipe(stderr, log);
+        spawn_log_pipe(stderr, Arc::clone(&log));
 
-        Ok(Arc::new(Self {
-            child: Mutex::new(Some(child)),
-            stdin: Mutex::new(stdin),
-        }))
+        {
+            let mut guard = self.child.lock().expect("child lock");
+            *guard = Some(child);
+        }
+        {
+            let mut guard = self.stdin.lock().expect("stdin lock");
+            *guard = stdin;
+        }
+
+        let monitor_app = app.clone();
+        let monitor = Arc::clone(self);
+        let log_dir = self.ctx.log_dir.clone();
+        thread::spawn(move || monitor.wait_and_notify(monitor_app, log_dir));
+
+        Ok(())
     }
 
-    pub fn shutdown(&self) {
+    fn wait_and_notify(self: Arc<Self>, app: AppHandle, log_dir: PathBuf) {
+        let status = loop {
+            thread::sleep(Duration::from_millis(100));
+            let mut guard = self.child.lock().expect("child lock");
+            let Some(child) = guard.as_mut() else {
+                return;
+            };
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    *guard = None;
+                    break status;
+                }
+                Ok(None) => continue,
+                Err(_) => return,
+            }
+        };
+
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let kind = if status.code() == Some(1) && log_indicates_port_in_use(&log_dir) {
+            SidecarExitKind::PortInUse
+        } else {
+            SidecarExitKind::Other
+        };
+
+        let kind_str = match kind {
+            SidecarExitKind::PortInUse => "port_in_use",
+            SidecarExitKind::Other => "crash",
+        };
+        self.notify_exit(kind_str);
+        let _ = app;
+    }
+
+    fn shutdown_child(&self) {
         if let Ok(mut stdin) = self.stdin.lock() {
             *stdin = None;
         }
         if let Ok(mut guard) = self.child.lock() {
-            if let Some(mut child) = guard.as_mut() {
+            if let Some(child) = guard.as_mut() {
                 let _ = child.wait_timeout(Duration::from_secs(10));
                 if child.try_wait().ok().flatten().is_some() {
+                    *guard = None;
                     return;
                 }
                 #[cfg(unix)]
@@ -102,16 +217,28 @@ impl SidecarHandle {
                     let _ = child.kill();
                 }
                 let _ = child.wait();
+                *guard = None;
             }
         }
     }
+}
+
+fn log_indicates_port_in_use(log_dir: &Path) -> bool {
+    let path = log_dir.join("backend.log");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    raw.lines()
+        .rev()
+        .take(40)
+        .any(|line| line.contains("Refusing to start: something is already listening on"))
 }
 
 fn fs_create_dir(path: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
 }
 
-fn node_binary_path(_app: &AppHandle) -> std::io::Result<PathBuf> {
+fn node_binary_path() -> std::io::Result<PathBuf> {
     let exe = std::env::current_exe()?;
     let dir = exe
         .parent()

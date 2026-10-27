@@ -1,4 +1,5 @@
 import { AppModelsSection } from './AppModelsSection';
+import { AppPortSettingRow } from './AppPortSettingRow';
 import { CatalogSettingRow } from './CatalogSettingRow';
 import { CullingModelsSection } from './CullingModelsSection';
 import { LightroomWritebackSection } from './LightroomWritebackSection';
@@ -15,6 +16,7 @@ export function SettingsTab() {
       </div>
 
       <div className="divide-y divide-border rounded-base border border-border bg-bg">
+        <AppPortSettingRow />
         <CatalogSettingRow />
         <StackDetectionSettingRow />
       </div>
