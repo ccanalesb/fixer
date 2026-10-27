@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Bundled loading page",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "allow-host-commands"]
 }
