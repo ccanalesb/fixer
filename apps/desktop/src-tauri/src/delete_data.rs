@@ -18,14 +18,17 @@ pub fn planned_removal_dirs(app: &AppHandle) -> Result<Vec<PathBuf>, String> {
 pub async fn wipe_app_data(app: &AppHandle) -> Result<(), String> {
     let planned = planned_removal_dirs(app)?;
 
-    let ids = app
-        .fetch_data_store_identifiers()
-        .await
-        .map_err(|e| e.to_string())?;
-    for id in ids {
-        app.remove_data_store(id)
+    #[cfg(target_os = "macos")]
+    {
+        let ids = app
+            .fetch_data_store_identifiers()
             .await
             .map_err(|e| e.to_string())?;
+        for id in ids {
+            app.remove_data_store(id)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     for dir in &planned {

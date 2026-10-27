@@ -330,6 +330,6 @@ export class LibraryFixture {
 
   cleanup(): void {
     delete process.env.LIBRARY_DB;
-    rmSync(this.dir, { recursive: true, force: true });
+    rmSync(this.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
