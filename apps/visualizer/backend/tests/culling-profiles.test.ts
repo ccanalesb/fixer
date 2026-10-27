@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import { BATCH_CULL_JOB_TYPE } from '../src/jobs/handlers/cull.js';
 import { BATCH_REDECIDE_JOB_TYPE } from '../src/jobs/handlers/redecide.js';
@@ -51,8 +50,7 @@ beforeEach(() => {
   );
   process.env.DATABASE_PATH = jobsDbPath;
   process.env.LT_CONFIG_YAML = join(jobsDir, 'config.yaml');
-  fx = new LibraryFixture().activate();
-  initLibraryDb(fx.dbPath);
+  fx = new LibraryFixture().seedFactoryDefaults().activate();
 });
 
 afterEach(() => {

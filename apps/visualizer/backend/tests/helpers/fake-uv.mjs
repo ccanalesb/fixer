@@ -40,10 +40,14 @@ function writeModelTree(partial, source, name, jobId, revision) {
   ]) {
     writeFileSync(join(partial, f), 'x');
   }
-  const revJson = revision === null ? 'null' : `"${revision}"`;
   writeFileSync(
     join(partial, 'model.json'),
-    `{"source":"${source}","revision":${revJson},"vision":"${name}","job_id":"${jobId}"}`,
+    JSON.stringify({
+      source,
+      revision,
+      vision: name,
+      job_id: jobId,
+    }),
   );
 }
 

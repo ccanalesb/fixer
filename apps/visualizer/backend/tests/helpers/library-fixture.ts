@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as sqliteVec from 'sqlite-vec';
 import { serializeFloat32 } from '../../src/db/connection.js';
-import { createLibrarySchema } from '../../src/db/library/bootstrap.js';
+import { createLibrarySchema, initLibraryDb } from '../../src/db/library/bootstrap.js';
 import { saveForecastQuestions } from '../../src/db/library/score-forecast-questions.js';
 import { forecastQuestionsFrom } from '../../src/cull/forecast-questions.js';
 import { FACTORY_QUESTIONS } from '../../src/app-models/factory-questions.js';
@@ -325,6 +325,15 @@ export class LibraryFixture {
   /** Point the app at this database for the duration of a test. */
   activate(): this {
     process.env.LIBRARY_DB = this.dbPath;
+    return this;
+  }
+
+  /**
+   * Factory perspectives and culling defaults, the same work as `initLibraryDb` after the bare schema.
+   * Closes the connection so temp cleanup can remove the directory on Windows.
+   */
+  seedFactoryDefaults(): this {
+    initLibraryDb(this.dbPath).close();
     return this;
   }
 
