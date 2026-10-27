@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { invalidateAll, useQuery } from '../data'
 import { ConfigAPI, JobsAPI, SystemAPI } from '../services/api'
+import { pickCatalogPath } from '../utils/nativeFilePickers'
 import type { Job } from '../types/job'
 import { useCatalogPicker } from './useCatalogPicker'
 import { useJobSocket } from './useJobSocket'
@@ -137,7 +138,7 @@ export function useFirstRunSetup() {
   const pickAndSaveCatalog = useCallback(async () => {
     setImportError(null)
     try {
-      const { catalog_path: chosen } = await ConfigAPI.pickCatalog()
+      const chosen = await pickCatalogPath()
       if (!chosen) return
       await ConfigAPI.putCatalog(chosen)
       await catalog.refresh()

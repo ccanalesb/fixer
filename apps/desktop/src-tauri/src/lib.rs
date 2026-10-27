@@ -100,3 +100,23 @@ fn health_ok(url: &str, host: &str) -> bool {
         .map(|r| r.status() == 200)
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod capability_tests {
+    #[test]
+    fn loopback_spa_may_open_native_dialogs() {
+        let caps = include_str!(concat!(env!("OUT_DIR"), "/capabilities.json"));
+        assert!(
+            caps.contains(r#""remote-loopback""#),
+            "expected remote-loopback capability"
+        );
+        assert!(
+            caps.contains("http://127.0.0.1:*"),
+            "expected loopback remote origin pattern"
+        );
+        assert!(
+            caps.contains("dialog:allow-open"),
+            "expected dialog open permission"
+        );
+    }
+}
