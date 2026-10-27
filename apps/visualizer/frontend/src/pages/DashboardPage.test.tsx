@@ -52,6 +52,10 @@ describe('DashboardPage', () => {
       needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
+    vi.spyOn(SystemAPI, 'clipModel').mockResolvedValue({
+      model_on_disk: true,
+      cache_dir: '/tmp/clip',
+    })
     vi.spyOn(SystemAPI, 'insightsSummary').mockResolvedValue({
       first_catalog_import_completed: true,
       catalog_images: 1,
@@ -144,6 +148,10 @@ describe('DashboardPage first-run setup', () => {
       stack_detect: null,
       catalog_similarity: null,
       catalog_cache_build: null,
+    })
+    vi.spyOn(SystemAPI, 'clipModel').mockResolvedValue({
+      model_on_disk: true,
+      cache_dir: '/tmp/clip',
     })
     vi.spyOn(SystemAPI, 'insightsSummary').mockResolvedValue({
       first_catalog_import_completed: false,

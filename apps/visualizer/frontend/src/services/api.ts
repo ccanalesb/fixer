@@ -488,6 +488,9 @@ export const SystemAPI = {
 
   cachePipelineStatus: () =>
     request<CachePipelineStatus>('/cache/pipeline-status'),
+
+  clipModel: () =>
+    request<components['schemas']['ClipModelStatus']>('/clip-model'),
 }
 
 export const ImagesAPI = {

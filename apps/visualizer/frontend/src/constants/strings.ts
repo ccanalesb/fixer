@@ -199,6 +199,27 @@ export const FIRST_RUN_READING_CATALOG =
 export const FIRST_RUN_IMPORT_STILL_RUNNING = 'Import still running —'
 export const FIRST_RUN_SEE_PROGRESS = 'see progress'
 export const FIRST_RUN_SETUP_ROUTE = '/'
+export const FIRST_RUN_STEP_IMPORT_STOPPED = 'Import it — stopped'
+export const FIRST_RUN_RETRY_IMPORT = 'Retry import'
+export const FIRST_RUN_SEE_JOB_LOG = 'See the log in Job Queue'
+export const FIRST_RUN_PHOTOS_KEPT_IN_IMAGES = (count: number) =>
+  `Your ${count.toLocaleString('en-US')} photos were read and are in Images.`
+
+export const CLIP_CONFIRM_TITLE_IMPORT = 'Before you import'
+export const CLIP_CONFIRM_TITLE_JOB = 'Download image model'
+export const CLIP_CONFIRM_CANCEL = 'Cancel'
+export const CLIP_CONFIRM_DOWNLOAD_IMPORT = 'Download and import'
+export const CLIP_CONFIRM_DOWNLOAD_START = 'Download and start'
+export const CLIP_CONFIRM_CREDIT =
+  'Fixer downloads CLIP ViT-B/32 (OpenAI, MIT license) from Hugging Face.'
+export const CLIP_CONFIRM_IMPORT_READS_CATALOG =
+  'Fixer reads your catalog. Your photos stay where they are.'
+export const CLIP_CONFIRM_IMPORT_DOWNLOADS_MODEL =
+  'The first import downloads an image model from huggingface.co — about 350 MB, once.'
+export const CLIP_CONFIRM_IMPORT_NEEDS_INTERNET = 'That step needs an internet connection.'
+export const CLIP_CONFIRM_JOB_IF_EMBED =
+  'If there are photos to embed, this downloads an image model from huggingface.co — about 350 MB, once.'
+export const CLIP_CONFIRM_JOB_NEEDS_INTERNET = 'That step needs an internet connection.'
 export const INSIGHTS_ACTION_FINISH_PASS = 'Undescribed + unscored'
 export const INSIGHTS_ACTION_FINISH_PASS_DESC =
   'Images with no current score — run a score pass on Processing.'
