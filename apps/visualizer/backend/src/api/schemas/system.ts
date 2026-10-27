@@ -42,6 +42,7 @@ export const FrameSubstanceRunSummary = z
 
 export const InsightsSummary = z
   .object({
+    first_catalog_import_completed: z.boolean(),
     catalog_images: z.int(),
     scoring_9_plus: z.int(),
     burst_stacks: z.int(),

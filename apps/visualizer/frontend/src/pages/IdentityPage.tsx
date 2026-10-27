@@ -1,16 +1,21 @@
 import { Suspense } from 'react'
 import { AdvisorPanel } from '../components/identity/AdvisorPanel'
 import { MirrorPanel } from '../components/identity/MirrorPanel'
+import { LibraryEmptyPrompt } from '../components/setup/LibraryEmptyPrompt'
 import { SkeletonGrid } from '../components/ui/page-states'
 import {
+  FIRST_RUN_IDENTITY_EMPTY_HINT,
   IDENTITY_DIVIDER_BACKWARD,
   IDENTITY_DIVIDER_FORWARD,
   IDENTITY_PAGE_SUBTITLE,
   IDENTITY_PAGE_TITLE,
 } from '../constants/strings'
 import { ErrorBoundary, ErrorState, invalidate, invalidateAll } from '../data'
+import { useFirstRunSetup } from '../hooks/useFirstRunSetup'
 
-export function IdentityPage() {
+function IdentityPageBody() {
+  const firstRun = useFirstRunSetup()
+
   return (
     <div className="space-y-8">
       <div>
@@ -18,6 +23,10 @@ export function IdentityPage() {
         <p className="text-text-secondary">{IDENTITY_PAGE_SUBTITLE}</p>
       </div>
 
+      {firstRun.showIdentityEmpty ? (
+        <LibraryEmptyPrompt hint={FIRST_RUN_IDENTITY_EMPTY_HINT} />
+      ) : (
+        <>
       <ErrorBoundary
         fallback={({ error, reset }) => (
           <ErrorState
@@ -59,6 +68,16 @@ export function IdentityPage() {
           <AdvisorPanel />
         </Suspense>
       </ErrorBoundary>
+        </>
+      )}
     </div>
+  )
+}
+
+export function IdentityPage() {
+  return (
+    <Suspense fallback={<SkeletonGrid count={6} />}>
+      <IdentityPageBody />
+    </Suspense>
   )
 }

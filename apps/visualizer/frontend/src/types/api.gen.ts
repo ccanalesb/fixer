@@ -5634,6 +5634,7 @@ export interface components {
             cached: boolean;
         };
         InsightsSummary: {
+            first_catalog_import_completed: boolean;
             catalog_images: number;
             scoring_9_plus: number;
             burst_stacks: number;
