@@ -4,7 +4,7 @@
  * child process, its output, cancellation and cleanup are exercised without converting anything.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Db } from '../src/db/connection.js';
@@ -12,6 +12,7 @@ import { createJob, getJob, initJobsDb, updateJobStatus } from '../src/db/jobs/j
 import { JobRunner } from '../src/jobs/runner.js';
 import { recoverOrphanedJobs, tick } from '../src/jobs/processor.js';
 import { transitionCancel } from '../src/jobs/transitions.js';
+import { CONVERSION_OFFLINE_MESSAGE, CONVERTER_PREP_STEP } from '../src/app-models/conversion-run.js';
 import { stopRunningConversions } from '../src/jobs/handlers/app-model-install.js';
 import {
   APP_MODEL_INSTALL_JOB_TYPE,
@@ -45,6 +46,28 @@ case "$src" in
     echo "step: exporting the decoder graph"
     touch "$out/.slow-started"
     while :; do sleep 0.05; done;;
+  */prep-check)
+    sleep 0.4
+    echo "step: loading the model"
+    mkdir -p "$partial/tokenizer"
+    for f in decoder.onnx vision.onnx tokenizer/tokenizer.json tokenizer/tokenizer_config.json; do echo x > "$partial/$f"; done
+    printf '{"source":"%s","revision":null,"vision":"%s","job_id":"%s"}' "$src" "$name" "$job" > "$partial/model.json"
+    mv "$partial" "$out/$name"
+    exit 0;;
+  */env-check)
+    echo "meta: cwd=$(pwd)" >&2
+    echo "meta: UV_CACHE_DIR=$UV_CACHE_DIR" >&2
+    echo "meta: UV_PYTHON_INSTALL_DIR=$UV_PYTHON_INSTALL_DIR" >&2
+    echo "step: loading the model"
+    mkdir -p "$partial/tokenizer"
+    for f in decoder.onnx vision.onnx tokenizer/tokenizer.json tokenizer/tokenizer_config.json; do echo x > "$partial/$f"; done
+    printf '{"source":"%s","revision":null,"vision":"%s","job_id":"%s"}' "$src" "$name" "$job" > "$partial/model.json"
+    mv "$partial" "$out/$name"
+    exit 0;;
+  */offline)
+    echo "error: Failed to download distribution \`torch==2.14.0\`" >&2
+    echo "  Caused by: failed to fetch https://download.pytorch.org/whl/cpu/torch/" >&2
+    exit 1;;
 esac
 echo "step: loading the model"
 mkdir -p "$partial/tokenizer"
@@ -59,6 +82,8 @@ let dir: string;
 let modelsDir: string;
 let db: Db;
 const originalPath = process.env.PATH;
+const originalDataDir = process.env.LT_DATA_DIR;
+const originalResourcesDir = process.env.LT_RESOURCES_DIR;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-install-'));
@@ -76,6 +101,10 @@ afterEach(() => {
   db.close();
   process.env.PATH = originalPath;
   delete process.env.LT_CONFIG_YAML;
+  if (originalDataDir === undefined) delete process.env.LT_DATA_DIR;
+  else process.env.LT_DATA_DIR = originalDataDir;
+  if (originalResourcesDir === undefined) delete process.env.LT_RESOURCES_DIR;
+  else process.env.LT_RESOURCES_DIR = originalResourcesDir;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -264,5 +293,43 @@ describe('the conversion job', () => {
     const id = createJob(db, APP_MODEL_INSTALL_JOB_TYPE, {});
     await run();
     expect(job(id).error).toBe('app_model_install needs metadata.source and metadata.name');
+  });
+
+  it('starts on preparing the converter before the script speaks', async () => {
+    const { job_id } = addAppModel(db, modelsDir, 'someone/prep-check');
+    const running = run();
+    while (getJob(db, job_id)?.current_step !== CONVERTER_PREP_STEP) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await running;
+    expect(job(job_id).status).toBe('completed');
+  });
+
+  it('uses bundled uv, the resources folder as cwd, and uv dirs under the data folder', async () => {
+    const data = join(dir, 'data');
+    const resources = join(dir, 'resources');
+    mkdirSync(join(resources, 'bin'), { recursive: true });
+    writeFileSync(join(resources, 'bin', 'uv'), FAKE_UV);
+    chmodSync(join(resources, 'bin', 'uv'), 0o755);
+    mkdirSync(join(resources, 'scripts', 'app-models'), { recursive: true });
+    writeFileSync(join(resources, 'scripts', 'app-models', 'export_onnx.py'), '# stub');
+    process.env.LT_DATA_DIR = data;
+    process.env.LT_RESOURCES_DIR = resources;
+    process.env.PATH = `/usr/bin:/bin:${join(dir, 'empty')}`;
+    const { job_id } = addAppModel(db, modelsDir, 'someone/env-check');
+    await run();
+    const messages = getJob(db, job_id, { logsLimit: 20 })!.logs.map((l) => l.message);
+    const resourcesReal = realpathSync(resources);
+    expect(messages.some((m) => m === `meta: cwd=${resourcesReal}`)).toBe(true);
+    expect(messages).toContain(`meta: UV_CACHE_DIR=${join(data, 'uv-cache')}`);
+    expect(messages).toContain(`meta: UV_PYTHON_INSTALL_DIR=${join(data, 'python')}`);
+    expect(job(job_id).status).toBe('completed');
+  });
+
+  it('when uv cannot fetch dependencies, says an internet connection is needed the first time', async () => {
+    const { job_id } = addAppModel(db, modelsDir, 'someone/offline');
+    await run();
+    expect(job(job_id).status).toBe('failed');
+    expect(job(job_id).error).toBe(CONVERSION_OFFLINE_MESSAGE);
   });
 });

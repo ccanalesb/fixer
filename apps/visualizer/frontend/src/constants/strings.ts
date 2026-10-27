@@ -1013,3 +1013,10 @@ export const APP_MODEL_INPUT_LABEL = 'Model folder or Hugging Face id'
 export const APP_MODEL_INPUT_PLACEHOLDER = 'owner/vision-model'
 export const APP_MODEL_ADD_BUTTON = 'Add'
 export const APP_MODEL_ADDING = 'Adding…'
+export const APP_MODEL_ADD_COST_TITLE = 'Add this model?'
+export const APP_MODEL_ADD_COST_BODY =
+  'The first time, Fixer downloads the conversion tools (about 200 MB). Then it downloads the model weights ' +
+  '(about 770 MB for thaitea/laya-vision). Converting needs about 3 GB of free disk and 4 GB of memory, and an ' +
+  'internet connection the first time.'
+export const APP_MODEL_ADD_COST_CONFIRM = 'Add model'
+export const APP_MODEL_ADD_COST_CANCEL = 'Cancel'

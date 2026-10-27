@@ -6,6 +6,8 @@ import { AppModelsAPI, type AppModel } from '../../../services/api'
 import {
   APP_MODEL_ADD,
   APP_MODEL_ADD_BUTTON,
+  APP_MODEL_ADD_COST_BODY,
+  APP_MODEL_ADD_COST_CONFIRM,
   APP_MODEL_ADD_HINT,
   APP_MODEL_CHOOSE,
   APP_MODEL_CONVERTING,
@@ -85,6 +87,20 @@ describe('AppModelsSection', () => {
     expect(text).toMatch(/Today only SmolVLM \(Idefics3\) models with a decision head convert\.$/)
   })
 
+  it('states the download and resource cost before starting a conversion', async () => {
+    renderSection()
+    fireEvent.click(await screen.findByText(APP_MODEL_MANUAL))
+    fireEvent.change(screen.getByLabelText(APP_MODEL_INPUT_LABEL), { target: { value: 'owner/vision-model' } })
+    fireEvent.click(screen.getByRole('button', { name: APP_MODEL_ADD_BUTTON }))
+    expect(await screen.findByText(APP_MODEL_ADD_COST_BODY)).toBeInTheDocument()
+    expect(screen.getByText(/about 200 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/about 770 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/3 GB/)).toBeInTheDocument()
+    expect(screen.getByText(/4 GB/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: APP_MODEL_ADD_COST_CONFIRM }))
+    await waitFor(() => expect(AppModelsAPI.add).toHaveBeenCalledWith('owner/vision-model'))
+  })
+
   it('adds a Hugging Face id typed by hand, which then lists as converting', async () => {
     renderSection()
     fireEvent.click(await screen.findByText(APP_MODEL_MANUAL))
@@ -92,6 +108,7 @@ describe('AppModelsSection', () => {
     fireEvent.change(input, { target: { value: 'owner/vision-model' } })
     expect(screen.getByText('— not added', { exact: false })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: APP_MODEL_ADD_BUTTON }))
+    fireEvent.click(await screen.findByRole('button', { name: APP_MODEL_ADD_COST_CONFIRM }))
     await waitFor(() => expect(AppModelsAPI.add).toHaveBeenCalledWith('owner/vision-model'))
     expect(await screen.findByText(APP_MODEL_CONVERTING)).toBeInTheDocument()
     expect(screen.queryByText('— not added', { exact: false })).not.toBeInTheDocument()
@@ -108,6 +125,7 @@ describe('AppModelsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: APP_MODEL_CHOOSE }))
     await screen.findByText('best')
     fireEvent.click(within(addRow).getAllByRole('button', { name: APP_MODEL_ADD_BUTTON })[0]!)
+    fireEvent.click(await screen.findByRole('button', { name: APP_MODEL_ADD_COST_CONFIRM }))
     await waitFor(() => expect(AppModelsAPI.add).toHaveBeenCalledWith('/Users/me/my-run/best'))
   })
 
@@ -134,6 +152,7 @@ describe('AppModelsSection', () => {
     const input = await screen.findByLabelText(APP_MODEL_INPUT_LABEL)
     fireEvent.change(input, { target: { value: 'owner/vision-model' } })
     fireEvent.click(screen.getByRole('button', { name: APP_MODEL_ADD_BUTTON }))
+    fireEvent.click(await screen.findByRole('button', { name: APP_MODEL_ADD_COST_CONFIRM }))
     expect(await screen.findByText('Already converting as culling-model')).toBeInTheDocument()
     expect(input).toHaveValue('owner/vision-model')
   })

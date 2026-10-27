@@ -1,0 +1,76 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { dataRoot, resourcesRoot } from '../config.js';
+
+export const CONVERTER_PREP_STEP = 'Preparing the converter (first time only)';
+
+export const CONVERSION_OFFLINE_MESSAGE =
+  'Converting a model needs an internet connection the first time.';
+
+export function resolveUvExecutable(): string {
+  const name = process.platform === 'win32' ? 'uv.exe' : 'uv';
+  const bundled = join(resourcesRoot(), 'bin', name);
+  if (existsSync(bundled)) return bundled;
+  return name;
+}
+
+export function conversionCwd(): string {
+  return resourcesRoot();
+}
+
+export function conversionSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...base };
+  env.UV_CACHE_DIR = join(dataRoot(), 'uv-cache');
+  env.UV_PYTHON_INSTALL_DIR = join(dataRoot(), 'python');
+  if (process.platform === 'win32') {
+    env.PYTHONUTF8 = '1';
+    env.PYTHONIOENCODING = 'utf-8';
+  }
+  return env;
+}
+
+const OFFLINE_PATTERNS: RegExp[] = [
+  /\bnetwork is unreachable\b/i,
+  /\bno route to host\b/i,
+  /\bconnection refused\b/i,
+  /\bconnection reset\b/i,
+  /\bconnection timed out\b/i,
+  /\btemporary failure in name resolution\b/i,
+  /\bname or service not known\b/i,
+  /\bnodename nor servname provided\b/i,
+  /\bcould not resolve host\b/i,
+  /\bfailed to fetch\b/i,
+  /\bfailed to download\b/i,
+  /\brequest failed after\b/i,
+  /\berror sending request\b/i,
+  /client error\s*\(\s*connect\s*\)/i,
+  /\bunable to download\b/i,
+  /\bhttp error\b/i,
+  /\b403 forbidden\b/i,
+  /\b404 not found\b/i,
+  /\bssl: certificate verify failed\b/i,
+  /\boffline\b/i,
+  /\bno internet\b/i,
+];
+
+/** True when uv or the script failed before conversion because dependencies could not be fetched. */
+export function isConversionOfflineFailure(stderr: string, exitCode: number | null): boolean {
+  if (exitCode === 0) return false;
+  const text = stderr.trim();
+  if (!text) return false;
+  if (/^error: network:/m.test(text)) return true;
+  return OFFLINE_PATTERNS.some((re) => re.test(text));
+}
+
+export function conversionFailureMessage(
+  stderr: string,
+  exitCode: number | null,
+  scriptError: string | null,
+  signal: NodeJS.Signals | null,
+  stderrTail: string[],
+): string {
+  if (scriptError) return scriptError;
+  if (isConversionOfflineFailure(stderr, exitCode)) return CONVERSION_OFFLINE_MESSAGE;
+  const how = signal ? `stopped by ${signal}` : `exit code ${exitCode}`;
+  return `The conversion failed (${how})${stderrTail.length ? `: ${stderrTail.join(' · ')}` : ''}`;
+}

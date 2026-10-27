@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom'
 import {
   APP_MODEL_ADD,
   APP_MODEL_ADD_BUTTON,
+  APP_MODEL_ADD_COST_BODY,
+  APP_MODEL_ADD_COST_CANCEL,
+  APP_MODEL_ADD_COST_CONFIRM,
+  APP_MODEL_ADD_COST_TITLE,
   APP_MODEL_ADD_HINT,
   APP_MODEL_ADDING,
   APP_MODEL_CHOOSE,
@@ -25,6 +29,7 @@ import { useJobSocket } from '../../hooks/useJobSocket'
 import type { Job } from '../../types/job'
 import { Badge } from '../ui/badges'
 import { Button } from '../ui/Button/Button'
+import { ConfirmModalFrame } from '../ui/ConfirmUndoAction'
 import { Input } from '../ui/Input/Input'
 import { PathSummary, SettingRow } from './SettingRow'
 
@@ -45,6 +50,7 @@ export function AppModelsSection() {
   // `null` means the user has not touched the disclosure, so it follows whether
   // there is a dialog to prefer over it.
   const [typing, setTyping] = useState<boolean | null>(null)
+  const [costConfirmOpen, setCostConfirmOpen] = useState(false)
 
   // A conversion job that ends moves its model from Converting to Ready, or off
   // the list when it failed.
@@ -62,8 +68,16 @@ export function AppModelsSection() {
 
   // Only a queued conversion closes the field: on failure the value stays where
   // the user can correct it.
-  const commit = async () => {
-    if (await add()) setTyping(null)
+  const commit = () => {
+    if (!changed || busy) return
+    setCostConfirmOpen(true)
+  }
+
+  const confirmAdd = async () => {
+    if (await add()) {
+      setTyping(null)
+      setCostConfirmOpen(false)
+    }
   }
 
   const cancel = () => {
@@ -194,6 +208,20 @@ export function AppModelsSection() {
           }
         />
       </div>
+
+      {costConfirmOpen && (
+        <ConfirmModalFrame
+          title={APP_MODEL_ADD_COST_TITLE}
+          confirmLabel={APP_MODEL_ADD_COST_CONFIRM}
+          cancelLabel={APP_MODEL_ADD_COST_CANCEL}
+          confirmVariant="primary"
+          busy={adding}
+          onConfirm={() => void confirmAdd()}
+          onCancel={() => setCostConfirmOpen(false)}
+        >
+          <p className="text-sm text-text-secondary">{APP_MODEL_ADD_COST_BODY}</p>
+        </ConfirmModalFrame>
+      )}
     </div>
   )
 }
