@@ -56,4 +56,14 @@ mkdir -p "$STAGE/apps/visualizer/backend/src/app-models"
 cp "$REPO/apps/visualizer/backend/src/app-models/factory-questions.json" \
   "$STAGE/apps/visualizer/backend/src/app-models/factory-questions.json"
 
+NOTICES_ARGS=(--stage "$STAGE")
+if [[ -n "${PRUNE_PLATFORM:-}" ]]; then
+  NOTICES_ARGS+=(--platform "$PRUNE_PLATFORM")
+fi
+if [[ -n "${PRUNE_ARCH:-}" ]]; then
+  NOTICES_ARGS+=(--arch "$PRUNE_ARCH")
+fi
+echo "Generating THIRD-PARTY-NOTICES…"
+node "$SCRIPTS/generate-third-party-notices.mjs" "${NOTICES_ARGS[@]}"
+
 echo "Staged resources at $STAGE"
