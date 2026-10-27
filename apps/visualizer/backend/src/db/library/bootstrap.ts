@@ -11,7 +11,7 @@
 import { mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { openLibraryDb, type Db } from '../connection.js';
-import { REPO_ROOT } from '../../config.js';
+import { resourcesRoot } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { upgradeDefaultProfileSlug } from './cull-default-profile-v18.js';
 import { seedCullingDefaults } from './cull-profiles.js';
@@ -558,7 +558,9 @@ export function initLibraryDb(path: string): Db {
 }
 
 /** Where the factory perspective rubrics live, as markdown. */
-export const PERSPECTIVE_PROMPTS_DIR = join(REPO_ROOT, 'prompts', 'perspectives');
+export function perspectivePromptsDir(): string {
+  return join(resourcesRoot(), 'prompts', 'perspectives');
+}
 
 /**
  * Title-case each run of letters (not word-boundary regex), so
@@ -600,7 +602,7 @@ export function perspectiveSeedDescription(markdown: string): string {
  */
 export function seedPerspectivesFromPromptsDir(
   db: Db,
-  promptsDir: string = PERSPECTIVE_PROMPTS_DIR,
+  promptsDir: string = perspectivePromptsDir(),
 ): number {
   const existing = db.prepare('SELECT COUNT(*) AS cnt FROM perspectives').get() as {
     cnt: number;

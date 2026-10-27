@@ -9,11 +9,13 @@
  * and the test suite can build the app without starting background work.
  */
 import { createServer } from 'node:net';
+import { existsSync } from 'node:fs';
 import { serve } from '@hono/node-server';
 import { Server as SocketIOServer } from 'socket.io';
 import { config } from './config.js';
 import { createApp } from './app.js';
 import { upgradeLibraryDb } from './api/library-db.js';
+import { initLibraryDb } from './db/library/bootstrap.js';
 import { startJobProcessor, stopJobProcessor } from './jobs/processor.js';
 import { registerSocketEvents, resetSocketServer } from './websocket/events.js';
 
@@ -44,9 +46,14 @@ async function refuseIfPortInUse(host: string, port: number): Promise<void> {
 
 await refuseIfPortInUse(config.HOST, config.PORT);
 
+const libraryDbPath = config.LIBRARY_DB;
+if (process.env.LT_DATA_DIR && !existsSync(libraryDbPath)) {
+  initLibraryDb(libraryDbPath).close();
+}
+
 // A library.db that cannot be upgraded still lets the server start; its requests answer 500 saying why.
 try {
-  upgradeLibraryDb(config.LIBRARY_DB);
+  upgradeLibraryDb(libraryDbPath);
 } catch (e) {
   process.stderr.write(`library.db not upgraded: ${e instanceof Error ? e.message : String(e)}\n`);
 }
