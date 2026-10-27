@@ -247,7 +247,7 @@ pub fn confirm_quit_with_jobs(app: &AppHandle, running: usize) {
                 if let Some(state) = app.try_state::<Arc<StartupState>>() {
                     state.sidecar.shutdown();
                 }
-                app.exit(0);
+                crate::approve_exit(&app);
             }
         });
 }

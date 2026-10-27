@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-delete-all-data-and-quit"
+description = "Enables the delete_all_data_and_quit command."
+commands.allow = ["delete_all_data_and_quit"]

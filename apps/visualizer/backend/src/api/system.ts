@@ -2,7 +2,8 @@
  * System routes — health, stats, catalog cache readiness.
  */
 import { createRoute, z } from '@hono/zod-openapi';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { clipCacheDir, config, loadLibraryConfig } from '../config.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openDb, openLibraryDb } from '../db/connection.js';
@@ -31,8 +32,13 @@ import {
   VisionModelsResponse,
 } from './schemas/system.js';
 import { isClipModelOnDisk } from '../imaging/clip-embed.js';
+import { resourcesRoot } from '../config.js';
 
 export const systemRoutes = createOpenApiApp();
+
+function thirdPartyNoticesPath(): string {
+  return join(resourcesRoot(), 'THIRD-PARTY-NOTICES');
+}
 
 const healthRoute = createRoute({
   method: 'get',
@@ -42,6 +48,28 @@ const healthRoute = createRoute({
     200: { description: 'Backend ready', content: jsonBody(HealthResponse) },
     503: { description: 'Library database unavailable', content: jsonBody(ErrorBody) },
   }),
+});
+
+const thirdPartyNoticesRoute = createRoute({
+  method: 'get',
+  path: '/system/third-party-notices',
+  tags: ['system'],
+  responses: withValidationError({
+    200: {
+      description: 'Bundled open-source license notices',
+      content: { 'text/plain': { schema: z.string() } },
+    },
+    404: { description: 'Notices file not bundled in this build', content: jsonBody(ErrorBody) },
+  }),
+});
+
+systemRoutes.openapi(thirdPartyNoticesRoute, (c) => {
+  const path = thirdPartyNoticesPath();
+  if (!existsSync(path)) {
+    return c.json({ error: 'Open source license notices are not available in this build.' }, 404);
+  }
+  const body = readFileSync(path, 'utf8');
+  return c.text(body, 200);
 });
 
 systemRoutes.openapi(healthRoute, (c) => {

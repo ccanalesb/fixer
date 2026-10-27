@@ -1,5 +1,7 @@
+mod delete_data;
 mod host_commands;
 mod log_rotate;
+mod path_guard;
 mod port;
 mod restart_policy;
 mod sidecar;
@@ -12,7 +14,28 @@ use host_commands::{
 use sidecar::{SidecarHandle, SidecarSpawnContext};
 use startup::{confirm_quit_with_jobs, count_running_jobs, StartupState};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager, RunEvent};
+
+static EXIT_APPROVED: AtomicBool = AtomicBool::new(false);
+
+/// Every programmatic quit goes through here: `app.exit` raises `ExitRequested` again,
+/// and only an approved exit may pass the quit-with-jobs check.
+pub(crate) fn approve_exit(app: &AppHandle) {
+    EXIT_APPROVED.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
+
+#[tauri::command]
+async fn delete_all_data_and_quit(app: AppHandle) -> Result<(), String> {
+    if let Some(state) = app.try_state::<Arc<StartupState>>() {
+        state.sidecar.shutdown();
+    }
+    delete_data::wipe_app_data(&app).await?;
+    approve_exit(&app);
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -30,6 +53,7 @@ pub fn run() {
             open_app_logs,
             retry_startup,
             save_port_and_retry,
+            delete_all_data_and_quit,
         ])
         .setup(|app| {
             let resources_dir = app
@@ -80,6 +104,9 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { api, .. } = event {
+                if EXIT_APPROVED.load(Ordering::SeqCst) {
+                    return;
+                }
                 api.prevent_exit();
                 let app = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -91,14 +118,14 @@ pub fn run() {
 
 fn handle_exit_request(app: AppHandle) {
     let Some(state) = app.try_state::<Arc<StartupState>>() else {
-        app.exit(0);
+        approve_exit(&app);
         return;
     };
     let port = state.sidecar.configured_port();
     match count_running_jobs(port) {
         Some(0) | None => {
             state.sidecar.shutdown();
-            app.exit(0);
+            approve_exit(&app);
         }
         Some(n) => confirm_quit_with_jobs(&app, n),
     }

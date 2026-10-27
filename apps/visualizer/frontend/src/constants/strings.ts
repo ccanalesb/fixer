@@ -1073,3 +1073,25 @@ export const APP_MODEL_ADD_COST_BODY =
   'internet connection the first time.'
 export const APP_MODEL_ADD_COST_CONFIRM = 'Add model'
 export const APP_MODEL_ADD_COST_CANCEL = 'Cancel'
+
+// Processing → Settings → About
+export const SETTINGS_ABOUT_HEADING = 'About'
+export const SETTINGS_ABOUT_VERSION_LABEL = 'Version'
+export const SETTINGS_ABOUT_LICENSES_LINK = 'Open source licenses'
+export const SETTINGS_ABOUT_LICENSES_UNAVAILABLE =
+  'Open source license notices are not available in this build.'
+export const SETTINGS_ABOUT_ADOBE_ATTRIBUTION =
+  'Adobe and Lightroom Classic are either registered trademarks or trademarks of Adobe in the United States and/or other countries.'
+export const SETTINGS_ABOUT_NOT_AFFILIATED =
+  'Fixer is not affiliated with or endorsed by Adobe.'
+
+// Processing → Settings → Delete all data (packaged app only)
+export const SETTINGS_DELETE_ALL_HEADING = 'Delete all data and quit'
+export const SETTINGS_DELETE_ALL_DESCRIPTION =
+  'Remove everything Fixer stored on this computer — its data folder, logs and web browser data — then quit. Your Lightroom Classic catalog, anything written to it, and your photos are not touched.'
+export const SETTINGS_DELETE_ALL_BUTTON = 'Delete all data and quit…'
+export const SETTINGS_DELETE_ALL_CONFIRM_TITLE = 'Delete all data and quit?'
+export const SETTINGS_DELETE_ALL_CONFIRM_BODY =
+  'This removes Fixer’s data folder, log files and web browser data from this computer, then quits the app. Your Lightroom Classic catalog, ratings and keywords in it, and your photo files are not changed.'
+export const SETTINGS_DELETE_ALL_CONFIRM_BUTTON = 'Delete and quit'
+export const SETTINGS_DELETE_ALL_WORKING = 'Deleting…'

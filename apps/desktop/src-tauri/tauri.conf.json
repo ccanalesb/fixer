@@ -38,6 +38,11 @@
     "externalBin": ["binaries/node"],
     "macOS": {
       "minimumSystemVersion": "14.0"
+    },
+    "windows": {
+      "nsis": {
+        "template": "../nsis/installer.nsi"
+      }
     }
   }
 }
