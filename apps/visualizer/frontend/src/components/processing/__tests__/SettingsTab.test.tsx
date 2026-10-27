@@ -7,6 +7,8 @@ vi.mock('../StackDetectionSettingRow', () => ({ StackDetectionSettingRow: () => 
 vi.mock('../CullingModelsSection', () => ({ CullingModelsSection: () => <div>culling models</div> }))
 vi.mock('../AppModelsSection', () => ({ AppModelsSection: () => <div>models in this app</div> }))
 vi.mock('../LightroomWritebackSection', () => ({ LightroomWritebackSection: () => <div>lightroom write-back</div> }))
+vi.mock('../AboutSection', () => ({ AboutSection: () => <div>about</div> }))
+vi.mock('../DeleteAllDataSection', () => ({ DeleteAllDataSection: () => <div>delete all data</div> }))
 
 describe('SettingsTab', () => {
   it('puts Culling models and the models in this app between the general settings and Lightroom write-back', () => {

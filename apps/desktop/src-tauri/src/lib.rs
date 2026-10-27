@@ -1,4 +1,6 @@
+mod delete_data;
 mod log_rotate;
+mod path_guard;
 mod port;
 mod sidecar;
 
@@ -7,11 +9,22 @@ use sidecar::SidecarHandle;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{AppHandle, Manager, RunEvent, State};
 use tauri::Url;
 
 struct AppState {
     sidecar: Arc<SidecarHandle>,
+}
+
+#[tauri::command]
+async fn delete_all_data_and_quit(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.sidecar.shutdown();
+    delete_data::wipe_app_data(&app).await?;
+    app.exit(0);
+    Ok(())
 }
 
 pub fn run() {
@@ -46,6 +59,7 @@ pub fn run() {
 
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![delete_all_data_and_quit])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 #[cfg(target_os = "macos")]

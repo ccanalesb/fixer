@@ -491,6 +491,13 @@ export const SystemAPI = {
 
   clipModel: () =>
     request<components['schemas']['ClipModelStatus']>('/clip-model'),
+
+  thirdPartyNoticesUrl: () => `${API_URL}/system/third-party-notices`,
+
+  thirdPartyNoticesAvailable: async () => {
+    const res = await fetch(`${API_URL}/system/third-party-notices`, { method: 'HEAD' })
+    return res.ok
+  },
 }
 
 export const ImagesAPI = {
