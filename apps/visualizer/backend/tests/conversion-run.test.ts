@@ -6,9 +6,11 @@ import { REPO_ROOT } from '../src/config.js';
 import {
   CONVERSION_OFFLINE_MESSAGE,
   CONVERTER_PREP_STEP,
+  conversionChildSpawnOptions,
   conversionCwd,
   conversionFailureMessage,
   conversionSpawnEnv,
+  createProcessTreeKiller,
   isConversionOfflineFailure,
   resolveUvExecutable,
 } from '../src/app-models/conversion-run.js';
@@ -102,5 +104,43 @@ describe('isConversionOfflineFailure', () => {
 describe('labels', () => {
   it('names the first job step', () => {
     expect(CONVERTER_PREP_STEP).toBe('Preparing the converter (first time only)');
+  });
+});
+
+describe('conversionChildSpawnOptions', () => {
+  it('hides the console window on Windows', () => {
+    expect(conversionChildSpawnOptions().windowsHide).toBe(true);
+  });
+});
+
+describe('createProcessTreeKiller', () => {
+  it('kills the process group on POSIX', () => {
+    const calls: { pid: number; signal: NodeJS.Signals }[] = [];
+    const original = process.kill.bind(process);
+    process.kill = ((pid: number, signal?: NodeJS.Signals) => {
+      calls.push({ pid, signal: signal! });
+      return true;
+    }) as typeof process.kill;
+    try {
+      createProcessTreeKiller('linux')(42, 'SIGTERM');
+      expect(calls).toEqual([{ pid: -42, signal: 'SIGTERM' }]);
+    } finally {
+      process.kill = original;
+    }
+  });
+
+  it('uses taskkill /T on Windows, /F for SIGKILL', () => {
+    const execCalls: { file: string; args: readonly string[]; windowsHide?: boolean }[] = [];
+    const exec = (file: string, args: readonly string[], options: { windowsHide?: boolean }, cb: (e: Error | null) => void) => {
+      execCalls.push({ file, args, windowsHide: options.windowsHide });
+      cb(null);
+    };
+    const kill = createProcessTreeKiller('win32', exec);
+    kill(99, 'SIGTERM');
+    kill(99, 'SIGKILL');
+    expect(execCalls).toEqual([
+      { file: 'taskkill', args: ['/pid', '99', '/T'], windowsHide: true },
+      { file: 'taskkill', args: ['/pid', '99', '/T', '/F'], windowsHide: true },
+    ]);
   });
 });

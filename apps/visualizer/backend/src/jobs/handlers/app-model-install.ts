@@ -16,10 +16,11 @@ import { createInterface } from 'node:readline';
 import { config, loadLibraryConfig, resourcesRoot } from '../../config.js';
 import {
   CONVERTER_PREP_STEP,
-  conversionCwd,
+  conversionChildSpawnOptions,
   conversionFailureMessage,
-  conversionSpawnEnv,
+  createProcessTreeKiller,
   resolveUvExecutable,
+  type ProcessTreeKiller,
 } from '../../app-models/conversion-run.js';
 import { AppModelSetupError, resolveInstalledModel } from '../../app-models/files.js';
 import { APP_MODEL_INSTALL_JOB_TYPE } from '../../app-models/install.js';
@@ -53,14 +54,15 @@ type Outcome = { ok: true } | { cancelled: true } | { error: string };
 /** Process-group ids of the conversions running now. */
 const running = new Set<number>();
 
+let killProcessTree: ProcessTreeKiller = createProcessTreeKiller();
+
+/** Test hook: inject how the backend stops a conversion process tree. */
+export function setProcessTreeKiller(killer: ProcessTreeKiller): void {
+  killProcessTree = killer;
+}
+
 export function stopRunningConversions(): void {
-  for (const pid of running) {
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {
-      // Already gone.
-    }
-  }
+  for (const pid of running) killProcessTree(pid, 'SIGTERM');
 }
 
 function scriptFailure(kind: string, message: string): string {
@@ -74,12 +76,7 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
     const child = spawn(
       resolveUvExecutable(),
       ['run', script, source, '--name', name, '--out', modelsDir, '--job-id', jobId],
-      {
-        cwd: conversionCwd(),
-        env: conversionSpawnEnv(),
-        detached: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
+      conversionChildSpawnOptions(),
     );
     if (child.pid) running.add(child.pid);
     let done = false;
@@ -95,11 +92,7 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
       settle(o);
     };
     const signalGroup = (sig: NodeJS.Signals) => {
-      try {
-        if (child.pid) process.kill(-child.pid, sig);
-      } catch {
-        // Already gone.
-      }
+      if (child.pid) killProcessTree(child.pid, sig);
     };
 
     // The runner logs a step itself, so a `step:` line is not logged again.

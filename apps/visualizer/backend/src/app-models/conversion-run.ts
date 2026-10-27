@@ -1,6 +1,46 @@
+import { execFile, type ExecFileOptions } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { dataRoot, resourcesRoot } from '../config.js';
+
+export type ExecFileFn = (
+  file: string,
+  args: readonly string[],
+  options: ExecFileOptions,
+  callback: (error: Error | null) => void,
+) => void;
+
+export type ProcessTreeKiller = (pid: number, signal: NodeJS.Signals) => void;
+
+export function createProcessTreeKiller(
+  platform: string = process.platform,
+  exec: ExecFileFn = execFile,
+): ProcessTreeKiller {
+  if (platform === 'win32') {
+    return (pid, signal) => {
+      const args =
+        signal === 'SIGKILL' ? ['/pid', String(pid), '/T', '/F'] : ['/pid', String(pid), '/T'];
+      exec('taskkill', args, { windowsHide: true }, () => {});
+    };
+  }
+  return (pid, signal) => {
+    try {
+      process.kill(-pid, signal);
+    } catch {
+      // Already gone.
+    }
+  };
+}
+
+export function conversionChildSpawnOptions() {
+  return {
+    cwd: conversionCwd(),
+    env: conversionSpawnEnv(),
+    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  };
+}
 
 export const CONVERTER_PREP_STEP = 'Preparing the converter (first time only)';
 
