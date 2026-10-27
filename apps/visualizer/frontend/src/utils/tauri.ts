@@ -20,3 +20,21 @@ export async function invokeDeleteAllDataAndQuit(): Promise<void> {
   }
   await internals.invoke('delete_all_data_and_quit')
 }
+
+export type ManualUpdateCheckResult = 'up_to_date' | 'check_failed' | 'update_available'
+
+export async function invokeCheckForUpdatesManual(): Promise<ManualUpdateCheckResult> {
+  const internals = tauriInternals()
+  if (!internals) {
+    throw new Error('Check for updates is only available in the desktop app.')
+  }
+  const result = (await internals.invoke('check_for_updates_manual')) as string
+  if (
+    result === 'up_to_date' ||
+    result === 'check_failed' ||
+    result === 'update_available'
+  ) {
+    return result
+  }
+  return 'check_failed'
+}

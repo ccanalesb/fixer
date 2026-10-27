@@ -8,4 +8,5 @@ commands.allow = [
   "open_app_logs",
   "retry_startup",
   "save_port_and_retry",
+  "check_for_updates_manual",
 ]
