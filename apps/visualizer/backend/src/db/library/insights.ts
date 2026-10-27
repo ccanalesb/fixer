@@ -13,6 +13,7 @@ import {
   getLatestFinishedFrameSubstanceRun,
 } from './frame-substance.js';
 import { countPendingStackSuggestions } from './stack-suggestions.js';
+import { firstCatalogImportCompleted } from './bootstrap.js';
 
 export interface PerspectiveCoverageRow {
   slug: string;
@@ -29,6 +30,7 @@ export interface FrameSubstanceRunSummary {
 }
 
 export interface InsightsSummary {
+  first_catalog_import_completed: boolean;
   catalog_images: number;
   scoring_9_plus: number;
   burst_stacks: number;
@@ -136,6 +138,7 @@ export function getInsightsSummary(db: Db): InsightsSummary {
     .all() as { slug: string; display_name: string; active: number; scored_images: number }[];
 
   return {
+    first_catalog_import_completed: firstCatalogImportCompleted(db),
     catalog_images: catalogImages,
     scoring_9_plus: scoring9Plus,
     burst_stacks: burstStacks,

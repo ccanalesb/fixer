@@ -16,6 +16,8 @@
  * over rather than failing the chain.
  */
 import type { Db } from '../../db/connection.js';
+import { markFirstCatalogImportCompleted } from '../../db/library/bootstrap.js';
+import { libraryWrite } from '../../db/library/write.js';
 import { listCatalogKeysNeedingClipEmbedding } from '../../db/library/embeddings.js';
 import { fingerprintCatalogCacheBuild } from '../checkpoint.js';
 import type { JobRunner } from '../runner.js';
@@ -165,6 +167,8 @@ async function runChain(
       `skipped_non_primary=${similarity.skipped_non_primary} ` +
       `skipped_no_embedding=${similarity.skipped_no_embedding}`,
   );
+
+  libraryWrite(db, () => markFirstCatalogImportCompleted(db));
 
   const result: CatalogCacheBuildResult = {
     catalog_cache_build: true,

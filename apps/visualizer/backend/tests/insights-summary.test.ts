@@ -15,6 +15,7 @@ let fx: LibraryFixture;
 const app = createApp();
 
 interface Summary {
+  first_catalog_import_completed: boolean;
   catalog_images: number;
   scoring_9_plus: number;
   burst_stacks: number;
@@ -49,6 +50,7 @@ describe('GET /api/insights-summary', () => {
   it('reports zeros for an empty catalog', async () => {
     const body = await get();
     expect(body).toMatchObject({
+      first_catalog_import_completed: false,
       catalog_images: 0,
       scoring_9_plus: 0,
       burst_stacks: 0,

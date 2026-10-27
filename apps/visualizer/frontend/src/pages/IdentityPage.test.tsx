@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { IdentityPage } from './IdentityPage'
-import { IdentityAPI } from '../services/api'
+import { ConfigAPI, IdentityAPI, SystemAPI } from '../services/api'
 import { invalidateAll } from '../data'
 import {
   EMPTY_MIRROR_RESPONSE,
   EMPTY_POST_NEXT_META,
 } from '../__test-utils__/identityFixtures'
 import {
+  FIRST_RUN_GO_TO_SETUP,
+  FIRST_RUN_IDENTITY_EMPTY_HINT,
   IDENTITY_ADVISOR_EMPTY_FALLBACK,
   IDENTITY_DIVIDER_BACKWARD,
   IDENTITY_DIVIDER_FORWARD,
@@ -18,9 +20,48 @@ import {
   IDENTITY_MIRROR_SECTION,
 } from '../constants/strings'
 
+const completedImportPipeline = {
+  catalog_sync: null,
+  embed_catalog: null,
+  stack_detect: null,
+  catalog_similarity: null,
+  catalog_cache_build: {
+    job_id: 'done',
+    type: 'catalog_cache_build',
+    status: 'completed',
+    created_at: '2026-01-01T00:00:00Z',
+    started_at: '2026-01-01T00:00:01Z',
+    completed_at: '2026-01-01T00:00:02Z',
+    error: null,
+  },
+}
+
 describe('IdentityPage', () => {
   beforeEach(() => {
     invalidateAll(['identity'])
+    invalidateAll(['firstRun'])
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/tmp/test.lrcat',
+      resolved_path: '/tmp/test.lrcat',
+      exists: true,
+      picker_available: false,
+      synced_catalog_path: null,
+      needs_catalog_sync: false,
+    })
+    vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
+    vi.spyOn(SystemAPI, 'insightsSummary').mockResolvedValue({
+      first_catalog_import_completed: true,
+      catalog_images: 10,
+      scoring_9_plus: 0,
+      burst_stacks: 0,
+      pending_stack_suggestions: 0,
+      unscored_on_active_perspectives: 0,
+      no_current_score: 0,
+      frame_substance_flagged: 0,
+      frame_substance_unknown: { never_judged: 0 },
+      frame_substance_run: null,
+      perspective_coverage: [],
+    })
     vi.spyOn(IdentityAPI, 'getMirror').mockResolvedValue(EMPTY_MIRROR_RESPONSE)
     vi.spyOn(IdentityAPI, 'getSuggestions').mockResolvedValue({
       candidates: [],
@@ -55,6 +96,39 @@ describe('IdentityPage', () => {
     )
     expect(screen.getByText(IDENTITY_DIVIDER_BACKWARD)).toBeInTheDocument()
     expect(screen.getByText(IDENTITY_DIVIDER_FORWARD)).toBeInTheDocument()
+  })
+
+  it('points to setup when the library has no photos', async () => {
+    vi.spyOn(SystemAPI, 'insightsSummary').mockResolvedValue({
+      first_catalog_import_completed: false,
+      catalog_images: 0,
+      scoring_9_plus: 0,
+      burst_stacks: 0,
+      pending_stack_suggestions: 0,
+      unscored_on_active_perspectives: 0,
+      no_current_score: 0,
+      frame_substance_flagged: 0,
+      frame_substance_unknown: { never_judged: 0 },
+      frame_substance_run: null,
+      perspective_coverage: [],
+    })
+    vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue({
+      catalog_sync: null,
+      embed_catalog: null,
+      stack_detect: null,
+      catalog_similarity: null,
+      catalog_cache_build: null,
+    })
+
+    render(
+      <MemoryRouter>
+        <IdentityPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(FIRST_RUN_IDENTITY_EMPTY_HINT)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: FIRST_RUN_GO_TO_SETUP })).toBeInTheDocument()
+    expect(screen.queryByText(IDENTITY_MIRROR_EMPTY)).not.toBeInTheDocument()
   })
 
   it('shows empty-state copy when APIs return no data', async () => {

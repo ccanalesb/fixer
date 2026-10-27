@@ -140,5 +140,6 @@ export function useCatalogPicker() {
     error,
     pick,
     save,
+    refresh,
   }
 }

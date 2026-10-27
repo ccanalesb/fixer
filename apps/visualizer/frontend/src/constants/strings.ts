@@ -167,6 +167,38 @@ export const STACK_SUGGESTIONS_ACCEPT = 'Confirm stack'
 export const STACK_SUGGESTIONS_REJECT = 'Reject'
 export const STACK_SUGGESTIONS_TIME_GAP_SECONDS = (seconds: number) =>
   seconds < 60 ? `${seconds}s apart` : `${Math.round(seconds / 60)}m apart`
+
+// First-run setup (Insights catalog import)
+export const FIRST_RUN_WELCOME_TITLE = 'Welcome to Fixer'
+export const FIRST_RUN_WELCOME_SUBTITLE =
+  'Fixer works on your Lightroom Classic catalog. Two steps and your photos are here.'
+export const FIRST_RUN_STEP_CATALOG_TITLE = 'Choose your catalog'
+export const FIRST_RUN_STEP_CATALOG_HINT =
+  'The .lrcat file, usually in Pictures › Lightroom.'
+export const FIRST_RUN_CHOOSE_CATALOG = 'Choose catalog…'
+export const FIRST_RUN_CHANGE_CATALOG = 'Change…'
+export const FIRST_RUN_STEP_IMPORT_TITLE = 'Import it'
+export const FIRST_RUN_STEP_IMPORT_HINT =
+  'Reads your photos, then prepares them for culling. Large catalogs take a while.'
+export const FIRST_RUN_IMPORT_CATALOG = 'Import catalog'
+export const FIRST_RUN_IMPORT_WHILE_BUSY = 'Importing…'
+export const FIRST_RUN_IMPORT_KEEP_USING =
+  'You can keep using the app; Images fills in after the first step.'
+export const FIRST_RUN_STAGE_READ_CATALOG = 'Reading the catalog'
+export const FIRST_RUN_STAGE_EMBEDDINGS = 'Computing image embeddings'
+export const FIRST_RUN_STAGE_BURST_STACKS = 'Detecting burst stacks'
+export const FIRST_RUN_STAGE_NEAR_DUPLICATES = 'Grouping near-duplicates'
+export const FIRST_RUN_LIBRARY_EMPTY_TITLE = 'Your library is empty'
+export const FIRST_RUN_GO_TO_SETUP = 'Go to setup'
+export const FIRST_RUN_IMAGES_EMPTY_HINT =
+  'Choose and import your Lightroom Classic catalog to browse your photos.'
+export const FIRST_RUN_IDENTITY_EMPTY_HINT =
+  'Identity is built from scores on your photos. Start by importing your catalog.'
+export const FIRST_RUN_READING_CATALOG =
+  'Reading your catalog… photos appear here when that step finishes.'
+export const FIRST_RUN_IMPORT_STILL_RUNNING = 'Import still running —'
+export const FIRST_RUN_SEE_PROGRESS = 'see progress'
+export const FIRST_RUN_SETUP_ROUTE = '/'
 export const INSIGHTS_ACTION_FINISH_PASS = 'Undescribed + unscored'
 export const INSIGHTS_ACTION_FINISH_PASS_DESC =
   'Images with no current score — run a score pass on Processing.'

@@ -1,4 +1,6 @@
 import { Suspense, useMemo } from 'react'
+import { FirstRunSetupScreen } from '../components/setup/FirstRunSetupScreen'
+import { useFirstRunSetup } from '../hooks/useFirstRunSetup'
 import type { FilterSchema } from '../components/filters/types'
 import { InsightsActionCards } from '../components/insights/InsightsActionCards'
 import { InsightsKpiRow } from '../components/insights/InsightsKpiRow'
@@ -111,6 +113,19 @@ const dashboardSuspenseFallback = (
 )
 
 function DashboardPageInner() {
+  const firstRun = useFirstRunSetup()
+
+  if (firstRun.showInsightsSetup) {
+    if (firstRun.loading) {
+      return dashboardSuspenseFallback
+    }
+    return <FirstRunSetupScreen setup={firstRun} />
+  }
+
+  return <DashboardInsightsView />
+}
+
+function DashboardInsightsView() {
   const dashboardTopPhotosSchema = useMemo<FilterSchema>(
     () => [
       {
