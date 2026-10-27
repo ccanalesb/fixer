@@ -1,5 +1,5 @@
 /**
- * The `lightroom-tagger` program; `bin.ts` is the executable that calls it.
+ * The `fixer` program; `bin.ts` is the executable that calls it.
  *
  * Every failure leaves as `Error: …` on stdout and exit 1 (not stderr) — scripts
  * read stdout for errors.

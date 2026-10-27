@@ -1,6 +1,6 @@
 ---
 name: investigate-job
-description: Investigate a lightroom-tagger visualizer job — look up status, progress, logs, latency stats, and ETA. Use when the user asks why a job is slow, stuck, failed, or wants to inspect a job by ID. Triggers on job UUIDs, "why is this job", "job status", "job taking too long", "inspect job", "check job".
+description: Investigate a Fixer job — look up status, progress, logs, latency stats, and ETA. Use when the user asks why a job is slow, stuck, failed, or wants to inspect a job by ID. Triggers on job UUIDs, "why is this job", "job status", "job taking too long", "inspect job", "check job".
 ---
 
 # Investigate Job

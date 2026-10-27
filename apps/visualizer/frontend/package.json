@@ -1,7 +1,8 @@
 {
-  "name": "lightroom-tagger-frontend",
+  "name": "fixer-frontend",
   "private": true,
   "version": "0.0.0",
+  "license": "ISC",
   "type": "module",
   "scripts": {
     "dev": "vite",

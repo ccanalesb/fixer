@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The visualizer is the web product that surfaces library data to the user. It consists of a Hono backend (`apps/visualizer/backend/`) and a React SPA (`apps/visualizer/frontend/`). They are developed and deployed together — backend and frontend share the same domain model and API contracts. The backend also carries the library itself (catalog reader, vision pipeline, CLIP, scoring) and the `lightroom-tagger` CLI; there is no separate library package.
+**Fixer** is the product name. The web UI (historically called the visualizer) surfaces library data to the user. It consists of a Hono backend (`apps/visualizer/backend/`) and a React SPA (`apps/visualizer/frontend/`). They are developed and deployed together — backend and frontend share the same domain model and API contracts. The backend also carries the library itself (catalog reader, vision pipeline, CLIP, scoring) and the `fixer` CLI; there is no separate library package.
 
 ## Domain language
 
@@ -77,7 +77,7 @@ Paths are relative to `apps/visualizer/backend/src/`.
 | `api/schemas/` | zod request/response models, one module per group |
 | `websocket/` | SocketIO event handlers |
 | `utils/responses.ts` | Shared JSON response helpers |
-| `cli/` | The `lightroom-tagger` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check` |
+| `cli/` | The `fixer` CLI — `scan`, `sync`, `search`, `export`, `init`, `stats`, `enrich-catalog`, `cull-check` |
 | `app-models/` | The models in this app, through ONNX in a worker thread, each loaded on its first request; one directory per model in the git-ignored `models/`, written by `scripts/app-models/export_onnx.py` (run by the `app_model_install` job, `install.ts`). A model without its own vision graph reads the one of the installed model it was fine-tuned from. `app-models.ts` serves them on this app's System One endpoint, starting the worker on the first request and closing it after two idle minutes. See ADR-0020, ADR-0021 |
 | `systemone/` | The System One contract's questions (`question.ts`) and the client culling uses for every stage, whether the endpoint is this app (in-process) or another server. See ADR-0021 |
 | `api/systemone.ts` | This app's System One endpoint (`GET /v1/models`, `POST /v1/systemone`) |

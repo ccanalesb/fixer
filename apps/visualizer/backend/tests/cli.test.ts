@@ -1,5 +1,5 @@
 /**
- * The `lightroom-tagger` CLI: parsing, dispatch, error mapping, and the commands.
+ * The `fixer` CLI: parsing, dispatch, error mapping, and the commands.
  *
  * Driven through `run()` rather than a subprocess, so a failing assertion points
  * at a line instead of at a captured stream. `run()` is the whole program below
@@ -86,7 +86,7 @@ describe('run', () => {
   it('prints help and exits 1 when no command is given', async () => {
     const r = await cli([]);
     expect(r.code).toBe(1);
-    expect(r.text).toContain('usage: lightroom-tagger');
+    expect(r.text).toContain('usage: fixer');
     expect(r.text).toContain('enrich-catalog');
   });
 

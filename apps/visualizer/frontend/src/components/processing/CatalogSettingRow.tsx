@@ -22,7 +22,7 @@ export function CatalogSettingRow() {
   const [typing, setTyping] = useState<boolean | null>(null);
 
   if (loading) {
-    return <SettingRow name="Lightroom catalog" description="Loading…" control={null} />;
+    return <SettingRow name="Lightroom Classic catalog" description="Loading…" control={null} />;
   }
 
   // No status and not loading means the read failed. Without this the row would
@@ -30,7 +30,7 @@ export function CatalogSettingRow() {
   if (!status) {
     return (
       <SettingRow
-        name="Lightroom catalog"
+        name="Lightroom Classic catalog"
         description={<span className="text-error">{error ?? 'Could not read the setting'}</span>}
         control={null}
       />
@@ -73,7 +73,7 @@ export function CatalogSettingRow() {
 
   return (
     <SettingRow
-      name="Lightroom catalog"
+      name="Lightroom Classic catalog"
       description={
         changesCatalog ? (
           <span className="flex min-w-0 text-warning">

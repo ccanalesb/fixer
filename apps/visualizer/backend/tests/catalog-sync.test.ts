@@ -330,7 +330,7 @@ describe('syncCatalog', () => {
       'LIGHTROOM_CATALOG_LOCKING_MODE=EXCLUSIVE',
     );
     expect(catalogSyncErrorMessage(new Error('file is not a database'))).toBe(
-      'Cannot read Lightroom catalog: file is not a database',
+      'Cannot read Lightroom Classic catalog: file is not a database',
     );
   });
 

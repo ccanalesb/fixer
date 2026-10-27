@@ -115,7 +115,7 @@ const pickCatalogRoute = createRoute({
 // their answer. It does not save — the path still goes through PUT's validation.
 ltConfigRoutes.openapi(pickCatalogRoute, async (c) => {
   try {
-    const result = await chooseFile('Select your Lightroom catalog', 'lrcat');
+    const result = await chooseFile('Select your Lightroom Classic catalog', 'lrcat');
     return c.json({ catalog_path: 'path' in result ? result.path : null }, 200);
   } catch (error) {
     if (error instanceof FileDialogUnavailableError) return c.json({ error: error.message }, 501);
