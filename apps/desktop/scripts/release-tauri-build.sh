@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Tauri bundles, then run the packaged host smoke (CI release leg).
+# Build Tauri bundles, then run the packaged host smoke (release CI leg).
 set -euo pipefail
 
 DESKTOP="$(cd "$(dirname "$0")/.." && pwd)"
