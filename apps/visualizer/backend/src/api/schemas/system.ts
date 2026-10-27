@@ -11,6 +11,11 @@ export const SystemStatusResponse = z
   .strict()
   .openapi('SystemStatusResponse');
 
+export const HealthResponse = z
+  .object({ status: z.literal('ok') })
+  .strict()
+  .openapi('HealthResponse');
+
 export const Stats = z
   .object({
     catalog_images: z.int(),

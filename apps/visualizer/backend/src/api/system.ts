@@ -25,11 +25,38 @@ import {
   CatalogCacheReadyResponse,
   InsightsSummary,
   Stats,
+  HealthResponse,
   SystemStatusResponse,
   VisionModelsResponse,
 } from './schemas/system.js';
 
 export const systemRoutes = createOpenApiApp();
+
+const healthRoute = createRoute({
+  method: 'get',
+  path: '/health',
+  tags: ['system'],
+  responses: withValidationError({
+    200: { description: 'Backend ready', content: jsonBody(HealthResponse) },
+    503: { description: 'Library database unavailable', content: jsonBody(ErrorBody) },
+  }),
+});
+
+systemRoutes.openapi(healthRoute, (c) => {
+  const dbPath = config.LIBRARY_DB;
+  if (!existsSync(dbPath)) {
+    return c.json({ error: 'Library database is not available.' }, 503);
+  }
+  let db;
+  try {
+    db = openLibraryDb(dbPath, { readonly: true });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 503);
+  } finally {
+    db?.close();
+  }
+  return c.json({ status: 'ok' as const }, 200);
+});
 
 const statusRoute = createRoute({
   method: 'get',

@@ -6,6 +6,8 @@
  */
 import { cors } from 'hono/cors';
 import { config } from './config.js';
+import { loopbackMiddleware } from './middleware/loopback.js';
+import { registerPackagedSpa } from './spa.js';
 import { HttpError } from './utils/responses.js';
 import { createOpenApiApp, openApiDoc } from './api/openapi.js';
 import { appModelsRoutes } from './api/app-models.js';
@@ -28,6 +30,8 @@ import { systemOneRoutes } from './api/systemone.js';
 
 export function createApp() {
   const app = createOpenApiApp();
+
+  app.use('*', loopbackMiddleware(config.PORT));
 
   app.use(
     '/api/*',
@@ -90,6 +94,8 @@ export function createApp() {
 
   // Backend-authoritative OpenAPI (ADR-0013). `scripts/export-openapi.ts` reads this.
   app.doc('/apidoc/openapi.json', openApiDoc());
+
+  registerPackagedSpa(app);
 
   return app;
 }
