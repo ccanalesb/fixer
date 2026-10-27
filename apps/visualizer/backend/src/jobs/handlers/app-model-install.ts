@@ -61,7 +61,9 @@ export function setProcessTreeKiller(killer: ProcessTreeKiller): void {
 }
 
 export function stopRunningConversions(): void {
-  for (const pid of running) killProcessTree(pid, 'SIGTERM');
+  // On Windows, SIGTERM often leaves a detached `uv`/Node conversion tree running; force-kill on shutdown.
+  const signal: NodeJS.Signals = process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM';
+  for (const pid of running) killProcessTree(pid, signal);
 }
 
 function scriptFailure(kind: string, message: string): string {
