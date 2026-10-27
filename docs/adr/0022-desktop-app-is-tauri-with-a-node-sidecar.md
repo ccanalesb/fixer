@@ -48,6 +48,9 @@ time goes, runs on Node under either shell.
 
 ## Consequences
 
+- **Loopback, not auth.** The packaged backend binds `127.0.0.1`, never
+  `0.0.0.0`, and rejects requests whose `Host` is not its own loopback
+  address and state-changing requests whose `Origin` is not its own.
 - **Rust enters the repo and CI** — a thin host for the sidecar, the native
   dialog and single-instance, plus the Rust toolchain and WebKitGTK build
   dependencies on Linux.
