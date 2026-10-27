@@ -5,6 +5,7 @@ set -euo pipefail
 DESKTOP="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="$(cd "$DESKTOP/../.." && pwd)"
 STAGE="$DESKTOP/staged-resources"
+SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
@@ -23,10 +24,23 @@ echo "Building frontend…"
   npm run build
 )
 
-echo "Copying backend…"
+echo "Installing production backend deps in stage…"
 cp -R "$REPO/apps/visualizer/backend/dist" "$STAGE/dist"
 cp "$REPO/apps/visualizer/backend/package.json" "$STAGE/package.json"
-cp -R "$REPO/apps/visualizer/backend/node_modules" "$STAGE/node_modules"
+cp "$REPO/apps/visualizer/backend/package-lock.json" "$STAGE/package-lock.json"
+(
+  cd "$STAGE"
+  ONNXRUNTIME_NODE_INSTALL=skip npm ci
+)
+
+PRUNE_ARGS=(--root "$STAGE")
+if [[ -n "${PRUNE_PLATFORM:-}" ]]; then
+  PRUNE_ARGS+=(--platform "$PRUNE_PLATFORM")
+fi
+if [[ -n "${PRUNE_ARCH:-}" ]]; then
+  PRUNE_ARGS+=(--arch "$PRUNE_ARCH")
+fi
+node "$SCRIPTS/prune-staged-backend.mjs" "${PRUNE_ARGS[@]}"
 
 echo "Copying frontend…"
 mkdir -p "$STAGE/frontend"
