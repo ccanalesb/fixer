@@ -1424,6 +1424,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clip-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description CLIP vision model cache on disk */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ClipModelStatus"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stats": {
         parameters: {
             query?: never;
@@ -5270,6 +5314,8 @@ export interface components {
             status: "pending" | "running" | "completed" | "failed" | "cancelled";
             progress: number;
             current_step?: string | null;
+            clip_model_download_loaded_bytes?: number | null;
+            clip_model_download_total_bytes?: number | null;
             /** @default [] */
             logs: components["schemas"]["JobLog"][];
             /** @default 0 */
@@ -5624,6 +5670,10 @@ export interface components {
         };
         SystemStatusResponse: {
             status: string;
+        };
+        ClipModelStatus: {
+            model_on_disk: boolean;
+            cache_dir: string;
         };
         Stats: {
             catalog_images: number;

@@ -74,6 +74,11 @@ function defaultVisionCacheDir(): string {
   return join(homedir(), '.cache', 'lightroom_tagger', 'vision');
 }
 
+/** transformers.js CLIP weights — not under `models/`. */
+export function clipCacheDir(): string {
+  return join(dataRoot(), 'clip');
+}
+
 export const HOST_DEFAULT = 'localhost';
 /**
  * 5001, not 5000: on macOS the AirPlay Receiver occupies :5000 and answers

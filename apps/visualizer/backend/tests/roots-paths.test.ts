@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   config,
+  clipCacheDir,
   dataRoot,
   loadLibraryConfig,
   providersExamplePath,
@@ -130,6 +131,10 @@ describe('roots set', () => {
   it('defaults vision cache into the data folder', () => {
     const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
     expect(cfg.visionCacheDir).toBe(join(process.env.LT_DATA_DIR!, 'vision-cache'));
+  });
+
+  it('keeps the CLIP cache in its own folder under the data folder', () => {
+    expect(clipCacheDir()).toBe(join(process.env.LT_DATA_DIR!, 'clip'));
   });
 
   it('still honors per-file env overrides', () => {

@@ -4,9 +4,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fromPretrained = vi.hoisted(() => vi.fn());
+const transformersEnv = vi.hoisted(() => ({} as Record<string, unknown>));
 
 vi.mock('@huggingface/transformers', () => ({
-  env: {},
+  env: transformersEnv,
   Tensor: class Tensor {
     constructor(
       public dtype: string,
@@ -27,6 +28,26 @@ describe('CLIP model loading', () => {
 
   afterEach(() => {
     vi.resetModules();
+  });
+
+  it('forwards Hub progress to the download callback', async () => {
+    fromPretrained.mockImplementation((_id: string, opts: { progress_callback?: (info: unknown) => void }) => {
+      opts.progress_callback?.({
+        status: 'progress_total',
+        loaded: 10_000_000,
+        total: 351_685_709,
+      });
+      return Promise.resolve({});
+    });
+
+    const onDownloadProgress = vi.fn();
+    const { loadClipModel } = await import('../src/imaging/clip-embed.js');
+    await loadClipModel({ onDownloadProgress });
+
+    expect(onDownloadProgress).toHaveBeenCalledWith({
+      loaded: 10_000_000,
+      total: 351_685_709,
+    });
   });
 
   it('tries the download again after a rejected load', async () => {

@@ -78,6 +78,14 @@ export const CatalogCacheReadyResponse = z
   .strict()
   .openapi('CatalogCacheReadyResponse');
 
+export const ClipModelStatus = z
+  .object({
+    model_on_disk: z.boolean(),
+    cache_dir: z.string(),
+  })
+  .strict()
+  .openapi('ClipModelStatus');
+
 export const CacheStatus = z
   .object({
     total_images: z.int(),
@@ -119,3 +127,4 @@ export type InsightsSummary = z.infer<typeof InsightsSummary>;
 export type VisionModelsResponse = z.infer<typeof VisionModelsResponse>;
 export type CachePipelineStatus = z.infer<typeof CachePipelineStatus>;
 export type CachePipelineRun = z.infer<typeof CachePipelineRun>;
+export type ClipModelStatus = z.infer<typeof ClipModelStatus>;
