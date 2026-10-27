@@ -60,7 +60,7 @@ function resolveCatalogPath(metadata: Record<string, unknown>): string | null {
   return loadLibraryConfig(config.LT_CONFIG_YAML).catalogPath;
 }
 
-/** Refresh `library.db` from the Lightroom catalog, additions only. */
+/** Refresh `library.db` from the Lightroom Classic catalog, additions only. */
 export async function handleCatalogSync(
   runner: JobRunner,
   jobId: string,
@@ -108,7 +108,7 @@ export async function runCatalogSyncPass(
 
   const progress = (pct: number, message: string): void =>
     runner.updateProgress(jobId, mapPassProgress(ctx, pct), `${prefix}${message}`);
-  progress(5, 'Connecting to Lightroom catalog...');
+  progress(5, 'Connecting to Lightroom Classic catalog...');
 
   let outcome: SyncCatalogOutcome;
   try {

@@ -9,7 +9,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 
-export const OPENAPI_TITLE = 'Lightroom Tagger Visualizer API';
+export const OPENAPI_TITLE = 'Fixer API';
 export const OPENAPI_VERSION = '1.0.0';
 
 /**

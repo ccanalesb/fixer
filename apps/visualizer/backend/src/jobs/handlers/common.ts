@@ -48,7 +48,7 @@ export async function withLibraryDb<T>(path: string, fn: (db: Db) => Promise<T>)
  * `warning` is for the user's own inputs — a bad key, an expired token, or a culling stage whose
  * model or endpoint is not set up, is not a defect. `critical` is for the two cases where continuing would be unsafe: the
  * filesystem refusing the process, and a write attempted against a catalog
- * Lightroom still holds open.
+ * Lightroom Classic still holds open.
  */
 export function failureSeverityFromError(e: unknown): ErrorSeverity {
   if (e instanceof AuthenticationError || e instanceof InvalidRequestError || e instanceof CullingStageError) {
@@ -63,7 +63,7 @@ export function failureSeverityFromError(e: unknown): ErrorSeverity {
   ) {
     return 'critical';
   }
-  if (e instanceof Error && e.message === 'Close Lightroom before writing to catalog.') {
+  if (e instanceof Error && e.message === 'Close Lightroom Classic before writing to catalog.') {
     return 'critical';
   }
   return 'error';

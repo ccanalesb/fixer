@@ -1,6 +1,6 @@
 ---
-name: Lightroom Tagger Visualizer
-description: A photographer's matte board for tagging, scoring, and posting from a Lightroom catalog.
+name: Fixer Visualizer
+description: A photographer's matte board for tagging, scoring, and posting from a Lightroom Classic catalog.
 colors:
   background: "#ffffff"
   background-dark: "#191919"
@@ -139,13 +139,13 @@ components:
     padding: "8px 16px"
 ---
 
-# Design System: Lightroom Tagger Visualizer
+# Design System: Fixer Visualizer
 
 ## 1. Overview
 
 **Creative North Star: "The Matte Board"**
 
-This surface is the matte board around a printed photograph — warm-paper cream, deliberate restraint, a frame whose only job is to make the print readable. A photographer arrives here from Lightroom, already saturated with their own images, and the tool's job is to recede. The matte does not compete with the print.
+This surface is the matte board around a printed photograph — warm-paper cream, deliberate restraint, a frame whose only job is to make the print readable. A photographer arrives here from Lightroom Classic, already saturated with their own images, and the tool's job is to recede. The matte does not compete with the print.
 
 That metaphor sets every choice. Color: warm neutrals (cream `#f6f5f4`, paper `#ffffff`, dark-mode-warm `#31302e`) with a single workbench blue accent that earns its rarity by appearing only on interactive elements. Borders: 1px hairlines (12% / 20% opacity) in the same key as the surface. Shadows: four-stop ambient halos that read as paper-on-paper depth, never as UI elevation. Typography: Inter at four standard weights with aggressive negative letter-spacing on display sizes — tight, modern, editorial, but unornamented.
 

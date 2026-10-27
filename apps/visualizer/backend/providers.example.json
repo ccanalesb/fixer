@@ -38,8 +38,8 @@
       "api_key_env": "OPENROUTER_API_KEY",
       "auto_discover": false,
       "extra_headers": {
-        "HTTP-Referer": "lightroom-tagger",
-        "X-Title": "Lightroom Tagger"
+        "HTTP-Referer": "fixer",
+        "X-Title": "Fixer"
       },
       "retry": {},
       "models": [

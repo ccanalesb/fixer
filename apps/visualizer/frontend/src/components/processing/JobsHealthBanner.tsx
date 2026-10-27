@@ -32,7 +32,7 @@ function JobsHealthBannerBody({
 
   const reason =
     health.library_db.reason ??
-    'Lightroom catalog database is unavailable. Catalog-dependent jobs cannot run.';
+    'Lightroom Classic catalog database is unavailable. Catalog-dependent jobs cannot run.';
 
   return (
     <div
@@ -70,7 +70,7 @@ function JobsHealthErrorBanner({ error }: { error: Error }) {
 /**
  * Surface backend catalog-availability problems on the Processing page.
  *
- * Polls ``/api/jobs/health`` and renders an error banner when the Lightroom
+ * Polls ``/api/jobs/health`` and renders an error banner when the Lightroom Classic
  * catalog SQLite mirror is missing/misconfigured. This warns the user *before*
  * they enqueue a job that will either fail immediately or deadlock the queue.
  */

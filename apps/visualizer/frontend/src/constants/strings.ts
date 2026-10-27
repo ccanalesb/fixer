@@ -1,5 +1,5 @@
 // App
-export const APP_TITLE = 'Lightroom Tagger'
+export const APP_TITLE = 'Fixer'
 
 // Navigation
 export const NAV_INSIGHTS = 'Insights'
@@ -133,12 +133,12 @@ export const INSIGHTS_TOP_PHOTOS_TAB_POSTED = 'Posted'
 export const INSIGHTS_TOP_PHOTOS_TAB_ALL = 'All'
 export const INSIGHTS_TOP_PHOTOS_REGION_ARIA = 'Top scored photos'
 export const INSIGHTS_FOOTER_TIMEZONE =
-  'Timestamps on catalog images follow Lightroom capture metadata where available.'
+  'Timestamps on catalog images follow Lightroom Classic capture metadata where available.'
 export const INSIGHTS_QUICK_IDENTITY_TITLE = 'Identity'
 export const INSIGHTS_QUICK_IDENTITY_DESC = 'Mirror signature, and post-next suggestions.'
 export const INSIGHTS_QUICK_PROCESSING_TITLE = 'Processing'
 export const INSIGHTS_QUICK_PROCESSING_DESC = 'Matching, descriptions, scoring jobs, and perspectives.'
-export const INSIGHTS_KPI_CATALOG_DESC = 'Lightroom catalog entries'
+export const INSIGHTS_KPI_CATALOG_DESC = 'Lightroom Classic catalog entries'
 export const CATALOG_FILTER_LABEL_MIN_SCORE_ACTIVE = 'Min score (any active perspective)'
 export const INSIGHTS_KPI_SCORING_9_PLUS = 'Scoring 9+'
 export const INSIGHTS_KPI_SCORING_9_PLUS_DESC = 'Best on an active perspective'
@@ -281,7 +281,7 @@ export const CATALOG_FILTER_KEYWORD_ARIA = 'Keyword search'
 export const FILTER_DESCRIPTION_SEARCH_LABEL = 'Description search'
 export const FILTER_DESCRIPTION_SEARCH_PLACEHOLDER = 'Search AI description…'
 export const FILTER_DESCRIPTION_SEARCH_ARIA =
-  'Search AI-generated description (summary and subjects), not Lightroom keywords'
+  'Search AI-generated description (summary and subjects), not Lightroom Classic keywords'
 export const CATALOG_FILTER_COLOR_PLACEHOLDER = 'e.g. Red'
 export const CATALOG_FILTER_COLOR_ARIA = 'Color label'
 
@@ -498,9 +498,9 @@ export const CATALOG_CACHE_BUILD_SUCCESS =
   'Catalog cache build started! Check the Job Queue tab for progress.'
 export const CATALOG_CACHE_CARD_TITLE = 'Catalog Vision Cache'
 export const CATALOG_CACHE_INTRO_BODY =
-  'The vision cache stores preprocessed Lightroom catalog images for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
+  'The vision cache stores preprocessed Lightroom Classic catalog images for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
 export const CATALOG_CACHE_STAT_TOTAL_LABEL = 'Total Images'
-export const CATALOG_CACHE_STAT_TOTAL_HELPER = 'Images in Lightroom catalog'
+export const CATALOG_CACHE_STAT_TOTAL_HELPER = 'Images in Lightroom Classic catalog'
 export const CATALOG_CACHE_STAT_CACHED_LABEL = 'Cached Images'
 export const CATALOG_CACHE_STAT_CACHED_HELPER = 'Processed for AI matching'
 export const CATALOG_CACHE_STAT_MISSING_LABEL = 'Missing'
@@ -705,7 +705,7 @@ export const CULL_SAVE_AND_QUEUE = 'Save and queue culling job'
 export const CULL_RULE_SAVE_NOTE =
   'Saving re-checks every photo from stored answers (no new model run).'
 export const CULL_REDECIDE_CONFIRM_BODY =
-  'A re-decide job starts: every photo is checked again from its stored answers. No model runs; verdicts and Lightroom stars may change when it finishes.'
+  'A re-decide job starts: every photo is checked again from its stored answers. No model runs; verdicts and Lightroom Classic stars may change when it finishes.'
 export const CULL_RULE_SAVE_CONFIRM_TITLE = 'Save the rule?'
 export const CULL_RULE_SAVE_CONFIRM = 'Save and start job'
 export const CULL_PROFILE_ACTIVATE_CONFIRM_TITLE = 'Activate this profile?'
@@ -791,49 +791,49 @@ export const CULL_PROFILE_COMBINE = 'Combine level sets'
 export const CULL_PROFILE_DEFINITION_CHANGED =
   'Text or levels changed: the model has to answer again, so only “Save only” / “Save and queue culling job” apply.'
 
-// Lightroom write-back
-export const LR_WRITEBACK_SECTION = 'Lightroom write-back'
+// Lightroom Classic write-back
+export const LR_WRITEBACK_SECTION = 'Lightroom Classic write-back'
 export const LR_WRITEBACK_SECTION_LEAD =
-  'What culling writes back to your Lightroom catalog. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'
-export const LR_WRITEBACK_STARS_SWITCH = 'Write stars to Lightroom'
+  'What culling writes back to your Lightroom Classic catalog. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'
+export const LR_WRITEBACK_STARS_SWITCH = 'Write stars to Lightroom Classic'
 export const LR_WRITEBACK_STARS_HELP =
   "Stars from the culling profile's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos with no rating; photos you rated are never touched. Void frames get none. Marked with the keyword lrt-auto-stars."
-export const LR_WRITEBACK_REJECT_SWITCH = 'Write the reject flag to Lightroom'
+export const LR_WRITEBACK_REJECT_SWITCH = 'Write the reject flag to Lightroom Classic'
 export const LR_WRITEBACK_REJECT_HELP =
   'Photos the culling profile filtered, and void frames, get the reject flag, only when they have no flag; flags you set are never touched. Photos filtered by the Score forecast are not flagged. Marked with the keyword lrt-auto-reject.'
 export const LR_WRITEBACK_STARS_PROFILE = 'Culling profile for stars'
-export const LR_WRITEBACK_STATUS_TITLE = 'Lightroom write-back'
+export const LR_WRITEBACK_STATUS_TITLE = 'Lightroom Classic write-back'
 export const LR_WRITEBACK_STATUS_HELP =
-  'Written automatically when culling ends, if Lightroom is closed. Turning a switch on writes nothing until then, or until you press Write to Lightroom.'
+  'Written automatically when culling ends, if Lightroom Classic is closed. Turning a switch on writes nothing until then, or until you press Write to Lightroom Classic.'
 export const LR_WRITEBACK_PENDING = 'photos pending'
 export const LR_WRITEBACK_WRITTEN = 'photos written'
-export const LR_WRITEBACK_LR_OPEN = 'Lightroom is open'
-export const LR_WRITEBACK_LR_CLOSED = 'Lightroom is closed'
-export const LR_WRITEBACK_WRITE_TO_LR = 'Write to Lightroom'
-export const LR_WRITEBACK_CLOSE_LR = 'Close Lightroom to write'
+export const LR_WRITEBACK_LR_OPEN = 'Lightroom Classic is open'
+export const LR_WRITEBACK_LR_CLOSED = 'Lightroom Classic is closed'
+export const LR_WRITEBACK_WRITE_TO_LR = 'Write to Lightroom Classic'
+export const LR_WRITEBACK_CLOSE_LR = 'Close Lightroom Classic to write'
 export const LR_WRITEBACK_WRITE_RESULT = (n: number) =>
-  `Wrote ${n.toLocaleString('en-US')} photos to Lightroom`
-export const LR_WRITEBACK_WRITING_PROGRESS = 'Writing to Lightroom… ·'
+  `Wrote ${n.toLocaleString('en-US')} photos to Lightroom Classic`
+export const LR_WRITEBACK_WRITING_PROGRESS = 'Writing to Lightroom Classic… ·'
 export const LR_WRITEBACK_WRITING_JOB_LINK = 'Job Queue'
-export const LR_WRITEBACK_STOP_WRITING_TITLE = 'Stop writing to Lightroom?'
+export const LR_WRITEBACK_STOP_WRITING_TITLE = 'Stop writing to Lightroom Classic?'
 export const LR_WRITEBACK_STOP_WRITING_BODY =
   'The running write-back job is cancelled. Photos already written keep their stars or reject flag; you can undo them from each photo.'
 export const LR_WRITEBACK_STOP_WRITING_CANCEL = 'Keep writing'
 export const LR_WRITEBACK_STOP_WRITING_CONFIRM = 'Stop and turn off'
 export const LR_WRITEBACK_STARS_STRONG_FROM = 'Count a dimension as strong when it is'
-export const LR_WRITEBACK_STARS_STRONG_FROM_HELP = 'Used for the stars written to Lightroom.'
+export const LR_WRITEBACK_STARS_STRONG_FROM_HELP = 'Used for the stars written to Lightroom Classic.'
 export const LR_WRITEBACK_STRONG_FROM_7 = '7-level set'
 export const LR_WRITEBACK_STRONG_FROM_10 = '10-level set'
 export const LR_WRITEBACK_STRONG_FROM_EVERY = 'Strong in every level set (7 and 10)'
 export const LR_WRITEBACK_STRONG_FROM_ANY = 'Strong in any level set (7 or 10)'
-export const LR_WRITEBACK_DETAIL_SECTION = 'Lightroom'
+export const LR_WRITEBACK_DETAIL_SECTION = 'Lightroom Classic'
 export const LR_WRITEBACK_RATING = 'Rating'
 export const LR_WRITEBACK_FLAG = 'Flag'
 export const LR_WRITEBACK_KEYWORDS = 'Keywords'
 export const LR_WRITEBACK_UNDO = 'Undo'
 export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
-export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom after the app wrote it.'
-export const LR_WRITEBACK_LOADING = 'Loading Lightroom write-back…'
+export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom Classic after the app wrote it.'
+export const LR_WRITEBACK_LOADING = 'Loading Lightroom Classic write-back…'
 
 // Processing → Settings → Culling models
 export const CULLING_MODELS_SECTION = 'Culling models'
@@ -847,11 +847,11 @@ export const CULLING_MODELS_CANCEL = 'Cancel'
 export const CULLING_MODELS_NOT_SAVED = 'Not saved'
 export const CULLING_PROFILE_STAGE = 'Culling profile'
 export const CULLING_PROFILE_STAGE_HELP =
-  "Every photo answers the culling profile's questions. It gives the stars and reject written to Lightroom."
+  "Every photo answers the culling profile's questions. It gives the stars and reject written to Lightroom Classic."
 export const CULLING_PROFILE_FILTER = "Filter with the culling profile's rule"
 export const CULLING_PROFILE_FILTER_ON = 'On — a photo its rule filters is not described or scored.'
 export const CULLING_PROFILE_FILTER_OFF =
-  'Off — the rule still gives the reject written to Lightroom, but filters nothing.'
+  'Off — the rule still gives the reject written to Lightroom Classic, but filters nothing.'
 export const CULLING_PROFILE_FILTER_UNAVAILABLE = 'Available while the culling profile is on.'
 export const SCORE_FORECAST_STAGE = 'Score forecast'
 export const SCORE_FORECAST_STAGE_HELP =

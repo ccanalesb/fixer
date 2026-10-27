@@ -24,7 +24,7 @@ describe('LightroomWritebackDetailSection', () => {
       strong_dimensions_line: null,
     })
     render(<LightroomWritebackDetailSection imageKey="k" />)
-    expect(await screen.findByText(/You changed this in Lightroom/)).toBeInTheDocument()
+    expect(await screen.findByText(/You changed this in Lightroom Classic/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
   })
 })

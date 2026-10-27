@@ -1,13 +1,14 @@
 {
-  "name": "lightroom-tagger-backend",
+  "name": "fixer-backend",
   "private": true,
   "version": "0.0.0",
+  "license": "ISC",
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "bin": {
-    "lightroom-tagger": "./dist/cli/bin.js"
+    "fixer": "./dist/cli/bin.js"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",

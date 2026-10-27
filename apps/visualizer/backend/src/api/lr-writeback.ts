@@ -1,5 +1,5 @@
 /**
- * Lightroom write-back settings and per-photo detail.
+ * Lightroom Classic write-back settings and per-photo detail.
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { config, loadLibraryConfig } from '../config.js';
@@ -152,7 +152,7 @@ lrWritebackRoutes.openapi(photoDetailRoute, (c) => {
   const settings = getLrWritebackSettings(db);
   const status = describeLrCatalogWriteStatus();
   if (!status.available || !status.path) {
-    throw new HttpError(400, status.reason ?? 'Lightroom catalog unavailable.');
+    throw new HttpError(400, status.reason ?? 'Lightroom Classic catalog unavailable.');
   }
   return c.json(buildWritebackPhotoDetail(db, status.path, imageKey, settings), 200);
 });
@@ -177,7 +177,7 @@ lrWritebackRoutes.openapi(undoRoute, (c) => {
   const { kind } = c.req.valid('json');
   const status = describeLrCatalogWriteStatus();
   if (!status.available || !status.path) {
-    throw new HttpError(400, status.reason ?? 'Lightroom catalog unavailable.');
+    throw new HttpError(400, status.reason ?? 'Lightroom Classic catalog unavailable.');
   }
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
   const path = (cfg.catalogPath ?? '').trim();

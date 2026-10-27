@@ -1,7 +1,8 @@
 {
-  "name": "lightroom-tagger",
-  "version": "1.0.0",
-  "description": "A TypeScript tool to read a Lightroom catalog (`.lrcat` SQLite database), index metadata to a local SQLite database, and export/search your photo library. Includes vision-model descriptions and scoring.",
+  "name": "fixer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fixer — AI culling and tagging for Adobe Lightroom Classic catalogs.",
   "main": "index.js",
   "directories": {
     "doc": "docs"

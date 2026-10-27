@@ -1,5 +1,5 @@
 /**
- * Flag parsing and help for the `lightroom-tagger` CLI.
+ * Flag parsing and help for the `fixer` CLI.
  *
  * Hand-rolled: subcommand-local flags override globals with the same name — see
  * `resolveFlag`.
@@ -181,9 +181,9 @@ export function helpText(commands: readonly { name: string; help: string }[]): s
     return `  ${names.padEnd(22)}${s.help}`;
   };
   return [
-    'usage: lightroom-tagger [options] <command> [options]',
+    'usage: fixer [options] <command> [options]',
     '',
-    'Read Lightroom catalog, index metadata, store in SQLite',
+    'Read Lightroom Classic catalog, index metadata, store in SQLite',
     '',
     'commands:',
     ...commands.map((c) => `  ${c.name.padEnd(22)}${c.help}`),
