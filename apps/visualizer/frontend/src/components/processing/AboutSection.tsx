@@ -9,9 +9,14 @@ import {
   SETTINGS_ABOUT_VERSION_LABEL,
 } from '../../constants/strings'
 import { SystemAPI } from '../../services/api'
+import { ThirdPartyNoticesModal } from './ThirdPartyNoticesModal'
 
 export function AboutSection() {
   const [licensesAvailable, setLicensesAvailable] = useState<boolean | null>(null)
+  const [noticesOpen, setNoticesOpen] = useState(false)
+  const [noticesText, setNoticesText] = useState<string | null>(null)
+  const [noticesLoading, setNoticesLoading] = useState(false)
+  const [noticesError, setNoticesError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -25,7 +30,26 @@ export function AboutSection() {
 
   const openLicenses = () => {
     if (!licensesAvailable) return
-    window.open(SystemAPI.thirdPartyNoticesUrl(), '_blank', 'noopener,noreferrer')
+    setNoticesOpen(true)
+    setNoticesLoading(true)
+    setNoticesError(null)
+    setNoticesText(null)
+    void SystemAPI.thirdPartyNotices()
+      .then((body) => {
+        setNoticesText(body)
+        setNoticesLoading(false)
+      })
+      .catch((e) => {
+        setNoticesError(e instanceof Error ? e.message : String(e))
+        setNoticesLoading(false)
+      })
+  }
+
+  const closeNotices = () => {
+    setNoticesOpen(false)
+    setNoticesText(null)
+    setNoticesError(null)
+    setNoticesLoading(false)
   }
 
   return (
@@ -60,6 +84,14 @@ export function AboutSection() {
           <div className="pt-1" aria-hidden="true" data-testid="about-updates-slot" />
         </div>
       </div>
+      {noticesOpen && (
+        <ThirdPartyNoticesModal
+          text={noticesText}
+          loading={noticesLoading}
+          error={noticesError}
+          onClose={closeNotices}
+        />
+      )}
     </section>
   )
 }

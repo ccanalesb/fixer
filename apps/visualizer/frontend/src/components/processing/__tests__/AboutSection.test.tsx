@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AboutSection } from '../AboutSection'
 import { APP_TITLE } from '../../../constants/strings'
 import {
+  MODAL_CLOSE,
   SETTINGS_ABOUT_ADOBE_ATTRIBUTION,
   SETTINGS_ABOUT_LICENSES_LINK,
   SETTINGS_ABOUT_LICENSES_UNAVAILABLE,
@@ -17,7 +18,7 @@ vi.mock('../../../services/api', async (importOriginal) => {
     SystemAPI: {
       ...actual.SystemAPI,
       thirdPartyNoticesAvailable: vi.fn(),
-      thirdPartyNoticesUrl: vi.fn(() => 'http://test/api/system/third-party-notices'),
+      thirdPartyNotices: vi.fn(),
     },
   }
 })
@@ -25,6 +26,7 @@ vi.mock('../../../services/api', async (importOriginal) => {
 describe('AboutSection', () => {
   beforeEach(() => {
     vi.mocked(SystemAPI.thirdPartyNoticesAvailable).mockResolvedValue(true)
+    vi.mocked(SystemAPI.thirdPartyNotices).mockResolvedValue('MIT License\n\nCopyright…\n')
   })
 
   it('shows the app name, version, Adobe attribution and licenses link when notices exist', async () => {
@@ -47,18 +49,22 @@ describe('AboutSection', () => {
     })
   })
 
-  it('opens the notices URL in a new tab when the link is clicked', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+  it('opens an in-app viewer with the fetched notices when the link is clicked', async () => {
     render(<AboutSection />)
     await waitFor(() => {
       expect(screen.getByRole('button', { name: SETTINGS_ABOUT_LICENSES_LINK })).toBeEnabled()
     })
     fireEvent.click(screen.getByRole('button', { name: SETTINGS_ABOUT_LICENSES_LINK }))
-    expect(open).toHaveBeenCalledWith(
-      'http://test/api/system/third-party-notices',
-      '_blank',
-      'noopener,noreferrer',
-    )
-    open.mockRestore()
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(SystemAPI.thirdPartyNotices).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByText(/MIT License/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: MODAL_CLOSE }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
   })
 })

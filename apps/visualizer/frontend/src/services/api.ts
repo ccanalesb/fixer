@@ -498,6 +498,18 @@ export const SystemAPI = {
     const res = await fetch(`${API_URL}/system/third-party-notices`, { method: 'HEAD' })
     return res.ok
   },
+
+  thirdPartyNotices: async () => {
+    const res = await fetch(`${API_URL}/system/third-party-notices`)
+    if (!res.ok) {
+      const message =
+        res.status === 404
+          ? 'Open source license notices are not available in this build.'
+          : `Could not load open source license notices (${res.status}).`
+      throw new ApiRequestError(message)
+    }
+    return res.text()
+  },
 }
 
 export const ImagesAPI = {
