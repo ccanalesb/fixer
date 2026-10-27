@@ -70,6 +70,25 @@ describe('GET /api/status', () => {
   });
 });
 
+describe('GET /api/clip-model', () => {
+  const savedDataDir = process.env.LT_DATA_DIR;
+
+  afterEach(() => {
+    if (savedDataDir === undefined) delete process.env.LT_DATA_DIR;
+    else process.env.LT_DATA_DIR = savedDataDir;
+  });
+
+  it('reports whether the CLIP weights are on disk', async () => {
+    process.env.LT_DATA_DIR = tmp;
+    const app = await freshApp();
+    const res = await app.request('/api/clip-model');
+    expect(res.status).toBe(200);
+    const body = await jsonOf<{ model_on_disk: boolean; cache_dir: string }>(res);
+    expect(body.model_on_disk).toBe(false);
+    expect(body.cache_dir).toBe(join(tmp, 'clip'));
+  });
+});
+
 describe('GET /api/stats', () => {
   it('counts catalog images and posted images', async () => {
     seedLibrary(dbPath, { images: 7, posted: 3 });

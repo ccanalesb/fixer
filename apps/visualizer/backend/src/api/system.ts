@@ -3,7 +3,7 @@
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync } from 'node:fs';
-import { config, loadLibraryConfig } from '../config.js';
+import { clipCacheDir, config, loadLibraryConfig } from '../config.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openDb, openLibraryDb } from '../db/connection.js';
 import { getCachePipelineStatus } from '../db/jobs/pipeline-status.js';
@@ -23,12 +23,14 @@ import {
   CachePipelineStatus,
   CacheStatus,
   CatalogCacheReadyResponse,
+  ClipModelStatus,
   InsightsSummary,
   Stats,
   HealthResponse,
   SystemStatusResponse,
   VisionModelsResponse,
 } from './schemas/system.js';
+import { isClipModelOnDisk } from '../imaging/clip-embed.js';
 
 export const systemRoutes = createOpenApiApp();
 
@@ -68,6 +70,19 @@ const statusRoute = createRoute({
 });
 
 systemRoutes.openapi(statusRoute, (c) => c.json({ status: 'ok' }, 200));
+
+const clipModelRoute = createRoute({
+  method: 'get',
+  path: '/clip-model',
+  tags: ['system'],
+  responses: withValidationError({
+    200: { description: 'CLIP vision model cache on disk', content: jsonBody(ClipModelStatus) },
+  }),
+});
+
+systemRoutes.openapi(clipModelRoute, (c) =>
+  c.json({ model_on_disk: isClipModelOnDisk(), cache_dir: clipCacheDir() }, 200),
+);
 
 const statsRoute = createRoute({
   method: 'get',

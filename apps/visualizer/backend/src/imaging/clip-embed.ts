@@ -6,6 +6,9 @@
  * Weights stay fp32; quantized models measured no faster.
  */
 import { CLIPVisionModelWithProjection, Tensor, env } from '@huggingface/transformers';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { clipCacheDir } from '../config.js';
 import { serializeFloat32 } from '../db/connection.js';
 import { CLIP_PIXEL_VALUES_SHAPE, clipPixelValues } from './clip-preprocess.js';
 import { decodePlaneFromFile } from './decode-plane.js';
@@ -17,20 +20,73 @@ export const CLIP_EMBED_MODEL_ID = 'clip-ViT-B-32';
 export const CLIP_ONNX_MODEL_ID = 'Xenova/clip-vit-base-patch32';
 export const CLIP_EMBED_DIM = 512;
 
+/** fp32 `vision_model.onnx` on the Hub (used for progress totals when the callback omits them). */
+export const CLIP_MODEL_WEIGHT_BYTES = 351_685_709;
+export const CLIP_MODEL_PROGRESS_TOTAL_MB = 352;
+
 /** Shown when `from_pretrained` cannot reach the Hub. */
 export const CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE =
-  'Could not download the CLIP model from huggingface.co.';
+  'Could not download the image model (about 350 MB) from huggingface.co. Check the internet connection and retry.';
+
+export interface ClipModelDownloadProgress {
+  loaded: number;
+  total: number;
+}
+
+export interface LoadClipModelOptions {
+  onDownloadProgress?: (progress: ClipModelDownloadProgress) => void;
+}
 
 type VisionModel = Awaited<ReturnType<typeof CLIPVisionModelWithProjection.from_pretrained>>;
 
 let modelPromise: Promise<VisionModel> | null = null;
+let envConfigured = false;
+
+function configureClipEnv(): void {
+  if (envConfigured) return;
+  env.allowLocalModels = false;
+  env.cacheDir = clipCacheDir();
+  envConfigured = true;
+}
+
+/** Cached fp32 vision weights path under `env.cacheDir`. */
+export function clipModelOnnxPath(): string {
+  return join(clipCacheDir(), ...`${CLIP_ONNX_MODEL_ID}/onnx/vision_model.onnx`.split('/'));
+}
+
+/** Whether the fp32 vision ONNX file is already in the CLIP cache folder. */
+export function isClipModelOnDisk(): boolean {
+  return existsSync(clipModelOnnxPath());
+}
+
+/** Job Queue copy while the Hub file streams in. */
+export function formatClipModelDownloadStep(loaded: number, total: number): string {
+  const loadedMb = Math.min(Math.round(loaded / 1_000_000), CLIP_MODEL_PROGRESS_TOTAL_MB);
+  const totalMb =
+    total > 0 ? Math.round(total / 1_000_000) : CLIP_MODEL_PROGRESS_TOTAL_MB;
+  const displayTotal = Math.max(totalMb, CLIP_MODEL_PROGRESS_TOTAL_MB);
+  return `Downloading the image model (once) — ${loadedMb} / ${displayTotal} MB`;
+}
+
+function dispatchDownloadProgress(
+  info: { status: string; loaded?: number; total?: number },
+  onDownloadProgress: LoadClipModelOptions['onDownloadProgress'],
+): void {
+  if (!onDownloadProgress) return;
+  if (info.status !== 'progress' && info.status !== 'progress_total') return;
+  const loaded = info.loaded ?? 0;
+  const total = info.total ?? 0;
+  if (total <= 0 && loaded <= 0) return;
+  onDownloadProgress({ loaded, total: total > 0 ? total : CLIP_MODEL_WEIGHT_BYTES });
+}
 
 /** Load the vision tower once per process. */
-function getModel(): Promise<VisionModel> {
+function getModel(options: LoadClipModelOptions = {}): Promise<VisionModel> {
   if (modelPromise === null) {
-    env.allowLocalModels = false;
+    configureClipEnv();
     modelPromise = CLIPVisionModelWithProjection.from_pretrained(CLIP_ONNX_MODEL_ID, {
       dtype: 'fp32',
+      progress_callback: (info) => dispatchDownloadProgress(info, options.onDownloadProgress),
     }).catch((err: unknown) => {
       modelPromise = null;
       throw err;
@@ -40,9 +96,9 @@ function getModel(): Promise<VisionModel> {
 }
 
 /** Fail fast before walking images when the Hub is unreachable. */
-export async function loadClipModel(): Promise<void> {
+export async function loadClipModel(options: LoadClipModelOptions = {}): Promise<void> {
   try {
-    await getModel();
+    await getModel(options);
   } catch {
     throw new Error(CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
   }

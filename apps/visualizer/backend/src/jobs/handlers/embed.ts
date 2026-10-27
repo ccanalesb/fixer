@@ -20,6 +20,7 @@ import {
   CLIP_EMBED_MODEL_ID,
   clipVecBlob,
   encodeImages,
+  formatClipModelDownloadStep,
   loadClipModel,
 } from '../../imaging/clip-embed.js';
 import {
@@ -168,7 +169,17 @@ export async function runEmbedPass(
   await diag.runPreflight(pending);
 
   try {
-    await loadClipModel();
+    await loadClipModel({
+      onDownloadProgress: ({ loaded, total }) => {
+        runner.reportClipModelDownload(
+          jobId,
+          loaded,
+          total,
+          formatClipModelDownloadStep(loaded, total),
+        );
+      },
+    });
+    runner.clearClipModelDownload(jobId);
   } catch (e) {
     runner.failJob(jobId, e instanceof Error ? e.message : String(e));
     return null;

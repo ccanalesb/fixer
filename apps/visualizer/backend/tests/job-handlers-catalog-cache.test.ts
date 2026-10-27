@@ -265,7 +265,9 @@ describe('the catalog_cache_build handler', () => {
     const job = await runChain();
 
     expect(job.status).toBe('failed');
-    expect(job.error).toBe('Could not download the CLIP model from huggingface.co.');
+    expect(job.error).toBe(
+      'Could not download the image model (about 350 MB) from huggingface.co. Check the internet connection and retry.',
+    );
     expect(countOf('images')).toBe(4);
     expect(countOf('image_clip_embeddings')).toBe(0);
     expect(countOf('image_stacks')).toBe(0);

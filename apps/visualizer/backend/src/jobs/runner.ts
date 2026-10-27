@@ -113,6 +113,35 @@ export class JobRunner {
     updateJobField(this.db, jobId, 'current_step', currentStep);
   }
 
+  /** CLIP Hub download bytes, separate from embed progress in `current_step`. */
+  reportClipModelDownload(jobId: string, loaded: number, total: number, currentStep: string): void {
+    if (this.isCancelled(jobId)) return;
+    const row = getJob(this.db, jobId, { logsLimit: 0 });
+    if (!row || row.status === 'completed' || row.status === 'cancelled') return;
+
+    const meta =
+      row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? { ...(row.metadata as Record<string, unknown>) }
+        : {};
+    meta.clip_model_download_loaded_bytes = loaded;
+    meta.clip_model_download_total_bytes = total;
+    updateJobField(this.db, jobId, 'metadata', meta);
+    updateJobStatus(this.db, jobId, 'running', { currentStep });
+    this.emitProgress(jobId, row.progress, currentStep);
+  }
+
+  clearClipModelDownload(jobId: string): void {
+    const row = getJob(this.db, jobId, { logsLimit: 0 });
+    if (!row) return;
+    const meta =
+      row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? { ...(row.metadata as Record<string, unknown>) }
+        : {};
+    delete meta.clip_model_download_loaded_bytes;
+    delete meta.clip_model_download_total_bytes;
+    updateJobField(this.db, jobId, 'metadata', meta);
+  }
+
   /**
    * Mark a job completed and store its result.
    *
