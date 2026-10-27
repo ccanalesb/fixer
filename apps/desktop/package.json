@@ -6,6 +6,7 @@
   "scripts": {
     "fetch-node": "bash scripts/fetch-node.sh",
     "stage": "bash scripts/stage-resources.sh",
+    "test": "node --test scripts/third-party-notices-lib.test.mjs",
     "tauri": "tauri",
     "build": "tauri build"
   },
