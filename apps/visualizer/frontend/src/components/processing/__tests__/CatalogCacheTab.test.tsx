@@ -6,6 +6,8 @@ import { deleteMatching } from '../../../data/cache';
 import { CatalogCacheTab } from '../CatalogCacheTab';
 import {
   ADVANCED_OPTIONS_TITLE,
+  CLIP_CONFIRM_DOWNLOAD_START,
+  CLIP_CONFIRM_TITLE_JOB,
   CATALOG_CACHE_BUILD_CTA,
   CATALOG_CACHE_BUILD_SUCCESS,
   CATALOG_CACHE_EMBED_CATALOG_HELPER,
@@ -28,6 +30,11 @@ import {
 const mockCreate = vi.fn();
 const mockFetch = vi.fn();
 const mockListCatalogSimilarityGroups = vi.fn();
+const mockUseClipModelStatus = vi.fn();
+
+vi.mock('../../../hooks/useClipModelStatus', () => ({
+  useClipModelStatus: () => mockUseClipModelStatus(),
+}));
 
 vi.mock('../../../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/api')>();
@@ -72,6 +79,7 @@ describe('CatalogCacheTab', () => {
     mockFetch.mockReset();
     mockListCatalogSimilarityGroups.mockReset();
     mockListCatalogSimilarityGroups.mockResolvedValue({ items: [], total: 0 });
+    mockUseClipModelStatus.mockReturnValue({ model_on_disk: true, cache_dir: '/clip' });
     pipelineStatusBody = EMPTY_PIPELINE_STATUS;
     mockFetch.mockImplementation((input: RequestInfo | URL) => {
       const url =
@@ -117,6 +125,35 @@ describe('CatalogCacheTab', () => {
     expect(link).toHaveAttribute('href', CATALOG_CACHE_NAS_TROUBLESHOOTING_DOC_URL);
     expect(link).toHaveAttribute('target', '_blank');
     expect(screen.getByText(/Network share \(NAS\) paths must be mounted/)).toBeTruthy();
+  });
+
+  it('asks before Build catalog cache when the CLIP model is missing', async () => {
+    mockUseClipModelStatus.mockReturnValue({ model_on_disk: false, cache_dir: '/clip' });
+    renderCatalogCacheTab();
+    fireEvent.click(await screen.findByRole('button', { name: CATALOG_CACHE_BUILD_CTA }));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByText(CLIP_CONFIRM_TITLE_JOB)).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: CLIP_CONFIRM_DOWNLOAD_START }));
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith('catalog_cache_build', expect.anything());
+    });
+  });
+
+  it('asks before Embed catalog images when the CLIP model is missing', async () => {
+    mockUseClipModelStatus.mockReturnValue({ model_on_disk: false, cache_dir: '/clip' });
+    renderCatalogCacheTab();
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(CATALOG_CACHE_PIPELINE_TITLE, 'i') }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: CATALOG_CACHE_EMBED_CATALOG_LABEL }));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(mockCreate).not.toHaveBeenCalled();
+    mockCreate.mockResolvedValue({ id: 'job-embed', type: 'batch_embed_image' });
+    fireEvent.click(screen.getByRole('button', { name: CLIP_CONFIRM_DOWNLOAD_START }));
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith('batch_embed_image', { image_type: 'catalog' });
+    });
   });
 
   it('enqueues catalog_cache_build from primary CTA', async () => {

@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ClipModelDownloadConfirm } from '../setup/ClipModelDownloadConfirm';
+import { useClipModelStatus } from '../../hooks/useClipModelStatus';
 import { invalidateAll, useQuery } from '../../data';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -84,6 +86,10 @@ type AdvancedBusyKey =
   | 'stack'
   | 'similarity';
 
+type ClipConfirmAction =
+  | { kind: 'build' }
+  | { kind: 'embed' };
+
 export interface CatalogCacheTabProps {
   onOpenJobQueue?: () => void;
 }
@@ -106,6 +112,10 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
   const [buildError, setBuildError] = useState<string | null>(null);
   const [pipelineQueuedMessage, setPipelineQueuedMessage] = useState<string | null>(null);
   const [advancedBusy, setAdvancedBusy] = useState<AdvancedBusyKey | null>(null);
+  const [clipConfirmAction, setClipConfirmAction] = useState<ClipConfirmAction | null>(null);
+
+  const clipStatus = useClipModelStatus();
+  const modelOnDisk = clipStatus.model_on_disk;
 
   const anyBusy = buildStarting || advancedBusy !== null;
 
@@ -123,7 +133,7 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
     window.location.assign(PROCESSING_JOB_QUEUE_ROUTE);
   }, [onOpenJobQueue]);
 
-  const handleBuildCatalogCache = useCallback(async () => {
+  const runBuildCatalogCache = useCallback(async () => {
     setBuildStarting(true);
     setBuildSuccess(false);
     setBuildError(null);
@@ -137,6 +147,14 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
       setBuildStarting(false);
     }
   }, []);
+
+  const handleBuildCatalogCache = useCallback(() => {
+    if (!modelOnDisk) {
+      setClipConfirmAction({ kind: 'build' });
+      return;
+    }
+    void runBuildCatalogCache();
+  }, [modelOnDisk, runBuildCatalogCache]);
 
   const pipelineQueuedMessageForKey = useCallback((key: AdvancedBusyKey): string => {
     if (key === 'embed_catalog') {
@@ -171,6 +189,28 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
     },
     [pipelineQueuedMessageForKey],
   );
+
+  const requestAdvancedJob = useCallback(
+    (key: AdvancedBusyKey, type: string, metadata: Record<string, unknown>) => {
+      if (key === 'embed_catalog' && !modelOnDisk) {
+        setClipConfirmAction({ kind: 'embed' });
+        return;
+      }
+      void runAdvancedJob(key, type, metadata);
+    },
+    [modelOnDisk, runAdvancedJob],
+  );
+
+  const confirmClipDownloadJob = useCallback(() => {
+    const action = clipConfirmAction;
+    setClipConfirmAction(null);
+    if (!action) return;
+    if (action.kind === 'build') {
+      void runBuildCatalogCache();
+      return;
+    }
+    void runAdvancedJob('embed_catalog', 'batch_embed_image', { image_type: 'catalog' });
+  }, [clipConfirmAction, runAdvancedJob, runBuildCatalogCache]);
 
   const cachePercentage =
     stats.total_images > 0 ? Math.round((stats.cached_images / stats.total_images) * 100) : 0;
@@ -292,7 +332,7 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
                 disabled={anyBusy}
                 isBusy={advancedBusy === 'embed_catalog'}
                 onRun={() =>
-                  runAdvancedJob('embed_catalog', 'batch_embed_image', { image_type: 'catalog' })
+                  requestAdvancedJob('embed_catalog', 'batch_embed_image', { image_type: 'catalog' })
                 }
               />
               <PipelineRow
@@ -349,6 +389,15 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
           </p>
         </CardContent>
       </Card>
+
+      {clipConfirmAction ? (
+        <ClipModelDownloadConfirm
+          variant="job"
+          busy={buildStarting || advancedBusy === 'embed_catalog'}
+          onCancel={() => setClipConfirmAction(null)}
+          onConfirm={confirmClipDownloadJob}
+        />
+      ) : null}
     </div>
   );
 }

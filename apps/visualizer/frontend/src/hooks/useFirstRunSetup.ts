@@ -8,6 +8,7 @@ import {
   catalogCacheBuildSyncComplete,
   catalogCacheBuildProgressPercent,
 } from '../utils/catalogCacheBuildProgress'
+import { isClipDownloadJobFailure } from '../utils/clipModelDownload'
 
 const EMPTY_PIPELINE = {
   catalog_sync: null,
@@ -38,6 +39,7 @@ export function useFirstRunSetup() {
   const [importJob, setImportJob] = useState<Job | null>(null)
   const [importStarting, setImportStarting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [expectClipDownloadInRun, setExpectClipDownloadInRun] = useState(false)
 
   const signals = useQuery(['firstRun', 'signals'] as const, fetchFirstRunSignals, {
     initialValue: {
@@ -60,13 +62,22 @@ export function useFirstRunSetup() {
 
   const syncImportJobFromApi = useCallback(async () => {
     const run = buildRun
-    if (!run || (run.status !== 'running' && run.status !== 'pending')) {
-      setImportJob(null)
+    if (!run) {
+      return
+    }
+    if (
+      run.status !== 'running' &&
+      run.status !== 'pending' &&
+      run.status !== 'failed'
+    ) {
       return
     }
     try {
       const job = await JobsAPI.get(run.job_id)
       setImportJob(job)
+      if (job.status === 'failed' && isClipDownloadJobFailure(job)) {
+        setExpectClipDownloadInRun(true)
+      }
     } catch {
       setImportJob(null)
     }
@@ -93,6 +104,9 @@ export function useFirstRunSetup() {
       ) {
         refreshSignals()
       }
+      if (job.status === 'completed') {
+        invalidateAll(['system', 'clip-model'])
+      }
     },
   })
 
@@ -100,6 +114,11 @@ export function useFirstRunSetup() {
     buildRun?.status === 'running' || buildRun?.status === 'pending'
   const importRunning =
     isActiveImportJob(importJob) || importStarting || pipelineImportActive
+
+  const importClipDownloadFailed =
+    importJob?.status === 'failed' &&
+    isClipDownloadJobFailure(importJob) &&
+    !firstCatalogImportCompleted
 
   const catalogConfigured = Boolean(catalog.status?.path?.trim())
   const catalogSavedAndValid =
@@ -109,7 +128,7 @@ export function useFirstRunSetup() {
 
   const showIdentityEmpty = catalogPhotoCount === 0
 
-  const showImagesEmpty = catalogPhotoCount === 0 && !importRunning
+  const showImagesEmpty = catalogPhotoCount === 0 && !importRunning && !importClipDownloadFailed
   const showImagesReadingCatalog =
     importRunning && catalogPhotoCount === 0 && !catalogCacheBuildSyncComplete(importJob)
   const showImagesImportBanner =
@@ -127,7 +146,7 @@ export function useFirstRunSetup() {
     }
   }, [catalog])
 
-  const startImport = useCallback(async () => {
+  const runImportJob = useCallback(async () => {
     if (!catalogSavedAndValid || importRunning) return
     setImportStarting(true)
     setImportError(null)
@@ -141,6 +160,16 @@ export function useFirstRunSetup() {
       setImportStarting(false)
     }
   }, [catalogSavedAndValid, importRunning, refreshSignals])
+
+  const startImport = useCallback(
+    async (options?: { expectClipDownload?: boolean }) => {
+      if (options?.expectClipDownload) {
+        setExpectClipDownloadInRun(true)
+      }
+      await runImportJob()
+    },
+    [runImportJob],
+  )
 
   const loading = catalog.loading
 
@@ -160,6 +189,8 @@ export function useFirstRunSetup() {
     importStarting,
     importError,
     importProgressPercent,
+    importClipDownloadFailed,
+    expectClipDownloadInRun,
     catalogPhotoCount,
     showInsightsSetup,
     showIdentityEmpty,
