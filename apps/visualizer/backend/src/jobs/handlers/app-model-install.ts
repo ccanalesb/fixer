@@ -56,8 +56,6 @@ export function stopRunningConversions(): void {
   }
 }
 
-process.on('exit', stopRunningConversions);
-
 function scriptFailure(kind: string, message: string): string {
   return kind === 'parity' ? `Parity check failed: ${message}` : message;
 }
