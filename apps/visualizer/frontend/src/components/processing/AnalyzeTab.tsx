@@ -21,6 +21,7 @@ import {
   ADVANCED_DATE_YEAR_2025,
   ADVANCED_DATE_YEAR_2026,
   ADVANCED_OPTIONS_TITLE,
+  ANALYZE_ADVANCED_CULL_ONLY,
   ANALYZE_ADVANCED_DESCRIBE_ONLY,
   ANALYZE_ADVANCED_RUN_SEPARATELY_TITLE,
   ANALYZE_ADVANCED_SCORE_ONLY,
@@ -38,6 +39,7 @@ import {
   ANALYZE_PRIMARY_BUTTON,
   ANALYZE_PRIMARY_BUTTON_STARTING,
   ANALYZE_SCORE_JOB_STARTED,
+  ANALYZE_CULL_JOB_STARTED,
   CULLING_CHECKING,
 } from '../../constants/strings';
 import { useCullingGate } from '../cull/useCullingGate';
@@ -104,6 +106,7 @@ export function AnalyzeTab() {
   const [isStartingAnalyze, setIsStartingAnalyze] = useState(false);
   const [isStartingDescribe, setIsStartingDescribe] = useState(false);
   const [isStartingScore, setIsStartingScore] = useState(false);
+  const [isStartingCull, setIsStartingCull] = useState(false);
   // Inline status banner — replaces the jarring window.alert() that used to
   // be the only feedback. ``tone`` selects the colour; ``message`` is shown
   // until cleared (either by a later submission or by the auto-dismiss
@@ -222,7 +225,7 @@ export function AnalyzeTab() {
   // stuck "disabled forever" if something throws.
   const runSubmit = useCallback(
     async (
-      jobType: 'batch_analyze' | 'batch_describe' | 'batch_score',
+      jobType: 'batch_analyze' | 'batch_describe' | 'batch_score' | 'batch_cull_photos_before_scoring',
       metadata: Record<string, unknown>,
       successMessage: string,
       setStarting: (v: boolean) => void,
@@ -287,9 +290,13 @@ export function AnalyzeTab() {
     );
   }, [runSubmit, buildSharedBaseMetadata, forceScore]);
 
+  const startCullingOnly = useCallback(() => {
+    void runSubmit('batch_cull_photos_before_scoring', {}, ANALYZE_CULL_JOB_STARTED, setIsStartingCull);
+  }, [runSubmit]);
+
   // Any in-flight submission disables all submit buttons — prevents a
   // "while batch_analyze is submitting, click describe-only too" footgun.
-  const isAnySubmitting = isStartingAnalyze || isStartingDescribe || isStartingScore;
+  const isAnySubmitting = isStartingAnalyze || isStartingDescribe || isStartingScore || isStartingCull;
   const startingLabel = checkingCulling ? CULLING_CHECKING : ANALYZE_PRIMARY_BUTTON_STARTING;
 
   return (
@@ -492,6 +499,15 @@ export function AnalyzeTab() {
                   <h3 className="text-sm font-semibold text-text">
                     {ANALYZE_ADVANCED_RUN_SEPARATELY_TITLE}
                   </h3>
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    fullWidth
+                    onClick={startCullingOnly}
+                    disabled={isAnySubmitting}
+                  >
+                    {isStartingCull ? startingLabel : ANALYZE_ADVANCED_CULL_ONLY}
+                  </Button>
                   <Button
                     variant="secondary"
                     size="md"

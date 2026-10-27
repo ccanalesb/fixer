@@ -8,6 +8,7 @@ import { AnalyzeTab } from '../AnalyzeTab'
 import type { CullingModelsUsable, CullingStageUsability } from '../../../services/api'
 import {
   ADVANCED_OPTIONS_TITLE,
+  ANALYZE_ADVANCED_CULL_ONLY,
   ANALYZE_ADVANCED_DESCRIBE_ONLY,
   ANALYZE_ADVANCED_SCORE_ONLY,
   CULLING_CHECKING,
@@ -207,5 +208,14 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
     )
     await waitFor(() => expect(mockCreate).toHaveBeenCalledWith('batch_score', expect.any(Object)))
     expect(mockCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('culling only queues the culling job with no options', async () => {
+    mockUsable.mockResolvedValue(usable())
+    renderTab()
+    await screen.findByText(/Street/)
+    fireEvent.click(screen.getByText(ADVANCED_OPTIONS_TITLE))
+    fireEvent.click(screen.getByRole('button', { name: ANALYZE_ADVANCED_CULL_ONLY }))
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledWith('batch_cull_photos_before_scoring', {}))
   })
 })

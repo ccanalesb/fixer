@@ -651,6 +651,7 @@ export const ANALYZE_CARD_SUBTITLE =
 export const ANALYZE_PRIMARY_BUTTON = 'Analyze'
 export const ANALYZE_PRIMARY_BUTTON_STARTING = 'Starting…'
 export const ANALYZE_ADVANCED_RUN_SEPARATELY_TITLE = 'Run stages separately'
+export const ANALYZE_ADVANCED_CULL_ONLY = 'Run culling only'
 export const ANALYZE_ADVANCED_DESCRIBE_ONLY = 'Generate Descriptions only'
 export const ANALYZE_ADVANCED_SCORE_ONLY = 'Run scoring only'
 export const ANALYZE_FORCE_CULL_LABEL = 'Force re-run culling'
@@ -664,6 +665,8 @@ export const ANALYZE_BACKFILL_FORCE_EXCLUSIVE_HINT =
   'Backfill and force regenerate cannot be combined — only one mode is active at a time.'
 export const ANALYZE_JOB_STARTED =
   'Analyze job started! Check Job Queue tab to monitor progress.'
+export const ANALYZE_CULL_JOB_STARTED =
+  'Culling job started on every photo with no current verdict. Check Job Queue for progress.'
 export const ANALYZE_DESCRIBE_JOB_STARTED =
   'Description generation job started! Check Job Queue tab to monitor progress.'
 export const ANALYZE_SCORE_JOB_STARTED =
