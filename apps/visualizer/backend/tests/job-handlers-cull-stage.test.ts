@@ -355,7 +355,7 @@ describe('batch_analyze force_cull', () => {
 
     const job = await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'], force_cull: true });
     expect(job.status).toBe('completed');
-    expect([...new Set(fakeModels().calls.map((c) => c.file.split('/').at(-1)))]).toEqual(['pass.jpg']);
+    expect([...new Set(fakeModels().calls.map((c) => c.file.split(/[/\\]/).at(-1)))]).toEqual(['pass.jpg']);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('filtered');
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('passed');
   });

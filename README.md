@@ -139,6 +139,10 @@ Adobe and Lightroom Classic are either registered trademarks or trademarks of Ad
 
 Fixer is not affiliated with or endorsed by Adobe.
 
+### Windows downloads and Smart App Control
+
+Official Fixer installers from [GitHub Releases](https://github.com/ccanalesb/lightroom-tagger/releases) are **unsigned** in v1. On Windows 11, **Smart App Control** may block the installer or the app. If that happens, open **Windows Security → App & browser control → Smart App Control** and turn it off, or wait for a signed release. Only install builds from this repository’s Releases page.
+
 ## Further reading
 
 | Doc | Audience |
@@ -147,6 +151,7 @@ Fixer is not affiliated with or endorsed by Adobe.
 | [apps/visualizer/CONTEXT.md](apps/visualizer/CONTEXT.md) | HTTP API, CLI, jobs, `library.db`, vision pipeline, React SPA |
 | [docs/architecture.md](docs/architecture.md) | Backend layer boundaries and import rules |
 | [AGENTS.md](AGENTS.md) | Agent workflow and issue tracker |
+| [docs/release-runbook.md](docs/release-runbook.md) | Cutting a desktop release and manual QA |
 | [docs/parked/](docs/parked/) | Retired capabilities (Instagram matching, etc.) |
 
 ## Development
