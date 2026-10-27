@@ -15,8 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  version:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+  preflight:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,17 +23,16 @@ jobs:
         with:
           node-version: '24'
       - name: Tag matches root package version
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: node apps/desktop/scripts/check-release-version.mjs "${{ github.ref_name }}"
 
   gate:
-    needs: version
-    if: always() && (needs.version.result == 'success' || needs.version.result == 'skipped')
+    needs: preflight
     uses: ./.github/workflows/ci.yml
 
   build:
     name: Build (${{ matrix.label }})
     needs: gate
-    if: needs.gate.result == 'success'
     strategy:
       fail-fast: false
       matrix:
