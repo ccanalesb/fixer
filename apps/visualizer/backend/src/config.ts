@@ -6,7 +6,7 @@
  *
  * Load `.env` with `node --env-file=.env` rather than a dotenv dependency.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,10 +20,58 @@ function expandUser(p: string): string {
   return p.startsWith('~') ? join(homedir(), p.slice(1)) : p;
 }
 
-/** Resolve a possibly-relative path against the repo root, expanding `~`. */
-function resolvePath(p: string): string {
+/** User-writable state: defaults to the repo root in a source install. */
+export function dataRoot(): string {
+  const raw = process.env.LT_DATA_DIR;
+  return raw ? resolve(expandUser(raw)) : REPO_ROOT;
+}
+
+/** Read-only bundle content: defaults to the repo root in a source install. */
+export function resourcesRoot(): string {
+  const raw = process.env.LT_RESOURCES_DIR;
+  return raw ? resolve(expandUser(raw)) : REPO_ROOT;
+}
+
+/** Base for resolving relative paths in env overrides and config.yaml path fields. */
+export function pathBase(): string {
+  return process.env.LT_DATA_DIR ? dataRoot() : REPO_ROOT;
+}
+
+/** Resolve a possibly-relative path, expanding `~`. */
+export function resolvePath(p: string, base = REPO_ROOT): string {
   const expanded = expandUser(p);
-  return isAbsolute(expanded) ? expanded : resolve(REPO_ROOT, expanded);
+  return isAbsolute(expanded) ? expanded : resolve(base, expanded);
+}
+
+/**
+ * Default location for a user-owned file: repo-relative when roots are unset,
+ * a flat name under the data folder when `LT_DATA_DIR` is set.
+ */
+export function resolveDataPath(repoRelativeWhenUnset: string, dataFolderRelative: string): string {
+  if (process.env.LT_DATA_DIR) {
+    return resolve(dataRoot(), dataFolderRelative);
+  }
+  return resolvePath(repoRelativeWhenUnset);
+}
+
+/** Shipped provider template the registry copies on first use. */
+export function providersExamplePath(): string {
+  return process.env.LT_RESOURCES_DIR
+    ? join(resourcesRoot(), 'providers.example.json')
+    : join(REPO_ROOT, 'apps', 'visualizer', 'backend', 'providers.example.json');
+}
+
+function defaultConfigYamlPath(): string {
+  const env = process.env.LT_CONFIG_YAML;
+  if (env) return resolvePath(env, pathBase());
+  return resolveDataPath('config.yaml', 'config.yaml');
+}
+
+function defaultVisionCacheDir(): string {
+  if (process.env.LT_DATA_DIR) {
+    return join(dataRoot(), 'vision-cache');
+  }
+  return join(homedir(), '.cache', 'lightroom_tagger', 'vision');
 }
 
 export const HOST_DEFAULT = 'localhost';
@@ -52,14 +100,18 @@ export const config = {
   },
   /** `visualizer.db` — jobs, logs, checkpoints. Separate from the library DB. */
   get VISUALIZER_DB(): string {
-    return resolvePath(process.env.DATABASE_PATH ?? 'apps/visualizer/visualizer.db');
+    const env = process.env.DATABASE_PATH;
+    if (env) return resolvePath(env, pathBase());
+    return resolveDataPath('apps/visualizer/visualizer.db', 'visualizer.db');
   },
   /** `library.db` — images, scores, descriptions, CLIP embeddings. */
   get LIBRARY_DB(): string {
-    return resolvePath(process.env.LIBRARY_DB ?? 'library.db');
+    return resolveLibraryDbLocation().path;
   },
   get THUMBNAIL_DIR(): string {
-    return resolvePath(process.env.THUMBNAIL_DIR ?? 'apps/visualizer/thumbnails');
+    const env = process.env.THUMBNAIL_DIR;
+    if (env) return resolvePath(env, pathBase());
+    return resolveDataPath('apps/visualizer/thumbnails', 'thumbnails');
   },
   /**
    * The repo-level `config.yaml` that `/api/config/*` reads and WRITES.
@@ -67,7 +119,7 @@ export const config = {
    * Overridable via `LT_CONFIG_YAML` so tests never rewrite the user's real config.
    */
   get LT_CONFIG_YAML(): string {
-    return resolvePath(process.env.LT_CONFIG_YAML ?? 'config.yaml');
+    return defaultConfigYamlPath();
   },
   /**
    * `providers.json` — provider endpoints, models and defaults, which
@@ -79,9 +131,9 @@ export const config = {
    * user's real provider list, including their configured models.
    */
   get LT_PROVIDERS_JSON(): string {
-    return resolvePath(
-      process.env.LT_PROVIDERS_JSON ?? 'apps/visualizer/backend/providers.json',
-    );
+    const env = process.env.LT_PROVIDERS_JSON;
+    if (env) return resolvePath(env, pathBase());
+    return resolveDataPath('apps/visualizer/backend/providers.json', 'providers.json');
   },
 } as const;
 
@@ -156,25 +208,23 @@ const CONFIG_DEFAULTS = {
   // Default when neither env nor config.yaml names a model.
   visionModel: 'gemma3:27b',
   stackBurstDeltaMs: 2000,
-  visionCacheDir: join(homedir(), '.cache', 'lightroom_tagger', 'vision'),
   visionCacheEnabled: true,
   ollamaHost: 'http://localhost:11434',
   appModelsDir: 'models',
 } as const;
 
 /**
- * Read `config.yaml` from the repo root. Unknown keys are ignored rather than
- * rejected — the file is user-owned and may still carry keys from retired
- * features.
+ * Read `config.yaml`. Unknown keys are ignored rather than rejected — the file is
+ * user-owned and may still carry keys from retired features.
  */
-export function loadLibraryConfig(configPath = join(REPO_ROOT, 'config.yaml')): LibraryConfig {
+export function loadLibraryConfig(configPath = defaultConfigYamlPath()): LibraryConfig {
   let raw: Record<string, unknown> = {};
   if (existsSync(configPath)) {
     raw = (parseYaml(readFileSync(configPath, 'utf8')) as Record<string, unknown>) ?? {};
   }
   const pathField = (k: string): string | null => {
     const v = raw[k];
-    return typeof v === 'string' && v.length > 0 ? resolvePath(v) : null;
+    return typeof v === 'string' && v.length > 0 ? resolvePath(v, pathBase()) : null;
   };
   return {
     catalogPath: pathField('catalog_path'),
@@ -192,7 +242,7 @@ export function loadLibraryConfig(configPath = join(REPO_ROOT, 'config.yaml')): 
     visionCacheDir:
       typeof raw.vision_cache_dir === 'string'
         ? expandUser(raw.vision_cache_dir)
-        : CONFIG_DEFAULTS.visionCacheDir,
+        : defaultVisionCacheDir(),
     visionCacheEnabled:
       typeof raw.vision_cache_enabled === 'boolean'
         ? raw.vision_cache_enabled
@@ -203,7 +253,9 @@ export function loadLibraryConfig(configPath = join(REPO_ROOT, 'config.yaml')): 
       typeof raw.stack_burst_delta_ms === 'number'
         ? Math.trunc(raw.stack_burst_delta_ms)
         : CONFIG_DEFAULTS.stackBurstDeltaMs,
-    appModelsDir: pathField('app_models_dir') ?? resolvePath(CONFIG_DEFAULTS.appModelsDir),
+    appModelsDir:
+      pathField('app_models_dir') ??
+      resolveDataPath(CONFIG_DEFAULTS.appModelsDir, CONFIG_DEFAULTS.appModelsDir),
     cullingModels: cullingModelsField(raw.culling_models),
   };
 }
@@ -257,4 +309,74 @@ export function getVisionModel(): string {
 
 export function getDescriptionModel(): string {
   return process.env.DESCRIPTION_VISION_MODEL ?? getVisionModel();
+}
+
+export type LibraryDbSource = 'env' | 'config' | 'default';
+
+export interface LibraryDbStatus {
+  path: string;
+  source: LibraryDbSource;
+  exists: boolean;
+  /** Human-readable explanation when unavailable. */
+  reason: string | null;
+}
+
+function libraryDbIsFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Resolved path and how it was chosen; does not require the file to exist. */
+export function resolveLibraryDbLocation(): { path: string; source: LibraryDbSource } {
+  const envValue = process.env.LIBRARY_DB;
+  if (envValue) {
+    return { path: resolvePath(envValue, pathBase()), source: 'env' };
+  }
+
+  const configPath = defaultConfigYamlPath();
+  const cfg = loadLibraryConfig(configPath);
+  if (cfg.dbPath) {
+    return { path: cfg.dbPath, source: 'config' };
+  }
+
+  return {
+    path: resolveDataPath('library.db', 'library.db'),
+    source: 'default',
+  };
+}
+
+/** Resolve the library DB path and report whether it exists. */
+export function describeLibraryDb(): LibraryDbStatus {
+  const location = resolveLibraryDbLocation();
+  const exists = libraryDbIsFile(location.path);
+  return {
+    path: location.path,
+    source: location.source,
+    exists,
+    reason: exists
+      ? null
+      : location.source === 'env'
+        ? `LIBRARY_DB is set to '${location.path}' but that file does not exist.`
+        : location.source === 'config'
+          ? `config.yaml db_path is '${location.path}' but that file does not exist. ` +
+            'Run the catalog import to create it, or set LIBRARY_DB to override.'
+          : 'No LIBRARY_DB env var, no db_path in config.yaml, and no library.db under the ' +
+            'data folder. Set LIBRARY_DB or configure db_path in config.yaml.',
+  };
+}
+
+/** The resolved path when it exists, otherwise `null`. */
+export function resolveLibraryDb(): string | null {
+  const status = describeLibraryDb();
+  return status.exists ? status.path : null;
+}
+
+/** The resolved path, or throw with the reason a health endpoint would show. */
+export function requireLibraryDb(): string {
+  const status = describeLibraryDb();
+  if (status.exists) return status.path;
+  throw new Error(status.reason ?? 'Library database is not configured.');
 }

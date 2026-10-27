@@ -13,13 +13,15 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { REPO_ROOT, config, loadLibraryConfig } from '../../config.js';
+import { REPO_ROOT, config, loadLibraryConfig, resourcesRoot } from '../../config.js';
 import { AppModelSetupError, resolveInstalledModel } from '../../app-models/files.js';
 import { APP_MODEL_INSTALL_JOB_TYPE } from '../../app-models/install.js';
 import type { JobRunner } from '../runner.js';
 import { asMetadata } from './common.js';
 
-const SCRIPT = join(REPO_ROOT, 'scripts', 'app-models', 'export_onnx.py');
+function exportOnnxScriptPath(): string {
+  return join(resourcesRoot(), 'scripts', 'app-models', 'export_onnx.py');
+}
 const CANCEL_POLL_MS = 200;
 const KILL_GRACE_MS = 10_000;
 const STEP = /^step: (.+)$/;
@@ -62,7 +64,8 @@ function scriptFailure(kind: string, message: string): string {
 
 function convert(runner: JobRunner, jobId: string, source: string, name: string, modelsDir: string): Promise<Outcome> {
   return new Promise((settle) => {
-    const child = spawn('uv', ['run', SCRIPT, source, '--name', name, '--out', modelsDir, '--job-id', jobId], {
+    const script = exportOnnxScriptPath();
+    const child = spawn('uv', ['run', script, source, '--name', name, '--out', modelsDir, '--job-id', jobId], {
       cwd: REPO_ROOT,
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],

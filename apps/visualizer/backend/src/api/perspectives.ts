@@ -9,7 +9,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { REPO_ROOT } from '../config.js';
+import { resourcesRoot } from '../config.js';
 import {
   deletePerspective,
   getPerspectiveBySlug,
@@ -303,7 +303,7 @@ perspectivesRoutes.openapi(resetRoute, (c) => {
   // Containment check before reading: `source_filename` comes from the database,
   // and the regex above is the only thing standing between it and an arbitrary
   // read. Resolve and confirm the result is still inside the prompts directory.
-  const base = resolve(join(REPO_ROOT, 'prompts', 'perspectives'));
+  const base = resolve(join(resourcesRoot(), 'prompts', 'perspectives'));
   const path = resolve(join(base, filename));
   if (path !== base && !path.startsWith(base + '/')) {
     return c.json({ error: 'invalid source_filename' }, 400);

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { REPO_ROOT } from '../src/config.js';
 import { describeLibraryDb } from '../src/jobs/library-db.js';
 
 let dir: string;
@@ -35,9 +36,13 @@ describe('describeLibraryDb', () => {
     expect(describeLibraryDb()).toMatchObject({ path: db, source: 'config', exists: true });
   });
 
-  it('finds nothing when LT_CONFIG_YAML names a missing file and no LIBRARY_DB is set', () => {
+  it('falls back to the repo-root library.db when the config file is missing', () => {
     process.env.LT_CONFIG_YAML = join(dir, 'missing.yaml');
 
-    expect(describeLibraryDb()).toMatchObject({ path: null, source: 'none', exists: false });
+    expect(describeLibraryDb()).toMatchObject({
+      path: join(REPO_ROOT, 'library.db'),
+      source: 'default',
+      exists: false,
+    });
   });
 });
