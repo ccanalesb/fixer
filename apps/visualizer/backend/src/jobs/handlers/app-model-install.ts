@@ -13,7 +13,14 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { REPO_ROOT, config, loadLibraryConfig, resourcesRoot } from '../../config.js';
+import { config, loadLibraryConfig, resourcesRoot } from '../../config.js';
+import {
+  CONVERTER_PREP_STEP,
+  conversionCwd,
+  conversionFailureMessage,
+  conversionSpawnEnv,
+  resolveUvExecutable,
+} from '../../app-models/conversion-run.js';
 import { AppModelSetupError, resolveInstalledModel } from '../../app-models/files.js';
 import { APP_MODEL_INSTALL_JOB_TYPE } from '../../app-models/install.js';
 import type { JobRunner } from '../runner.js';
@@ -64,17 +71,24 @@ function scriptFailure(kind: string, message: string): string {
 
 function convert(runner: JobRunner, jobId: string, source: string, name: string, modelsDir: string): Promise<Outcome> {
   return new Promise((settle) => {
+    runner.setCurrentStep(jobId, CONVERTER_PREP_STEP);
     const script = exportOnnxScriptPath();
-    const child = spawn('uv', ['run', script, source, '--name', name, '--out', modelsDir, '--job-id', jobId], {
-      cwd: REPO_ROOT,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      resolveUvExecutable(),
+      ['run', script, source, '--name', name, '--out', modelsDir, '--job-id', jobId],
+      {
+        cwd: conversionCwd(),
+        env: conversionSpawnEnv(),
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
     if (child.pid) running.add(child.pid);
     let done = false;
     let cancelled = false;
     let scriptError: string | null = null;
     const stderrTail: string[] = [];
+    const stderrLines: string[] = [];
     const finish = (o: Outcome) => {
       if (done) return;
       done = true;
@@ -106,8 +120,10 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
       runner.log(jobId, 'info', line);
       const m = SCRIPT_ERROR.exec(line);
       if (m) scriptError = scriptFailure(m[1]!, m[2]!);
-      stderrTail.push(line.trim());
+      const trimmed = line.trim();
+      stderrTail.push(trimmed);
       if (stderrTail.length > 3) stderrTail.shift();
+      stderrLines.push(trimmed);
     });
 
     const poll = setInterval(() => {
@@ -123,9 +139,9 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
     child.on('close', (code, signal) => {
       if (cancelled) return finish({ cancelled: true });
       if (code === 0) return finish({ ok: true });
-      if (scriptError) return finish({ error: scriptError });
-      const how = signal ? `stopped by ${signal}` : `exit code ${code}`;
-      finish({ error: `The conversion failed (${how})${stderrTail.length ? `: ${stderrTail.join(' · ')}` : ''}` });
+      finish({
+        error: conversionFailureMessage(stderrLines.join('\n'), code, scriptError, signal, stderrTail),
+      });
     });
   });
 }
