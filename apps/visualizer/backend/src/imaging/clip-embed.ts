@@ -17,6 +17,10 @@ export const CLIP_EMBED_MODEL_ID = 'clip-ViT-B-32';
 export const CLIP_ONNX_MODEL_ID = 'Xenova/clip-vit-base-patch32';
 export const CLIP_EMBED_DIM = 512;
 
+/** Shown when `from_pretrained` cannot reach the Hub. */
+export const CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE =
+  'Could not download the CLIP model from huggingface.co.';
+
 type VisionModel = Awaited<ReturnType<typeof CLIPVisionModelWithProjection.from_pretrained>>;
 
 let modelPromise: Promise<VisionModel> | null = null;
@@ -27,9 +31,21 @@ function getModel(): Promise<VisionModel> {
     env.allowLocalModels = false;
     modelPromise = CLIPVisionModelWithProjection.from_pretrained(CLIP_ONNX_MODEL_ID, {
       dtype: 'fp32',
+    }).catch((err: unknown) => {
+      modelPromise = null;
+      throw err;
     });
   }
   return modelPromise;
+}
+
+/** Fail fast before walking images when the Hub is unreachable. */
+export async function loadClipModel(): Promise<void> {
+  try {
+    await getModel();
+  } catch {
+    throw new Error(CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
+  }
 }
 
 /** Decode an image file to interleaved RGB. */

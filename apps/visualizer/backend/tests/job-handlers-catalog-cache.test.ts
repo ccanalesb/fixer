@@ -21,12 +21,18 @@ const enc = vi.hoisted(() => ({
   paths: [] as string[],
   /** Runs per encoded path; the cancellation test uses it as its only hook. */
   onEncode: null as null | ((path: string) => void),
+  modelLoadFails: false,
 }));
 
 vi.mock('../src/imaging/clip-embed.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/imaging/clip-embed.js')>();
   return {
     ...actual,
+    loadClipModel: async (): Promise<void> => {
+      if (enc.modelLoadFails) {
+        throw new Error(actual.CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
+      }
+    },
     encodeImages: async (paths: string[]): Promise<Float32Array[]> =>
       paths.map((path) => {
         enc.paths.push(path);
@@ -99,6 +105,7 @@ beforeEach(() => {
   fx = new LibraryFixture().activate();
   enc.paths = [];
   enc.onEncode = null;
+  enc.modelLoadFails = false;
   process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(
     cfgPath,
@@ -249,6 +256,23 @@ describe('the catalog_cache_build handler', () => {
     // can act on, and a corrupt file is not one of them.
     expect(result(job).sync.error).toBe('file is not a database');
     expect(result(job).embed.embedded).toBe(1);
+  });
+
+  it('fails the job when CLIP cannot load but keeps photos synced before embed', async () => {
+    await seedCatalogBursts();
+    enc.modelLoadFails = true;
+
+    const job = await runChain();
+
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe('Could not download the CLIP model from huggingface.co.');
+    expect(countOf('images')).toBe(4);
+    expect(countOf('image_clip_embeddings')).toBe(0);
+    expect(countOf('image_stacks')).toBe(0);
+    expect(banners(job).some((m) => m.includes('stage=stack'))).toBe(false);
+    expect(banners(job)).toContain('[catalog-cache-build] stage=sync status=start');
+    expect(banners(job).some((m) => m.includes('stage=sync status=complete added=4'))).toBe(true);
+    expect(banners(job)).toContain('[catalog-cache-build] stage=embed status=start');
   });
 
   /** Sync is the only forgiving stage; a later one failing is the job failing. */
