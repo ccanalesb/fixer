@@ -28,7 +28,6 @@
       "endpoints": [
         "https://github.com/ccanalesb/fixer/releases/latest/download/latest.json"
       ],
-      "dangerousInsecureTransportProtocol": true,
       "windows": {
         "installMode": "passive"
       }
