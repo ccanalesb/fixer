@@ -10,6 +10,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resourcesRoot } from '../config.js';
+import { isResolvedPathInsideDir } from '../utils/path-containment.js';
 import {
   deletePerspective,
   getPerspectiveBySlug,
@@ -304,20 +305,20 @@ perspectivesRoutes.openapi(resetRoute, (c) => {
   // and the regex above is the only thing standing between it and an arbitrary
   // read. Resolve and confirm the result is still inside the prompts directory.
   const base = resolve(join(resourcesRoot(), 'prompts', 'perspectives'));
-  const path = resolve(join(base, filename));
-  if (path !== base && !path.startsWith(base + '/')) {
+  const filePath = resolve(join(base, filename));
+  if (!isResolvedPathInsideDir(base, filePath)) {
     return c.json({ error: 'invalid source_filename' }, 400);
   }
 
   try {
-    if (!statSync(path).isFile()) return c.json({ error: 'no default file' }, 404);
+    if (!statSync(filePath).isFile()) return c.json({ error: 'no default file' }, 404);
   } catch {
     return c.json({ error: 'no default file' }, 404);
   }
 
   let text: string;
   try {
-    text = readFileSync(path, 'utf8');
+    text = readFileSync(filePath, 'utf8');
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
