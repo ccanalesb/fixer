@@ -95,7 +95,7 @@ afterEach(() => {
   delete process.env.LT_CONFIG_YAML;
   delete process.env.LIGHTROOM_CATALOG_LOCKING_MODE;
   delete process.env.LIGHTROOM_CATALOG_READONLY_URI;
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 describe('lightroom reader', () => {

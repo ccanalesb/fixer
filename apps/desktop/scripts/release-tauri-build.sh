@@ -27,7 +27,7 @@ find_host() {
         return
       fi
     done
-  elif [[ "$OSTYPE" == msys* || "$OSTYPE" == win32* || "$OS" == Windows_NT* ]]; then
+  elif [[ "$OSTYPE" == msys* || "$OSTYPE" == win32* || "${OS:-}" == Windows_NT* ]]; then
     for name in fixer-desktop.exe Fixer.exe; do
       if [[ -f "$release/$name" ]]; then
         echo "$release/$name"
