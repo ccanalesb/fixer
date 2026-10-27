@@ -1,4 +1,10 @@
-import { execFile, spawn, type ExecFileOptions, type SpawnOptions } from 'node:child_process';
+import {
+  execFile,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+  type ExecFileOptions,
+  type SpawnOptions,
+} from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { dataRoot, resourcesRoot } from '../config.js';
@@ -55,12 +61,15 @@ export function resolveUvExecutable(): string {
 }
 
 /** Spawns `uv` (or a test wrapper when `LT_UV_TEST_WRAPPER` points at a Node script). */
-export function spawnUv(args: readonly string[], options: SpawnOptions) {
+export function spawnUv(
+  args: readonly string[],
+  options: SpawnOptions,
+): ChildProcessWithoutNullStreams {
   const wrapper = process.env.LT_UV_TEST_WRAPPER;
   if (wrapper) {
-    return spawn(process.execPath, [wrapper, ...args], options);
+    return spawn(process.execPath, [wrapper, ...args], options) as ChildProcessWithoutNullStreams;
   }
-  return spawn(resolveUvExecutable(), args, options);
+  return spawn(resolveUvExecutable(), args, options) as ChildProcessWithoutNullStreams;
 }
 
 export function conversionCwd(): string {
