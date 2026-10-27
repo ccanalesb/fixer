@@ -17,7 +17,7 @@ find_host() {
   case "$OSTYPE" in
     darwin*)
       local app
-      app=$(find "$release/bundle/macos" -path '*/Contents/MacOS/*' -type f 2>/dev/null | head -1 || true)
+      app=$(find "$release/bundle/macos" -path '*/Contents/MacOS/*' -type f ! -name 'node*' 2>/dev/null | head -1 || true)
       if [[ -n "$app" ]]; then
         echo "$app"
         return 0
