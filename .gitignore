@@ -76,3 +76,8 @@ scripts/.autopilot-ledger.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Desktop app build artifacts
+apps/desktop/staged-resources/
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/target/
