@@ -14,34 +14,38 @@ fi
 
 find_host() {
   local release="$DESKTOP/src-tauri/target/release"
-  if [[ "$OSTYPE" == darwin* ]]; then
-    local app
-    app=$(find "$release/bundle/macos" -path '*/Contents/MacOS/*' -type f 2>/dev/null | head -1 || true)
-    if [[ -n "$app" ]]; then
-      echo "$app"
-      return
-    fi
-    for name in fixer-desktop Fixer; do
-      if [[ -x "$release/$name" ]]; then
-        echo "$release/$name"
-        return
+  case "$OSTYPE" in
+    darwin*)
+      local app
+      app=$(find "$release/bundle/macos" -path '*/Contents/MacOS/*' -type f 2>/dev/null | head -1 || true)
+      if [[ -n "$app" ]]; then
+        echo "$app"
+        return 0
       fi
-    done
-  elif [[ "$OSTYPE" == msys* || "$OSTYPE" == win32* || "${OS:-}" == Windows_NT* ]]; then
-    for name in fixer-desktop.exe Fixer.exe; do
-      if [[ -f "$release/$name" ]]; then
-        echo "$release/$name"
-        return
-      fi
-    done
-  else
-    for name in fixer-desktop fixer; do
-      if [[ -x "$release/$name" ]]; then
-        echo "$release/$name"
-        return
-      fi
-    done
-  fi
+      for name in fixer-desktop Fixer; do
+        if [[ -x "$release/$name" ]]; then
+          echo "$release/$name"
+          return 0
+        fi
+      done
+      ;;
+    msys*|win32*|cygwin*)
+      for name in fixer-desktop.exe Fixer.exe; do
+        if [[ -f "$release/$name" ]]; then
+          echo "$release/$name"
+          return 0
+        fi
+      done
+      ;;
+    *)
+      for name in fixer-desktop fixer; do
+        if [[ -x "$release/$name" ]]; then
+          echo "$release/$name"
+          return 0
+        fi
+      done
+      ;;
+  esac
   return 1
 }
 
