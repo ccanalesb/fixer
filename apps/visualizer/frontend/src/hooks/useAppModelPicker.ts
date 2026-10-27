@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AppModelsAPI, type AppModel } from '../services/api'
+import { isTauri } from '../utils/isTauri'
+import { pickAppModelFolderPath } from '../utils/nativeFilePickers'
 import { browserIsOnBackendHost, normalizeCatalogPath } from './useCatalogPicker'
 
 /**
@@ -20,7 +22,10 @@ export function useAppModelPicker() {
     try {
       const data = await AppModelsAPI.list()
       setModels(data.models)
-      setPickerUsable(data.picker_available && browserIsOnBackendHost(window.location.hostname))
+      setPickerUsable(
+        isTauri() ||
+          (data.picker_available && browserIsOnBackendHost(window.location.hostname)),
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -34,7 +39,7 @@ export function useAppModelPicker() {
     setPicking(true)
     setError(null)
     try {
-      const { path } = await AppModelsAPI.pick()
+      const path = await pickAppModelFolderPath()
       // `null` is a dismissed dialog: the user changed their mind, not an error.
       if (path) setDraft(path)
     } catch (e) {
