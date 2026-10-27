@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import {
+  CONVERSION_NOTICE_LINE,
+  MissingLicenseError,
+  collectNpmPackagesFromNodeModules,
+  findLicenseFileInDir,
+  formatSection,
+  readPackageLicense,
+  sharpLibvipsPackageName,
+} from './third-party-notices-lib.mjs';
+
+test('findLicenseFileInDir prefers LICENSE', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tpl-'));
+  writeFileSync(join(dir, 'NOTICE'), 'notice');
+  writeFileSync(join(dir, 'LICENSE'), 'license text');
+  assert.equal(findLicenseFileInDir(dir), join(dir, 'LICENSE'));
+  rmSync(dir, { recursive: true });
+});
+
+test('readPackageLicense throws when license file is missing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tpl-'));
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'no-license-pkg', version: '1.0.0', license: 'MIT' }),
+  );
+  assert.throws(() => readPackageLicense(dir), MissingLicenseError);
+  rmSync(dir, { recursive: true });
+});
+
+test('collectNpmPackagesFromNodeModules gathers nested packages', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tpl-'));
+  const nm = join(root, 'node_modules');
+  const pkgA = join(nm, 'alpha');
+  const pkgB = join(nm, 'beta', 'node_modules', 'nested');
+  mkdirSync(pkgA, { recursive: true });
+  mkdirSync(pkgB, { recursive: true });
+  for (const [dir, name] of [
+    [pkgA, 'alpha'],
+    [pkgB, 'nested'],
+  ]) {
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name, version: '0.1.0', license: 'ISC' }),
+    );
+    writeFileSync(join(dir, 'LICENSE'), `Copyright ${name}`);
+  }
+  const pkgs = await collectNpmPackagesFromNodeModules(nm);
+  assert.equal(pkgs.length, 2);
+  assert.deepEqual(
+    pkgs.map((p) => p.name).sort(),
+    ['alpha', 'nested'],
+  );
+  rmSync(root, { recursive: true });
+});
+
+test('collectNpmPackagesFromNodeModules fails on missing license in tree', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tpl-'));
+  const nm = join(root, 'node_modules', 'bad');
+  mkdirSync(nm, { recursive: true });
+  writeFileSync(
+    join(nm, 'package.json'),
+    JSON.stringify({ name: 'bad', version: '1.0.0' }),
+  );
+  const fetchFail = async () => {
+    throw new Error('offline');
+  };
+  await assert.rejects(
+    () => collectNpmPackagesFromNodeModules(join(root, 'node_modules'), fetchFail),
+    MissingLicenseError,
+  );
+  rmSync(root, { recursive: true });
+});
+
+test('sharpLibvipsPackageName maps linux x64', () => {
+  assert.equal(sharpLibvipsPackageName('linux', 'x64'), '@img/sharp-libvips-linux-x64');
+});
+
+test('formatSection includes header rule', () => {
+  const out = formatSection('Backend Node.js packages', 'body');
+  assert.match(out, /^=+\nBackend Node\.js packages\n=+/);
+});
+
+test('conversion notice line is fixed copy', () => {
+  assert.match(CONVERSION_NOTICE_LINE, /PyTorch/);
+  assert.match(CONVERSION_NOTICE_LINE, /Transformers/);
+});
