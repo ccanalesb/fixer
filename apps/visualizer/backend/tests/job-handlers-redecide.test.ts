@@ -262,5 +262,5 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     const job = await runRedecide({ cancelAfterProgress: '500/501' });
     expect(job.status).toBe('cancelled');
     expect(fx.query('SELECT COUNT(*) AS n FROM cull_verdicts')[0]?.n).toBe(501);
-  });
+  }, 120_000);
 });

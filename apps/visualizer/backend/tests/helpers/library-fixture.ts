@@ -280,24 +280,26 @@ export class LibraryFixture {
     return this;
   }
 
-  /** Direct SQL, for the handful of assertions that need to inspect writes. */
-  query<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T[] {
+  /** Open the library, run `fn`, and always close — required on Windows before temp dir removal. */
+  withDb<T>(fn: (db: Database.Database) => T): T {
     const db = this.open();
     try {
-      return db.prepare(sql).all(...(params as never[])) as T[];
+      return fn(db);
     } finally {
       db.close();
     }
   }
 
+  /** Direct SQL, for the handful of assertions that need to inspect writes. */
+  query<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T[] {
+    return this.withDb((db) => db.prepare(sql).all(...(params as never[])) as T[]);
+  }
+
   /** Direct SQL that writes, for tests that mutate a seed mid-run. */
   exec(sql: string, ...params: unknown[]): void {
-    const db = this.open();
-    try {
+    this.withDb((db) => {
       db.prepare(sql).run(...(params as never[]));
-    } finally {
-      db.close();
-    }
+    });
   }
 
   /** The factory Score forecast questions, as this library has them. */

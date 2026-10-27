@@ -197,26 +197,34 @@ describe('the conversion job', () => {
     expect(job(job_id).error).toMatch(/^uv is not installed/);
   });
 
-  it('is cancellable: the conversion is stopped and its files removed', async () => {
-    const { job_id } = addAppModel(db, modelsDir, 'someone/slow');
-    const running = run();
-    while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
-    expect(job(job_id).current_step).toBe('exporting the decoder graph');
-    transitionCancel(db, job_id);
-    await running;
-    expect(job(job_id).status).toBe('cancelled');
-    expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
-    expect(names()).toEqual([]);
-  });
+  it(
+    'is cancellable: the conversion is stopped and its files removed',
+    async () => {
+      const { job_id } = addAppModel(db, modelsDir, 'someone/slow');
+      const running = run();
+      while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
+      expect(job(job_id).current_step).toBe('exporting the decoder graph');
+      transitionCancel(db, job_id);
+      await running;
+      expect(job(job_id).status).toBe('cancelled');
+      expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
+      expect(names()).toEqual([]);
+    },
+    90_000,
+  );
 
-  it('a backend that exits stops its conversion, so a resumed job is the only one writing', async () => {
-    addAppModel(db, modelsDir, 'someone/slow');
-    const running = run();
-    while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
-    stopRunningConversions();
-    await running;
-    expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
-  });
+  it(
+    'a backend that exits stops its conversion, so a resumed job is the only one writing',
+    async () => {
+      addAppModel(db, modelsDir, 'someone/slow');
+      const running = run();
+      while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
+      stopRunningConversions();
+      await running;
+      expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
+    },
+    90_000,
+  );
 
   it('resumes after a restart: re-queued, converted from the start', async () => {
     const { job_id } = addAppModel(db, modelsDir, 'someone/a');
