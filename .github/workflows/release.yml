@@ -33,6 +33,7 @@ jobs:
 
   build:
     name: Build (${{ matrix.label }})
+    # PR runs are path-filtered at workflow level; each push that touches desktop or this file runs the matrix.
     needs: gate
     strategy:
       fail-fast: false
