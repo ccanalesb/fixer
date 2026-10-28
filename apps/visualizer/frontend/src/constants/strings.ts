@@ -1082,6 +1082,9 @@ export const SETTINGS_ABOUT_LICENSES_UNAVAILABLE =
   'Open source license notices are not available in this build.'
 export const SETTINGS_ABOUT_ADOBE_ATTRIBUTION =
   'Adobe and Lightroom Classic are either registered trademarks or trademarks of Adobe in the United States and/or other countries.'
+export const SETTINGS_ABOUT_CHECK_UPDATES = 'Check for updates'
+export const SETTINGS_ABOUT_UPDATES_UP_TO_DATE = 'You’re on the latest version.'
+export const SETTINGS_ABOUT_UPDATES_CHECK_FAILED = "Couldn't check for updates"
 export const SETTINGS_ABOUT_NOT_AFFILIATED =
   'Fixer is not affiliated with or endorsed by Adobe.'
 

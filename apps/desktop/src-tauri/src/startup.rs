@@ -151,6 +151,11 @@ impl StartupState {
                     let parsed = Url::parse(&url).expect("loopback url");
                     let _ = window.navigate(parsed);
                 }
+                let app_for_updater = app.clone();
+                let data_dir = self.data_dir.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::updater::maybe_run_automatic_check(&app_for_updater, &data_dir).await;
+                });
                 return;
             }
             thread::sleep(Duration::from_millis(200));

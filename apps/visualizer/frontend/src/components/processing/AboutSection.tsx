@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react'
 import { APP_TITLE } from '../../constants/strings'
 import {
   SETTINGS_ABOUT_ADOBE_ATTRIBUTION,
+  SETTINGS_ABOUT_CHECK_UPDATES,
   SETTINGS_ABOUT_HEADING,
   SETTINGS_ABOUT_LICENSES_LINK,
   SETTINGS_ABOUT_LICENSES_UNAVAILABLE,
   SETTINGS_ABOUT_NOT_AFFILIATED,
+  SETTINGS_ABOUT_UPDATES_CHECK_FAILED,
+  SETTINGS_ABOUT_UPDATES_UP_TO_DATE,
   SETTINGS_ABOUT_VERSION_LABEL,
 } from '../../constants/strings'
 import { SystemAPI } from '../../services/api'
+import { invokeCheckForUpdatesManual, isTauriRuntime } from '../../utils/tauri'
 import { ThirdPartyNoticesModal } from './ThirdPartyNoticesModal'
 
 export function AboutSection() {
@@ -17,6 +21,9 @@ export function AboutSection() {
   const [noticesText, setNoticesText] = useState<string | null>(null)
   const [noticesLoading, setNoticesLoading] = useState(false)
   const [noticesError, setNoticesError] = useState<string | null>(null)
+  const [updateCheckMessage, setUpdateCheckMessage] = useState<string | null>(null)
+  const [updateCheckBusy, setUpdateCheckBusy] = useState(false)
+  const inDesktopApp = isTauriRuntime()
 
   useEffect(() => {
     let cancelled = false
@@ -52,6 +59,26 @@ export function AboutSection() {
     setNoticesLoading(false)
   }
 
+  const checkForUpdates = () => {
+    setUpdateCheckBusy(true)
+    setUpdateCheckMessage(null)
+    void invokeCheckForUpdatesManual()
+      .then((result) => {
+        if (result === 'up_to_date') {
+          setUpdateCheckMessage(SETTINGS_ABOUT_UPDATES_UP_TO_DATE)
+        } else if (result === 'check_failed') {
+          setUpdateCheckMessage(SETTINGS_ABOUT_UPDATES_CHECK_FAILED)
+        }
+        // update_available: native dialog is shown by the host
+      })
+      .catch(() => {
+        setUpdateCheckMessage(SETTINGS_ABOUT_UPDATES_CHECK_FAILED)
+      })
+      .finally(() => {
+        setUpdateCheckBusy(false)
+      })
+  }
+
   return (
     <section className="space-y-3">
       <div>
@@ -79,9 +106,25 @@ export function AboutSection() {
               </button>
             )}
           </div>
+          {inDesktopApp ? (
+            <div className="space-y-1">
+              <button
+                type="button"
+                className="text-accent hover:underline disabled:cursor-wait disabled:opacity-60"
+                disabled={updateCheckBusy}
+                onClick={checkForUpdates}
+              >
+                {SETTINGS_ABOUT_CHECK_UPDATES}
+              </button>
+              {updateCheckMessage ? (
+                <p className="text-text-secondary" role="status">
+                  {updateCheckMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <p className="text-text-secondary">{SETTINGS_ABOUT_ADOBE_ATTRIBUTION}</p>
           <p className="text-text-secondary">{SETTINGS_ABOUT_NOT_AFFILIATED}</p>
-          <div className="pt-1" aria-hidden="true" data-testid="about-updates-slot" />
         </div>
       </div>
       {noticesOpen && (

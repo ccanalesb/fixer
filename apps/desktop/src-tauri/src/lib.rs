@@ -6,11 +6,13 @@ mod port;
 mod restart_policy;
 mod sidecar;
 mod startup;
+mod updater;
 
 use host_commands::{
     get_app_port, open_app_logs, read_saved_app_port, retry_startup, save_port_and_retry,
     set_app_port,
 };
+use updater::check_for_updates_manual;
 use sidecar::{SidecarHandle, SidecarSpawnContext};
 use startup::{confirm_quit_with_jobs, count_running_jobs, StartupState};
 use std::sync::Arc;
@@ -21,8 +23,12 @@ static EXIT_APPROVED: AtomicBool = AtomicBool::new(false);
 
 /// Every programmatic quit goes through here: `app.exit` raises `ExitRequested` again,
 /// and only an approved exit may pass the quit-with-jobs check.
-pub(crate) fn approve_exit(app: &AppHandle) {
+pub(crate) fn mark_exit_approved() {
     EXIT_APPROVED.store(true, Ordering::SeqCst);
+}
+
+pub(crate) fn approve_exit(app: &AppHandle) {
+    mark_exit_approved();
     app.exit(0);
 }
 
@@ -39,6 +45,9 @@ async fn delete_all_data_and_quit(app: AppHandle) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -54,6 +63,7 @@ pub fn run() {
             retry_startup,
             save_port_and_retry,
             delete_all_data_and_quit,
+            check_for_updates_manual,
         ])
         .setup(|app| {
             let resources_dir = app
@@ -72,6 +82,7 @@ pub fn run() {
             })
             .map_err(|e| e.to_string())?;
 
+            let data_dir_for_updater = data_dir.clone();
             let startup = Arc::new(StartupState::new(
                 Arc::clone(&sidecar),
                 data_dir,
@@ -79,6 +90,7 @@ pub fn run() {
             ));
 
             app.manage(Arc::clone(&startup));
+            updater::spawn_automatic_scheduler(app.handle().clone(), data_dir_for_updater);
             let hook_app = app.handle().clone();
             sidecar.set_exit_hook(Arc::new(move |kind| {
                 if let Some(state) = hook_app.try_state::<Arc<StartupState>>() {
