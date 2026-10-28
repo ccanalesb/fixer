@@ -47,7 +47,7 @@ object, branded type or selector union is introduced.
 ## Consequences
 
 - **"Deployable" means packaging, not hosting.** The distribution problem is an
-  installable desktop app ([#328](https://github.com/ccanalesb/lightroom-tagger/issues/328)),
+  installable desktop app ([#328](https://github.com/ccanalesb/fixer/issues/328)),
   not a server tier. A hosted service would need a local agent feeding it
   anyway, at which point it is the same architecture with a network in the
   middle.

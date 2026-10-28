@@ -141,7 +141,7 @@ Fixer is not affiliated with or endorsed by Adobe.
 
 ### Windows downloads and Smart App Control
 
-Official Fixer installers from [GitHub Releases](https://github.com/ccanalesb/lightroom-tagger/releases) are **unsigned** in v1. On Windows 11, **Smart App Control** may block the installer or the app. If that happens, open **Windows Security → App & browser control → Smart App Control** and turn it off, or wait for a signed release. Only install builds from this repository’s Releases page.
+Official Fixer installers from [GitHub Releases](https://github.com/ccanalesb/fixer/releases) are **unsigned** in v1. On Windows 11, **Smart App Control** may block the installer or the app. If that happens, open **Windows Security → App & browser control → Smart App Control** and turn it off, or wait for a signed release. Only install builds from this repository’s Releases page.
 
 ## Further reading
 

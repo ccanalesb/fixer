@@ -566,7 +566,7 @@ export const CATALOG_CACHE_NAS_TROUBLESHOOTING =
   'Network share (NAS) paths must be mounted and readable by the backend host. If the embed job skips most images, verify the catalog path is accessible from the server.'
 export const CATALOG_CACHE_NAS_TROUBLESHOOTING_LINK_LABEL = 'Storage & mount troubleshooting'
 export const CATALOG_CACHE_NAS_TROUBLESHOOTING_DOC_URL =
-  'https://github.com/ccanalesb/lightroom-tagger/blob/main/docs/STORAGE_MOUNT_REQUIREMENTS.md'
+  'https://github.com/ccanalesb/fixer/blob/main/docs/STORAGE_MOUNT_REQUIREMENTS.md'
 /** Advanced — embed catalog rows only (`image_type: catalog`). */
 /** Disclosure label for the catalog cache pipeline section.
  *

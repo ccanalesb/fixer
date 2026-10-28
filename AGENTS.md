@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues are tracked in GitHub Issues for Fixer (`ccanalesb/lightroom-tagger`) via the `gh` CLI. External PRs are **not** a triage surface. See `docs/agents/issue-tracker.md`.
+Issues are tracked in GitHub Issues for Fixer (`ccanalesb/fixer`) via the `gh` CLI. External PRs are **not** a triage surface. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

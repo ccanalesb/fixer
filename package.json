@@ -12,16 +12,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ccanalesb/lightroom-tagger.git"
+    "url": "git+https://github.com/ccanalesb/fixer.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/ccanalesb/lightroom-tagger/issues"
+    "url": "https://github.com/ccanalesb/fixer/issues"
   },
-  "homepage": "https://github.com/ccanalesb/lightroom-tagger#readme",
+  "homepage": "https://github.com/ccanalesb/fixer#readme",
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.10.0"
   }

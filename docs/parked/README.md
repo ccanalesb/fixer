@@ -1,7 +1,7 @@
 # Parked capabilities
 
 Capabilities that were built, used, and then removed from `master` during the consolidation
-tracked by [map #218](https://github.com/ccanalesb/lightroom-tagger/issues/218).
+tracked by [map #218](https://github.com/ccanalesb/fixer/issues/218).
 
 **Removed is not lost.** Git holds every deleted line forever, and each capability has an
 annotated tag pointing at the last commit that contained it — `git checkout parked/<slug>`
@@ -10,9 +10,9 @@ retired and what the attempt taught. That is the only job of these docs.
 
 | Capability | Status | Tag | Doc |
 | --- | --- | --- | --- |
-| Chat / NL / semantic search | retired 2026-08-12 ([#223](https://github.com/ccanalesb/lightroom-tagger/issues/223)) | `parked/chat-search` | [chat-search.md](chat-search.md) |
-| Instagram import + vision matching | retired 2026-08-12 ([#225](https://github.com/ccanalesb/lightroom-tagger/issues/225)) | `parked/instagram-matching` | [instagram-matching.md](instagram-matching.md) |
-| Posting analytics | retired 2026-08-12 ([#222](https://github.com/ccanalesb/lightroom-tagger/issues/222)) | `parked/posting-analytics` | [posting-analytics.md](posting-analytics.md) |
+| Chat / NL / semantic search | retired 2026-08-12 ([#223](https://github.com/ccanalesb/fixer/issues/223)) | `parked/chat-search` | [chat-search.md](chat-search.md) |
+| Instagram import + vision matching | retired 2026-08-12 ([#225](https://github.com/ccanalesb/fixer/issues/225)) | `parked/instagram-matching` | [instagram-matching.md](instagram-matching.md) |
+| Posting analytics | retired 2026-08-12 ([#222](https://github.com/ccanalesb/fixer/issues/222)) | `parked/posting-analytics` | [posting-analytics.md](posting-analytics.md) |
 
 Each removal PR fills in its own row — adding the retirement date and linking the doc it
 writes — so this table is never a promise of a file that does not exist.
@@ -57,9 +57,9 @@ these, and each is one command.
 
 **Catalog similarity** is not in this directory and should not be added to it. It survives
 the consolidation and is being *reframed* rather than retired — see
-[#226](https://github.com/ccanalesb/lightroom-tagger/issues/226). CLIP embeddings,
+[#226](https://github.com/ccanalesb/fixer/issues/226). CLIP embeddings,
 `clip_similarity` and `sqlite-vec` all stay. Only the Instagram-dump side of CLIP goes,
-with [#225](https://github.com/ccanalesb/lightroom-tagger/issues/225).
+with [#225](https://github.com/ccanalesb/fixer/issues/225).
 
 Removal and reframe are different diagnoses. The three capabilities above failed on cost,
 precision, or a dependency that was itself being deleted — no change of presentation fixes

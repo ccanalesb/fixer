@@ -6,9 +6,9 @@ This document describes how to cut a Fixer desktop release. CI builds unsigned i
 
 Do not publish a non-prerelease until all of the following are done:
 
-1. **Rename the GitHub repository** to `ccanalesb/fixer`. The in-app updater endpoint is baked into every shipped binary and must use the final repository name.
+1. **Keep the repository name** `ccanalesb/fixer`. The in-app updater endpoint is baked into every shipped binary; renaming the repository again strands installed copies once GitHub's redirect is gone.
 2. **Back up the updater signing key** in a password manager: the private key file `~/.tauri/fixer-updater.key` on the owner's Mac and its password (macOS Keychain item `fixer-updater-key-password`). Its public key is `plugins.updater.pubkey` in `apps/desktop/src-tauri/tauri.conf.json`; the private key and password are the GitHub Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing the key strands every installed copy on manual reinstall: a new key means a new public key, which existing installs do not trust.
-3. **Ship the providers work** described in [Add and remove any HTTP-reachable OpenAI-compatible provider from the Providers tab](https://github.com/ccanalesb/lightroom-tagger/issues/332) (the providers PRD). Until then, keep releases as drafts or `-beta.N` prereleases only.
+3. **Ship the providers work** described in [Add and remove any HTTP-reachable OpenAI-compatible provider from the Providers tab](https://github.com/ccanalesb/fixer/issues/332) (the providers PRD). Until then, keep releases as drafts or `-beta.N` prereleases only.
 
 ## Version and tag
 

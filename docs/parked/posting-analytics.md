@@ -1,6 +1,6 @@
 # Parked: Posting analytics
 
-Retired 2026-08-12 · tag `parked/posting-analytics` · sha `dab3ac9` · [map #218](https://github.com/ccanalesb/lightroom-tagger/issues/218)
+Retired 2026-08-12 · tag `parked/posting-analytics` · sha `dab3ac9` · [map #218](https://github.com/ccanalesb/fixer/issues/218)
 
 ## What it did
 
@@ -18,4 +18,4 @@ Analytics is also not worth it anymore. Structurally, the feature read only `ins
 
 ---
 
-**Where it lives:** `git checkout parked/posting-analytics` · key paths: `apps/visualizer/backend/api/analytics.py`, `apps/visualizer/backend/api/schemas/analytics.py`, `lightroom_tagger/core/posting_analytics.py`, `lightroom_tagger/core/posting_analytics_captions.py`, `apps/visualizer/frontend/src/pages/AnalyticsPage.tsx`, `apps/visualizer/frontend/src/components/analytics/*`, `apps/visualizer/frontend/src/components/insights/MiniPostingFrequencyChart.tsx` · data dropped: none in this PR (table drops tracked separately in [#228](https://github.com/ccanalesb/lightroom-tagger/issues/228)) · prior design docs: no `docs/plans/`, `docs/research/`, or `docs/brainstorms/` entries for analytics — this file is the only artifact.
+**Where it lives:** `git checkout parked/posting-analytics` · key paths: `apps/visualizer/backend/api/analytics.py`, `apps/visualizer/backend/api/schemas/analytics.py`, `lightroom_tagger/core/posting_analytics.py`, `lightroom_tagger/core/posting_analytics_captions.py`, `apps/visualizer/frontend/src/pages/AnalyticsPage.tsx`, `apps/visualizer/frontend/src/components/analytics/*`, `apps/visualizer/frontend/src/components/insights/MiniPostingFrequencyChart.tsx` · data dropped: none in this PR (table drops tracked separately in [#228](https://github.com/ccanalesb/fixer/issues/228)) · prior design docs: no `docs/plans/`, `docs/research/`, or `docs/brainstorms/` entries for analytics — this file is the only artifact.

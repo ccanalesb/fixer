@@ -1,6 +1,6 @@
 # Parked: {Capability}
 
-Retired {YYYY-MM-DD} · tag `parked/{slug}` · sha `{short-sha}` · [map #218](https://github.com/ccanalesb/lightroom-tagger/issues/218)
+Retired {YYYY-MM-DD} · tag `parked/{slug}` · sha `{short-sha}` · [map #218](https://github.com/ccanalesb/fixer/issues/218)
 
 ## What it did
 

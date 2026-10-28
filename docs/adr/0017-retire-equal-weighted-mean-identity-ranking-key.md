@@ -51,7 +51,7 @@ lens scored raw **1** (rubric verdict: absent), the image ranks on its
 **second-highest** percentile instead of peak; a single lens scoring 1 with no backup
 gets `0.0`. `peak_percentile` is unchanged for display. Meta `ranking_key` is
 `ranking_percentile`; `corroboration_rule` documents the veto. Measurement and
-rationale: [#280](https://github.com/ccanalesb/lightroom-tagger/issues/280).
+rationale: [#280](https://github.com/ccanalesb/fixer/issues/280).
 
 ## Consequences
 - Best-photos and dashboard highlights rank on comparable cross-lens strength instead
