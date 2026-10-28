@@ -6,9 +6,9 @@
  *   smoke-packaged-app.mjs --host <host-binary> [--port <n>] [--timeout-ms <n>]
  */
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -139,6 +139,7 @@ function resolveDefaultHost() {
         if (ent.endsWith('.app')) {
           const exe = join(macBundle, ent, 'Contents/MacOS');
           for (const bin of readdirSync(exe)) {
+            if (bin.startsWith('node')) continue;
             const p = join(exe, bin);
             if (existsSync(p)) return p;
           }
@@ -156,6 +157,32 @@ function resolveDefaultHost() {
     }
   }
   return null;
+}
+
+const IDENTIFIER = 'com.ccanales.fixer';
+
+function backendLogPath(dataRoot) {
+  if (isWin) return join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), IDENTIFIER, 'logs', 'backend.log');
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Logs', IDENTIFIER, 'backend.log');
+  return join(dataRoot, IDENTIFIER, 'logs', 'backend.log');
+}
+
+function tail(text, lines = 60) {
+  return text.split(/\r?\n/).slice(-lines).join('\n');
+}
+
+function printDiagnostics(host, dataRoot, hostOutput) {
+  console.error('--- host output ---');
+  console.error(tail(hostOutput) || '(none)');
+  const log = backendLogPath(dataRoot);
+  console.error(`--- ${log} ---`);
+  console.error(existsSync(log) ? tail(readFileSync(log, 'utf8')) : '(missing)');
+  const hostDir = dirname(host);
+  console.error(`--- ${hostDir} ---`);
+  console.error(readdirSync(hostDir).join('\n'));
+  const resources = join(hostDir, 'fixer-resources');
+  console.error(`--- ${resources} ---`);
+  console.error(existsSync(resources) ? readdirSync(resources).join('\n') : '(missing)');
 }
 
 async function main() {
@@ -176,14 +203,18 @@ async function main() {
   const beforeSidecars = new Set(sidecarNodeProcesses(host).map((p) => p.pid));
   const child = spawn(host, [], {
     env,
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  let hostOutput = '';
+  child.stdout.on('data', (d) => { hostOutput += d; });
+  child.stderr.on('data', (d) => { hostOutput += d; });
 
   try {
     await waitForHealth(port, args.timeoutMs);
     console.log(`health ok on 127.0.0.1:${port}`);
   } catch (err) {
+    printDiagnostics(host, dataRoot, hostOutput);
     try {
       killHost(child.pid);
     } catch {
