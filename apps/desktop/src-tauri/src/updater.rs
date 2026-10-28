@@ -2,7 +2,9 @@ use crate::startup::StartupState;
 #[cfg(not(target_os = "macos"))]
 use crate::startup::count_running_jobs;
 #[cfg(not(target_os = "macos"))]
-use crate::{approve_exit, mark_exit_approved};
+use crate::mark_exit_approved;
+#[cfg(not(target_os = "macos"))]
+use tauri::Manager;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -247,24 +249,9 @@ async fn install_update_with_job_guard(app: &AppHandle, update: tauri_plugin_upd
         return;
     }
 
-    #[cfg(windows)]
-    {
-        // NSIS installer takes over exit; approval flag avoids the quit-with-jobs loop.
-        return;
-    }
-
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
-    {
-        use tauri_plugin_process::ProcessExt;
-        approve_exit(app);
-        let _ = app.process().relaunch();
-    }
+    // On Windows the NSIS installer ends the process itself.
+    #[cfg(not(windows))]
+    app.restart();
 }
 
 #[cfg(not(target_os = "macos"))]
