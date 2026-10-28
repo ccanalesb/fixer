@@ -151,6 +151,8 @@ jobs:
         env:
           TAURI_BUILD_CONFIG: ${{ github.workspace }}/tauri-build-config.json
           USE_XVFB: ${{ matrix.use_xvfb && '1' || '0' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bash scripts/release-tauri-build.sh
 
       - name: Upload bundles (pull request)
@@ -163,6 +165,8 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/macos/*.app/**/*
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
             apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+            apps/desktop/src-tauri/target/release/bundle/**/*.sig
+            apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz
           if-no-files-found: warn
 
       - name: Zip macOS app when DMG is absent (pull request)

@@ -24,7 +24,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk1QjFGOEQ2QjY3QjMxOTgKUldTWU1YdTIxdml4bFYyTkozMU5SUWhadmhBbmNMcjMrWDNVNUlEL0VsSVh2SjhOak9NdllwTmEK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU0NDc0RTZGOTZCNzU0RTQKUldUa1ZMZVdiMDVINVBEZmo2YkxxMnpHTXg2Uk9FMWZITGVVYmQzMG1selZaWGVHcGd3Z2dPeFEK",
       "endpoints": [
         "https://github.com/ccanalesb/fixer/releases/latest/download/latest.json"
       ],
