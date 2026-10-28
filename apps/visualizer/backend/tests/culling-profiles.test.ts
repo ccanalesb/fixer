@@ -1,13 +1,11 @@
 /**
  * Culling profiles HTTP routes.
  */
-import Database from 'better-sqlite3';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import { BATCH_CULL_JOB_TYPE } from '../src/jobs/handlers/cull.js';
 import { BATCH_REDECIDE_JOB_TYPE } from '../src/jobs/handlers/redecide.js';
@@ -51,8 +49,7 @@ beforeEach(() => {
   );
   process.env.DATABASE_PATH = jobsDbPath;
   process.env.LT_CONFIG_YAML = join(jobsDir, 'config.yaml');
-  fx = new LibraryFixture().activate();
-  initLibraryDb(fx.dbPath);
+  fx = new LibraryFixture().seedFactoryDefaults().activate();
 });
 
 afterEach(() => {
@@ -235,7 +232,7 @@ describe('PUT /api/culling-profiles/{slug}/rule bands', () => {
 
 describe('PUT /api/culling-profiles/pipeline/score-forecast', () => {
   it('bumps pipeline version and enqueues re-decide', async () => {
-    const before = getCurrentPipelineSetting(new Database(fx.dbPath)).version;
+    const before = fx.withDb((db) => getCurrentPipelineSetting(db).version);
     const res = await app.request('/api/culling-profiles/pipeline/score-forecast', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -254,7 +251,7 @@ describe('PUT /api/culling-profiles/pipeline/score-forecast', () => {
       body: JSON.stringify({ enabled: false, high_from_level: 7 }),
     });
     expect(res.status).toBe(200);
-    expect(getCurrentPipelineSetting(new Database(fx.dbPath)).config.score_forecast).toMatchObject({
+    expect(fx.withDb((db) => getCurrentPipelineSetting(db).config.score_forecast)).toMatchObject({
       enabled: false,
       high_from_level: 7,
       threshold: 0.111,
@@ -280,13 +277,13 @@ describe('PUT /api/culling-profiles/pipeline/culling-profiles', () => {
     });
 
   it('switches the culling profiles and their filter, as a new version that is re-decided', async () => {
-    const before = getCurrentPipelineSetting(new Database(fx.dbPath)).version;
+    const before = fx.withDb((db) => getCurrentPipelineSetting(db).version);
     const res = await put({ enabled: true, filter_enabled: false });
     expect(res.status).toBe(200);
     const body = await json<{ version: number; redecide_job_id: string | null }>(res);
     expect(body.version).toBeGreaterThan(before);
     expect(body.redecide_job_id).toBeTruthy();
-    expect(getCurrentPipelineSetting(new Database(fx.dbPath)).config).toMatchObject({
+    expect(fx.withDb((db) => getCurrentPipelineSetting(db).config)).toMatchObject({
       culling_profiles_enabled: true,
       culling_profiles_filter_enabled: false,
     });
@@ -294,7 +291,7 @@ describe('PUT /api/culling-profiles/pipeline/culling-profiles', () => {
 
   it('changes only what it is given', async () => {
     expect((await put({ enabled: false })).status).toBe(200);
-    expect(getCurrentPipelineSetting(new Database(fx.dbPath)).config).toMatchObject({
+    expect(fx.withDb((db) => getCurrentPipelineSetting(db).config)).toMatchObject({
       culling_profiles_enabled: false,
       culling_profiles_filter_enabled: true,
     });

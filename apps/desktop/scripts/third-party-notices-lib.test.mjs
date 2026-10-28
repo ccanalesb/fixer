@@ -11,6 +11,7 @@ import {
   formatSection,
   readPackageLicense,
   sharpLibvipsPackageName,
+  sharpLibvipsReleaseVersion,
 } from './third-party-notices-lib.mjs';
 
 test('findLicenseFileInDir prefers LICENSE', () => {
@@ -77,6 +78,25 @@ test('collectNpmPackagesFromNodeModules fails on missing license in tree', async
 
 test('sharpLibvipsPackageName maps linux x64', () => {
   assert.equal(sharpLibvipsPackageName('linux', 'x64'), '@img/sharp-libvips-linux-x64');
+});
+
+test('sharpLibvipsPackageName maps win32 x64 to the sharp platform package', () => {
+  assert.equal(sharpLibvipsPackageName('win32', 'x64'), '@img/sharp-win32-x64');
+});
+
+test('sharpLibvipsReleaseVersion reads the release sharp pins when libvips has no package of its own', () => {
+  const root = mkdtempSync(join(tmpdir(), 'notices-sharp-'));
+  try {
+    mkdirSync(join(root, 'sharp'), { recursive: true });
+    writeFileSync(
+      join(root, 'sharp', 'package.json'),
+      JSON.stringify({ name: 'sharp', version: '0.34.5', optionalDependencies: { '@img/sharp-libvips-darwin-arm64': '1.2.4', '@img/sharp-win32-x64': '0.34.5' } }),
+    );
+    assert.equal(sharpLibvipsReleaseVersion(root, '@img/sharp-win32-x64', '0.34.5'), '1.2.4');
+    assert.equal(sharpLibvipsReleaseVersion(root, '@img/sharp-libvips-linux-x64', '1.2.4'), '1.2.4');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('formatSection includes header rule', () => {

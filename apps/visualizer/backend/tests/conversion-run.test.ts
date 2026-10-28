@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+const uvBinName = process.platform === 'win32' ? 'uv.exe' : 'uv';
 import { tmpdir } from 'node:os';
 import { REPO_ROOT } from '../src/config.js';
 import {
@@ -35,7 +37,7 @@ describe('resolveUvExecutable', () => {
   it('uses the bundled binary under resources when it exists', () => {
     const resources = join(dir, 'resources');
     mkdirSync(join(resources, 'bin'), { recursive: true });
-    const bundled = join(resources, 'bin', 'uv');
+    const bundled = join(resources, 'bin', uvBinName);
     writeFileSync(bundled, '');
     chmodSync(bundled, 0o755);
     process.env.LT_RESOURCES_DIR = resources;
@@ -45,7 +47,7 @@ describe('resolveUvExecutable', () => {
 
   it('falls back to uv on PATH when nothing is bundled', () => {
     delete process.env.LT_RESOURCES_DIR;
-    expect(resolveUvExecutable()).toBe('uv');
+    expect(resolveUvExecutable()).toBe(uvBinName);
   });
 });
 

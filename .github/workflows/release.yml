@@ -1,0 +1,206 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-beta.*'
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - '.github/workflows/release.yml'
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Tag matches root package version
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        run: node apps/desktop/scripts/check-release-version.mjs "${{ github.ref_name }}"
+
+  gate:
+    needs: preflight
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build (${{ matrix.label }})
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS arm64
+            runner: macos-latest
+            triple: aarch64-apple-darwin
+            prune_platform: darwin
+            prune_arch: arm64
+            bundle_targets: '["dmg","app"]'
+            use_xvfb: false
+          - label: Windows x64
+            runner: windows-latest
+            triple: x86_64-pc-windows-msvc
+            prune_platform: win32
+            prune_arch: x64
+            bundle_targets: '["nsis"]'
+            use_xvfb: false
+          - label: Linux x64
+            runner: ubuntu-22.04
+            triple: x86_64-unknown-linux-gnu
+            prune_platform: linux
+            prune_arch: x64
+            bundle_targets: '["deb"]'
+            use_xvfb: true
+
+    runs-on: ${{ matrix.runner }}
+    env:
+      PRUNE_PLATFORM: ${{ matrix.prune_platform }}
+      PRUNE_ARCH: ${{ matrix.prune_arch }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            apps/visualizer/backend/package-lock.json
+            apps/visualizer/frontend/package-lock.json
+            apps/desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install Linux build dependencies
+        if: matrix.runner == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xvfb
+
+      - name: Backend tests
+        working-directory: apps/visualizer/backend
+        run: |
+          npm ci
+          npm test
+
+      - name: Fetch pinned Node
+        shell: bash
+        run: bash apps/desktop/scripts/fetch-node.sh "${{ matrix.triple }}"
+
+      - name: Stage and prune backend resources
+        shell: bash
+        run: bash apps/desktop/scripts/stage-resources.sh
+
+      - name: Fetch pinned uv
+        run: node apps/desktop/scripts/fetch-uv.mjs "${{ matrix.triple }}"
+
+      - name: Addon smoke (staged backend)
+        shell: bash
+        run: |
+          NODE_BIN="apps/desktop/src-tauri/binaries/node-${{ matrix.triple }}"
+          if [ "${{ matrix.triple }}" = "x86_64-pc-windows-msvc" ]; then NODE_BIN="${NODE_BIN}.exe"; fi
+          node apps/desktop/scripts/smoke-packaged-backend.mjs \
+            --node "$NODE_BIN" \
+            --backend apps/desktop/staged-resources
+
+      - name: Install Tauri CLI dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Write Tauri build config overlay
+        id: tauri_config
+        shell: bash
+        run: |
+          node <<'NODE' > tauri-build-config.json
+          const fs = require('fs');
+          const base = JSON.parse(fs.readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+          const targets = JSON.parse(process.env.BUNDLE_TARGETS);
+          const createUpdater = Boolean(process.env.TAURI_SIGNING_PRIVATE_KEY);
+          base.bundle = {
+            ...base.bundle,
+            targets,
+            createUpdaterArtifacts: createUpdater,
+            macOS: { ...(base.bundle.macOS || {}), signingIdentity: '-' },
+          };
+          console.log(JSON.stringify(base));
+          NODE
+        env:
+          BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - name: Build bundles and packaged smoke (pull request)
+        if: github.event_name == 'pull_request'
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          TAURI_BUILD_CONFIG: ${{ github.workspace }}/tauri-build-config.json
+          USE_XVFB: ${{ matrix.use_xvfb && '1' || '0' }}
+        run: bash scripts/release-tauri-build.sh
+
+      - name: Upload bundles (pull request)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixer-${{ matrix.triple }}
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/macos/*.app/**/*
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: warn
+
+      - name: Zip macOS app when DMG is absent (pull request)
+        if: github.event_name == 'pull_request' && matrix.runner == 'macos-latest'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          dmgs=(apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg)
+          if [ ${#dmgs[@]} -eq 0 ]; then
+            APP=$(find apps/desktop/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)
+            if [ -n "$APP" ]; then
+              ditto -c -k --sequesterRsrc --keepParent "$APP" fixer-macos-app.zip
+            fi
+          fi
+
+      - name: Upload macOS app zip fallback (pull request)
+        if: github.event_name == 'pull_request' && matrix.runner == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixer-${{ matrix.triple }}-app-zip
+          path: fixer-macos-app.zip
+          if-no-files-found: ignore
+
+      - name: Publish platform bundle to draft release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_BUILD_CONFIG: ${{ github.workspace }}/tauri-build-config.json
+          USE_XVFB: ${{ matrix.use_xvfb && '1' || '0' }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Fixer ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          generateReleaseNotes: true
+          updaterJsonPreferNsis: true
+          projectPath: apps/desktop
+          tauriScript: bash scripts/release-tauri-build.sh

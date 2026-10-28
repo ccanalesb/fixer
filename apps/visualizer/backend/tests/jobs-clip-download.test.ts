@@ -15,7 +15,6 @@ let dbPath: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-clip-dl-'));
   dbPath = join(dir, 'visualizer.db');
-  initJobsDb(dbPath);
 });
 
 afterEach(() => {

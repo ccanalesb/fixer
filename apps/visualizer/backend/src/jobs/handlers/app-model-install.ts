@@ -9,7 +9,6 @@
  * The script runs in its own process group, so the backend's Ctrl-C does not reach it; the backend's exit
  * stops it instead, or a quick restart would have two scripts writing the same `.install-<name>/`.
  */
-import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -19,7 +18,7 @@ import {
   conversionChildSpawnOptions,
   conversionFailureMessage,
   createProcessTreeKiller,
-  resolveUvExecutable,
+  spawnUv,
   type ProcessTreeKiller,
 } from '../../app-models/conversion-run.js';
 import { AppModelSetupError, resolveInstalledModel } from '../../app-models/files.js';
@@ -62,7 +61,9 @@ export function setProcessTreeKiller(killer: ProcessTreeKiller): void {
 }
 
 export function stopRunningConversions(): void {
-  for (const pid of running) killProcessTree(pid, 'SIGTERM');
+  // On Windows, SIGTERM often leaves a detached `uv`/Node conversion tree running; force-kill on shutdown.
+  const signal: NodeJS.Signals = process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM';
+  for (const pid of running) killProcessTree(pid, signal);
 }
 
 function scriptFailure(kind: string, message: string): string {
@@ -73,8 +74,7 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
   return new Promise((settle) => {
     runner.setCurrentStep(jobId, CONVERTER_PREP_STEP);
     const script = exportOnnxScriptPath();
-    const child = spawn(
-      resolveUvExecutable(),
+    const child = spawnUv(
       ['run', script, source, '--name', name, '--out', modelsDir, '--job-id', jobId],
       conversionChildSpawnOptions(),
     );

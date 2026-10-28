@@ -5,6 +5,7 @@ on:
     paths:
       - 'apps/visualizer/**'
       - 'docs/adr/**'
+  workflow_call:
 
 jobs:
   contract:

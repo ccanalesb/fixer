@@ -509,13 +509,27 @@ export function sharpLibvipsPackageName(platform, arch) {
   if (platform === 'darwin') {
     return `@img/sharp-libvips-darwin-${arch}`;
   }
+  // On Windows sharp ships libvips inside its own platform package.
   if (platform === 'win32') {
-    return `@img/sharp-libvips-win32-${arch}`;
+    return `@img/sharp-win32-${arch}`;
   }
   if (platform === 'linux') {
     return `@img/sharp-libvips-linux-${arch}`;
   }
   throw new Error(`Unsupported platform for sharp-libvips: ${platform}`);
+}
+
+/** The sharp-libvips release that `sharp` pins; its tag holds the upstream notices. */
+export function sharpLibvipsReleaseVersion(nodeModulesRoot, libvipsPackageName, libvipsPackageVersion) {
+  if (libvipsPackageName.startsWith('@img/sharp-libvips-')) return libvipsPackageVersion;
+  const sharpDir = resolvePackageDir(nodeModulesRoot, 'sharp');
+  if (!sharpDir) throw new Error('sharp not found in staged backend node_modules');
+  const sharpPkg = JSON.parse(readFileSync(join(sharpDir, 'package.json'), 'utf8'));
+  const pinned = Object.entries(sharpPkg.optionalDependencies ?? {}).find(([name]) =>
+    name.startsWith('@img/sharp-libvips-'),
+  );
+  if (!pinned) throw new Error('sharp does not pin a sharp-libvips release');
+  return pinned[1];
 }
 
 export function findSharpLibvipsDir(nodeModulesRoot, platform, arch) {
@@ -672,7 +686,10 @@ export async function buildThirdPartyNotices(options) {
     arch,
   );
   const sharpPkg = await resolveNpmPackageLicense(sharpDir, fetchImpl, npmCache);
-  const sharpUpstream = await loadSharpLibvipsNotices(sharpPkg.version, fetchImpl);
+  const sharpUpstream = await loadSharpLibvipsNotices(
+    sharpLibvipsReleaseVersion(backendNm, sharpPkgName, sharpPkg.version),
+    fetchImpl,
+  );
 
   const librawWasmDir = resolvePackageDir(backendNm, 'libraw-wasm');
   if (!librawWasmDir) {

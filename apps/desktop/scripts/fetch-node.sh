@@ -53,7 +53,9 @@ curl -fsSL "$SUMS_URL" -o "$WORK/SHASUMS256.txt"
 
 (
   cd "$WORK"
-  grep "  ${ARCHIVE}\$" SHASUMS256.txt | shasum -a 256 -c -
+  # Git Bash on Windows ships sha256sum but not shasum.
+  if command -v sha256sum >/dev/null; then sha256=(sha256sum); else sha256=(shasum -a 256); fi
+  grep "  ${ARCHIVE}\$" SHASUMS256.txt | "${sha256[@]}" -c -
 )
 
 case "$NODE_OS" in

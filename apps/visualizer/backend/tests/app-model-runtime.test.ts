@@ -219,7 +219,7 @@ describe('model files', () => {
   });
 
   it('reads app_models_dir from config.yaml, defaulting to models/ in the repo', () => {
-    expect(loadLibraryConfig('/nonexistent/config.yaml').appModelsDir).toMatch(/\/models$/);
+    expect(loadLibraryConfig('/nonexistent/config.yaml').appModelsDir).toMatch(/models$/);
     const cfg = join(dir, 'config.yaml');
     writeFileSync(cfg, 'app_models_dir: /somewhere/models\n');
     expect(loadLibraryConfig(cfg).appModelsDir).toBe('/somewhere/models');

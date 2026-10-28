@@ -61,8 +61,9 @@ pub fn run() {
                 .resource_dir()
                 .map_err(|e| e.to_string())?
                 .join("fixer-resources");
-            let data_dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-            let log_dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
+            let resources_dir = sidecar::plain_path(resources_dir);
+            let data_dir = sidecar::plain_path(app.path().app_local_data_dir().map_err(|e| e.to_string())?);
+            let log_dir = sidecar::plain_path(app.path().app_log_dir().map_err(|e| e.to_string())?);
 
             let sidecar = SidecarHandle::new(SidecarSpawnContext {
                 resources_dir,

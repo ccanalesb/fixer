@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as sqliteVec from 'sqlite-vec';
 import { serializeFloat32 } from '../../src/db/connection.js';
-import { createLibrarySchema } from '../../src/db/library/bootstrap.js';
+import { createLibrarySchema, initLibraryDb } from '../../src/db/library/bootstrap.js';
 import { saveForecastQuestions } from '../../src/db/library/score-forecast-questions.js';
 import { forecastQuestionsFrom } from '../../src/cull/forecast-questions.js';
 import { FACTORY_QUESTIONS } from '../../src/app-models/factory-questions.js';
@@ -280,24 +280,26 @@ export class LibraryFixture {
     return this;
   }
 
-  /** Direct SQL, for the handful of assertions that need to inspect writes. */
-  query<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T[] {
+  /** Open the library, run `fn`, and always close — required on Windows before temp dir removal. */
+  withDb<T>(fn: (db: Database.Database) => T): T {
     const db = this.open();
     try {
-      return db.prepare(sql).all(...(params as never[])) as T[];
+      return fn(db);
     } finally {
       db.close();
     }
   }
 
+  /** Direct SQL, for the handful of assertions that need to inspect writes. */
+  query<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T[] {
+    return this.withDb((db) => db.prepare(sql).all(...(params as never[])) as T[]);
+  }
+
   /** Direct SQL that writes, for tests that mutate a seed mid-run. */
   exec(sql: string, ...params: unknown[]): void {
-    const db = this.open();
-    try {
+    this.withDb((db) => {
       db.prepare(sql).run(...(params as never[]));
-    } finally {
-      db.close();
-    }
+    });
   }
 
   /** The factory Score forecast questions, as this library has them. */
@@ -328,8 +330,17 @@ export class LibraryFixture {
     return this;
   }
 
+  /**
+   * Factory perspectives and culling defaults, the same work as `initLibraryDb` after the bare schema.
+   * Closes the connection so temp cleanup can remove the directory on Windows.
+   */
+  seedFactoryDefaults(): this {
+    initLibraryDb(this.dbPath).close();
+    return this;
+  }
+
   cleanup(): void {
     delete process.env.LIBRARY_DB;
-    rmSync(this.dir, { recursive: true, force: true });
+    rmSync(this.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }

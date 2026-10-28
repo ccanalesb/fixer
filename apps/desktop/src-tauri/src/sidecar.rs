@@ -238,8 +238,17 @@ fn fs_create_dir(path: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
 }
 
+/// Windows path APIs hand back `\\?\C:\…`; Node and the backend expect `C:\…`.
+pub fn plain_path(path: PathBuf) -> PathBuf {
+    let s = path.to_string_lossy();
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with(r"UNC\") => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
 fn node_binary_path() -> std::io::Result<PathBuf> {
-    let exe = std::env::current_exe()?;
+    let exe = plain_path(std::env::current_exe()?);
     let dir = exe
         .parent()
         .ok_or_else(|| std::io::Error::other("no parent for current exe"))?;
@@ -414,5 +423,25 @@ impl WaitTimeout for Child {
             }
             thread::sleep(Duration::from_millis(100));
         }
+    }
+}
+
+#[cfg(test)]
+mod plain_path_tests {
+    use super::plain_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn strips_the_verbatim_prefix_from_drive_paths() {
+        assert_eq!(
+            plain_path(PathBuf::from(r"\\?\D:\a\Fixer\fixer-resources")),
+            PathBuf::from(r"D:\a\Fixer\fixer-resources")
+        );
+    }
+
+    #[test]
+    fn keeps_verbatim_unc_and_ordinary_paths() {
+        assert_eq!(plain_path(PathBuf::from(r"\\?\UNC\host\share")), PathBuf::from(r"\\?\UNC\host\share"));
+        assert_eq!(plain_path(PathBuf::from("/Applications/Fixer.app")), PathBuf::from("/Applications/Fixer.app"));
     }
 }

@@ -11,7 +11,6 @@ import { createApp } from '../src/app.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { createJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { APP_MODEL_INSTALL_JOB_TYPE } from '../src/app-models/install.js';
-import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { getOrCreateStageVersion, upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { insertCullRun } from '../src/db/library/cull-verdicts.js';
@@ -49,8 +48,7 @@ beforeEach(() => {
   writeFileSync(configPath, `app_models_dir: ${modelsDir}\ncatalog_path: /somewhere/catalog.lrcat\n`);
   process.env.LT_CONFIG_YAML = configPath;
   process.env.DATABASE_PATH = join(dir, 'visualizer.db');
-  fx = new LibraryFixture().activate();
-  initLibraryDb(fx.dbPath);
+  fx = new LibraryFixture().seedFactoryDefaults().activate();
 });
 
 afterEach(() => {
