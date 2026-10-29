@@ -55,3 +55,4 @@ export function providerAddressesEquivalent(a: string, b: string): boolean {
   if (normalizedPort(ua) !== normalizedPort(ub)) return false;
   return stripOptionalV1Path(ua.pathname) === stripOptionalV1Path(ub.pathname);
 }
+

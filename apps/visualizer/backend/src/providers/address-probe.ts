@@ -35,3 +35,24 @@ export async function runAddressProbe(
   }
   return { answered: false, url: null, error: lastError };
 }
+
+/**
+ * After a successful address probe, pick the literal `base_url` to store.
+ *
+ * Uses which models URL answered; when nothing answered, keeps the trimmed input.
+ */
+export function storedLiteralBaseAfterProbe(
+  trimmedBase: string,
+  probe: Pick<AddressProbeResult, 'answered' | 'url'>,
+): string {
+  const trimmed = normalizeBaseUrlInput(trimmedBase).replace(/\/+$/, '');
+  if (!probe.answered || !probe.url) return trimmed;
+  if (probe.url.endsWith('/v1/models')) {
+    if (trimmed.endsWith('/v1')) return trimmed;
+    return `${trimmed}/v1`;
+  }
+  if (probe.url.endsWith('/models')) {
+    return trimmed;
+  }
+  return trimmed;
+}

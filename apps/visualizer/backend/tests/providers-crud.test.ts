@@ -93,7 +93,7 @@ describe('POST /api/providers/', () => {
     expect(body.address_probe.url).toBe(`${stubBase}/v1/models`);
 
     const stored = (readProviders().providers as Record<string, { auth: { secret?: { value: string } } }>)
-      .stub;
+      .stub!;
     expect(stored.auth.secret?.value).toBe('secret-key');
 
     const db = new Database(jobsDbPath, { readonly: true });
@@ -135,7 +135,7 @@ describe('PUT /api/providers/{id}', () => {
     const hostRes = await send('PUT', '/api/providers/edge', { base_url: otherHost });
     expect(hostRes.status).toBe(200);
     expect(
-      (readProviders().providers as Record<string, { auth: { secret?: unknown } }>).edge.auth.secret,
+      (readProviders().providers as Record<string, { auth: { secret?: unknown } }>).edge!.auth.secret,
     ).toBeUndefined();
 
     writeNewShapeProviders(providersPath, {
@@ -157,7 +157,7 @@ describe('PUT /api/providers/{id}', () => {
     });
     expect(portRes.status).toBe(200);
     expect(
-      (readProviders().providers as Record<string, { auth: { secret?: { value: string } } }>).edge
+      (readProviders().providers as Record<string, { auth: { secret?: { value: string } } }>).edge!
         .auth.secret?.value,
     ).toBe('keep-me');
   }, 15_000);

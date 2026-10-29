@@ -7,10 +7,10 @@ export type KnownProviderPreset = {
 };
 
 export const KNOWN_PROVIDER_PRESETS: KnownProviderPreset[] = [
-  { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434', authMode: 'none' },
-  { id: 'lmstudio', label: 'LM Studio', baseUrl: 'http://localhost:1234', authMode: 'none' },
-  { id: 'vllm', label: 'vLLM', baseUrl: 'http://localhost:8000', authMode: 'none' },
-  { id: 'llamacpp', label: 'llama.cpp', baseUrl: 'http://localhost:8080', authMode: 'none' },
+  { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1', authMode: 'none' },
+  { id: 'lmstudio', label: 'LM Studio', baseUrl: 'http://localhost:1234/v1', authMode: 'none' },
+  { id: 'vllm', label: 'vLLM', baseUrl: 'http://localhost:8000/v1', authMode: 'none' },
+  { id: 'llamacpp', label: 'llama.cpp', baseUrl: 'http://localhost:8080/v1', authMode: 'none' },
   {
     id: 'openrouter',
     label: 'OpenRouter',

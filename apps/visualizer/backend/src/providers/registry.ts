@@ -26,7 +26,7 @@ import {
   getProviderAddressProbe,
   upsertProviderAddressProbe,
 } from '../db/jobs/provider-probes.js';
-import { runAddressProbe } from './address-probe.js';
+import { runAddressProbe, storedLiteralBaseAfterProbe } from './address-probe.js';
 import {
   normalizeBaseUrlInput,
   providerAddressesEquivalent,
@@ -198,7 +198,7 @@ export class ProviderRegistry {
       this.config.fallback_order = [...order, id];
     }
     this.saveConfig();
-    await this.runAndPersistAddressProbe(id);
+    await this.runAndPersistAddressProbe(id, base);
     return await this.buildProviderSummary(id, cfg);
   }
 
@@ -244,14 +244,20 @@ export class ProviderRegistry {
     }
 
     this.saveConfig();
-    await this.runAndPersistAddressProbe(providerId);
+    const probeTrimmed =
+      input.base_url !== undefined ? normalizeBaseUrlInput(input.base_url) : undefined;
+    await this.runAndPersistAddressProbe(providerId, probeTrimmed);
     return await this.buildProviderSummary(providerId, cfg);
   }
 
   /** Run the address probe and store the outcome in `visualizer.db`. */
-  async runAndPersistAddressProbe(providerId: string): Promise<ProviderAddressProbeSummary> {
+  async runAndPersistAddressProbe(
+    providerId: string,
+    trimmedBaseOverride?: string,
+  ): Promise<ProviderAddressProbeSummary> {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
+    const probeBase = trimmedBaseOverride ?? cfg.base_url.value;
     const http = this.buildHttpEndpoint(cfg);
     const { answered, url, error } = await runAddressProbe(
       {
@@ -261,8 +267,15 @@ export class ProviderRegistry {
         extraHeaders: http.extraHeaders,
         timeoutMs: 5000,
       },
-      cfg.base_url.value,
+      probeBase,
     );
+    if (cfg.base_url.from === 'literal' && cfg.protocol !== 'system_one') {
+      const stored = storedLiteralBaseAfterProbe(probeBase, { answered, url });
+      if (stored !== cfg.base_url.value) {
+        cfg.base_url.value = stored;
+        this.saveConfig();
+      }
+    }
     const row: ProviderAddressProbeSummary = {
       answered,
       url,
@@ -622,7 +635,10 @@ export class ProviderRegistry {
     if (!host) return '';
     const base = host.replace(/\/+$/, '');
     if (cfg.protocol === 'system_one') return base;
-    return base.endsWith('/v1') ? base : `${base}/v1`;
+    if (cfg.base_url.from === 'env') {
+      return base.endsWith('/v1') ? base : `${base}/v1`;
+    }
+    return base;
   }
 
   resolveApiKey(cfg: ProviderConfig): string {
