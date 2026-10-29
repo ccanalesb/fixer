@@ -126,26 +126,33 @@ export class FallbackDispatcher {
     primaryModel: string,
   ): Promise<{ attempts: [string, string][]; emptyFallbacks: string[] }> {
     const availableIds = new Set(
-      (await this.registry.listProviders()).filter((p) => p.available).map((p) => p.id),
+      (await this.registry.listProviders())
+        .filter((p) => p.available && this.registry.isCascadeEligible(p.id))
+        .map((p) => p.id),
     );
 
     const attempts: [string, string][] = [];
     const emptyFallbacks: string[] = [];
 
     if (availableIds.has(primaryId)) {
-      const visionModels = (await this.registry.listModels(primaryId))
-        .filter((m) => m.vision)
-        .map((m) => m.id);
-      // The requested model goes first even when it is not in the list — the
-      // user may have typed a model the registry has not discovered yet.
-      const ordered = [primaryModel, ...visionModels.filter((m) => m !== primaryModel)];
+      const listed = await this.registry.listModels(primaryId);
+      const byId = new Map(listed.map((m) => [m.id, m]));
+      const visionModels = listed.filter((m) => m.vision !== false).map((m) => m.id);
+      const listedPrimary = byId.get(primaryModel);
+      const primaryAccepts =
+        listedPrimary === undefined || listedPrimary.vision !== false;
+      // The requested model goes first when it is unknown or still accepts images.
+      const ordered = [
+        ...(primaryAccepts ? [primaryModel] : []),
+        ...visionModels.filter((m) => m !== primaryModel),
+      ];
       for (const mid of ordered) attempts.push([primaryId, mid]);
     }
 
     for (const pid of this.registry.fallbackOrder) {
       if (pid === primaryId || !availableIds.has(pid)) continue;
       const visionModels = (await this.registry.listModels(pid))
-        .filter((m) => m.vision)
+        .filter((m) => m.vision !== false)
         .map((m) => m.id);
       if (visionModels.length > 0) attempts.push([pid, visionModels[0]!]);
       else emptyFallbacks.push(pid);

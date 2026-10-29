@@ -1,6 +1,5 @@
 /**
- * Provider registry — loads `providers.json`, auto-discovers Ollama models, and
- * resolves credentials.
+ * Provider registry — loads `providers.json` and resolves credentials.
  *
  * `providers.json` is gitignored and owned by the user's machine, so it is treated
  * as untrusted input in one specific way: a `defaults` block may name a resolution
@@ -8,13 +7,29 @@
  * warning rather than failing — the same courtesy `load_config` extends to
  * `config.yaml`.
  *
- * Model listing, Ollama discovery, and tool-calling probes use plain `fetch`
- * against OpenAI-compatible endpoints. Probe requests do not retry.
+ * Model listing and tool-calling probes use plain `fetch` against OpenAI-compatible
+ * endpoints. Probe requests do not retry.
  */
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { config, providersExamplePath } from '../config.js';
-import { requestJson } from './http.js';
+import { openDb } from '../db/connection.js';
+import {
+  listProviderModels,
+  visionFromRow,
+  type ProviderModelRow,
+} from '../db/jobs/provider-models.js';
+import { writePrivateFile } from '../utils/private-file.js';
+import { requestJson, type HttpEndpoint } from './http.js';
+import { migrateProvidersConfigIfNeeded } from './migrate-providers.js';
 import type { ProviderClient } from './vision-client.js';
+import type {
+  DefaultsEntry,
+  ProviderConfig,
+  ProviderModelEntry,
+  ProviderSummary,
+  RegistryConfig,
+  ValueRef,
+} from './registry-types.js';
 
 /** The shipped template the registry bootstraps from on first use. */
 function examplePath(): string {
@@ -45,50 +60,14 @@ const PROBE_TOOL = {
   },
 } as const;
 
-export interface ProviderModelEntry {
-  id: string;
-  name: string;
-  vision?: boolean;
-  source?: 'config' | 'discovered' | 'user';
-  [key: string]: unknown;
-}
-
-export interface ProviderConfig {
-  name: string;
-  tool_calling?: boolean;
-  base_url?: string;
-  base_url_env?: string;
-  base_url_default?: string;
-  api_key?: string;
-  api_key_env?: string;
-  auto_discover?: boolean;
-  /** Use Ollama's native `/api/chat` for vision calls. See `ProviderClient`. */
-  native_chat?: boolean;
-  extra_headers?: Record<string, string>;
-  request_timeout_seconds?: number;
-  retry?: Record<string, unknown>;
-  models?: ProviderModelEntry[];
-  model_order?: string[];
-}
-
-export interface ProviderSummary {
-  id: string;
-  name: string;
-  available: boolean;
-  tool_calling: boolean;
-}
-
-export interface DefaultsEntry {
-  provider: string;
-  model?: string | null;
-}
-
-interface RegistryConfig {
-  retry_defaults?: Record<string, unknown>;
-  providers: Record<string, ProviderConfig>;
-  defaults?: Record<string, DefaultsEntry>;
-  fallback_order?: string[];
-}
+export type {
+  DefaultsEntry,
+  ProviderConfig,
+  ProviderModelEntry,
+  ProviderSummary,
+  RegistryConfig,
+  ValueRef,
+} from './registry-types.js';
 
 /** Raised for caller mistakes the API maps to 404 (unknown provider). */
 export class UnknownProviderError extends Error {
@@ -101,7 +80,6 @@ export class UnknownProviderError extends Error {
 export class ProviderRegistry {
   private readonly configPath: string;
   private config: RegistryConfig;
-  private readonly discoveredCache = new Map<string, ProviderModelEntry[]>();
 
   constructor(configPath: string = config.LT_PROVIDERS_JSON) {
     this.configPath = configPath;
@@ -109,6 +87,7 @@ export class ProviderRegistry {
     if (!existsSync(this.configPath) && existsSync(example)) {
       copyFileSync(example, this.configPath);
     }
+    migrateProvidersConfigIfNeeded(this.configPath, config.VISUALIZER_DB);
     this.config = JSON.parse(readFileSync(this.configPath, 'utf8')) as RegistryConfig;
     this.dropUnknownDefaults();
   }
@@ -152,6 +131,12 @@ export class ProviderRegistry {
     return Object.hasOwn(this.providers, providerId);
   }
 
+  isEnabled(providerId: string): boolean {
+    const cfg = this.providers[providerId];
+    if (!cfg) return false;
+    return cfg.enabled !== false;
+  }
+
   /** The provider's custom model order, or `[]`. */
   modelOrderFor(providerId: string): string[] {
     return this.providers[providerId]?.model_order ?? [];
@@ -176,19 +161,24 @@ export class ProviderRegistry {
     return out;
   }
 
-  /** Config models plus auto-discovered ones, in the user's custom order. */
+  /** Models stored for this provider in `visualizer.db`. */
   async listModels(providerId: string): Promise<ProviderModelEntry[]> {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
 
-    const models: ProviderModelEntry[] = (cfg.models ?? []).map((m) => ({
-      ...m,
-      source: 'config' as const,
-    }));
-    if (cfg.auto_discover) {
-      models.push(...(await this.discoverModels(providerId, cfg)));
-    }
+    const rows = this.readModelRows(providerId);
+    const models: ProviderModelEntry[] = rows.map((row) => rowToEntry(row));
     return applyModelOrder(models, cfg.model_order ?? []);
+  }
+
+  private readModelRows(providerId: string): ProviderModelRow[] {
+    if (!existsSync(config.VISUALIZER_DB)) return [];
+    const db = openDb(config.VISUALIZER_DB, { readonly: true, vec: false });
+    try {
+      return listProviderModels(db, providerId);
+    } finally {
+      db.close();
+    }
   }
 
   /**
@@ -222,16 +212,15 @@ export class ProviderRegistry {
   getClient(providerId: string): ProviderClient {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
+    const endpoint = this.buildHttpEndpoint(cfg);
     return {
       providerId,
-      baseUrl: this.resolveBaseUrl(cfg),
-      apiKey: this.resolveApiKey(cfg),
+      baseUrl: endpoint.baseUrl,
+      apiKey: endpoint.apiKey,
+      authMode: endpoint.authMode,
+      authHeaderName: endpoint.authHeaderName,
       extraHeaders: cfg.extra_headers ?? {},
       timeoutMs: Number(cfg.request_timeout_seconds ?? 120) * 1000,
-      // Defaulting on the id covers `providers.json` files written before the
-      // flag existed. Renaming that provider without setting `native_chat` is
-      // the one case this gets wrong, and it degrades to the compat endpoint.
-      nativeChat: cfg.native_chat ?? providerId === 'ollama',
     };
   }
 
@@ -280,16 +269,20 @@ export class ProviderRegistry {
     this.saveConfig();
   }
 
-  /** Remove a config model from `providers.json`. Returns whether one went. */
+  /** Remove a model row from `visualizer.db`. Returns whether one went. */
   removeModel(providerId: string, modelId: string): boolean {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
-    const models = cfg.models ?? [];
-    const kept = models.filter((m) => m.id !== modelId);
-    if (kept.length === models.length) return false;
-    cfg.models = kept;
-    this.saveConfig();
-    return true;
+    if (!existsSync(config.VISUALIZER_DB)) return false;
+    const db = openDb(config.VISUALIZER_DB, { readonly: false, vec: false });
+    try {
+      const info = db
+        .prepare('DELETE FROM provider_models WHERE provider_id = ? AND model_id = ?')
+        .run(providerId, modelId);
+      return info.changes > 0;
+    } finally {
+      db.close();
+    }
   }
 
   /**
@@ -329,7 +322,7 @@ export class ProviderRegistry {
    * from a provider that refuses tools, and guessing `true` would break real requests.
    */
   private async probeToolCalling(providerId: string, cfg: ProviderConfig): Promise<boolean> {
-    let probeModel = cfg.models?.[0]?.id;
+    let probeModel = this.readModelRows(providerId).find((r) => visionFromRow(r))?.model_id;
     if (!probeModel) {
       try {
         probeModel = (await this.discoverOpenAiModels(providerId, 5000))[0];
@@ -358,36 +351,62 @@ export class ProviderRegistry {
   }
 
   private saveConfig(): void {
-    writeFileSync(this.configPath, `${JSON.stringify(this.config, null, 2)}\n`, 'utf8');
+    writePrivateFile(this.configPath, `${JSON.stringify(this.config, null, 2)}\n`);
   }
 
   /**
-   * A provider is available when a credential can be resolved.
-   *
-   * An inline `api_key` (Ollama's literal `"ollama"`) always counts; otherwise the
-   * named environment variable has to be set.
+   * A provider is available when it is enabled and a credential can be resolved.
    */
   private isAvailable(cfg: ProviderConfig): boolean {
-    if (cfg.api_key !== undefined) return true;
-    if (cfg.api_key_env) return Boolean(process.env[cfg.api_key_env]);
-    return false;
+    if (cfg.enabled === false) return false;
+    return this.authResolvable(cfg.auth);
   }
 
-  private resolveBaseUrl(cfg: ProviderConfig): string {
-    if (cfg.base_url !== undefined) return cfg.base_url;
-    const host = cfg.base_url_env ? (process.env[cfg.base_url_env] ?? '') : '';
-    if (host) {
-      // A bare host from the environment gets `/v1` appended; an explicit one is
-      // left alone, so `OLLAMA_HOST=http://box:11434` works either way.
-      const base = host.replace(/\/+$/, '');
+  /** Used by the fallback cascade — credentials plus `enabled`. */
+  isCascadeEligible(providerId: string): boolean {
+    const cfg = this.providers[providerId];
+    if (!cfg || cfg.enabled === false) return false;
+    return this.authResolvable(cfg.auth);
+  }
+
+  private authResolvable(auth: ProviderConfig['auth']): boolean {
+    if (auth.mode === 'none') return true;
+    const secret = auth.secret;
+    if (!secret) return false;
+    if (secret.from === 'literal') return secret.value.length > 0;
+    return Boolean(process.env[secret.value]);
+  }
+
+  resolveValueRef(ref: ValueRef): string {
+    if (ref.from === 'literal') return ref.value;
+    return process.env[ref.value] ?? '';
+  }
+
+  resolveBaseUrl(cfg: ProviderConfig): string {
+    const host = this.resolveValueRef(cfg.base_url);
+    if (!host) return '';
+    const base = host.replace(/\/+$/, '');
+    if (cfg.base_url.from === 'env') {
       return base.endsWith('/v1') ? base : `${base}/v1`;
     }
-    return cfg.base_url_default ?? '';
+    return base;
   }
 
-  private resolveApiKey(cfg: ProviderConfig): string {
-    if (cfg.api_key !== undefined) return cfg.api_key;
-    return cfg.api_key_env ? (process.env[cfg.api_key_env] ?? '') : '';
+  resolveApiKey(cfg: ProviderConfig): string {
+    const auth = cfg.auth;
+    if (auth.mode === 'none') return '';
+    return auth.secret ? this.resolveValueRef(auth.secret) : '';
+  }
+
+  private buildHttpEndpoint(cfg: ProviderConfig): HttpEndpoint {
+    return {
+      baseUrl: this.resolveBaseUrl(cfg),
+      apiKey: this.resolveApiKey(cfg),
+      authMode: cfg.auth.mode,
+      authHeaderName: cfg.auth.header_name,
+      extraHeaders: cfg.extra_headers ?? {},
+      timeoutMs: Number(cfg.request_timeout_seconds ?? 120) * 1000,
+    };
   }
 
   /**
@@ -402,64 +421,28 @@ export class ProviderRegistry {
     path: string,
     opts: { timeoutMs: number; method?: string; body?: unknown },
   ): Promise<unknown> {
-    return requestJson(
-      {
-        baseUrl: this.resolveBaseUrl(cfg),
-        apiKey: this.resolveApiKey(cfg),
-        extraHeaders: cfg.extra_headers ?? {},
-        timeoutMs: opts.timeoutMs,
-      },
-      path,
-      {
-        method: opts.method ?? 'GET',
-        body: opts.body,
-        onHttpError: (res) => new Error(`${res.status} ${res.statusText}`),
-      },
-    );
+    return requestJson(this.buildHttpEndpoint(cfg), path, {
+      method: opts.method ?? 'GET',
+      body: opts.body,
+      onHttpError: (res) => new Error(`${res.status} ${res.statusText}`),
+    });
   }
+}
 
-  /**
-   * Ollama's `/api/tags`, cached per registry instance.
-   *
-   * Not the OpenAI `/models` endpoint: Ollama's tag list is what reports locally
-   * pulled models, and everything it returns is treated as vision-capable because
-   * the tag list does not say.
-   */
-  private async discoverModels(
-    providerId: string,
-    cfg: ProviderConfig,
-  ): Promise<ProviderModelEntry[]> {
-    const cached = this.discoveredCache.get(providerId);
-    if (cached) return cached;
-
-    const tagsUrl = this.resolveBaseUrl(cfg).replace('/v1', '/api/tags');
-    let models: ProviderModelEntry[] = [];
-    try {
-      const res = await fetch(tagsUrl, { signal: AbortSignal.timeout(5000) });
-      if (res.ok) {
-        const data = (await res.json()) as { models?: { name?: string }[] };
-        models = (data.models ?? [])
-          .filter((m) => m.name)
-          .map((m) => ({
-            id: String(m.name),
-            name: String(m.name),
-            vision: true,
-            source: 'discovered' as const,
-          }));
-      }
-    } catch {
-      // A provider that is not running is not an error; it just has no models.
-    }
-    this.discoveredCache.set(providerId, models);
-    return models;
-  }
+function rowToEntry(row: ProviderModelRow): ProviderModelEntry {
+  return {
+    id: row.model_id,
+    name: row.model_name,
+    vision: visionFromRow(row),
+    source: row.origin === 'user' ? 'user' : 'config',
+  };
 }
 
 /**
  * Apply a custom model order, appending anything the order does not mention.
  *
- * Newly discovered models are not in `model_order` yet and must still appear, or
- * pulling a new Ollama model would make it invisible.
+ * Newly added models are not in `model_order` yet and must still appear, or a
+ * hand-entered model would be invisible in the UI.
  */
 export function applyModelOrder(
   models: readonly ProviderModelEntry[],

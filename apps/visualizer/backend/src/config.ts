@@ -6,7 +6,8 @@
  *
  * Load `.env` with `node --env-file=.env` rather than a dotenv dependency.
  */
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { writePrivateFile } from './utils/private-file.js';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -279,7 +280,7 @@ function updateConfigYaml(configFile: string, key: string, value: unknown): void
     mkdirSync(dirname(configFile), { recursive: true });
   }
   data[key] = value;
-  writeFileSync(configFile, stringifyYaml(data, { lineWidth: 0 }), 'utf8');
+  writePrivateFile(configFile, stringifyYaml(data, { lineWidth: 0 }));
 }
 
 /** Write `catalog_path` into `config.yaml`, preserving other keys. */

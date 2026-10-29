@@ -10,18 +10,8 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
 import { openDb, type Db } from '../db/connection.js';
-import {
-  addUserModel,
-  deleteUserModel,
-  DuplicateUserModelError,
-  getUserModels,
-} from '../db/jobs/user-models.js';
-import {
-  applyModelOrder,
-  ProviderRegistry,
-  UnknownProviderError,
-  type ProviderModelEntry,
-} from '../providers/registry.js';
+import { addUserModel, DuplicateUserModelError } from '../db/jobs/provider-models.js';
+import { ProviderRegistry, UnknownProviderError } from '../providers/registry.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
 import { ErrorBody } from './schemas/errors.js';
@@ -296,29 +286,8 @@ providersRoutes.openapi(modelsListRoute, async (c) => {
     return c.json({ error: `Unknown provider: ${providerId}` }, 404);
   }
 
-  const modelsList: ProviderModelEntry[] = await registry.listModels(providerId);
-  const existing = new Set(modelsList.map((m) => m.id));
-  const userModels = existsSync(config.VISUALIZER_DB)
-    ? withJobsDb(false, (db) => getUserModels(db, providerId))
-    : [];
-  for (const userModel of userModels) {
-    if (existing.has(userModel.model_id)) continue;
-    existing.add(userModel.model_id);
-    modelsList.push({
-      id: userModel.model_id,
-      name: userModel.model_name,
-      vision: Boolean(userModel.vision),
-      source: 'user',
-    });
-  }
-
-  // The custom order is applied again after user models are appended.
-  return c.json(
-    applyModelOrder(modelsList, registry.modelOrderFor(providerId)) as z.infer<
-      typeof ProviderModelsListResponse
-    >,
-    200,
-  );
+  const modelsList = await registry.listModels(providerId);
+  return c.json(modelsList as z.infer<typeof ProviderModelsListResponse>, 200);
 });
 
 const modelsCreateRoute = createRoute({
@@ -373,30 +342,17 @@ providersRoutes.openapi(modelsCreateRoute, async (c) => {
 // --- model deletion ---------------------------------------------------------
 
 /**
- * Delete a model — the user-added row first, then the `providers.json` entry.
- *
- * The order matters: a config model and a user model can share an id, and the user
- * row is the one the user just added, so it is the one they mean.
- */
+/** Delete a model row from `visualizer.db`. */
 async function deleteModel(
   providerId: string,
   modelId: string,
 ): Promise<{ status: 200 | 404; body: { deleted: true } | { error: string } }> {
-  const deleted = existsSync(config.VISUALIZER_DB)
-    ? withJobsDb(true, (db) => deleteUserModel(db, providerId, modelId))
-    : false;
-  if (deleted) return { status: 200, body: { deleted: true } };
-
   const registry = new ProviderRegistry();
-  try {
-    if (registry.removeModel(providerId, modelId)) {
-      return { status: 200, body: { deleted: true } };
-    }
-  } catch (e) {
-    if (e instanceof UnknownProviderError) {
-      return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
-    }
-    throw e;
+  if (!registry.hasProvider(providerId)) {
+    return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
+  }
+  if (registry.removeModel(providerId, modelId)) {
+    return { status: 200, body: { deleted: true } };
   }
   return { status: 404, body: { error: 'Model not found' } };
 }
