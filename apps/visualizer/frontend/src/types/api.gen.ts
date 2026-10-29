@@ -4092,7 +4092,7 @@ export interface paths {
                         "application/json": components["schemas"]["CullingStageModel"];
                     };
                 };
-                /** @description Neither this app nor an http(s) URL */
+                /** @description Neither this app nor a System One provider */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -4181,7 +4181,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description What the stage’s saved endpoint lists */
+                /** @description Models the stage’s endpoint offers */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -6243,20 +6243,26 @@ export interface components {
             culling_profile: components["schemas"]["CullingStageModel"];
             score_forecast: components["schemas"]["CullingStageModel"];
             total_photos: number;
+            system_one_providers: components["schemas"]["CullingSystemOneProvider"][];
         };
         CullingStageModel: {
             endpoint: string;
             model: string | null;
-            has_api_key: boolean;
             answered: {
                 photos: number;
                 model: string | null;
             };
         };
+        CullingSystemOneProvider: {
+            id: string;
+            name: string;
+            url: string;
+            enabled: boolean;
+            has_key: boolean;
+        };
         CullingStageModelPutRequest: {
             endpoint?: string;
             model?: string | null;
-            api_key?: string;
         };
         CullingModelsUsableResponse: {
             culling_profile: components["schemas"]["CullingStageUsability"];

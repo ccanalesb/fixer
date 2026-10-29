@@ -8,6 +8,7 @@
  */
 import { z } from 'zod';
 import type { CullingModelConfig } from '../config.js';
+import { ProviderRegistry } from '../providers/registry.js';
 import type { SystemOneQuestion } from '../systemone/question.js';
 
 export const THIS_APP_ENDPOINT = 'this_app';
@@ -55,7 +56,10 @@ const thisAppFetch: typeof fetch = async (input, init) => {
   return systemOneRoutes.request(input instanceof URL ? input.href : input, init);
 };
 
-export function systemOneEndpoint(cfg: CullingModelConfig, opts: { thisAppFetch?: typeof fetch } = {}): SystemOneEndpoint {
+export function systemOneEndpoint(
+  cfg: CullingModelConfig,
+  opts: { registry?: ProviderRegistry; thisAppFetch?: typeof fetch } = {},
+): SystemOneEndpoint {
   if (cfg.endpoint === THIS_APP_ENDPOINT) {
     return {
       id: THIS_APP_ENDPOINT,
@@ -65,8 +69,20 @@ export function systemOneEndpoint(cfg: CullingModelConfig, opts: { thisAppFetch?
       fetch: opts.thisAppFetch ?? thisAppFetch,
     };
   }
+  const registry = opts.registry ?? new ProviderRegistry();
+  const pcfg = registry.providerConfig(cfg.endpoint);
+  if (pcfg?.protocol === 'system_one') {
+    const url = registry.resolveSystemOneBaseUrl(pcfg);
+    return {
+      id: url,
+      label: pcfg.name || url,
+      url,
+      apiKey: registry.resolveApiKey(pcfg),
+      fetch: globalThis.fetch.bind(globalThis),
+    };
+  }
   const url = cfg.endpoint.replace(/\/+$/, '');
-  return { id: url, label: url, url, apiKey: cfg.apiKey, fetch: globalThis.fetch.bind(globalThis) };
+  return { id: url, label: url, url, apiKey: cfg.apiKey ?? '', fetch: globalThis.fetch.bind(globalThis) };
 }
 
 /** The identity stage versions hash: the endpoint's own, or the model's name on that endpoint. */

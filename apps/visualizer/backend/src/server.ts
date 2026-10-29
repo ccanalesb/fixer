@@ -20,6 +20,7 @@ import { startJobProcessor } from './jobs/processor.js';
 import { assertLoopbackSocketHandshake } from './middleware/loopback.js';
 import { registerGracefulShutdown } from './lifecycle/shutdown.js';
 import { registerSocketEvents } from './websocket/events.js';
+import { migrateCullingModelsIfNeeded } from './providers/migrate-culling-models.js';
 import { migrateProvidersConfigIfNeeded } from './providers/migrate-providers.js';
 
 /**
@@ -50,6 +51,7 @@ async function refuseIfPortInUse(host: string, port: number): Promise<void> {
 await refuseIfPortInUse(config.HOST, config.PORT);
 
 migrateProvidersConfigIfNeeded();
+migrateCullingModelsIfNeeded();
 
 const libraryDbPath = config.LIBRARY_DB;
 if (process.env.LT_DATA_DIR && !existsSync(libraryDbPath)) {
