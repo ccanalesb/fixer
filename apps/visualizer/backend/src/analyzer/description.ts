@@ -75,6 +75,7 @@ export interface DescriptionOpOptions {
   /** The path is an already-compressed cache file; do not recompress it. */
   silentCompression?: boolean;
   registry?: ProviderRegistry | null;
+  allowNamedProviderFallback?: boolean;
   think?: boolean;
   maxTokens?: number;
   cancelCheck?: CancelCheck;
@@ -101,6 +102,7 @@ export function buildDescriptionOpSpec(
     model: opts.model ?? null,
     logCallback: opts.logCallback ?? null,
     registry: opts.registry ?? null,
+    allowNamedProviderFallback: opts.allowNamedProviderFallback ?? false,
     cancelCheck: opts.cancelCheck ?? null,
     parseResponse: (raw) => parseDescriptionResponse(raw),
     fnFactory: async () => {

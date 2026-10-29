@@ -48,6 +48,12 @@ export function getProviderAddressProbe(db: Db, providerId: string): ProviderAdd
   };
 }
 
+export function deleteProviderAddressProbe(db: Db, providerId: string): boolean {
+  ensureProviderProbeSchema(db);
+  const info = db.prepare('DELETE FROM provider_address_probes WHERE provider_id = ?').run(providerId);
+  return info.changes > 0;
+}
+
 export function upsertProviderAddressProbe(
   db: Db,
   row: Omit<ProviderAddressProbeRow, 'provider_id'> & { provider_id: string },

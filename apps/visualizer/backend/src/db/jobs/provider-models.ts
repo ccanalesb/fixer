@@ -209,6 +209,12 @@ export function clearProviderImageRefusalMarks(db: Db, providerId: string): void
   ).run(providerId);
 }
 
+/** Drop every model row for a provider (used when the provider itself is removed). */
+export function deleteAllProviderModels(db: Db, providerId: string): number {
+  const info = db.prepare('DELETE FROM provider_models WHERE provider_id = ?').run(providerId);
+  return info.changes;
+}
+
 /** Delete a model row. Returns whether one was removed. */
 export function deleteUserModel(db: Db, providerId: string, modelId: string): boolean {
   const info = db

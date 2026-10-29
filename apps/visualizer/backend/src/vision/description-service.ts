@@ -120,6 +120,7 @@ export interface DescribeOptions {
   model?: string | null;
   logCallback?: LogCallback;
   registry?: ProviderRegistry | null;
+  allowNamedProviderFallback?: boolean;
   cancelCheck?: CancelCheck;
   telemetry?: DescribeTelemetry | null;
 }
@@ -183,6 +184,7 @@ export async function describeMatchedImage(
     userPrompt: buildDescriptionUserPrompt(),
     silentCompression,
     registry: opts.registry ?? null,
+    allowNamedProviderFallback: opts.allowNamedProviderFallback,
     cancelCheck: opts.cancelCheck ?? null,
   });
   const outcome = await runVisionOpPersist(spec, {

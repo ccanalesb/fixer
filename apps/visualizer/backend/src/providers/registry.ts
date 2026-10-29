@@ -16,10 +16,13 @@ import { openDb } from '../db/connection.js';
 import { initJobsDb } from '../db/jobs/jobs.js';
 import {
   clearProviderImageRefusalMarks,
+  deleteAllProviderModels,
   listProviderModels,
   visionFromRow,
   type ProviderModelRow,
 } from '../db/jobs/provider-models.js';
+import { deleteProviderAddressProbe } from '../db/jobs/provider-probes.js';
+import { firstPhotoProvider, providerDisplayName } from './usability.js';
 import { writePrivateFile } from '../utils/private-file.js';
 import { requestJson, type HttpEndpoint } from './http.js';
 import {
@@ -219,7 +222,10 @@ export class ProviderRegistry {
     return await this.buildProviderSummary(id, cfg);
   }
 
-  async updateProvider(providerId: string, input: UpdateProviderInput): Promise<ProviderSummary> {
+  async updateProvider(
+    providerId: string,
+    input: UpdateProviderInput,
+  ): Promise<{ provider: ProviderSummary; defaultsNotice: string | null }> {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
 
@@ -260,11 +266,86 @@ export class ProviderRegistry {
       this.withJobsDbWrite((db) => clearProviderImageRefusalMarks(db, providerId));
     }
 
+    let defaultsNotice: string | null = null;
+    if (input.enabled === false) {
+      defaultsNotice = await this.repointDescriptionDefaultIfNeeded(providerId);
+    }
+
     this.saveConfig();
-    const probeTrimmed =
-      input.base_url !== undefined ? normalizeBaseUrlInput(input.base_url) : undefined;
-    await this.runAndPersistAddressProbe(providerId, probeTrimmed);
-    return await this.buildProviderSummary(providerId, cfg);
+
+    const togglingEnabledOnly =
+      input.enabled !== undefined &&
+      input.name === undefined &&
+      input.base_url === undefined &&
+      input.extra_headers === undefined &&
+      input.auth === undefined;
+
+    if (!togglingEnabledOnly) {
+      const probeTrimmed =
+        input.base_url !== undefined ? normalizeBaseUrlInput(input.base_url) : undefined;
+      await this.runAndPersistAddressProbe(providerId, probeTrimmed);
+    }
+    return {
+      provider: await this.buildProviderSummary(providerId, cfg),
+      defaultsNotice,
+    };
+  }
+
+  /**
+   * Remove a provider from `providers.json` and drop its model and probe rows.
+   * Ids left in `fallback_order` without a config entry are ignored elsewhere.
+   */
+  async deleteProvider(
+    providerId: string,
+  ): Promise<{ defaultsNotice: string | null }> {
+    const cfg = this.providers[providerId];
+    if (!cfg) throw new UnknownProviderError(providerId);
+    if (cfg.protocol === 'system_one') {
+      throw new RangeError('Cannot remove a culling-only provider');
+    }
+
+    const defaultsNotice = await this.repointDescriptionDefaultIfNeeded(providerId);
+    delete this.providers[providerId];
+    if (this.config.fallback_order) {
+      this.config.fallback_order = this.config.fallback_order.filter((id) => id !== providerId);
+    }
+
+    this.withJobsDbWrite((db) => {
+      deleteAllProviderModels(db, providerId);
+      deleteProviderAddressProbe(db, providerId);
+    });
+
+    this.saveConfig();
+    return { defaultsNotice };
+  }
+
+  /** Move the description default off a provider that was parked or removed. */
+  async repointDescriptionDefaultIfNeeded(affectedId: string): Promise<string | null> {
+    const entry = this.config.defaults?.description;
+    if (!entry || entry.provider !== affectedId) return null;
+
+    const affectedName = providerDisplayName(this, affectedId);
+    const nextId = await firstPhotoProvider(this, { skipId: affectedId });
+    if (!nextId) {
+      const nextDefaults = { ...(this.config.defaults ?? {}) };
+      delete nextDefaults.description;
+      this.config.defaults = nextDefaults;
+      return `${affectedName} was your default for descriptions. No provider left that can read a photo — descriptions will not run until you add one.`;
+    }
+
+    const models = await this.listModels(nextId);
+    const firstModel = models.find((m) => m.vision !== false && !m.image_refused_reason);
+    this.config.defaults = {
+      ...(this.config.defaults ?? {}),
+      description: { provider: nextId, model: firstModel?.id ?? entry.model ?? null },
+    };
+    const nextName = providerDisplayName(this, nextId);
+    return `${affectedName} was your default for descriptions. Now using ${nextName}.`;
+  }
+
+  /** Whether any cascade-eligible provider can still read a photo. */
+  async hasPhotoReadingProvider(): Promise<boolean> {
+    return (await firstPhotoProvider(this)) !== null;
   }
 
   /** Run the address probe and store the outcome in `visualizer.db`. */

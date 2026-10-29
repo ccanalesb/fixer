@@ -134,9 +134,20 @@ export const ProviderHealthResponse = z
   .openapi('ProviderHealthResponse');
 
 export const ProviderDeletedResponse = z
-  .object({ deleted: z.boolean() })
+  .object({
+    deleted: z.boolean(),
+    defaults_notice: z.string().nullish(),
+  })
   .strict()
   .openapi('ProviderDeletedResponse');
+
+export const ProviderMutationResponse = z
+  .object({
+    provider: Provider,
+    defaults_notice: z.string().nullish(),
+  })
+  .strict()
+  .openapi('ProviderMutationResponse');
 
 export const ProviderReorderSuccessResponse = z
   .object({ success: z.boolean() })

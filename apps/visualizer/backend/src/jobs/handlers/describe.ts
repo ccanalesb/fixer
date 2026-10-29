@@ -15,7 +15,7 @@ import { getImage } from '../../db/library/catalog.js';
 import { getImageDescription } from '../../db/library/descriptions.js';
 import { isDescriptionStale } from '../../db/library/vision-stale.js';
 import { VIDEO_EXTENSIONS } from '../../imaging/raw-decode.js';
-import type { CancelCheck } from '../../providers/retry.js';
+import type { CancelCheck, LogCallback } from '../../providers/retry.js';
 import { resolveFilepath } from '../../utils/path-resolve.js';
 import {
   describeMatchedImage,
@@ -46,6 +46,7 @@ import {
   selectCatalogKeysMissingVisualTags,
   selectionFromImageKeys,
   withLibraryDb,
+  jobLogLevel,
   type PassContext,
 } from './common.js';
 import { cullStageJobResultFields, runCullStageBeforeDescribeAndScore, type CullHeldBackCounts } from './cull-stage.js';
@@ -97,6 +98,7 @@ export async function describeSingleImage(
     model?: string | null;
     cancelCheck?: CancelCheck;
     telemetry?: DescribeTelemetry | null;
+    logCallback?: LogCallback;
   },
 ): Promise<DescribeAttempt> {
   try {
@@ -106,6 +108,8 @@ export async function describeSingleImage(
       model: opts.model ?? null,
       cancelCheck: opts.cancelCheck ?? null,
       telemetry: opts.telemetry ?? null,
+      logCallback: opts.logCallback ?? null,
+      allowNamedProviderFallback: true,
     });
 
     if (result.status === 'written') return { status: 'described', success: true, error: null };
@@ -170,6 +174,8 @@ export async function handleSingleDescribe(
         force,
         providerId,
         model: providerModel,
+        logCallback: (level, message) =>
+          runner.log(jobId, jobLogLevel(level), message),
       });
 
       if (attempt.success) {
@@ -501,6 +507,8 @@ export async function runDescribePass(
         model: providerModel,
         cancelCheck,
         telemetry,
+        logCallback: (level, message) =>
+          runner.log(jobId, jobLogLevel(level), message),
       });
 
       completed += 1;
