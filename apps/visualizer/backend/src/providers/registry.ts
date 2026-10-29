@@ -13,21 +13,38 @@
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { config, providersExamplePath } from '../config.js';
 import { openDb } from '../db/connection.js';
+import { initJobsDb } from '../db/jobs/jobs.js';
 import {
+  clearProviderImageRefusalMarks,
   listProviderModels,
   visionFromRow,
   type ProviderModelRow,
 } from '../db/jobs/provider-models.js';
 import { writePrivateFile } from '../utils/private-file.js';
 import { requestJson, type HttpEndpoint } from './http.js';
+import {
+  getProviderAddressProbe,
+  upsertProviderAddressProbe,
+} from '../db/jobs/provider-probes.js';
+import { runAddressProbe, storedLiteralBaseAfterProbe } from './address-probe.js';
+import {
+  normalizeBaseUrlInput,
+  providerAddressesEquivalent,
+  providerHostKey,
+} from './base-url.js';
 import { migrateProvidersConfigIfNeeded } from './migrate-providers.js';
+import { deriveProviderId } from './provider-id.js';
 import type { ProviderClient } from './vision-client.js';
 import type {
+  CreateProviderInput,
   DefaultsEntry,
+  ProviderAddressProbeSummary,
+  ProviderAuthSummary,
   ProviderConfig,
   ProviderModelEntry,
   ProviderSummary,
   RegistryConfig,
+  UpdateProviderInput,
   ValueRef,
 } from './registry-types.js';
 
@@ -61,11 +78,15 @@ const PROBE_TOOL = {
 } as const;
 
 export type {
+  CreateProviderInput,
   DefaultsEntry,
+  ProviderAddressProbeSummary,
+  ProviderAuthSummary,
   ProviderConfig,
   ProviderModelEntry,
   ProviderSummary,
   RegistryConfig,
+  UpdateProviderInput,
   ValueRef,
 } from './registry-types.js';
 
@@ -151,14 +172,241 @@ export class ProviderRegistry {
   async listProviders(): Promise<ProviderSummary[]> {
     const out: ProviderSummary[] = [];
     for (const [id, cfg] of Object.entries(this.providers)) {
-      out.push({
-        id,
-        name: cfg.name,
-        available: this.isAvailable(cfg),
-        tool_calling: await this.resolveToolCalling(id, cfg),
-      });
+      out.push(await this.buildProviderSummary(id, cfg));
     }
     return out;
+  }
+
+  async createProvider(input: CreateProviderInput): Promise<ProviderSummary> {
+    const name = input.name.trim();
+    if (!name) throw new RangeError('name is required');
+    const base = normalizeBaseUrlInput(input.base_url);
+    if (!base) throw new RangeError('base_url is required');
+
+    const id = deriveProviderId(name, new Set(Object.keys(this.providers)));
+    const cfg: ProviderConfig = {
+      name,
+      protocol: 'openai',
+      enabled: true,
+      base_url: { from: 'literal', value: base },
+      auth: this.authFromCreateInput(input.auth),
+      ...(input.extra_headers ? { extra_headers: { ...input.extra_headers } } : {}),
+    };
+    this.providers[id] = cfg;
+    const order = this.fallbackOrder;
+    if (!order.includes(id)) {
+      this.config.fallback_order = [...order, id];
+    }
+    this.saveConfig();
+    await this.runAndPersistAddressProbe(id, base);
+    return await this.buildProviderSummary(id, cfg);
+  }
+
+  async updateProvider(providerId: string, input: UpdateProviderInput): Promise<ProviderSummary> {
+    const cfg = this.providers[providerId];
+    if (!cfg) throw new UnknownProviderError(providerId);
+
+    const prevBase = cfg.base_url.value;
+    let nextBase = prevBase;
+    if (input.base_url !== undefined) {
+      nextBase = normalizeBaseUrlInput(input.base_url);
+      if (!nextBase) throw new RangeError('base_url must not be empty');
+    }
+
+    const hostChanged =
+      input.base_url !== undefined &&
+      providerHostKey(prevBase) !== providerHostKey(nextBase);
+    const addressChanged =
+      input.base_url !== undefined && !providerAddressesEquivalent(prevBase, nextBase);
+
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (!name) throw new RangeError('name must not be empty');
+      cfg.name = name;
+    }
+    if (input.base_url !== undefined) {
+      cfg.base_url = { ...cfg.base_url, from: 'literal', value: nextBase };
+    }
+    if (input.enabled !== undefined) {
+      cfg.enabled = input.enabled;
+    }
+    if (input.extra_headers !== undefined) {
+      cfg.extra_headers = { ...input.extra_headers };
+    }
+    if (input.auth) {
+      this.applyAuthUpdate(cfg, input.auth, hostChanged);
+    } else if (hostChanged) {
+      this.clearAuthSecret(cfg);
+    }
+
+    if (addressChanged) {
+      this.withJobsDbWrite((db) => clearProviderImageRefusalMarks(db, providerId));
+    }
+
+    this.saveConfig();
+    const probeTrimmed =
+      input.base_url !== undefined ? normalizeBaseUrlInput(input.base_url) : undefined;
+    await this.runAndPersistAddressProbe(providerId, probeTrimmed);
+    return await this.buildProviderSummary(providerId, cfg);
+  }
+
+  /** Run the address probe and store the outcome in `visualizer.db`. */
+  async runAndPersistAddressProbe(
+    providerId: string,
+    trimmedBaseOverride?: string,
+  ): Promise<ProviderAddressProbeSummary> {
+    const cfg = this.providers[providerId];
+    if (!cfg) throw new UnknownProviderError(providerId);
+    const probeBase = trimmedBaseOverride ?? cfg.base_url.value;
+    const http = this.buildHttpEndpoint(cfg);
+    const { answered, url, error } = await runAddressProbe(
+      {
+        apiKey: http.apiKey,
+        authMode: http.authMode,
+        authHeaderName: http.authHeaderName,
+        extraHeaders: http.extraHeaders,
+        timeoutMs: 5000,
+      },
+      probeBase,
+    );
+    if (cfg.base_url.from === 'literal' && cfg.protocol !== 'system_one') {
+      const stored = storedLiteralBaseAfterProbe(probeBase, { answered, url });
+      if (stored !== cfg.base_url.value) {
+        cfg.base_url.value = stored;
+        this.saveConfig();
+      }
+    }
+    const row: ProviderAddressProbeSummary = {
+      answered,
+      url,
+      probed_at: new Date().toISOString(),
+      error,
+    };
+    this.withJobsDbWrite((db) =>
+      upsertProviderAddressProbe(db, {
+        provider_id: providerId,
+        answered,
+        answered_url: url,
+        probed_at: row.probed_at,
+        error,
+      }),
+    );
+    return row;
+  }
+
+  readStoredAddressProbe(providerId: string): ProviderAddressProbeSummary | null {
+    if (!existsSync(config.VISUALIZER_DB)) return null;
+    const db = openDb(config.VISUALIZER_DB, { readonly: true, vec: false });
+    try {
+      const row = getProviderAddressProbe(db, providerId);
+      if (!row) return null;
+      return {
+        answered: row.answered,
+        url: row.answered_url,
+        probed_at: row.probed_at,
+        error: row.error,
+      };
+    } finally {
+      db.close();
+    }
+  }
+
+  private async buildProviderSummary(id: string, cfg: ProviderConfig): Promise<ProviderSummary> {
+    return {
+      id,
+      name: cfg.name,
+      available: this.isAvailable(cfg),
+      tool_calling: await this.resolveToolCalling(id, cfg),
+      enabled: cfg.enabled !== false,
+      base_url: { from: cfg.base_url.from, value: cfg.base_url.value },
+      auth: this.authSummary(cfg),
+      address_probe: this.readStoredAddressProbe(id),
+    };
+  }
+
+  private authSummary(cfg: ProviderConfig): ProviderAuthSummary {
+    const auth = cfg.auth;
+    if (auth.mode === 'none') {
+      return { mode: 'none', has_key: false };
+    }
+    const secret = auth.secret;
+    if (!secret) {
+      return { mode: auth.mode, header_name: auth.header_name, has_key: false };
+    }
+    if (secret.from === 'env') {
+      const set = Boolean(process.env[secret.value]);
+      return {
+        mode: auth.mode,
+        header_name: auth.header_name,
+        has_key: set,
+        secret_from: 'env',
+        env_var: secret.value,
+        env_set: set,
+      };
+    }
+    return {
+      mode: auth.mode,
+      header_name: auth.header_name,
+      has_key: secret.value.length > 0,
+      secret_from: 'literal',
+    };
+  }
+
+  private authFromCreateInput(auth: CreateProviderInput['auth']): ProviderConfig['auth'] {
+    if (auth.mode === 'none') return { mode: 'none' };
+    const key = auth.key?.trim() ?? '';
+    if (!key) {
+      return { mode: auth.mode, header_name: auth.header_name };
+    }
+    return {
+      mode: auth.mode,
+      header_name: auth.header_name,
+      secret: { from: 'literal', value: key },
+    };
+  }
+
+  private applyAuthUpdate(
+    cfg: ProviderConfig,
+    patch: NonNullable<UpdateProviderInput['auth']>,
+    hostChanged: boolean,
+  ): void {
+    if (patch.mode !== undefined) {
+      cfg.auth.mode = patch.mode;
+    }
+    if (patch.header_name !== undefined) {
+      cfg.auth.header_name = patch.header_name;
+    }
+    if (patch.clear_key) {
+      delete cfg.auth.secret;
+    }
+    if (patch.key !== undefined) {
+      const key = patch.key.trim();
+      if (key) {
+        cfg.auth.secret = { from: 'literal', value: key };
+      } else {
+        delete cfg.auth.secret;
+      }
+    } else if (hostChanged) {
+      this.clearAuthSecret(cfg);
+    }
+    if (cfg.auth.mode === 'none') {
+      delete cfg.auth.secret;
+      delete cfg.auth.header_name;
+    }
+  }
+
+  private clearAuthSecret(cfg: ProviderConfig): void {
+    if (cfg.auth.mode === 'none') return;
+    delete cfg.auth.secret;
+  }
+
+  private withJobsDbWrite<T>(fn: (db: ReturnType<typeof initJobsDb>) => T): T {
+    const db = initJobsDb(config.VISUALIZER_DB);
+    try {
+      return fn(db);
+    } finally {
+      db.close();
+    }
   }
 
   /** Models stored for this provider in `visualizer.db`. */
@@ -386,6 +634,7 @@ export class ProviderRegistry {
     const host = this.resolveValueRef(cfg.base_url);
     if (!host) return '';
     const base = host.replace(/\/+$/, '');
+    if (cfg.protocol === 'system_one') return base;
     if (cfg.base_url.from === 'env') {
       return base.endsWith('/v1') ? base : `${base}/v1`;
     }

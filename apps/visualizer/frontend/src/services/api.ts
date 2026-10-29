@@ -816,6 +816,49 @@ export const IdentityAPI = {
 
 export const ProvidersAPI = {
   list: () => request<Provider[]>('/providers/'),
+  create: async (payload: {
+    name: string;
+    base_url: string;
+    auth: { mode: 'none' | 'bearer' | 'header'; header_name?: string; key?: string };
+    extra_headers?: Record<string, string>;
+  }) => {
+    const result = await request<Provider>('/providers/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    invalidateAll(['providers.list']);
+    return result;
+  },
+  update: async (
+    providerId: string,
+    payload: {
+      name?: string;
+      base_url?: string;
+      enabled?: boolean;
+      extra_headers?: Record<string, string>;
+      auth?: {
+        mode?: 'none' | 'bearer' | 'header';
+        header_name?: string;
+        key?: string;
+        clear_key?: boolean;
+      };
+    },
+  ) => {
+    const result = await request<Provider>(`/providers/${encodeURIComponent(providerId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    invalidateAll(['providers.list']);
+    return result;
+  },
+  probe: async (providerId: string) => {
+    const result = await request<Provider>(
+      `/providers/${encodeURIComponent(providerId)}/probe`,
+      { method: 'POST' },
+    );
+    invalidateAll(['providers.list']);
+    return result;
+  },
   listDescriptionModels: () =>
     request<DescriptionModelsResponse>('/providers/models/description'),
   health: (providerId: string) =>

@@ -30,11 +30,57 @@ export interface ProviderModelEntry {
   [key: string]: unknown;
 }
 
+export interface ProviderAuthSummary {
+  mode: 'none' | 'bearer' | 'header';
+  header_name?: string;
+  has_key: boolean;
+  secret_from?: 'literal' | 'env';
+  env_var?: string;
+  env_set?: boolean;
+}
+
+export interface ProviderAddressProbeSummary {
+  answered: boolean;
+  url?: string | null;
+  probed_at: string;
+  error?: string | null;
+}
+
 export interface ProviderSummary {
   id: string;
   name: string;
   available: boolean;
   tool_calling: boolean;
+  enabled: boolean;
+  base_url: ValueRef;
+  auth: ProviderAuthSummary;
+  address_probe: ProviderAddressProbeSummary | null;
+}
+
+export interface CreateProviderInput {
+  name: string;
+  base_url: string;
+  auth: {
+    mode: 'none' | 'bearer' | 'header';
+    header_name?: string;
+    key?: string;
+  };
+  extra_headers?: Record<string, string>;
+}
+
+export interface UpdateProviderInput {
+  name?: string;
+  base_url?: string;
+  auth?: {
+    mode?: 'none' | 'bearer' | 'header';
+    header_name?: string;
+    /** When set, replaces any existing secret with a literal value. */
+    key?: string;
+    /** Drop a stored literal or env reference without supplying a new key. */
+    clear_key?: boolean;
+  };
+  enabled?: boolean;
+  extra_headers?: Record<string, string>;
 }
 
 export interface DefaultsEntry {
