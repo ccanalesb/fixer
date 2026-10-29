@@ -12,6 +12,7 @@ import Database from 'better-sqlite3';
 import type { Db } from '../connection.js';
 import { nowIsoLocal } from '../../utils/datetime.js';
 import { migrateLegacyVisionColumn } from './provider-models.js';
+import { ensureProviderProbeSchema } from './provider-probes.js';
 
 /**
  * Default tail length when a caller does not ask for the full history.
@@ -113,6 +114,7 @@ export function ensureJobsSchema(db: Db): void {
 
   migrateLegacyLogs(db);
   migrateLegacyVisionColumn(db);
+  ensureProviderProbeSchema(db);
 }
 
 /**
