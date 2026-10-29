@@ -6,6 +6,7 @@ import { ProviderEditForm } from '../ProviderEditForm';
 const baseProvider: Provider = {
   id: 'edge',
   name: 'Edge',
+  protocol: 'openai',
   available: true,
   tool_calling: false,
   enabled: true,
@@ -28,5 +29,27 @@ describe('ProviderEditForm', () => {
       target: { value: 'https://beta.example/v1' },
     });
     expect(screen.getByRole('status')).toHaveTextContent(/host clears the saved API key/i);
+  });
+
+  it('warns when a System One address change will re-answer photos', () => {
+    const systemOne: Provider = {
+      ...baseProvider,
+      id: 'studio',
+      protocol: 'system_one',
+      base_url: { from: 'literal', value: 'http://studio:8000' },
+    };
+    render(
+      <ProviderEditForm
+        provider={systemOne}
+        onSave={vi.fn()}
+        onTestConnection={vi.fn()}
+        addressChangeImpact={{ photos: 42, stageNames: ['Culling profile'] }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Base URL/i), {
+      target: { value: 'http://studio:9000' },
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/42 photo/);
+    expect(screen.getByRole('status')).toHaveTextContent(/Culling profile/);
   });
 });

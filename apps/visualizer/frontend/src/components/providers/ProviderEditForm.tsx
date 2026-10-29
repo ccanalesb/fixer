@@ -1,6 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import type { Provider } from '../../services/api';
+import { PROVIDERS_ADDRESS_CHANGE_WARNING } from '../../constants/strings';
 import { Button } from '../ui/Button';
+import { providerAddressesEquivalent } from './provider-base-url';
 
 function hostKey(raw: string): string | null {
   try {
@@ -26,6 +28,9 @@ interface ProviderEditFormProps {
   onSave: (values: ProviderEditValues) => Promise<void>;
   onTestConnection: () => Promise<void>;
   testing?: boolean;
+  /** When set and the base URL changed, shown before save. */
+  addressChangeImpact?: { photos: number; stageNames: string[] } | null;
+  onBaseUrlChange?: (url: string) => void;
 }
 
 export function ProviderEditForm({
@@ -33,6 +38,8 @@ export function ProviderEditForm({
   onSave,
   onTestConnection,
   testing = false,
+  addressChangeImpact = null,
+  onBaseUrlChange,
 }: ProviderEditFormProps) {
   const [name, setName] = useState(provider.name);
   const [baseUrl, setBaseUrl] = useState(provider.base_url.value);
@@ -47,6 +54,22 @@ export function ProviderEditForm({
     const next = hostKey(baseUrl);
     return prev !== null && next !== null && prev !== next;
   }, [provider.base_url.value, baseUrl]);
+
+  const addressWillChange = useMemo(
+    () => !providerAddressesEquivalent(provider.base_url.value, baseUrl),
+    [provider.base_url.value, baseUrl],
+  );
+
+  const addressImpactMessage = useMemo(() => {
+    if (!addressWillChange || !addressChangeImpact || addressChangeImpact.photos <= 0) {
+      return null;
+    }
+    const stages =
+      addressChangeImpact.stageNames.length === 1
+        ? addressChangeImpact.stageNames[0]!
+        : `${addressChangeImpact.stageNames.slice(0, -1).join(', ')} and ${addressChangeImpact.stageNames.at(-1)}`;
+    return PROVIDERS_ADDRESS_CHANGE_WARNING(addressChangeImpact.photos, stages);
+  }, [addressChangeImpact, addressWillChange]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -85,6 +108,11 @@ export function ProviderEditForm({
           one.
         </p>
       ) : null}
+      {addressImpactMessage ? (
+        <p className="text-sm text-warning" role="status">
+          {addressImpactMessage}
+        </p>
+      ) : null}
       <label className="block text-xs text-text-secondary">
         <span className="block mb-0.5">Name</span>
         <input
@@ -100,7 +128,10 @@ export function ProviderEditForm({
         <input
           type="url"
           value={baseUrl}
-          onChange={event => setBaseUrl(event.target.value)}
+          onChange={event => {
+            setBaseUrl(event.target.value);
+            onBaseUrlChange?.(event.target.value);
+          }}
           className={`${inputClassName} font-mono`}
           disabled={saving}
         />

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { CullingStageKind } from '../../services/api'
 import {
-  PROCESSING_PROVIDERS_ROUTE,
+  PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
   STAGE_ADD_MODEL,
   STAGE_ENDPOINT,
   STAGE_ENDPOINT_PARKED,
@@ -61,7 +61,7 @@ export function StageModelFields({ kind, view, busy, onEndpoint, onModel, onAddM
             </option>
           ))}
         </select>
-        <Link to={PROCESSING_PROVIDERS_ROUTE} className="text-sm text-accent underline w-fit">
+        <Link to={PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE} className="text-sm text-accent underline w-fit">
           {STAGE_PROVIDERS_LINK}
         </Link>
       </div>

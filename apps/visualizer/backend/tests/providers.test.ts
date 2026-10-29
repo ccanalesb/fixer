@@ -158,6 +158,7 @@ describe('GET /api/providers/', () => {
       {
         id: 'local',
         name: 'Local',
+        protocol: 'openai',
         available: true,
         tool_calling: false,
         enabled: true,
@@ -171,6 +172,7 @@ describe('GET /api/providers/', () => {
         available: false,
         tool_calling: true,
         enabled: true,
+        protocol: 'openai',
         base_url: CLOUD_PROVIDER.base_url,
         auth: {
           mode: 'bearer',

@@ -39,7 +39,7 @@ import {
   SCORE_FORECAST_STAGE,
   SCORE_FORECAST_THRESHOLD,
   SCORE_FORECAST_THRESHOLD_INVALID,
-  PROCESSING_PROVIDERS_ROUTE,
+  PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
   STAGE_ADD_MODEL,
   STAGE_ENDPOINT_PARKED,
   STAGE_ENDPOINT_THIS_APP,
@@ -484,7 +484,10 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_THIS_APP })).toBeInTheDocument()
     expect(within(cull).getByRole('option', { name: `Ollama (${OLLAMA})` })).toBeInTheDocument()
     expect(within(cull).getByRole('option', { name: `Studio (http://studio:8000) ${STAGE_ENDPOINT_PARKED}` })).toBeInTheDocument()
-    expect(within(cull).getByRole('link', { name: STAGE_PROVIDERS_LINK })).toHaveAttribute('href', PROCESSING_PROVIDERS_ROUTE)
+    expect(within(cull).getByRole('link', { name: STAGE_PROVIDERS_LINK })).toHaveAttribute(
+      'href',
+      PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
+    )
   })
 })
 

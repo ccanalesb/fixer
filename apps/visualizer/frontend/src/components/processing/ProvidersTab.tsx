@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '../../data';
-import { ProvidersAPI, type ProviderModel } from '../../services/api';
 import {
-  AddProviderCard,
+  CullingModelsAPI,
+  ProvidersAPI,
+  type ProviderModel,
+} from '../../services/api';
+import {
   FallbackOrderPanel,
+  OpenAiProvidersGroup,
+  SystemOneProvidersGroup,
   type CreateProviderPayload,
 } from '../providers';
+import type { CreateSystemOneProviderPayload } from '../providers/AddSystemOneProviderCard';
 import type { ProviderEditValues } from '../providers/ProviderEditForm';
-import { ProviderCard } from '../providers/ProviderCard';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ProviderModelSelect } from '../ui/ProviderModelSelect';
@@ -17,26 +23,64 @@ export function ProvidersTab() {
   const bundle = useQuery(
     ['providers.list', bundleRev] as const,
     async () => {
-      const [providerList, fallback, defaults] = await Promise.all([
+      const [providerList, fallback, defaults, cullingModels] = await Promise.all([
         ProvidersAPI.list(),
         ProvidersAPI.getFallbackOrder(),
         ProvidersAPI.getDefaults(),
+        CullingModelsAPI.get().catch(() => null),
       ]);
       return {
         providers: providerList,
         fallbackOrder: fallback.order,
         defaults,
+        cullingModels,
       };
     },
   );
 
   const { providers, fallbackOrder } = bundle;
+  const openAiProviders = useMemo(
+    () => providers.filter(p => p.protocol !== 'system_one'),
+    [providers],
+  );
+  const systemOneProviders = useMemo(
+    () => providers.filter(p => p.protocol === 'system_one'),
+    [providers],
+  );
+
+  const cullingStagesByProvider = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    const cm = bundle.cullingModels;
+    if (!cm) return map;
+    const add = (providerId: string, label: string) => {
+      if (!providerId || providerId === 'this_app') return;
+      map[providerId] = [...(map[providerId] ?? []), label];
+    };
+    if (cm.culling_profile.endpoint !== 'this_app') {
+      add(cm.culling_profile.endpoint, 'Culling profile');
+    }
+    if (cm.score_forecast.endpoint !== 'this_app') {
+      add(cm.score_forecast.endpoint, 'Score forecast');
+    }
+    return map;
+  }, [bundle.cullingModels]);
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [modelCache, setModelCache] = useState<Record<string, ProviderModel[]>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [descriptionProvider, setDescriptionProvider] = useState<string | null>(null);
   const [descriptionModel, setDescriptionModel] = useState<string | null>(null);
   const [defaultsSaveMsg, setDefaultsSaveMsg] = useState<string | null>(null);
+  const [addressImpactByProvider, setAddressImpactByProvider] = useState<
+    Record<string, { photos: number; stageNames: string[] } | null>
+  >({});
+
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash === '#system-one-providers') {
+      document.getElementById('system-one-providers')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [hash, bundleRev]);
 
   useEffect(() => {
     const block = bundle.defaults.description;
@@ -45,6 +89,30 @@ export function ProvidersTab() {
       setDescriptionModel(block.model ?? null);
     }
   }, [bundle.defaults]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, { photos: number; stageNames: string[] } | null> = {};
+      await Promise.all(
+        systemOneProviders.map(async p => {
+          try {
+            const impact = await ProvidersAPI.addressChangeImpact(p.id);
+            next[p.id] = {
+              photos: impact.photos,
+              stageNames: impact.stages.map(s => s.name),
+            };
+          } catch {
+            next[p.id] = null;
+          }
+        }),
+      );
+      if (!cancelled) setAddressImpactByProvider(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [systemOneProviders, bundleRev]);
 
   const refreshBundle = useCallback(() => {
     setBundleRev(n => n + 1);
@@ -60,8 +128,18 @@ export function ProvidersTab() {
     refreshModelsForProvider(expandedId).catch(console.error);
   }, [expandedId, modelCache, refreshModelsForProvider]);
 
-  const handleCreateProvider = useCallback(
+  const handleCreateOpenAi = useCallback(
     async (payload: CreateProviderPayload) => {
+      const created = await ProvidersAPI.create(payload);
+      refreshBundle();
+      setExpandedId(created.id);
+      await refreshModelsForProvider(created.id);
+    },
+    [refreshBundle, refreshModelsForProvider],
+  );
+
+  const handleCreateSystemOne = useCallback(
+    async (payload: CreateSystemOneProviderPayload) => {
       const created = await ProvidersAPI.create(payload);
       refreshBundle();
       setExpandedId(created.id);
@@ -152,46 +230,63 @@ export function ProvidersTab() {
     refreshBundle();
   }, [refreshBundle]);
 
+  const handleBaseUrlChange = useCallback((_providerId: string, _url: string) => {
+    // Impact counts depend on library answers, not the draft URL; loaded once per provider.
+  }, []);
+
   return (
     <div className="space-y-6">
       <div>
         <h3 className="text-card-title text-text mb-2">AI Model Providers</h3>
         <p className="text-sm text-text-secondary">
-          Configure vision model providers and manage fallback order
+          OpenAI-compatible servers for descriptions and scoring; System One endpoints for culling stages
         </p>
       </div>
 
-      <AddProviderCard onCreate={handleCreateProvider} />
+      <OpenAiProvidersGroup
+        providers={openAiProviders}
+        expandedId={expandedId}
+        modelCache={modelCache}
+        testingId={testingId}
+        onToggle={id => setExpandedId(previous => (previous === id ? null : id))}
+        onCreate={handleCreateOpenAi}
+        onSaveProvider={handleSaveProvider}
+        onTestConnection={handleTestConnection}
+        onAddModel={handleAddModel}
+        onRemoveModel={(providerId, modelId) => {
+          handleRemoveModel(providerId, modelId).catch(console.error);
+        }}
+        onReorderModel={(providerId, modelId, direction) => {
+          handleReorderModel(providerId, modelId, direction).catch(console.error);
+        }}
+        onRetryModelImages={(providerId, modelId) => {
+          handleRetryModelImages(providerId, modelId).catch(console.error);
+        }}
+      />
 
-      <div className="space-y-3">
-        {providers.map(provider => (
-          <ProviderCard
-            key={provider.id}
-            provider={provider}
-            models={modelCache[provider.id] ?? []}
-            expanded={expandedId === provider.id}
-            onToggle={() =>
-              setExpandedId(previous => (previous === provider.id ? null : provider.id))
-            }
-            onAddModel={model => handleAddModel(provider.id, model)}
-            onRemoveModel={modelId => {
-              handleRemoveModel(provider.id, modelId).catch(console.error);
-            }}
-            onReorderModel={(modelId, direction) => {
-              handleReorderModel(provider.id, modelId, direction).catch(console.error);
-            }}
-            onRetryModelImages={modelId => {
-              handleRetryModelImages(provider.id, modelId).catch(console.error);
-            }}
-            onSaveProvider={values => handleSaveProvider(provider.id, values)}
-            onTestConnection={() => handleTestConnection(provider.id)}
-            testingConnection={testingId === provider.id}
-          />
-        ))}
-      </div>
+      <SystemOneProvidersGroup
+        providers={systemOneProviders}
+        cullingStagesByProvider={cullingStagesByProvider}
+        expandedId={expandedId}
+        modelCache={modelCache}
+        testingId={testingId}
+        addressImpactByProvider={addressImpactByProvider}
+        onToggle={id => setExpandedId(previous => (previous === id ? null : id))}
+        onCreate={handleCreateSystemOne}
+        onSaveProvider={handleSaveProvider}
+        onTestConnection={handleTestConnection}
+        onAddModel={handleAddModel}
+        onRemoveModel={(providerId, modelId) => {
+          handleRemoveModel(providerId, modelId).catch(console.error);
+        }}
+        onReorderModel={(providerId, modelId, direction) => {
+          handleReorderModel(providerId, modelId, direction).catch(console.error);
+        }}
+        onBaseUrlChange={handleBaseUrlChange}
+      />
 
       <FallbackOrderPanel
-        providers={providers}
+        providers={openAiProviders}
         order={fallbackOrder}
         onReorder={order => {
           updateFallbackOrder(order).catch(console.error);

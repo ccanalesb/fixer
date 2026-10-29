@@ -33,10 +33,13 @@ export const ProviderAddressProbe = z
   .strict()
   .openapi('ProviderAddressProbe');
 
+export const ProviderProtocol = z.enum(['openai', 'system_one']).openapi('ProviderProtocol');
+
 export const Provider = z
   .object({
     id: z.string(),
     name: z.string(),
+    protocol: ProviderProtocol,
     available: z.boolean(),
     tool_calling: z.boolean(),
     enabled: z.boolean(),
@@ -51,6 +54,8 @@ export const ProviderCreateBody = z
   .object({
     name: z.string(),
     base_url: z.string(),
+    protocol: ProviderProtocol.optional(),
+    models: z.array(z.string()).optional(),
     auth: z
       .object({
         mode: z.enum(['none', 'bearer', 'header']),
@@ -62,6 +67,14 @@ export const ProviderCreateBody = z
   })
   .strict()
   .openapi('ProviderCreateBody');
+
+export const ProviderAddressChangeImpact = z
+  .object({
+    stages: z.array(z.object({ kind: z.string(), name: z.string() }).strict()),
+    photos: z.number().int(),
+  })
+  .strict()
+  .openapi('ProviderAddressChangeImpact');
 
 export const ProviderUpdateBody = z
   .object({

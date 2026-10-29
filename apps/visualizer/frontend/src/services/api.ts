@@ -819,6 +819,8 @@ export const ProvidersAPI = {
   create: async (payload: {
     name: string;
     base_url: string;
+    protocol?: 'openai' | 'system_one';
+    models?: string[];
     auth: { mode: 'none' | 'bearer' | 'header'; header_name?: string; key?: string };
     extra_headers?: Record<string, string>;
   }) => {
@@ -859,6 +861,10 @@ export const ProvidersAPI = {
     invalidateAll(['providers.list']);
     return result;
   },
+  addressChangeImpact: (providerId: string) =>
+    request<{ stages: { kind: string; name: string }[]; photos: number }>(
+      `/providers/${encodeURIComponent(providerId)}/address-change-impact`,
+    ),
   listDescriptionModels: () =>
     request<DescriptionModelsResponse>('/providers/models/description'),
   health: (providerId: string) =>

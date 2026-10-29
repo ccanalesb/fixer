@@ -9,7 +9,11 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
-import { openDb, type Db } from '../db/connection.js';
+import { openDb, openLibraryDb, type Db } from '../db/connection.js';
+import {
+  countPhotosForProviderAddressChange,
+  cullingStagesUsingProvider,
+} from '../providers/cull-stage-usage.js';
 import {
   addUserModel,
   clearModelImageRefusal,
@@ -25,6 +29,7 @@ import {
   DescriptionModelsResponse,
   FallbackOrderResponse,
   Provider,
+  ProviderAddressChangeImpact,
   ProviderCreateBody,
   ProviderDefaults,
   ProviderDeletedResponse,
@@ -97,9 +102,15 @@ providersRoutes.openapi(createRouteDef, async (c) => {
   }
   try {
     const body = parsed.data;
+    const protocol = body.protocol ?? 'openai';
+    if (protocol === 'system_one' && body.auth.mode === 'none') {
+      return c.json({ error: 'System One providers require an API key or bearer auth' }, 400);
+    }
     const created = await registry.createProvider({
       name: body.name,
       base_url: body.base_url,
+      protocol,
+      model_ids: body.models,
       auth: {
         mode: body.auth.mode,
         header_name: body.auth.header_name ?? undefined,
@@ -324,6 +335,44 @@ providersRoutes.openapi(probeRouteDef, async (c) => {
   const list = await registry.listProviders();
   const row = list.find((p) => p.id === providerId);
   return c.json(row!, 200);
+});
+
+const addressChangeImpactRoute = createRoute({
+  method: 'get',
+  path: '/providers/{provider_id}/address-change-impact',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderAddressChangeImpact) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(addressChangeImpactRoute, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  const cfg = registry.providerConfig(providerId);
+  if (!cfg) {
+    return c.json({ error: `Unknown provider: ${providerId}` }, 404);
+  }
+  if (cfg.protocol !== 'system_one') {
+    return c.json({ error: 'Only System One providers have culling address-change impact' }, 400);
+  }
+  const stages = cullingStagesUsingProvider(providerId).map((s) => ({
+    kind: s.kind,
+    name: s.name,
+  }));
+  let photos = 0;
+  if (existsSync(config.LIBRARY_DB)) {
+    const db = openLibraryDb(config.LIBRARY_DB, { readonly: true });
+    try {
+      photos = countPhotosForProviderAddressChange(db, providerId);
+    } finally {
+      db.close();
+    }
+  }
+  return c.json({ stages, photos }, 200);
 });
 
 const healthRoute = createRoute({

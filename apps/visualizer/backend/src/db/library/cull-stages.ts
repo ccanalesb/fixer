@@ -184,6 +184,20 @@ export function countPhotosAnsweredByCurrentStage(db: Db, kind: StageKind): numb
   return row.n;
 }
 
+/** Distinct photos with a current answer on any of the given stage kinds. */
+export function countPhotosAnsweredByCurrentStages(db: Db, kinds: readonly StageKind[]): number {
+  if (kinds.length === 0) return 0;
+  const placeholders = kinds.map(() => '?').join(', ');
+  const row = db
+    .prepare(
+      `SELECT COUNT(DISTINCT a.image_key) AS n FROM cull_stage_answers a
+       JOIN cull_stage_versions v ON v.id = a.stage_version_id
+       WHERE v.kind IN (${placeholders}) AND v.is_current = 1`,
+    )
+    .get(...kinds) as { n: number };
+  return row.n;
+}
+
 /**
  * The model identity each stage kind's current versions were made with; null for a kind never
  * answered. What re-decide resolves stages with, so it never calls an endpoint.
