@@ -7,6 +7,7 @@ import {
   CullingModelsAPI,
   CullingProfilesAPI,
   JobsAPI,
+  ProvidersAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
   type CullingModelsResponse,
@@ -44,7 +45,10 @@ import {
   STAGE_ENDPOINT_PARKED,
   STAGE_ENDPOINT_THIS_APP,
   STAGE_NO_QUESTIONS,
+  STAGE_PARKED,
   STAGE_PROVIDERS_LINK,
+  STAGE_REMOVED,
+  STAGE_TURN_PROVIDER_BACK_ON,
 } from '../../../constants/strings'
 import type { Job } from '../../../types/job'
 
@@ -94,7 +98,7 @@ const usableStage = (over: Partial<CullingStageUsability> = {}): CullingStageUsa
   model: 'culling-model',
   endpoint: 'this_app',
   job_id: null,
-  detail: null,
+  provider_name: null,
   ...over,
 })
 /** What `GET /api/culling-models/usable` answers. */
@@ -438,14 +442,22 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     await waitFor(() => expect(desc(cull)).toBe(`clef-flash on Ollama (${OLLAMA})`))
   })
 
-  it('a model no longer in the provider says so', async () => {
-    stages.culling_profile = stage({ endpoint: PROVIDER_ID, model: 'gone-model' })
+  it('a parked provider says so and Turn back on unparks it', async () => {
+    systemOneProviders = [{ id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: false, has_key: true }]
+    stages = { ...stages, system_one_providers: systemOneProviders, culling_profile: stage({ endpoint: PROVIDER_ID, model: 'clef-flash' }) }
+    vi.spyOn(ProvidersAPI, 'update').mockResolvedValue({ provider: {} as never })
     renderSection()
     const cull = await row('culling_profile')
-    await waitFor(() =>
-      expect(desc(cull)).toBe(`gone-model is no longer listed by Ollama (${OLLAMA}) — jobs won't start`),
-    )
-    expect(CullingModelsAPI.models).toHaveBeenCalledWith('culling_profile')
+    expect(desc(cull)).toContain(STAGE_PARKED('Ollama', 'the culling profile'))
+    fireEvent.click(within(cull).getByRole('button', { name: STAGE_TURN_PROVIDER_BACK_ON('Ollama') }))
+    await waitFor(() => expect(ProvidersAPI.update).toHaveBeenCalledWith(PROVIDER_ID, { enabled: true }))
+  })
+
+  it('a removed endpoint says so', async () => {
+    stages.culling_profile = stage({ endpoint: '', model: 'clef-flash' })
+    renderSection()
+    const cull = await row('culling_profile')
+    expect(desc(cull)).toContain(STAGE_REMOVED('the culling profile'))
   })
 
   it('going back to this app saves at once and clears the model', async () => {

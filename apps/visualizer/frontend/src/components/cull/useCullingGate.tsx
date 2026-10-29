@@ -1,5 +1,11 @@
 import { useCallback, useState, type ReactNode } from 'react'
-import { CullingModelsAPI, CullingProfilesAPI, type CullingModelsUsable, type CullingStageKind } from '../../services/api'
+import {
+  CullingModelsAPI,
+  CullingProfilesAPI,
+  ProvidersAPI,
+  type CullingModelsUsable,
+  type CullingStageKind,
+} from '../../services/api'
 import { CullingStageDialog } from './CullingStageDialog'
 import { firstUnusable, withStageOff, type CullingGateVerb } from './stageUsability'
 
@@ -70,6 +76,23 @@ export function useCullingGate(opts: { onStageOff?: () => void } = {}): {
     }
   }
 
+  const turnProviderBackOn = async () => {
+    if (!pending || busy) return
+    const s = pending.usable[pending.stage]
+    if (s.problem !== 'parked' || s.endpoint === 'this_app') return
+    setBusy(true)
+    try {
+      await ProvidersAPI.update(s.endpoint, { enabled: true })
+      const usable = await CullingModelsAPI.usable()
+      setPending(null)
+      await proceed(usable, pending.verb, pending.start)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const dialog = pending ? (
     <CullingStageDialog
       stage={pending.stage}
@@ -79,6 +102,7 @@ export function useCullingGate(opts: { onStageOff?: () => void } = {}): {
       error={error}
       onCancel={() => setPending(null)}
       onTurnOff={() => void turnOff()}
+      onTurnProviderBackOn={() => void turnProviderBackOn()}
     />
   ) : null
 

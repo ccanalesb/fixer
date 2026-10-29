@@ -6653,11 +6653,11 @@ export interface components {
         CullingStageUsability: {
             on: boolean;
             /** @enum {string|null} */
-            problem: "no_model" | "converting" | "down" | "refused" | "not_listed" | "no_questions" | null;
+            problem: "no_model" | "converting" | "parked" | "removed" | "no_questions" | null;
             model: string | null;
             endpoint: string;
             job_id: string | null;
-            detail: string | null;
+            provider_name: string | null;
         };
         CullingStageModelsList: {
             answers: boolean;

@@ -1012,10 +1012,13 @@ export const STAGE_THIS_APP = 'this app'
 export const STAGE_OFF = 'Off'
 export const STAGE_OFF_WITH = (model: string, where: string) => `Off · ${model} on ${where}`
 export const STAGE_RUNS = (model: string, where: string) => `${model} on ${where}`
-export const STAGE_DOWN = (url: string) => `${url || 'No URL'} does not answer — jobs won't start`
-export const STAGE_GONE = (model: string, url: string) => `${model} is no longer listed by ${url} — jobs won't start`
 export const STAGE_NO_MODEL = (stage: string) =>
   `No model chosen — jobs won't start until you choose one or turn ${stage} off`
+export const STAGE_PARKED = (name: string, stage: string) =>
+  `${name} is parked — jobs won't start until you turn it back on, choose another endpoint, or turn ${stage} off`
+export const STAGE_REMOVED = (stage: string) =>
+  `Its endpoint was removed — jobs won't start until you choose one or turn ${stage} off`
+export const STAGE_TURN_PROVIDER_BACK_ON = (name: string) => `Turn ${name} back on`
 export const STAGE_CONVERTING = (model: string) => `${model} on this app — `
 export const STAGE_STILL_CONVERTING = 'still converting'
 export const MODEL_CHANGE_TITLE = (stage: string, model: string) => `${stage} now uses ${model}.`
@@ -1040,9 +1043,8 @@ export const CULLING_PROFILE_OFF_SUB =
 export const CULLING_PROFILE_UNUSABLE = {
   no_model: () => 'The culling profile is on but has no model.',
   converting: () => "The culling profile's model is still converting.",
-  down: (endpoint: string) => `The culling profile's endpoint (${endpoint}) does not answer.`,
-  refused: (endpoint: string) => `The culling profile's endpoint (${endpoint}) refused the API key.`,
-  not_listed: (endpoint: string, model: string) => `${model} is no longer listed by ${endpoint}.`,
+  parked: (name: string) => `${name} is parked.`,
+  removed: () => 'Its endpoint was removed.',
 } as const
 export const CULLING_PROFILE_UNUSABLE_SUB = 'Fix it in Settings → Culling models, or turn the culling profile off.'
 export const CULLING_PROFILE_CONVERTING_SUB = 'It can be used once the conversion job finishes.'
@@ -1050,19 +1052,18 @@ export const SCORE_FORECAST_UNUSABLE = (why: string) => `Score forecast is on bu
 export const SCORE_FORECAST_WHY = {
   no_model: 'has no model',
   converting: 'its model is still converting',
-  down: 'its endpoint does not answer',
-  refused: 'its endpoint refused the API key',
-  not_listed: 'its model is no longer listed',
+  parked: (name: string) => `${name} is parked`,
+  removed: 'its endpoint was removed',
   no_questions: 'has no questions yet',
 } as const
 export const STAGE_UNUSABLE_TITLE = {
   no_model: (stage: string) => `${stage} has no model`,
   converting: (stage: string) => `${stage}'s model is still converting`,
-  down: (stage: string) => `${stage}'s endpoint does not answer`,
-  refused: (stage: string) => `${stage}'s endpoint refused the API key`,
-  not_listed: (stage: string) => `${stage}'s model is no longer listed`,
+  parked: (name: string) => `${name} is parked`,
+  removed: () => 'Its endpoint was removed',
   no_questions: () => 'Score forecast has no questions',
 } as const
+export const STAGE_DIALOG_TURN_BACK_ON = 'Turn it back on'
 /** How the dialog says what runs the stage, by what is being started. */
 export const STAGE_DIALOG_RUNS = {
   start: (stage: string) => `This job runs ${stage} before the big model.`,

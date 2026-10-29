@@ -9,6 +9,7 @@ import {
   CULLING_FIX_IN_SETTINGS,
   PROCESSING_JOB_QUEUE_ROUTE,
   PROCESSING_SETTINGS_STAGE_ROUTE,
+  STAGE_DIALOG_TURN_BACK_ON,
   STAGE_DIALOG_TURN_OFF,
 } from '../../constants/strings'
 import { stageDialogText, type CullingGateVerb } from './stageUsability'
@@ -52,6 +53,7 @@ export function CullingStageDialog({
   error,
   onCancel,
   onTurnOff,
+  onTurnProviderBackOn,
 }: {
   stage: CullingStageKind
   usable: CullingModelsUsable
@@ -60,9 +62,11 @@ export function CullingStageDialog({
   error: string | null
   onCancel: () => void
   onTurnOff: () => void
+  onTurnProviderBackOn?: () => void
 }) {
   const titleId = useId()
   const { title, body } = stageDialogText(stage, usable, verb)
+  const problem = usable[stage].problem
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -71,6 +75,17 @@ export function CullingStageDialog({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onCancel])
+
+  const middle =
+    problem === 'parked' ? (
+      <Button type="button" variant="secondary" size="sm" onClick={onTurnProviderBackOn} disabled={busy}>
+        {STAGE_DIALOG_TURN_BACK_ON}
+      </Button>
+    ) : problem === 'removed' ? (
+      <StageFixLink stage={stage} usable={usable} onClick={onCancel} />
+    ) : (
+      <StageFixLink stage={stage} usable={usable} onClick={onCancel} />
+    )
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4" onClick={onCancel}>
@@ -81,7 +96,7 @@ export function CullingStageDialog({
         className="w-full max-w-[480px] rounded-card border border-border-strong bg-bg p-6 shadow-deep"
         onClick={(e) => e.stopPropagation()}
       >
-        <h5 id={titleId} className="mb-2 text-lg font-bold tracking-tight text-text" title={usable[stage].detail ?? undefined}>
+        <h5 id={titleId} className="mb-2 text-lg font-bold tracking-tight text-text">
           {title}
         </h5>
         <p className="text-sm text-text-secondary">{body}</p>
@@ -90,7 +105,7 @@ export function CullingStageDialog({
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
             {CULLING_CANCEL}
           </Button>
-          <StageFixLink stage={stage} usable={usable} onClick={onCancel} />
+          {middle}
           <Button type="button" variant="primary" size="sm" onClick={onTurnOff} disabled={busy}>
             {STAGE_DIALOG_TURN_OFF[verb === 'send' ? 'send' : 'start']}
           </Button>

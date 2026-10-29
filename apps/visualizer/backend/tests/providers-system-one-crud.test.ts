@@ -8,6 +8,7 @@ import Database from 'better-sqlite3';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { createApp } from '../src/app.js';
 import { initJobsDb } from '../src/db/jobs/jobs.js';
 import { getProviderAddressProbe } from '../src/db/jobs/provider-probes.js';
@@ -188,6 +189,27 @@ describe('GET /api/providers/{id}/address-change-impact', () => {
       delete process.env.LIBRARY_DB;
       fx.cleanup();
     }
+  });
+});
+
+describe('DELETE /api/providers/{id} system_one', () => {
+  it('removes the provider and clears the endpoint on stages that used it', async () => {
+    await send('POST', '/api/providers/', {
+      name: 'Studio GPU',
+      protocol: 'system_one',
+      base_url: stubBase,
+      models: ['clef-flash'],
+      auth: { mode: 'bearer', key: 'studio-key' },
+    });
+    const res = await send('DELETE', '/api/providers/studio_gpu');
+    expect(res.status).toBe(200);
+    const cfg = parseYaml(readFileSync(configPath, 'utf8')) as {
+      culling_models: { culling_profile: { endpoint: string; model: string } };
+    };
+    expect(cfg.culling_models.culling_profile).toEqual({ endpoint: '', model: 'clef-flash' });
+    expect((JSON.parse(readFileSync(providersPath, 'utf8')) as { providers: Record<string, unknown> }).providers).toEqual(
+      {},
+    );
   });
 });
 
