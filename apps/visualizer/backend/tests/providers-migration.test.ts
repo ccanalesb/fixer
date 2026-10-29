@@ -81,7 +81,7 @@ describe('migrateProvidersConfigIfNeeded', () => {
       protocol: 'openai',
       enabled: true,
       auth: { mode: 'none' },
-      base_url: { from: 'env', value: 'OLLAMA_HOST' },
+      base_url: { from: 'literal', value: 'http://localhost:11434/v1' },
     });
     expect(next.providers.ollama!.models).toBeUndefined();
     expect(next.providers.cloud!.auth).toEqual({
@@ -108,6 +108,15 @@ describe('migrateProvidersConfigIfNeeded', () => {
     const afterFirst = readFileSync(providersPath, 'utf8');
     expect(migrateProvidersConfigIfNeeded(providersPath, dbPath)).toBe(false);
     expect(readFileSync(providersPath, 'utf8')).toBe(afterFirst);
+  });
+
+  it('keeps the base URL variable when it is set at migration time', () => {
+    process.env.OLLAMA_HOST = 'http://gpu.local:11434/v1';
+    migrateProvidersConfigIfNeeded(providersPath, dbPath);
+    const next = JSON.parse(readFileSync(providersPath, 'utf8')) as {
+      providers: Record<string, Record<string, unknown>>;
+    };
+    expect(next.providers.ollama!.base_url).toEqual({ from: 'env', value: 'OLLAMA_HOST' });
   });
 
   it('writes providers.json mode 0600 on Unix', () => {

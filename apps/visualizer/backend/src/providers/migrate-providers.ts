@@ -66,7 +66,8 @@ function migrateAuth(legacy: LegacyProviderConfig): ProviderAuth {
 
 function migrateBaseUrl(legacy: LegacyProviderConfig): ValueRef {
   if (legacy.base_url !== undefined) return literalRef(legacy.base_url);
-  if (legacy.base_url_env) return envRef(legacy.base_url_env);
+  const envSet = legacy.base_url_env ? Boolean(process.env[legacy.base_url_env]) : false;
+  if (legacy.base_url_env && (envSet || !legacy.base_url_default)) return envRef(legacy.base_url_env);
   if (legacy.base_url_default) return literalRef(legacy.base_url_default);
   return literalRef('');
 }
