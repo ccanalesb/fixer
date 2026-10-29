@@ -43,7 +43,7 @@ beforeEach(() => {
   process.env.LT_PROVIDERS_JSON = providersPath;
   process.env.DATABASE_PATH = jobsDbPath;
   writeNewShapeProviders(providersPath, { providers: {}, defaults: {}, fallback_order: [] });
-  initJobsDb(jobsDbPath);
+  initJobsDb(jobsDbPath).close();
 });
 
 afterEach(() => {
