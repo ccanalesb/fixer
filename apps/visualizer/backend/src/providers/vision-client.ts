@@ -6,6 +6,7 @@ import { basename } from 'node:path';
 import {
   AuthenticationError,
   ContextLengthError,
+  ImageRefusedError,
   InvalidRequestError,
   ModelUnavailableError,
   PayloadTooLargeError,
@@ -14,6 +15,7 @@ import {
   ProviderTimeoutError,
   RateLimitError,
 } from './errors.js';
+import { isImageRefusalResponse, trimImageRefusalReason } from './image-refusal.js';
 import { requestJson } from './http.js';
 import type { LogCallback } from './retry.js';
 
@@ -59,6 +61,7 @@ function mapHttpError(
   body: string,
   headers: Headers,
   ctx: { provider: string | null; model: string | null },
+  requestPath: string,
 ): ProviderError {
   const retryAfterRaw = headers.get('retry-after');
   const parsed = retryAfterRaw === null ? Number.NaN : Number.parseFloat(retryAfterRaw);
@@ -70,6 +73,9 @@ function mapHttpError(
   if (status === 429) return new RateLimitError(msg, opts);
   if (status === 401 || status === 403) return new AuthenticationError(msg, ctx);
   if (status === 413) return new PayloadTooLargeError(msg, ctx);
+  if (isImageRefusalResponse(status, body, requestPath)) {
+    return new ImageRefusedError(msg, ctx, trimImageRefusalReason(body));
+  }
   if (status === 400) {
     if (
       lower.includes('context length') ||
@@ -80,13 +86,6 @@ function mapHttpError(
     ) {
       return new ContextLengthError(msg, ctx);
     }
-    return new InvalidRequestError(msg, ctx);
-  }
-  if (
-    lower.includes('multimodal') ||
-    lower.includes('image_url') ||
-    lower.includes('modality')
-  ) {
     return new InvalidRequestError(msg, ctx);
   }
   if (status === 503) return new ModelUnavailableError(msg, ctx);
@@ -116,7 +115,7 @@ async function postJson(
   return requestJson(client, path, {
     method: 'POST',
     body,
-    onHttpError: (res, text) => mapHttpError(res.status, text, res.headers, ctx),
+    onHttpError: (res, text) => mapHttpError(res.status, text, res.headers, ctx, path),
     onTransportError: (e) => mapTransportError(e, ctx),
   });
 }

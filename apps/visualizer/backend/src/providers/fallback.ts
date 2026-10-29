@@ -7,7 +7,12 @@
  * batch to a paid API, and a paid API that is rate-limiting should not stall the
  * batch when a local model is available.
  */
+import { existsSync } from 'node:fs';
+import { config } from '../config.js';
+import { openDb } from '../db/connection.js';
+import { markModelImageRefused } from '../db/jobs/provider-models.js';
 import {
+  ImageRefusedError,
   InvalidRequestError,
   isRetryableError,
   ModelUnavailableError,
@@ -34,10 +39,28 @@ function logCascade(
   if (!logCallback) return;
   const next = attempts[index + 1];
   const nextLabel = next ? `${next[0]}/${next[1]}` : 'none';
+  if (e instanceof ImageRefusedError) {
+    const reason = e.responseBody.replace(/\s+/g, ' ').slice(0, 120);
+    logCallback(
+      'warning',
+      `[${operation}] ${pid}/${mid} doesn't take images (${reason}), fallback -> ${nextLabel}`,
+    );
+    return;
+  }
   logCallback(
     'warning',
     `[${operation}] ${pid}/${mid} failed (${(e as Error).name}), fallback -> ${nextLabel}`,
   );
+}
+
+function persistImageRefusal(providerId: string, modelId: string, reason: string): void {
+  if (!existsSync(config.VISUALIZER_DB)) return;
+  const db = openDb(config.VISUALIZER_DB, { readonly: false, vec: false });
+  try {
+    markModelImageRefused(db, providerId, modelId, reason);
+  } finally {
+    db.close();
+  }
 }
 
 export class FallbackDispatcher {
@@ -92,6 +115,13 @@ export class FallbackDispatcher {
         if (e instanceof CancelledRetryError) throw e;
 
         if (e instanceof InvalidRequestError) throw e;
+
+        if (e instanceof ImageRefusedError) {
+          persistImageRefusal(pid, mid, e.responseBody);
+          lastError = e;
+          logCascade(logCallback, opts.operation, pid, mid, e, attempts, index);
+          continue;
+        }
 
         if (isRetryableError(e) || e instanceof ProviderConnectionError) {
           // `ProviderConnectionError` is not retryable — a refused connection is

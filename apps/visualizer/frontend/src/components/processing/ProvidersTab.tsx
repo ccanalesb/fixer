@@ -107,6 +107,14 @@ export function ProvidersTab() {
     [refreshModelsForProvider],
   );
 
+  const handleRetryModelImages = useCallback(
+    async (providerId: string, modelId: string) => {
+      await ProvidersAPI.retryModelImages(providerId, modelId);
+      await refreshModelsForProvider(providerId);
+    },
+    [refreshModelsForProvider],
+  );
+
   const handleReorderModel = useCallback(
     async (providerId: string, modelId: string, direction: 'up' | 'down') => {
       const models = modelCache[providerId] ?? [];
@@ -159,6 +167,9 @@ export function ProvidersTab() {
             }}
             onReorderModel={(modelId, direction) => {
               handleReorderModel(provider.id, modelId, direction).catch(console.error);
+            }}
+            onRetryModelImages={(modelId) => {
+              handleRetryModelImages(provider.id, modelId).catch(console.error);
             }}
             connectionReachable={reachability[provider.id] ?? null}
             connectionError={connectionErrors[provider.id] ?? null}

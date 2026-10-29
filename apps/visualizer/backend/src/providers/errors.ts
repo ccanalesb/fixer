@@ -49,6 +49,20 @@ export class AuthenticationError extends ProviderError {}
 /** 400 — bad model name, or an unsupported input format. */
 export class InvalidRequestError extends ProviderError {}
 
+/** The server refused multimodal input for this model; try the next in the cascade. */
+export class ImageRefusedError extends ProviderError {
+  readonly responseBody: string;
+
+  constructor(
+    message: string,
+    opts: { provider?: string | null; model?: string | null; retryAfter?: number | null },
+    responseBody: string,
+  ) {
+    super(message, opts);
+    this.responseBody = responseBody;
+  }
+}
+
 /** Retried with backoff, then cascaded to the next provider. */
 export function isRetryableError(e: unknown): boolean {
   return (

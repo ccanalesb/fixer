@@ -10,7 +10,13 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
 import { openDb, type Db } from '../db/connection.js';
-import { addUserModel, DuplicateUserModelError } from '../db/jobs/provider-models.js';
+import {
+  addUserModel,
+  clearModelImageRefusal,
+  DuplicateUserModelError,
+  listProviderModels,
+  updateProviderModelName,
+} from '../db/jobs/provider-models.js';
 import { ProviderRegistry, UnknownProviderError } from '../providers/registry.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
@@ -185,6 +191,7 @@ providersRoutes.openapi(descriptionModelsRoute, async (c) => {
     const seen = new Set<string>();
     for (const m of modelsList) {
       if (seen.has(m.id)) continue;
+      if (m.vision === false) continue;
       seen.add(m.id);
       result.push({
         provider_id: pid,
@@ -339,9 +346,132 @@ providersRoutes.openapi(modelsCreateRoute, async (c) => {
   return c.json({ id: modelId, name: modelName, vision, source: 'user' as const }, 201);
 });
 
+// --- model update and image-refusal retry -----------------------------------
+
+async function readModelEntry(
+  registry: ProviderRegistry,
+  providerId: string,
+  modelId: string,
+): Promise<z.infer<typeof ProviderModel> | null> {
+  const models = await registry.listModels(providerId);
+  const found = models.find((m) => m.id === modelId);
+  if (!found) return null;
+  return {
+    id: found.id,
+    name: found.name,
+    source: found.source ?? 'config',
+    vision: found.vision,
+    image_refused_reason:
+      typeof found.image_refused_reason === 'string' || found.image_refused_reason === null
+        ? found.image_refused_reason
+        : undefined,
+  };
+}
+
+async function patchModel(
+  providerId: string,
+  modelId: string,
+  name: string,
+): Promise<{ status: 200 | 404; body: z.infer<typeof ProviderModel> | { error: string } }> {
+  const registry = new ProviderRegistry();
+  if (!registry.hasProvider(providerId)) {
+    return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
+  }
+  const updated = withJobsDb(true, (db) => updateProviderModelName(db, providerId, modelId, name));
+  if (!updated) return { status: 404, body: { error: 'Model not found' } };
+  const entry = await readModelEntry(registry, providerId, modelId);
+  if (!entry) return { status: 404, body: { error: 'Model not found' } };
+  return { status: 200, body: entry };
+}
+
+const modelPatchRoute = createRoute({
+  method: 'patch',
+  path: '/providers/{provider_id}/models/{model_id}',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string(), model_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderModel) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(modelPatchRoute, async (c) => {
+  const data = await readJson(c);
+  if (!data || typeof data !== 'object' || !('name' in data)) {
+    return c.json({ error: 'name is required' }, 400);
+  }
+  const name = (data as { name: unknown }).name;
+  if (typeof name !== 'string' || !name.trim()) {
+    return c.json({ error: 'name must be a non-empty string' }, 400);
+  }
+  const result = await patchModel(c.req.valid('param').provider_id, c.req.valid('param').model_id, name.trim());
+  return result.status === 200
+    ? c.json(result.body as z.infer<typeof ProviderModel>, 200)
+    : c.json(result.body as { error: string }, 404);
+});
+
+providersRoutes.patch('/providers/:provider_id/models/:model_id{.+}', async (c) => {
+  const data = await readJson(c);
+  if (!data || typeof data !== 'object' || !('name' in data)) {
+    return c.json({ error: 'name is required' }, 400);
+  }
+  const name = (data as { name: unknown }).name;
+  if (typeof name !== 'string' || !name.trim()) {
+    return c.json({ error: 'name must be a non-empty string' }, 400);
+  }
+  const result = await patchModel(c.req.param('provider_id'), c.req.param('model_id'), name.trim());
+  return c.json(result.body, result.status);
+});
+
+async function retryModelImages(
+  providerId: string,
+  modelId: string,
+): Promise<{ status: 200 | 404; body: z.infer<typeof ProviderModel> | { error: string } }> {
+  const registry = new ProviderRegistry();
+  if (!registry.hasProvider(providerId)) {
+    return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
+  }
+  const hadMark = withJobsDb(true, (db) => {
+    const rows = listProviderModels(db, providerId);
+    const row = rows.find((r) => r.model_id === modelId);
+    if (!row || !row.image_refused_at) return false;
+    return clearModelImageRefusal(db, providerId, modelId);
+  });
+  if (!hadMark) return { status: 404, body: { error: 'Model not found or not marked' } };
+  const entry = await readModelEntry(registry, providerId, modelId);
+  if (!entry) return { status: 404, body: { error: 'Model not found' } };
+  return { status: 200, body: entry };
+}
+
+const modelRetryImagesRoute = createRoute({
+  method: 'post',
+  path: '/providers/{provider_id}/models/{model_id}/retry-images',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string(), model_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderModel) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(modelRetryImagesRoute, async (c) => {
+  const result = await retryModelImages(
+    c.req.valid('param').provider_id,
+    c.req.valid('param').model_id,
+  );
+  return result.status === 200
+    ? c.json(result.body as z.infer<typeof ProviderModel>, 200)
+    : c.json(result.body as { error: string }, 404);
+});
+
+providersRoutes.post('/providers/:provider_id/models/:model_id{.+}/retry-images', async (c) => {
+  const result = await retryModelImages(c.req.param('provider_id'), c.req.param('model_id'));
+  return c.json(result.body, result.status);
+});
+
 // --- model deletion ---------------------------------------------------------
 
-/**
 /** Delete a model row from `visualizer.db`. */
 async function deleteModel(
   providerId: string,

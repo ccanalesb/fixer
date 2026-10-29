@@ -872,6 +872,22 @@ export const ProvidersAPI = {
     invalidateAll(['providers.list'])
     return result
   },
+  retryModelImages: async (providerId: string, modelId: string) => {
+    const result = await request<ProviderModel>(
+      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/retry-images`,
+      { method: 'POST' },
+    )
+    invalidateAll(['providers.list'])
+    return result
+  },
+  updateModelName: async (providerId: string, modelId: string, name: string) => {
+    const result = await request<ProviderModel>(
+      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
+      { method: 'PATCH', body: JSON.stringify({ name }) },
+    )
+    invalidateAll(['providers.list'])
+    return result
+  },
 }
 
 export type CullReviewSummary = components['schemas']['CullReviewSummaryResponse']
