@@ -5,11 +5,13 @@ import { CULL_REDECIDE_CONFIRM_BODY, CULLING_CANCEL } from '../../constants/stri
 /** Before a change that queues a re-decide job. */
 export function RedecideConfirmDialog({
   title,
+  body = CULL_REDECIDE_CONFIRM_BODY,
   confirmLabel,
   onCancel,
   onConfirm,
 }: {
   title: string
+  body?: string
   confirmLabel: string
   onCancel: () => void
   onConfirm: () => void
@@ -36,7 +38,7 @@ export function RedecideConfirmDialog({
         <h5 id={titleId} className="mb-2 text-lg font-bold tracking-tight text-text">
           {title}
         </h5>
-        <p className="text-sm text-text-secondary">{CULL_REDECIDE_CONFIRM_BODY}</p>
+        <p className="text-sm text-text-secondary">{body}</p>
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
             {CULLING_CANCEL}

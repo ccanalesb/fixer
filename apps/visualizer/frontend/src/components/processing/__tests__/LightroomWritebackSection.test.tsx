@@ -149,7 +149,7 @@ describe('LightroomWritebackSection', () => {
       ...baseSettings,
       write_reject: true,
       catalog_write_available: false,
-      catalog_write_unavailable_reason: 'Close Lightroom before writing to catalog.',
+      catalog_write_unavailable_reason: 'Close Lightroom Classic before writing to catalog.',
     })
     renderSection()
     expect(await screen.findByRole('button', { name: LR_WRITEBACK_WRITE_TO_LR })).toBeDisabled()

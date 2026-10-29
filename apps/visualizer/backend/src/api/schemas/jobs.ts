@@ -29,6 +29,8 @@ export const Job = z
     status: JobStatus,
     progress: z.int(),
     current_step: z.string().nullish(),
+    clip_model_download_loaded_bytes: z.int().nullish(),
+    clip_model_download_total_bytes: z.int().nullish(),
     logs: z.array(JobLog).default([]),
     logs_total: z.int().default(0),
     warning_count: z.int().default(0),
@@ -133,6 +135,11 @@ export type Job = z.infer<typeof Job>;
  * A resumed batch checkpoint holds every processed key, which for a 43,000-image
  * embed job is a multi-megabyte array. The UI only ever shows how many.
  */
+const CLIP_DOWNLOAD_META_KEYS = [
+  'clip_model_download_loaded_bytes',
+  'clip_model_download_total_bytes',
+] as const;
+
 const CHECKPOINT_LIST_KEYS = [
   'processed_pairs',
   'processed_media_keys',
@@ -154,14 +161,27 @@ export function compactCheckpointLists(
   return compact;
 }
 
-/** Replace bulky checkpoint lists with tallies, for a wire payload. */
-export function compactJobPayload<T extends Record<string, unknown>>(job: T): T {
+function liftClipDownloadFields<T extends Record<string, unknown>>(job: T): T {
   const metadata = job.metadata;
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return job;
+  const meta = metadata as Record<string, unknown>;
+  const lifted: Record<string, unknown> = { ...job };
+  for (const key of CLIP_DOWNLOAD_META_KEYS) {
+    const value = meta[key];
+    if (typeof value === 'number' && Number.isFinite(value)) lifted[key] = Math.trunc(value);
+  }
+  return lifted as T;
+}
+
+/** Replace bulky checkpoint lists with tallies, for a wire payload. */
+export function compactJobPayload<T extends Record<string, unknown>>(job: T): T {
+  const withClip = liftClipDownloadFields(job);
+  const metadata = withClip.metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return withClip;
   const checkpoint = (metadata as Record<string, unknown>).checkpoint;
-  if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) return job;
+  if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) return withClip;
   return {
-    ...job,
+    ...withClip,
     metadata: {
       ...(metadata as Record<string, unknown>),
       checkpoint: compactCheckpointLists(checkpoint as Record<string, unknown>),

@@ -1,6 +1,6 @@
 # Issue Tracker
 
-Issues are tracked in GitHub Issues for this repo: `ccanalesb/lightroom-tagger`.
+Issues are tracked in GitHub Issues for Fixer: `ccanalesb/fixer` (GitHub repo name unchanged until the owner renames it).
 
 ## Workflow
 

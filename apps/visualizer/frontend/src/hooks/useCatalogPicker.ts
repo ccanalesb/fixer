@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfigAPI } from '../services/api'
+import { isTauri } from '../utils/isTauri'
+import { pickCatalogPath } from '../utils/nativeFilePickers'
 
 /**
  * Every way the catalog path is acquired and saved, in one place.
@@ -7,8 +9,8 @@ import { ConfigAPI } from '../services/api'
  * A browser cannot hand JavaScript a filesystem path, so the picker is the
  * backend's: it opens a macOS dialog on its own machine and answers with what
  * was chosen. Typing a path stays as the fallback for the machines and browsers
- * that leaves out. An Electron shell would replace the transport without
- * touching anything above this hook.
+ * that leaves out. The desktop app replaces the transport with a native dialog
+ * without touching anything above this hook.
  */
 
 export interface CatalogStatus {
@@ -79,7 +81,8 @@ export function useCatalogPicker() {
         resolvedPath: data.resolved_path,
         exists: data.exists,
         pickerUsable:
-          data.picker_available && browserIsOnBackendHost(window.location.hostname),
+          isTauri() ||
+          (data.picker_available && browserIsOnBackendHost(window.location.hostname)),
         needsSync: data.needs_catalog_sync,
       })
       setDraft(data.catalog_path)
@@ -102,7 +105,7 @@ export function useCatalogPicker() {
     setPicking(true)
     setError(null)
     try {
-      const { catalog_path: chosen } = await ConfigAPI.pickCatalog()
+      const chosen = await pickCatalogPath()
       // `null` is a dismissed dialog: the user changed their mind, not an error.
       if (chosen) setDraft(chosen)
     } catch (e) {
@@ -140,5 +143,6 @@ export function useCatalogPicker() {
     error,
     pick,
     save,
+    refresh,
   }
 }

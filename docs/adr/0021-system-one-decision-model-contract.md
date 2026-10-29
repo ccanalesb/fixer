@@ -1,7 +1,7 @@
 # ADR-0021: Culling reaches its models through System One; the app serves its own
 
 **Status:** Accepted (2026-10-22), amended by
-[#366](https://github.com/ccanalesb/lightroom-tagger/issues/366) (2026-10-22)
+[#366](https://github.com/ccanalesb/fixer/issues/366) (2026-10-22)
 **Date:** 2026-10-22
 **Amends:** ADR-0020
 
@@ -20,7 +20,7 @@
 Culling's two stages, the culling profile and the Score forecast, called Laya base
 and Laya new directly: one worker call per photo, with model files the setup step
 exports into `models/` (ADR-0020). The PRD
-([#361](https://github.com/ccanalesb/lightroom-tagger/issues/361)) lets the user
+([#361](https://github.com/ccanalesb/fixer/issues/361)) lets the user
 choose each stage's model, including models this app does not hold (oMLX,
 `jevtrainer serve`, another machine). Those servers speak System One (TypeSafe
 Jev): `POST /v1/systemone` with `{model, state, images, questions}`, answering

@@ -135,7 +135,7 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
       const done = Math.min(i + chunk.length, keys.length);
       opts.onProgress?.(
         keys.length ? Math.round((done / keys.length) * 100) : 100,
-        `Lightroom write-back (${done}/${keys.length})`,
+        `Lightroom Classic write-back (${done}/${keys.length})`,
       );
       for (const imageKey of chunk) {
         if (

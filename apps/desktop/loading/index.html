@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fixer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, -apple-system, system-ui, Segoe UI, Helvetica, Arial, sans-serif;
+        --bg: #191919;
+        --text: #f7f6f5;
+        --text-secondary: #b8b7b4;
+        --accent: #4a9eff;
+        --accent-hover: #7ab8ff;
+        --border: rgba(255, 255, 255, 0.12);
+        --warning: #ff8c42;
+        --error: #ff6b6b;
+        --surface: #31302e;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        text-align: center;
+        padding: 2rem;
+        max-width: 26rem;
+        width: 100%;
+      }
+      h1 {
+        font-size: 1.375rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.75rem;
+      }
+      p {
+        margin: 0;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        font-size: 1rem;
+      }
+      .actions {
+        display: none;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+      }
+      .actions.visible {
+        display: flex;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+        border-radius: 8px;
+        padding: 0.625rem 1rem;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: transparent;
+        color: #fff;
+        font-weight: 500;
+      }
+      button.primary:hover {
+        background: var(--accent-hover);
+      }
+      button.linkish {
+        background: transparent;
+        border-color: transparent;
+        color: var(--accent);
+      }
+      .port-panel {
+        display: none;
+        margin-top: 1rem;
+        text-align: left;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+      .port-panel.visible {
+        display: block;
+      }
+      label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+      }
+      input {
+        width: 100%;
+        font: inherit;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+      }
+      .port-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+        justify-content: flex-end;
+      }
+      #reason {
+        color: var(--warning);
+        margin-top: 0.75rem;
+      }
+      #reason.error {
+        color: var(--error);
+      }
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1 id="title">Starting Fixer…</h1>
+      <p id="status">Loading the app.</p>
+      <p id="reason" class="hidden"></p>
+
+      <div id="actions" class="actions">
+        <button type="button" class="primary" id="retry">Retry</button>
+        <button type="button" id="open-logs">Open logs</button>
+        <button type="button" class="linkish hidden" id="use-other-port">Use another port</button>
+      </div>
+
+      <div id="port-panel" class="port-panel">
+        <label for="port-input">Local port</label>
+        <input id="port-input" type="number" min="1" max="65535" inputmode="numeric" />
+        <div class="port-actions">
+          <button type="button" id="port-cancel">Cancel</button>
+          <button type="button" class="primary" id="port-save">Save and retry</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      const invoke = (cmd, args) =>
+        window.__TAURI_INTERNALS__.invoke(cmd, args ?? {});
+
+      const titleEl = document.getElementById('title');
+      const statusEl = document.getElementById('status');
+      const reasonEl = document.getElementById('reason');
+      const actionsEl = document.getElementById('actions');
+      const portPanel = document.getElementById('port-panel');
+      const portInput = document.getElementById('port-input');
+      const useOtherPortBtn = document.getElementById('use-other-port');
+
+      function resetLoading() {
+        titleEl.textContent = 'Starting Fixer…';
+        statusEl.textContent = 'Loading the app.';
+        reasonEl.textContent = '';
+        reasonEl.classList.add('hidden');
+        reasonEl.classList.remove('error');
+        actionsEl.classList.remove('visible');
+        portPanel.classList.remove('visible');
+        useOtherPortBtn.classList.add('hidden');
+      }
+
+      window.__fixerResetLoading = resetLoading;
+
+      window.__fixerShowStartupError = function (detail) {
+        actionsEl.classList.add('visible');
+        portPanel.classList.remove('visible');
+        titleEl.textContent = 'Fixer could not start';
+        statusEl.textContent = 'Something went wrong while starting the backend.';
+
+        if (detail.reason === 'port_in_use') {
+          reasonEl.textContent =
+            'Port ' +
+            (detail.port ?? '5101') +
+            ' is already in use on this computer.';
+          useOtherPortBtn.classList.remove('hidden');
+        } else if (detail.reason === 'timeout') {
+          reasonEl.textContent =
+            'The backend did not respond within 60 seconds.';
+          reasonEl.classList.remove('hidden');
+        } else {
+          reasonEl.textContent =
+            'The backend stopped unexpectedly. Try again or check the logs.';
+          reasonEl.classList.add('error');
+          reasonEl.classList.remove('hidden');
+        }
+        if (detail.reason !== 'timeout') {
+          reasonEl.classList.remove('hidden');
+        }
+      };
+
+      document.getElementById('retry').addEventListener('click', () => {
+        resetLoading();
+        invoke('retry_startup').catch(() => {
+          window.__fixerShowStartupError({ reason: 'crash' });
+        });
+      });
+
+      document.getElementById('open-logs').addEventListener('click', () => {
+        invoke('open_app_logs').catch(() => {});
+      });
+
+      useOtherPortBtn.addEventListener('click', () => {
+        portPanel.classList.add('visible');
+        portInput.focus();
+        invoke('get_app_port')
+          .then((port) => {
+            portInput.value = String(port);
+          })
+          .catch(() => {
+            portInput.value = '5101';
+          });
+      });
+
+      document.getElementById('port-cancel').addEventListener('click', () => {
+        portPanel.classList.remove('visible');
+      });
+
+      document.getElementById('port-save').addEventListener('click', () => {
+        const port = Number.parseInt(portInput.value, 10);
+        if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+          portInput.focus();
+          return;
+        }
+        resetLoading();
+        invoke('save_port_and_retry', { port }).catch(() => {
+          window.__fixerShowStartupError({ reason: 'port_in_use', port });
+        });
+      });
+    </script>
+  </body>
+</html>

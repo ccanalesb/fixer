@@ -1,6 +1,6 @@
 # Parked: Chat / NL / semantic search
 
-Retired 2026-08-12 · tag `parked/chat-search` · sha `bdd390f` · [map #218](https://github.com/ccanalesb/lightroom-tagger/issues/218)
+Retired 2026-08-12 · tag `parked/chat-search` · sha `bdd390f` · [map #218](https://github.com/ccanalesb/fixer/issues/218)
 
 ## What it did
 
@@ -22,4 +22,4 @@ If the keyword filter remains sufficient, nothing would revive the chat layer; r
 
 ---
 
-**Where it lives:** `git checkout parked/chat-search` · key paths: `apps/visualizer/backend/api/images/search.py`, `apps/visualizer/backend/api/schemas/search.py`, `lightroom_tagger/core/catalog_search.py`, `lightroom_tagger/core/nl_catalog_search.py`, `lightroom_tagger/core/catalog_nl_filter.py`, `lightroom_tagger/core/semantic_search.py`, `lightroom_tagger/core/search_tools.py`, `lightroom_tagger/core/search_tools_definitions.py`, `lightroom_tagger/core/embedding_service.py`, `apps/visualizer/frontend/src/pages/SearchPage.tsx`, `apps/visualizer/frontend/src/types/search.ts` · data dropped: none in this PR (`image_text_embeddings` table retained until [#228](https://github.com/ccanalesb/lightroom-tagger/issues/228)) · prior design docs: none in `docs/plans/`, `docs/research/`, or `docs/brainstorms/` — this file is the only artifact.
+**Where it lives:** `git checkout parked/chat-search` · key paths: `apps/visualizer/backend/api/images/search.py`, `apps/visualizer/backend/api/schemas/search.py`, `lightroom_tagger/core/catalog_search.py`, `lightroom_tagger/core/nl_catalog_search.py`, `lightroom_tagger/core/catalog_nl_filter.py`, `lightroom_tagger/core/semantic_search.py`, `lightroom_tagger/core/search_tools.py`, `lightroom_tagger/core/search_tools_definitions.py`, `lightroom_tagger/core/embedding_service.py`, `apps/visualizer/frontend/src/pages/SearchPage.tsx`, `apps/visualizer/frontend/src/types/search.ts` · data dropped: none in this PR (`image_text_embeddings` table retained until [#228](https://github.com/ccanalesb/fixer/issues/228)) · prior design docs: none in `docs/plans/`, `docs/research/`, or `docs/brainstorms/` — this file is the only artifact.

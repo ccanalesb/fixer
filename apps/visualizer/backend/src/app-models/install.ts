@@ -7,8 +7,10 @@
  * leaves nothing that lists.
  */
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import path from 'node:path';
+import { basename, dirname } from 'node:path';
 import { expandUserPath } from '../config.js';
+import { isFolderSourceInput } from './folder-source.js';
 import type { Db } from '../db/connection.js';
 import { createJob, getActiveJobs, type JobRow } from '../db/jobs/jobs.js';
 import { installedModels } from './files.js';
@@ -40,12 +42,28 @@ function unquote(raw: string): string {
   return t.length >= 2 && (q === "'" || q === '"') && t[t.length - 1] === q ? t.slice(1, -1).trim() : t;
 }
 
-export function parseModelSource(raw: string): ModelSource {
+export type ParseModelSourceDeps = {
+  path: Pick<typeof path, 'resolve'>;
+  expandUserPath: (raw: string) => string;
+  existsSync: (p: string) => boolean;
+  statSync: (p: string) => { isDirectory(): boolean };
+};
+
+const defaultParseModelSourceDeps = (): ParseModelSourceDeps => ({
+  path,
+  expandUserPath,
+  existsSync,
+  statSync,
+});
+
+export function parseModelSource(raw: string, deps: ParseModelSourceDeps = defaultParseModelSourceDeps()): ModelSource {
   const text = unquote(raw);
-  if (/^[/~.]/.test(text)) {
-    const path = resolve(expandUserPath(text));
-    if (!existsSync(path) || !statSync(path).isDirectory()) throw new AppModelSourceError(`No folder at ${path}`);
-    return { kind: 'folder', source: path };
+  if (isFolderSourceInput(text)) {
+    const folderPath = deps.path.resolve(deps.expandUserPath(text));
+    if (!deps.existsSync(folderPath) || !deps.statSync(folderPath).isDirectory()) {
+      throw new AppModelSourceError(`No folder at ${folderPath}`);
+    }
+    return { kind: 'folder', source: folderPath };
   }
   if (HUGGING_FACE_ID.test(text)) return { kind: 'hugging_face', source: text };
   throw new AppModelSourceError(

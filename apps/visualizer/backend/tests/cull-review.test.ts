@@ -8,7 +8,6 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { resolveCurrentStages } from '../src/cull/stages.js';
-import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
@@ -51,8 +50,7 @@ beforeEach(() => {
   jobsDir = mkdtempSync(join(tmpdir(), 'lt-cull-review-jobs-'));
   jobsDbPath = join(jobsDir, 'visualizer.db');
   process.env.DATABASE_PATH = jobsDbPath;
-  fx = new LibraryFixture().activate();
-  initLibraryDb(fx.dbPath);
+  fx = new LibraryFixture().seedFactoryDefaults().activate();
   fx.addImages('filtered-a', 'passed-b', 'filtered-send', 'filtered-low');
   seedVerdict(fx, filteredBase('filtered-a', 0.25, 'culling_profile'));
   seedVerdict(fx, {

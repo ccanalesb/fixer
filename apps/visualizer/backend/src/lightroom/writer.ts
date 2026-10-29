@@ -1,12 +1,12 @@
 /**
- * Keyword writes into a live Lightroom `.lrcat`.
+ * Keyword writes into a live Lightroom Classic `.lrcat`.
  *
- * This is the only code in the backend that mutates a file Lightroom itself owns,
+ * This is the only code in the backend that mutates a file Lightroom Classic itself owns,
  * so the safety rules are load-bearing rather than defensive:
  *
- *   - refuse to write while Lightroom holds the catalog (`raiseIfCatalogLocked`);
- *     SQLite would happily write into a catalog Lightroom has cached in memory, and
- *     Lightroom would then overwrite it on quit
+ *   - refuse to write while Lightroom Classic holds the catalog (`raiseIfCatalogLocked`);
+ *     SQLite would happily write into a catalog Lightroom Classic has cached in memory, and
+ *     Lightroom Classic would then overwrite it on quit
  *   - take a backup before the first write of the day, and reuse it afterwards
  *   - `AgLibraryKeywordImage.image` references `Adobe_images.id_local`, NOT
  *     `AgLibraryFile.id_local`. Getting that wrong links the keyword to a different
@@ -46,16 +46,16 @@ function catalogLockCandidates(catalogPath: string): string[] {
   return [join(dir, `${stem}.lrcat-lock`), join(dir, `${name}.lock`)];
 }
 
-/** Throw when Lightroom appears to hold the catalog open. */
+/** Throw when Lightroom Classic appears to hold the catalog open. */
 export function raiseIfCatalogLocked(catalogPath: string): void {
   for (const path of catalogLockCandidates(catalogPath)) {
     if (existsSync(path)) {
-      throw new Error('Close Lightroom before writing to catalog.');
+      throw new Error('Close Lightroom Classic before writing to catalog.');
     }
   }
 }
 
-/** Whether Lightroom currently holds the catalog (lock file present). */
+/** Whether Lightroom Classic currently holds the catalog (lock file present). */
 export function isCatalogLocked(catalogPath: string): boolean {
   for (const path of catalogLockCandidates(catalogPath)) {
     if (existsSync(path)) return true;
@@ -134,9 +134,9 @@ const libraryFor = new WeakMap<Db, { library: Db; ids: Map<string, number | null
 /**
  * Open the `.lrcat`.
  *
- * Deliberately NOT routed through `openDb`: the Lightroom catalog is not our
+ * Deliberately NOT routed through `openDb`: the Lightroom Classic catalog is not our
  * database. It must not get a WAL-mode switch (which rewrites the file header and
- * would confuse Lightroom) and it has no sqlite-vec tables to load.
+ * would confuse Lightroom Classic) and it has no sqlite-vec tables to load.
  *
  * With `library`, every lookup by image key on this connection goes through the
  * file id `library.db` holds for the key; without it, only a key that names exactly
@@ -159,9 +159,9 @@ export function keywordExists(conn: Db, keywordName: string): boolean {
   return getKeywordId(conn, keywordName) !== null;
 }
 
-/** Create a keyword row, with a Lightroom-shaped `id_global`. */
+/** Create a keyword row, with a Lightroom Classic-shaped `id_global`. */
 export function createKeyword(conn: Db, keywordName: string): number {
-  // 32 uppercase hex characters without dashes, the format Lightroom writes.
+  // 32 uppercase hex characters without dashes, the format Lightroom Classic writes.
   const idGlobal = randomUUID().replaceAll('-', '').toUpperCase();
   const info = conn
     .prepare(
@@ -317,7 +317,7 @@ export function updatePickIfUnflagged(conn: Db, imageKey: string, pick: -1): Pic
   return info.changes > 0 ? 'updated' : 'skipped';
 }
 
-/** Set star rating only when rating is unset. Uses REAL values (Lightroom stores 1.0, 2.0, …). */
+/** Set star rating only when rating is unset. Uses REAL values (Lightroom Classic stores 1.0, 2.0, …). */
 export function updateRatingIfUnset(conn: Db, imageKey: string, rating: number): PickRatingWriteResult {
   const imageId = getImageLocalId(conn, imageKey);
   if (!imageId) return 'image_not_found';

@@ -35,10 +35,10 @@ import {
 } from '../vision/orientation-refresh.js';
 
 export const CATALOG_LOCKED_MSG =
-  'Cannot read Lightroom catalog: another process holds the catalog open. ' +
+  'Cannot read Lightroom Classic catalog: another process holds the catalog open. ' +
   'Close Lightroom Classic and retry.';
 
-/** The catalog could not be opened or read — typically Lightroom is holding it. */
+/** The catalog could not be opened or read — typically Lightroom Classic is holding it. */
 export class CatalogSyncError extends Error {
   constructor(message: string) {
     super(message);
@@ -80,13 +80,13 @@ export function catalogSyncErrorMessage(e: unknown): string {
   if (msg.includes('database is locked')) return CATALOG_LOCKED_MSG;
   if (msg.includes('unable to open database file')) {
     return (
-      'Cannot open Lightroom catalog file. On network storage, ensure the ' +
+      'Cannot open Lightroom Classic catalog file. On network storage, ensure the ' +
       'catalog is reachable. For legacy read-write opens, try ' +
       'LIGHTROOM_CATALOG_LOCKING_MODE=EXCLUSIVE. Close Lightroom Classic ' +
       'if the catalog is in use.'
     );
   }
-  return `Cannot read Lightroom catalog: ${raw}`;
+  return `Cannot read Lightroom Classic catalog: ${raw}`;
 }
 
 /**
@@ -218,7 +218,7 @@ export async function syncCatalog(
 
     const added = records.length ? libraryWrite(libDb, () => storeImagesBatch(libDb, records)) : 0;
 
-    // Every run rather than only for new ids: a photo turned in Lightroom after it
+    // Every run rather than only for new ids: a photo turned in Lightroom Classic after it
     // was synced has a stale cache JPEG and outputs made from it.
     let orientation: OrientationRefreshResult = { updated: 0, stale: 0 };
     if (!cancelled) {

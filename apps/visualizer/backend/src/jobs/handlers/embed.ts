@@ -16,7 +16,13 @@ import {
   upsertImageClipEmbedding,
 } from '../../db/library/embeddings.js';
 import { libraryWrite } from '../../db/library/write.js';
-import { CLIP_EMBED_MODEL_ID, clipVecBlob, encodeImages } from '../../imaging/clip-embed.js';
+import {
+  CLIP_EMBED_MODEL_ID,
+  clipVecBlob,
+  encodeImages,
+  formatClipModelDownloadStep,
+  loadClipModel,
+} from '../../imaging/clip-embed.js';
 import {
   CHECKPOINT_MAX_ENTRIES,
   buildBatchEmbedImageCheckpointBody,
@@ -161,6 +167,23 @@ export async function runEmbedPass(
     logAction: 'image embed',
   });
   await diag.runPreflight(pending);
+
+  try {
+    await loadClipModel({
+      onDownloadProgress: ({ loaded, total }) => {
+        runner.reportClipModelDownload(
+          jobId,
+          loaded,
+          total,
+          formatClipModelDownloadStep(loaded, total),
+        );
+      },
+    });
+    runner.clearClipModelDownload(jobId);
+  } catch (e) {
+    runner.failJob(jobId, e instanceof Error ? e.message : String(e));
+    return null;
+  }
 
   let embedded = 0;
   let skipped = 0;

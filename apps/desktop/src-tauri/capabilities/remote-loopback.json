@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-loopback",
+  "description": "Loopback SPA and plugin access",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "allow-host-commands",
+    "allow-delete-all-data-and-quit",
+    "core:app:allow-exit",
+    "core:app:allow-fetch-data-store-identifiers",
+    "core:app:allow-remove-data-store",
+    "opener:default",
+    "process:allow-restart",
+    "process:allow-exit"
+  ]
+}

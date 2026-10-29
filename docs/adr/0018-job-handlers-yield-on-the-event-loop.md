@@ -10,7 +10,7 @@ Job handlers are awaited inline by the job processor on the main event loop, and
 the hottest handlers iterate tens of thousands of times with no `await` in the
 loop body. While one of those runs, the Node event loop never reaches its poll
 phase, so the HTTP server accepts connections but never answers them
-([#310](https://github.com/ccanalesb/lightroom-tagger/issues/310)). Observed
+([#310](https://github.com/ccanalesb/fixer/issues/310)). Observed
 against a real ~43k-image catalog: `/api/status` times out for the duration, and
 because `DELETE /api/jobs/{id}` is never served either, a running job cannot be
 cancelled from the UI.
@@ -105,7 +105,7 @@ while any job runs.
 - **A fixed `every N iterations` yield** — rejected; see Decision (2).
 - **Accept the stall and fix only the frontend** — rejected, though the frontend
   half was split out and fixed independently
-  ([#314](https://github.com/ccanalesb/lightroom-tagger/issues/314)). Honest
+  ([#314](https://github.com/ccanalesb/fixer/issues/314)). Honest
   degradation is worth having on its own, but it does not make a job cancellable.
 - **Chunk the synchronous setup phases too** — rejected for now; fiddly work for
   a stall users are unlikely to distinguish from normal startup.
@@ -121,7 +121,7 @@ correcting because it invites a worker-thread rewrite that the numbers do not
 justify.
 
 They are fine because their per-image work is bounded and small. Measured on
-Apple Silicon against the real ~43k catalog ([#317](https://github.com/ccanalesb/lightroom-tagger/issues/317)):
+Apple Silicon against the real ~43k catalog ([#317](https://github.com/ccanalesb/fixer/issues/317)):
 
 | Handler | Main-thread block per image |
 |---|---|

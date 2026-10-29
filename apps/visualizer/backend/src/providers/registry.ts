@@ -12,19 +12,14 @@
  * against OpenAI-compatible endpoints. Probe requests do not retry.
  */
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { config, REPO_ROOT } from '../config.js';
+import { config, providersExamplePath } from '../config.js';
 import { requestJson } from './http.js';
 import type { ProviderClient } from './vision-client.js';
 
 /** The shipped template the registry bootstraps from on first use. */
-const EXAMPLE_PATH = join(
-  REPO_ROOT,
-  'apps',
-  'visualizer',
-  'backend',
-  'providers.example.json',
-);
+function examplePath(): string {
+  return providersExamplePath();
+}
 
 /**
  * The only resolution kinds a `defaults` block may declare.
@@ -110,8 +105,9 @@ export class ProviderRegistry {
 
   constructor(configPath: string = config.LT_PROVIDERS_JSON) {
     this.configPath = configPath;
-    if (!existsSync(this.configPath) && existsSync(EXAMPLE_PATH)) {
-      copyFileSync(EXAMPLE_PATH, this.configPath);
+    const example = examplePath();
+    if (!existsSync(this.configPath) && existsSync(example)) {
+      copyFileSync(example, this.configPath);
     }
     this.config = JSON.parse(readFileSync(this.configPath, 'utf8')) as RegistryConfig;
     this.dropUnknownDefaults();

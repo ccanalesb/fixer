@@ -11,6 +11,11 @@ export const SystemStatusResponse = z
   .strict()
   .openapi('SystemStatusResponse');
 
+export const HealthResponse = z
+  .object({ status: z.literal('ok') })
+  .strict()
+  .openapi('HealthResponse');
+
 export const Stats = z
   .object({
     catalog_images: z.int(),
@@ -42,6 +47,7 @@ export const FrameSubstanceRunSummary = z
 
 export const InsightsSummary = z
   .object({
+    first_catalog_import_completed: z.boolean(),
     catalog_images: z.int(),
     scoring_9_plus: z.int(),
     burst_stacks: z.int(),
@@ -77,6 +83,14 @@ export const CatalogCacheReadyResponse = z
   .object({ cached: z.boolean() })
   .strict()
   .openapi('CatalogCacheReadyResponse');
+
+export const ClipModelStatus = z
+  .object({
+    model_on_disk: z.boolean(),
+    cache_dir: z.string(),
+  })
+  .strict()
+  .openapi('ClipModelStatus');
 
 export const CacheStatus = z
   .object({
@@ -119,3 +133,4 @@ export type InsightsSummary = z.infer<typeof InsightsSummary>;
 export type VisionModelsResponse = z.infer<typeof VisionModelsResponse>;
 export type CachePipelineStatus = z.infer<typeof CachePipelineStatus>;
 export type CachePipelineRun = z.infer<typeof CachePipelineRun>;
+export type ClipModelStatus = z.infer<typeof ClipModelStatus>;

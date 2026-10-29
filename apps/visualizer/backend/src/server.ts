@@ -9,13 +9,17 @@
  * and the test suite can build the app without starting background work.
  */
 import { createServer } from 'node:net';
+import { existsSync } from 'node:fs';
 import { serve } from '@hono/node-server';
 import { Server as SocketIOServer } from 'socket.io';
 import { config } from './config.js';
 import { createApp } from './app.js';
 import { upgradeLibraryDb } from './api/library-db.js';
-import { startJobProcessor, stopJobProcessor } from './jobs/processor.js';
-import { registerSocketEvents, resetSocketServer } from './websocket/events.js';
+import { initLibraryDb } from './db/library/bootstrap.js';
+import { startJobProcessor } from './jobs/processor.js';
+import { assertLoopbackSocketHandshake } from './middleware/loopback.js';
+import { registerGracefulShutdown } from './lifecycle/shutdown.js';
+import { registerSocketEvents } from './websocket/events.js';
 
 /**
  * Exit rather than start a second backend on the same port.
@@ -44,9 +48,14 @@ async function refuseIfPortInUse(host: string, port: number): Promise<void> {
 
 await refuseIfPortInUse(config.HOST, config.PORT);
 
+const libraryDbPath = config.LIBRARY_DB;
+if (process.env.LT_DATA_DIR && !existsSync(libraryDbPath)) {
+  initLibraryDb(libraryDbPath).close();
+}
+
 // A library.db that cannot be upgraded still lets the server start; its requests answer 500 saying why.
 try {
-  upgradeLibraryDb(config.LIBRARY_DB);
+  upgradeLibraryDb(libraryDbPath);
 } catch (e) {
   process.stderr.write(`library.db not upgraded: ${e instanceof Error ? e.message : String(e)}\n`);
 }
@@ -64,18 +73,26 @@ const server = serve({ fetch: app.fetch, hostname: config.HOST, port: config.POR
 export const io = new SocketIOServer(server as never, {
   cors: { origin: config.FRONTEND_ORIGINS, credentials: true },
 });
+io.engine.use((req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, next: (err?: Error) => void) => {
+  const headers = {
+    host: req.headers.host,
+    origin: typeof req.headers.origin === 'string' ? req.headers.origin : undefined,
+  };
+  if (!assertLoopbackSocketHandshake(headers, config.PORT)) {
+    res.writeHead(403);
+    res.end();
+    return;
+  }
+  next();
+});
 registerSocketEvents(io);
 
 // Registered after the socket server, so the recovery pass can broadcast the ids
 // it re-queued to any client already connected.
 startJobProcessor();
 
-const shutdown = (signal: string) => {
-  process.stderr.write(`\n${signal} received, shutting down\n`);
-  stopJobProcessor();
-  resetSocketServer();
-  io.close();
-  server.close(() => process.exit(0));
-};
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+registerGracefulShutdown({
+  io,
+  server: server as import('node:http').Server,
+  onSignal: (signal) => process.stderr.write(`\n${signal} received, shutting down\n`),
+});

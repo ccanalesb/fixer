@@ -1,7 +1,7 @@
 # ADR-0020: Laya runs in Node through ONNX, in a worker thread, from git-ignored files
 
 **Status:** Accepted (2026-10-19), amended by ADR-0021 (2026-10-22) and by
-[#365](https://github.com/ccanalesb/lightroom-tagger/issues/365) (2026-10-22)
+[#365](https://github.com/ccanalesb/fixer/issues/365) (2026-10-22)
 **Date:** 2026-10-19
 
 > **Amended by #365.** The setup step converts one Laya-family model at a time,
@@ -31,7 +31,7 @@
 
 ## Context
 
-The cull before scoring ([#336](https://github.com/ccanalesb/lightroom-tagger/issues/336))
+The cull before scoring ([#336](https://github.com/ccanalesb/fixer/issues/336))
 asks two local models about every photo: Laya base (`thaitea/laya-vision`, a
 SmolVLM-256M backbone with a decision head) answers the culling recipe's four
 questions at 7 and 10 levels, and Laya new (Laya base fine-tuned on kimi's scores

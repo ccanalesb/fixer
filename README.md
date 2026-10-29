@@ -1,12 +1,16 @@
-# Lightroom Tagger
+# Fixer
 
-Index a Lightroom catalog into a local SQLite database, generate AI descriptions and perspective scores, and browse your library in a web UI.
+**Many eyes. Your style. Your picks.**
+
+AI culls your shoot, reads every frame through the perspectives you choose, learns your style, and writes your picks back to your catalog.
+
+Fixer is for Adobe Lightroom Classic: it reads your `.lrcat` catalog, builds a local library, runs vision models and culling, and can write stars and reject flags back into your catalog when Lightroom Classic is closed.
 
 ## Prerequisites
 
-1. **Lightroom catalog** — a `.lrcat` file path. **Close Lightroom Classic** before scanning; an open catalog can cause `database is locked`.
+1. **Adobe Lightroom Classic catalog** — a `.lrcat` file path. **Close Lightroom Classic** before scanning; an open catalog can cause `database is locked`.
 2. **Vision provider** — local [Ollama](https://ollama.ai) (default model `gemma3:27b`: `ollama pull gemma3:27b`) or a cloud provider configured in `providers.json`.
-3. **Backend port 5001** — the visualizer API listens on **5001**, not 5000. macOS AirPlay Receiver occupies 5000 and returns empty 200/403 responses that look like a broken backend. Vite proxies `/api` to 5001.
+3. **Backend port 5001** — the API listens on **5001**, not 5000. macOS AirPlay Receiver occupies 5000 and returns empty 200/403 responses that look like a broken backend. Vite proxies `/api` to 5001.
 
 ## Installation
 
@@ -17,7 +21,7 @@ cd apps/visualizer/backend && npm install && npm link && cd ../../..
 cd apps/visualizer/frontend && npm install --legacy-peer-deps && cd ../../..
 ```
 
-`npm link` puts `lightroom-tagger` on your PATH. Without it, run any of the
+`npm link` puts `fixer` on your PATH. Without it, run any of the
 commands below as `npm run cli -- <command>` from `apps/visualizer/backend`.
 
 ### Culling models
@@ -33,7 +37,7 @@ hand:
 ```bash
 uv run scripts/app-models/export_onnx.py owner/model --name my-model
 uv run scripts/app-models/export_onnx.py /path/to/checkpoint --name my-fine-tune
-lightroom-tagger cull-check
+fixer cull-check
 ```
 
 Today only SmolVLM (Idefics3) models with a decision head convert.
@@ -48,30 +52,31 @@ Culling itself is the job `batch_cull_photos_before_scoring` (whole catalog, or
 curl -X POST localhost:5001/api/jobs/ -H 'Content-Type: application/json' \
   -d '{"type": "batch_cull_photos_before_scoring"}'
 ```
+
 ## Quick Start (CLI)
 
 ```bash
 # Initialize library.db (scan also creates it if missing)
-lightroom-tagger init --db library.db
+fixer init --db library.db
 
 # Index catalog metadata into library.db
-lightroom-tagger scan --catalog "/path/to/Catalog.lrcat" --db library.db
+fixer scan --catalog "/path/to/Catalog.lrcat" --db library.db
 
-# Search by Lightroom metadata or AI descriptions (FTS5)
-lightroom-tagger search --keyword "landscape" --db library.db
+# Search by Lightroom Classic metadata or AI descriptions (FTS5)
+fixer search --keyword "landscape" --db library.db
 
 # Export or inspect
-lightroom-tagger export --db library.db --output export.json
-lightroom-tagger stats --db library.db
+fixer export --db library.db --output export.json
+fixer stats --db library.db
 ```
 
 Incremental catalog updates (additions only):
 
 ```bash
-lightroom-tagger sync --catalog "/path/to/Catalog.lrcat" --db library.db
+fixer sync --catalog "/path/to/Catalog.lrcat" --db library.db
 ```
 
-## Visualizer (Web UI)
+## Web UI
 
 ```bash
 cp apps/visualizer/backend/.env.example apps/visualizer/backend/.env
@@ -126,6 +131,18 @@ Environment overrides (common): `VISION_MODEL`, `LIGHTRoom_CATALOG`, `LIGHTRoom_
 
 **NAS catalogs:** close Lightroom Classic if you see `database is locked`. See [docs/CATALOG_READ_WRITE.md](docs/CATALOG_READ_WRITE.md) and [docs/STORAGE_MOUNT_REQUIREMENTS.md](docs/STORAGE_MOUNT_REQUIREMENTS.md).
 
+## License and attribution
+
+Fixer is licensed under the [ISC License](LICENSE).
+
+Adobe and Lightroom Classic are either registered trademarks or trademarks of Adobe in the United States and/or other countries.
+
+Fixer is not affiliated with or endorsed by Adobe.
+
+### Windows downloads and Smart App Control
+
+Official Fixer installers from [GitHub Releases](https://github.com/ccanalesb/fixer/releases) are **unsigned** in v1. On Windows 11, **Smart App Control** may block the installer or the app. If that happens, open **Windows Security → App & browser control → Smart App Control** and turn it off, or wait for a signed release. Only install builds from this repository’s Releases page.
+
 ## Further reading
 
 | Doc | Audience |
@@ -134,6 +151,7 @@ Environment overrides (common): `VISION_MODEL`, `LIGHTRoom_CATALOG`, `LIGHTRoom_
 | [apps/visualizer/CONTEXT.md](apps/visualizer/CONTEXT.md) | HTTP API, CLI, jobs, `library.db`, vision pipeline, React SPA |
 | [docs/architecture.md](docs/architecture.md) | Backend layer boundaries and import rules |
 | [AGENTS.md](AGENTS.md) | Agent workflow and issue tracker |
+| [docs/release-runbook.md](docs/release-runbook.md) | Cutting a desktop release and manual QA |
 | [docs/parked/](docs/parked/) | Retired capabilities (Instagram matching, etc.) |
 
 ## Development

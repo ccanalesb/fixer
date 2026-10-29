@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { createApp } from '../src/app.js';
 import {
@@ -106,7 +106,7 @@ describe('GET /api/config/catalog', () => {
     );
     expect(body.catalog_path).toBe('~/Pictures/Cat.lrcat');
     expect(body.resolved_path).not.toContain('~');
-    expect(body.resolved_path.endsWith('/Pictures/Cat.lrcat')).toBe(true);
+    expect(normalize(body.resolved_path)).toBe(normalize(join(homedir(), 'Pictures', 'Cat.lrcat')));
   });
 });
 

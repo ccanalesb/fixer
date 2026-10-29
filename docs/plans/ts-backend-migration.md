@@ -604,7 +604,7 @@ repo's slicing convention), not build-then-wire.
    create a standalone FTS5 table but is gated at `user_version` 3, so the real
    database kept the external-content form it was created with — and the two need
    opposite delete statements, which is the whole subject of
-   [#303](https://github.com/ccanalesb/lightroom-tagger/pull/303). A new database
+   [#303](https://github.com/ccanalesb/fixer/pull/303). A new database
    should be the shape everything is actually tested against. Also unlike Python,
    nothing is written *beside* the database: its ladder leaves a
    `library.db.pre-key-migration.bak` and an `instagram-matching-export.json` next
@@ -694,7 +694,7 @@ repo's slicing convention), not build-then-wire.
    second, so both positions work. Reproducing the argparse behaviour would have
    been more code than fixing it. Filed against the Python CLI, which is the one
    shipping until cutover, as
-   [#305](https://github.com/ccanalesb/lightroom-tagger/issues/305).
+   [#305](https://github.com/ccanalesb/fixer/issues/305).
 7. **Cutover — done.** `library.db.pre-ts-cutover.bak` is the backup. No CLIP
    reindex was needed: embeddings were drop-in compatible, as predicted.
 
@@ -739,7 +739,7 @@ repo's slicing convention), not build-then-wire.
    `withLibraryDb` the only export handing out a connection — and two, the
    transitions seam and the "no hand-written response interfaces in `api.ts`"
    rule, are conventions with nothing behind them. Filed as
-   [#306](https://github.com/ccanalesb/lightroom-tagger/issues/306).
+   [#306](https://github.com/ccanalesb/fixer/issues/306).
 
    **`lightroom_tagger/` was left on disk for one step, then deleted.** Of its 79
    modules, ten were unported, and seven of those were safe to lose: `schema.py`
@@ -769,7 +769,7 @@ repo's slicing convention), not build-then-wire.
    and the per-slug reset route; `check_core_file_sizes.sh`, which capped a tree
    that no longer exists and cannot be repointed at `backend/src/` without
    refactoring the ten files already over 400 lines (folded into
-   [#306](https://github.com/ccanalesb/lightroom-tagger/issues/306)); and
+   [#306](https://github.com/ccanalesb/fixer/issues/306)); and
    `tests/fixtures/frame-substance/regenerate-fixtures.py`, which imported the
    deleted numpy detector. Its manifest stays frozen on purpose — it is the
    independent second opinion the TypeScript detector is measured against.
@@ -820,7 +820,7 @@ repo's slicing convention), not build-then-wire.
    `integrity-check` still passing. It surfaced only because the TS fixture builds
    the table in the production shape, while every Python test builds the standalone
    shape `init_database` produces, where the same statement is correct. Fixed on
-   both sides ([#303](https://github.com/ccanalesb/lightroom-tagger/pull/303) for
+   both sides ([#303](https://github.com/ccanalesb/fixer/pull/303) for
    Python).
 
    `batch_embed_image` carried a smaller one of the same kind, not worth a Python
@@ -855,7 +855,7 @@ repo's slicing convention), not build-then-wire.
    43,794 empty — keyword search that works for last week's import and silently
    fails for the whole catalog is a worse bug than one that is uniformly silent.
    Repairing it properly means a backfill pass, which is its own slice and is
-   filed as [#304](https://github.com/ccanalesb/lightroom-tagger/issues/304).
+   filed as [#304](https://github.com/ccanalesb/fixer/issues/304).
 
    Two working rules for the remaining slices. Build fixtures from the *production*
    schema, not from what `init_database` happens to create — the two have already

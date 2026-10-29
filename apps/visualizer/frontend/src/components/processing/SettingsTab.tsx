@@ -1,6 +1,9 @@
+import { AboutSection } from './AboutSection';
 import { AppModelsSection } from './AppModelsSection';
+import { AppPortSettingRow } from './AppPortSettingRow';
 import { CatalogSettingRow } from './CatalogSettingRow';
 import { CullingModelsSection } from './CullingModelsSection';
+import { DeleteAllDataSection } from './DeleteAllDataSection';
 import { LightroomWritebackSection } from './LightroomWritebackSection';
 import { StackDetectionSettingRow } from './StackDetectionSettingRow';
 
@@ -15,6 +18,7 @@ export function SettingsTab() {
       </div>
 
       <div className="divide-y divide-border rounded-base border border-border bg-bg">
+        <AppPortSettingRow />
         <CatalogSettingRow />
         <StackDetectionSettingRow />
       </div>
@@ -24,6 +28,10 @@ export function SettingsTab() {
       <AppModelsSection />
 
       <LightroomWritebackSection />
+
+      <AboutSection />
+
+      <DeleteAllDataSection />
     </div>
   );
 }

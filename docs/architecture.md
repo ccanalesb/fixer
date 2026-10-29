@@ -40,7 +40,7 @@ it.
 Neither enforcement mechanism survived the port. The import rules above are a
 convention today; ten files under `src/` are already over the old 400-line cap,
 so reinstating it needs refactoring first. Tracked in
-[#306](https://github.com/ccanalesb/lightroom-tagger/issues/306).
+[#306](https://github.com/ccanalesb/fixer/issues/306).
 
 The Python package took the `library.db` migration ladder with it, so
 `db/library/bootstrap.ts` is now the only schema authority: it creates version 8

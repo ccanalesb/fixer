@@ -1,0 +1,12 @@
+[[permission]]
+identifier = "allow-host-commands"
+description = "Loading page and SPA host commands for port, logs, and startup recovery."
+commands.allow = [
+  "get_app_port",
+  "set_app_port",
+  "read_saved_app_port",
+  "open_app_logs",
+  "retry_startup",
+  "save_port_and_retry",
+  "check_for_updates_manual",
+]

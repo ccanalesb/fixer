@@ -28,7 +28,7 @@ export function undoWritebackKind(
   try {
     const live = readPickRating(conn, imageKey);
     if (!live || !liveMatchesWritten(kind, live, row)) {
-      return { ok: false, reason: 'Lightroom no longer holds what the app wrote.' };
+      return { ok: false, reason: 'Lightroom Classic no longer holds what the app wrote.' };
     }
     if (kind === 'reject') {
       undoRejectFromCatalog(conn, imageKey, row.before_pick);

@@ -11,12 +11,13 @@
 import { mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { openLibraryDb, type Db } from '../connection.js';
-import { REPO_ROOT } from '../../config.js';
+import { resourcesRoot } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { upgradeDefaultProfileSlug } from './cull-default-profile-v18.js';
 import { seedCullingDefaults } from './cull-profiles.js';
 import { markdownMarksOptional } from './scores.js';
 import { SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
+import { libraryWrite } from './write.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
 export const LIBRARY_SCHEMA_VERSION = 18;
@@ -36,6 +37,9 @@ export const KEYWORDS_BACKFILL_META_KEY = 'keywords_backfilled_v1';
  * Absent on a library synced before this key existed.
  */
 export const SYNCED_CATALOG_META_KEY = 'synced_catalog_path';
+
+/** Set when the first `catalog_cache_build` finishes; the Insights setup screen reads it. */
+export const FIRST_CATALOG_IMPORT_META_KEY = 'first_catalog_import_completed';
 
 /**
  * Descriptions and scores made from a vision-cache image that has since been
@@ -504,6 +508,29 @@ export function setLibraryMeta(db: Db, key: string, value: string): void {
   ).run(key, value);
 }
 
+/** Whether the Insights first-run setup should stay hidden. */
+export function firstCatalogImportCompleted(db: Db): boolean {
+  return getLibraryMeta(db, FIRST_CATALOG_IMPORT_META_KEY) !== null;
+}
+
+/** Record the first successful catalog import; idempotent. */
+export function markFirstCatalogImportCompleted(db: Db): void {
+  if (firstCatalogImportCompleted(db)) return;
+  setLibraryMeta(db, FIRST_CATALOG_IMPORT_META_KEY, nowIsoUtc());
+}
+
+/**
+ * Libraries that already had photos before the meta key existed are treated as
+ * past first run so Insights does not ask for the catalog again.
+ */
+export function backfillFirstCatalogImportMeta(db: Db): void {
+  if (firstCatalogImportCompleted(db)) return;
+  if (!tableExists(db, 'images')) return;
+  const row = db.prepare('SELECT COUNT(*) AS c FROM images').get() as { c: number };
+  if (Math.trunc(row.c) <= 0) return;
+  libraryWrite(db, () => markFirstCatalogImportCompleted(db));
+}
+
 /**
  * Upgrade an existing `library.db` to the current schema version. Idempotent, and
  * a no-op on a database with no tables yet.
@@ -511,6 +538,7 @@ export function setLibraryMeta(db: Db, key: string, value: string): void {
 export function upgradeLibrarySchema(db: Db): void {
   if (!libraryNeedsUpgrade(db)) {
     assertNotLegacy(db, 'library.db');
+    backfillFirstCatalogImportMeta(db);
     return;
   }
   db.transaction(() => {
@@ -519,6 +547,7 @@ export function upgradeLibrarySchema(db: Db): void {
     if (version >= LIBRARY_SCHEMA_VERSION) return;
     if (version < 18) upgradeDefaultProfileSlug(db);
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
+    backfillFirstCatalogImportMeta(db);
   }).immediate();
 }
 
@@ -558,7 +587,9 @@ export function initLibraryDb(path: string): Db {
 }
 
 /** Where the factory perspective rubrics live, as markdown. */
-export const PERSPECTIVE_PROMPTS_DIR = join(REPO_ROOT, 'prompts', 'perspectives');
+export function perspectivePromptsDir(): string {
+  return join(resourcesRoot(), 'prompts', 'perspectives');
+}
 
 /**
  * Title-case each run of letters (not word-boundary regex), so
@@ -600,7 +631,7 @@ export function perspectiveSeedDescription(markdown: string): string {
  */
 export function seedPerspectivesFromPromptsDir(
   db: Db,
-  promptsDir: string = PERSPECTIVE_PROMPTS_DIR,
+  promptsDir: string = perspectivePromptsDir(),
 ): number {
   const existing = db.prepare('SELECT COUNT(*) AS cnt FROM perspectives').get() as {
     cnt: number;

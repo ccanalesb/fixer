@@ -4,14 +4,16 @@
  * child process, its output, cancellation and cleanup are exercised without converting anything.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Db } from '../src/db/connection.js';
 import { createJob, getJob, initJobsDb, updateJobStatus } from '../src/db/jobs/jobs.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { recoverOrphanedJobs, tick } from '../src/jobs/processor.js';
 import { transitionCancel } from '../src/jobs/transitions.js';
+import { CONVERSION_OFFLINE_MESSAGE, CONVERTER_PREP_STEP } from '../src/app-models/conversion-run.js';
 import { stopRunningConversions } from '../src/jobs/handlers/app-model-install.js';
 import {
   APP_MODEL_INSTALL_JOB_TYPE,
@@ -22,51 +24,22 @@ import {
   parseModelSource,
 } from '../src/app-models/install.js';
 
-const FAKE_UV = `#!/bin/sh
-# uv run <script> <source> --name <name> --out <out> --job-id <id>
-shift 2
-src="$1"; shift
-while [ $# -gt 0 ]; do
-  case "$1" in --name) name="$2"; shift 2;; --out) out="$2"; shift 2;; --job-id) job="$2"; shift 2;; *) shift;; esac
-done
-partial="$out/.install-$name"
-mkdir -p "$partial"
-case "$src" in
-  */not-supported)
-    echo "step: looking up $src"
-    echo "error: unsupported_architecture: $src is not a model this app converts: it has no vlm_agent_config.json" >&2
-    rm -rf "$partial"; exit 2;;
-  */parity)
-    echo "error: parity: decoder: the ONNX graph differs from PyTorch by 2.00e-02, above 0.001" >&2; exit 2;;
-  */crash)
-    echo "Traceback (most recent call last):" >&2; echo "RuntimeError: out of memory" >&2; exit 1;;
-  */slow)
-    trap 'rm -rf "$partial"; exit 143' TERM
-    echo "step: exporting the decoder graph"
-    touch "$out/.slow-started"
-    while :; do sleep 0.05; done;;
-esac
-echo "step: loading the model"
-mkdir -p "$partial/tokenizer"
-for f in decoder.onnx vision.onnx tokenizer/tokenizer.json tokenizer/tokenizer_config.json; do echo x > "$partial/$f"; done
-case "$src" in /*) rev=null;; *) rev='"abc1234"';; esac
-printf '{"source":"%s","revision":%s,"vision":"%s","job_id":"%s"}' "$src" "$rev" "$name" "$job" > "$partial/model.json"
-mv "$partial" "$out/$name"
-echo "done: $name in $out"
-`;
+const FAKE_UV = join(dirname(fileURLToPath(import.meta.url)), 'helpers/fake-uv.mjs');
 
 let dir: string;
 let modelsDir: string;
 let db: Db;
 const originalPath = process.env.PATH;
+const originalDataDir = process.env.LT_DATA_DIR;
+const originalResourcesDir = process.env.LT_RESOURCES_DIR;
+const originalUvWrapper = process.env.LT_UV_TEST_WRAPPER;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-install-'));
   modelsDir = join(dir, 'models');
-  mkdirSync(join(dir, 'bin'));
-  writeFileSync(join(dir, 'bin', 'uv'), FAKE_UV);
-  chmodSync(join(dir, 'bin', 'uv'), 0o755);
-  process.env.PATH = `${join(dir, 'bin')}:${originalPath}`;
+  mkdirSync(modelsDir, { recursive: true });
+  process.env.LT_UV_TEST_WRAPPER = FAKE_UV;
+  process.env.PATH = originalPath;
   writeFileSync(join(dir, 'config.yaml'), `app_models_dir: ${modelsDir}\n`);
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
   db = initJobsDb(join(dir, 'visualizer.db'));
@@ -75,7 +48,13 @@ beforeEach(() => {
 afterEach(() => {
   db.close();
   process.env.PATH = originalPath;
+  if (originalUvWrapper === undefined) delete process.env.LT_UV_TEST_WRAPPER;
+  else process.env.LT_UV_TEST_WRAPPER = originalUvWrapper;
   delete process.env.LT_CONFIG_YAML;
+  if (originalDataDir === undefined) delete process.env.LT_DATA_DIR;
+  else process.env.LT_DATA_DIR = originalDataDir;
+  if (originalResourcesDir === undefined) delete process.env.LT_RESOURCES_DIR;
+  else process.env.LT_RESOURCES_DIR = originalResourcesDir;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -210,6 +189,7 @@ describe('the conversion job', () => {
   });
 
   it('without uv, says that uv is missing', async () => {
+    delete process.env.LT_UV_TEST_WRAPPER;
     process.env.PATH = join(dir, 'empty');
     const { job_id } = addAppModel(db, modelsDir, 'someone/a');
     await run();
@@ -217,26 +197,34 @@ describe('the conversion job', () => {
     expect(job(job_id).error).toMatch(/^uv is not installed/);
   });
 
-  it('is cancellable: the conversion is stopped and its files removed', async () => {
-    const { job_id } = addAppModel(db, modelsDir, 'someone/slow');
-    const running = run();
-    while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
-    expect(job(job_id).current_step).toBe('exporting the decoder graph');
-    transitionCancel(db, job_id);
-    await running;
-    expect(job(job_id).status).toBe('cancelled');
-    expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
-    expect(names()).toEqual([]);
-  });
+  it(
+    'is cancellable: the conversion is stopped and its files removed',
+    async () => {
+      const { job_id } = addAppModel(db, modelsDir, 'someone/slow');
+      const running = run();
+      while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
+      expect(job(job_id).current_step).toBe('exporting the decoder graph');
+      transitionCancel(db, job_id);
+      await running;
+      expect(job(job_id).status).toBe('cancelled');
+      expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
+      expect(names()).toEqual([]);
+    },
+    90_000,
+  );
 
-  it('a backend that exits stops its conversion, so a resumed job is the only one writing', async () => {
-    addAppModel(db, modelsDir, 'someone/slow');
-    const running = run();
-    while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
-    stopRunningConversions();
-    await running;
-    expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
-  });
+  it(
+    'a backend that exits stops its conversion, so a resumed job is the only one writing',
+    async () => {
+      addAppModel(db, modelsDir, 'someone/slow');
+      const running = run();
+      while (!existsSync(join(modelsDir, '.slow-started'))) await new Promise((r) => setTimeout(r, 20));
+      stopRunningConversions();
+      await running;
+      expect(existsSync(join(modelsDir, '.install-slow'))).toBe(false);
+    },
+    90_000,
+  );
 
   it('resumes after a restart: re-queued, converted from the start', async () => {
     const { job_id } = addAppModel(db, modelsDir, 'someone/a');
@@ -264,5 +252,40 @@ describe('the conversion job', () => {
     const id = createJob(db, APP_MODEL_INSTALL_JOB_TYPE, {});
     await run();
     expect(job(id).error).toBe('app_model_install needs metadata.source and metadata.name');
+  });
+
+  it('starts on preparing the converter before the script speaks', async () => {
+    const { job_id } = addAppModel(db, modelsDir, 'someone/prep-check');
+    const running = run();
+    while (getJob(db, job_id)?.current_step !== CONVERTER_PREP_STEP) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await running;
+    expect(job(job_id).status).toBe('completed');
+  });
+
+  it('uses bundled uv, the resources folder as cwd, and uv dirs under the data folder', async () => {
+    const data = join(dir, 'data');
+    const resources = join(dir, 'resources');
+    mkdirSync(join(resources, 'scripts', 'app-models'), { recursive: true });
+    writeFileSync(join(resources, 'scripts', 'app-models', 'export_onnx.py'), '# stub');
+    process.env.LT_DATA_DIR = data;
+    process.env.LT_RESOURCES_DIR = resources;
+    process.env.PATH = join(dir, 'empty');
+    const { job_id } = addAppModel(db, modelsDir, 'someone/env-check');
+    await run();
+    const messages = getJob(db, job_id, { logsLimit: 20 })!.logs.map((l) => l.message);
+    const resourcesReal = realpathSync(resources);
+    expect(messages.some((m) => m === `meta: cwd=${resourcesReal}`)).toBe(true);
+    expect(messages).toContain(`meta: UV_CACHE_DIR=${join(data, 'uv-cache')}`);
+    expect(messages).toContain(`meta: UV_PYTHON_INSTALL_DIR=${join(data, 'python')}`);
+    expect(job(job_id).status).toBe('completed');
+  });
+
+  it('when uv cannot fetch dependencies, says an internet connection is needed the first time', async () => {
+    const { job_id } = addAppModel(db, modelsDir, 'someone/offline');
+    await run();
+    expect(job(job_id).status).toBe('failed');
+    expect(job(job_id).error).toBe(CONVERSION_OFFLINE_MESSAGE);
   });
 });

@@ -20,12 +20,23 @@ const enc = vi.hoisted(() => ({
   paths: [] as string[],
   /** Runs per encoded path; throw from it to simulate an unreadable file. */
   onEncode: null as null | ((path: string) => void),
+  modelLoadFails: false,
+  modelLoadHeld: null as Promise<void> | null,
 }));
 
 vi.mock('../src/imaging/clip-embed.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/imaging/clip-embed.js')>();
   return {
     ...actual,
+    loadClipModel: async (opts?: {
+      onDownloadProgress?: (p: { loaded: number; total: number }) => void;
+    }): Promise<void> => {
+      if (enc.modelLoadFails) {
+        throw new Error(actual.CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
+      }
+      opts?.onDownloadProgress?.({ loaded: 80_000_000, total: 351_685_709 });
+      if (enc.modelLoadHeld) await enc.modelLoadHeld;
+    },
     encodeImages: async (paths: string[]): Promise<Float32Array[]> =>
       paths.map((path) => {
         enc.paths.push(path);
@@ -108,6 +119,8 @@ beforeEach(() => {
   fx = new LibraryFixture().activate();
   enc.paths = [];
   enc.onEncode = null;
+  enc.modelLoadFails = false;
+  enc.modelLoadHeld = null;
   process.env.DATABASE_PATH = jobsDbPath;
   writeFileSync(join(dir, 'config.yaml'), `vision_cache_dir: ${join(dir, 'vision')}\n`);
   process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
@@ -202,6 +215,47 @@ describe('the batch_embed_image handler', () => {
 
     expect((job.result as unknown as EmbedResult).total).toBe(1);
     expect(embeddedKeys()).toEqual(['high']);
+  });
+
+  it('reports CLIP download progress separately from the embed count', async () => {
+    fx.addImage({ key: 'a', filepath: await writePhoto('a.jpg') });
+    let releaseLoad!: () => void;
+    enc.modelLoadHeld = new Promise<void>((resolve) => {
+      releaseLoad = resolve;
+    });
+
+    const db = initJobsDb(jobsDbPath);
+    const jobId = createJob(db, 'batch_embed_image', { image_type: 'catalog' });
+    const tickPromise = tick(db, new JobRunner(db));
+
+    let row = getJob(db, jobId)!;
+    for (let i = 0; i < 100 && !row.metadata.clip_model_download_loaded_bytes; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+      row = getJob(db, jobId)!;
+    }
+    expect(row.metadata.clip_model_download_loaded_bytes).toBe(80_000_000);
+    expect(row.metadata.clip_model_download_total_bytes).toBe(351_685_709);
+    expect(row.current_step).toBe('Downloading the image model (once) — 80 / 352 MB');
+    expect(row.current_step).not.toContain('Embedded');
+
+    releaseLoad();
+    await tickPromise;
+    db.close();
+  });
+
+  it('fails the job when the CLIP model cannot be downloaded', async () => {
+    fx.addImage({ key: 'a', filepath: await writePhoto('a.jpg') });
+    fx.addImage({ key: 'b', filepath: await writePhoto('b.jpg') });
+    enc.modelLoadFails = true;
+
+    const job = await runBatch();
+
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(
+      'Could not download the image model (about 350 MB) from huggingface.co. Check the internet connection and retry.',
+    );
+    expect(enc.paths).toEqual([]);
+    expect(embeddedKeys()).toEqual([]);
   });
 
   /** One unreadable file must cost one image, not the rest of the run. */

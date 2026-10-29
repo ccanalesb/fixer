@@ -9,17 +9,26 @@
  * The script runs in its own process group, so the backend's Ctrl-C does not reach it; the backend's exit
  * stops it instead, or a quick restart would have two scripts writing the same `.install-<name>/`.
  */
-import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { REPO_ROOT, config, loadLibraryConfig } from '../../config.js';
+import { config, loadLibraryConfig, resourcesRoot } from '../../config.js';
+import {
+  CONVERTER_PREP_STEP,
+  conversionChildSpawnOptions,
+  conversionFailureMessage,
+  createProcessTreeKiller,
+  spawnUv,
+  type ProcessTreeKiller,
+} from '../../app-models/conversion-run.js';
 import { AppModelSetupError, resolveInstalledModel } from '../../app-models/files.js';
 import { APP_MODEL_INSTALL_JOB_TYPE } from '../../app-models/install.js';
 import type { JobRunner } from '../runner.js';
 import { asMetadata } from './common.js';
 
-const SCRIPT = join(REPO_ROOT, 'scripts', 'app-models', 'export_onnx.py');
+function exportOnnxScriptPath(): string {
+  return join(resourcesRoot(), 'scripts', 'app-models', 'export_onnx.py');
+}
 const CANCEL_POLL_MS = 200;
 const KILL_GRACE_MS = 10_000;
 const STEP = /^step: (.+)$/;
@@ -44,17 +53,18 @@ type Outcome = { ok: true } | { cancelled: true } | { error: string };
 /** Process-group ids of the conversions running now. */
 const running = new Set<number>();
 
-export function stopRunningConversions(): void {
-  for (const pid of running) {
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {
-      // Already gone.
-    }
-  }
+let killProcessTree: ProcessTreeKiller = createProcessTreeKiller();
+
+/** Test hook: inject how the backend stops a conversion process tree. */
+export function setProcessTreeKiller(killer: ProcessTreeKiller): void {
+  killProcessTree = killer;
 }
 
-process.on('exit', stopRunningConversions);
+export function stopRunningConversions(): void {
+  // On Windows, SIGTERM often leaves a detached `uv`/Node conversion tree running; force-kill on shutdown.
+  const signal: NodeJS.Signals = process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM';
+  for (const pid of running) killProcessTree(pid, signal);
+}
 
 function scriptFailure(kind: string, message: string): string {
   return kind === 'parity' ? `Parity check failed: ${message}` : message;
@@ -62,16 +72,18 @@ function scriptFailure(kind: string, message: string): string {
 
 function convert(runner: JobRunner, jobId: string, source: string, name: string, modelsDir: string): Promise<Outcome> {
   return new Promise((settle) => {
-    const child = spawn('uv', ['run', SCRIPT, source, '--name', name, '--out', modelsDir, '--job-id', jobId], {
-      cwd: REPO_ROOT,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    runner.setCurrentStep(jobId, CONVERTER_PREP_STEP);
+    const script = exportOnnxScriptPath();
+    const child = spawnUv(
+      ['run', script, source, '--name', name, '--out', modelsDir, '--job-id', jobId],
+      conversionChildSpawnOptions(),
+    );
     if (child.pid) running.add(child.pid);
     let done = false;
     let cancelled = false;
     let scriptError: string | null = null;
     const stderrTail: string[] = [];
+    const stderrLines: string[] = [];
     const finish = (o: Outcome) => {
       if (done) return;
       done = true;
@@ -80,11 +92,7 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
       settle(o);
     };
     const signalGroup = (sig: NodeJS.Signals) => {
-      try {
-        if (child.pid) process.kill(-child.pid, sig);
-      } catch {
-        // Already gone.
-      }
+      if (child.pid) killProcessTree(child.pid, sig);
     };
 
     // The runner logs a step itself, so a `step:` line is not logged again.
@@ -103,8 +111,10 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
       runner.log(jobId, 'info', line);
       const m = SCRIPT_ERROR.exec(line);
       if (m) scriptError = scriptFailure(m[1]!, m[2]!);
-      stderrTail.push(line.trim());
+      const trimmed = line.trim();
+      stderrTail.push(trimmed);
       if (stderrTail.length > 3) stderrTail.shift();
+      stderrLines.push(trimmed);
     });
 
     const poll = setInterval(() => {
@@ -120,9 +130,9 @@ function convert(runner: JobRunner, jobId: string, source: string, name: string,
     child.on('close', (code, signal) => {
       if (cancelled) return finish({ cancelled: true });
       if (code === 0) return finish({ ok: true });
-      if (scriptError) return finish({ error: scriptError });
-      const how = signal ? `stopped by ${signal}` : `exit code ${code}`;
-      finish({ error: `The conversion failed (${how})${stderrTail.length ? `: ${stderrTail.join(' · ')}` : ''}` });
+      finish({
+        error: conversionFailureMessage(stderrLines.join('\n'), code, scriptError, signal, stderrTail),
+      });
     });
   });
 }

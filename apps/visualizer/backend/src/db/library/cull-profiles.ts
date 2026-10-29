@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { REPO_ROOT } from '../../config.js';
+import { resourcesRoot } from '../../config.js';
 import { defaultPipelineSetting, parseProfileRule } from '../../cull/default-pipeline.js';
 import type { ProfileDefinition, ProfileRule } from '../../cull/types.js';
 import { canonicalJson } from '../../utils/canonical-json.js';
@@ -16,7 +16,9 @@ import { createPipelineSettingVersion, getCurrentPipelineSetting } from './cull-
 import { libraryWrite } from './write.js';
 
 /** Where the factory culling profiles live. */
-export const CULLING_PROFILE_SEED_DIR = join(REPO_ROOT, 'prompts', 'culling-profiles');
+export function cullingProfileSeedDir(): string {
+  return join(resourcesRoot(), 'prompts', 'culling-profiles');
+}
 
 /** The profile the default pipeline setting runs. */
 export const DEFAULT_CULLING_PROFILE_SLUG = 'default';
@@ -210,7 +212,7 @@ function readSeedFiles(dir: string): { file: string; seed: SeedFile }[] {
  * Returns whether it seeded; the library is marked seeded only once a pipeline setting exists. Runs from
  * `initLibraryDb`; the culling job calls it too, for databases made with the bare schema.
  */
-export function seedCullingDefaults(db: Db, dir: string = CULLING_PROFILE_SEED_DIR): boolean {
+export function seedCullingDefaults(db: Db, dir: string = cullingProfileSeedDir()): boolean {
   const seeded = db.prepare('SELECT 1 FROM library_meta WHERE key = ?').get(CULL_DEFAULTS_SEEDED_META_KEY);
   if (seeded) return false;
   return libraryWrite(db, () => {

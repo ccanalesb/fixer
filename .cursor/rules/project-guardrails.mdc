@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Issue tracker
 
-Issues are tracked in GitHub Issues (`ccanalesb/lightroom-tagger`), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues are tracked in GitHub Issues for Fixer (`ccanalesb/fixer`), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ## Triage labels
 
