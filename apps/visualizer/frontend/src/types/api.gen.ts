@@ -4394,7 +4394,48 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProviderCreateBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Provider"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -4619,6 +4660,129 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProviderUpdateBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Provider"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{provider_id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Provider"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -6423,6 +6587,44 @@ export interface components {
             name: string;
             available: boolean;
             tool_calling: boolean;
+            enabled: boolean;
+            base_url: components["schemas"]["ValueRef"];
+            auth: components["schemas"]["ProviderAuthSummary"];
+            address_probe?: components["schemas"]["ProviderAddressProbe"];
+        };
+        ValueRef: {
+            /** @enum {string} */
+            from: "literal" | "env";
+            value: string;
+        };
+        ProviderAuthSummary: {
+            /** @enum {string} */
+            mode: "none" | "bearer" | "header";
+            header_name?: string | null;
+            has_key: boolean;
+            /** @enum {string|null} */
+            secret_from?: "literal" | "env" | null;
+            env_var?: string | null;
+            env_set?: boolean | null;
+        };
+        ProviderAddressProbe: {
+            answered: boolean;
+            url?: string | null;
+            probed_at: string;
+            error?: string | null;
+        } | null;
+        ProviderCreateBody: {
+            name: string;
+            base_url: string;
+            auth: {
+                /** @enum {string} */
+                mode: "none" | "bearer" | "header";
+                header_name?: string | null;
+                key?: string | null;
+            };
+            extra_headers?: {
+                [key: string]: string;
+            } | null;
         };
         FallbackOrderResponse: {
             order: string[];
@@ -6445,6 +6647,21 @@ export interface components {
             model_id: string;
             model_name: string;
             tool_calling: boolean;
+        };
+        ProviderUpdateBody: {
+            name?: string | null;
+            base_url?: string | null;
+            enabled?: boolean | null;
+            extra_headers?: {
+                [key: string]: string;
+            } | null;
+            auth?: {
+                /** @enum {string|null} */
+                mode?: "none" | "bearer" | "header" | null;
+                header_name?: string | null;
+                key?: string | null;
+                clear_key?: boolean | null;
+            } | null;
         };
         ProviderHealthResponse: {
             reachable: boolean;

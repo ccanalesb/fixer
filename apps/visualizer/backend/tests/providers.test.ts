@@ -155,9 +155,32 @@ describe('GET /api/providers/', () => {
     // A top-level array, not an object wrapping one.
     expect(Array.isArray(body)).toBe(true);
     expect(body).toEqual([
-      { id: 'local', name: 'Local', available: true, tool_calling: false },
-      // `cloud` needs LT_TEST_CLOUD_KEY, which is unset.
-      { id: 'cloud', name: 'Cloud', available: false, tool_calling: true },
+      {
+        id: 'local',
+        name: 'Local',
+        available: true,
+        tool_calling: false,
+        enabled: true,
+        base_url: LOCAL_PROVIDER.base_url,
+        auth: { mode: 'bearer', has_key: true, secret_from: 'literal' },
+        address_probe: null,
+      },
+      {
+        id: 'cloud',
+        name: 'Cloud',
+        available: false,
+        tool_calling: true,
+        enabled: true,
+        base_url: CLOUD_PROVIDER.base_url,
+        auth: {
+          mode: 'bearer',
+          has_key: false,
+          secret_from: 'env',
+          env_var: 'LT_TEST_CLOUD_KEY',
+          env_set: false,
+        },
+        address_probe: null,
+      },
     ]);
   });
 

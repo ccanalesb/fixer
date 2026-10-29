@@ -24,6 +24,8 @@ import { ErrorBody } from './schemas/errors.js';
 import {
   DescriptionModelsResponse,
   FallbackOrderResponse,
+  Provider,
+  ProviderCreateBody,
   ProviderDefaults,
   ProviderDeletedResponse,
   ProviderHealthResponse,
@@ -31,6 +33,7 @@ import {
   ProviderModel,
   ProviderModelsListResponse,
   ProviderReorderSuccessResponse,
+  ProviderUpdateBody,
 } from './schemas/providers.js';
 
 export const providersRoutes = createOpenApiApp();
@@ -73,6 +76,43 @@ const listRoute = createRoute({
 providersRoutes.openapi(listRoute, async (c) =>
   c.json(await new ProviderRegistry().listProviders(), 200),
 );
+
+const createRouteDef = createRoute({
+  method: 'post',
+  path: '/providers/',
+  tags: ['providers'],
+  request: { body: { content: jsonBody(ProviderCreateBody) } },
+  responses: withValidationError({
+    201: { description: 'Created', content: jsonBody(Provider) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(createRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const data = await readJson(c);
+  const parsed = ProviderCreateBody.safeParse(data);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid provider body' }, 400);
+  }
+  try {
+    const body = parsed.data;
+    const created = await registry.createProvider({
+      name: body.name,
+      base_url: body.base_url,
+      auth: {
+        mode: body.auth.mode,
+        header_name: body.auth.header_name ?? undefined,
+        key: body.auth.key ?? undefined,
+      },
+      extra_headers: body.extra_headers ?? undefined,
+    });
+    return c.json(created, 201);
+  } catch (e) {
+    if (e instanceof RangeError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
 
 const fallbackOrderGetRoute = createRoute({
   method: 'get',
@@ -216,6 +256,76 @@ providersRoutes.openapi(descriptionModelsRoute, async (c) => {
 
 // --- per-provider -----------------------------------------------------------
 
+const updateRouteDef = createRoute({
+  method: 'put',
+  path: '/providers/{provider_id}',
+  tags: ['providers'],
+  request: {
+    params: z.object({ provider_id: z.string() }),
+    body: { content: jsonBody(ProviderUpdateBody) },
+  },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(Provider) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(updateRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  const data = await readJson(c);
+  const parsed = ProviderUpdateBody.safeParse(data);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid provider body' }, 400);
+  }
+  try {
+    const body = parsed.data;
+    const updated = await registry.updateProvider(providerId, {
+      name: body.name ?? undefined,
+      base_url: body.base_url ?? undefined,
+      enabled: body.enabled ?? undefined,
+      extra_headers: body.extra_headers ?? undefined,
+      auth: body.auth
+        ? {
+            mode: body.auth.mode ?? undefined,
+            header_name: body.auth.header_name ?? undefined,
+            key: body.auth.key ?? undefined,
+            clear_key: body.auth.clear_key ?? undefined,
+          }
+        : undefined,
+    });
+    return c.json(updated, 200);
+  } catch (e) {
+    if (e instanceof UnknownProviderError) return c.json({ error: e.message }, 404);
+    if (e instanceof RangeError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+const probeRouteDef = createRoute({
+  method: 'post',
+  path: '/providers/{provider_id}/probe',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(Provider) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(probeRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  if (!registry.hasProvider(providerId)) {
+    return c.json({ error: `Unknown provider: ${providerId}` }, 404);
+  }
+  await registry.runAndPersistAddressProbe(providerId);
+  const list = await registry.listProviders();
+  const row = list.find((p) => p.id === providerId);
+  return c.json(row!, 200);
+});
+
 const healthRoute = createRoute({
   method: 'get',
   path: '/providers/{provider_id}/health',
@@ -229,18 +339,27 @@ const healthRoute = createRoute({
 
 providersRoutes.openapi(healthRoute, async (c) => {
   const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  if (!registry.hasProvider(providerId)) {
+    return c.json({ error: 'Unknown provider' }, 404);
+  }
+  const stored = registry.readStoredAddressProbe(providerId);
+  if (stored?.answered) {
+    return c.json({ reachable: true }, 200);
+  }
+  if (stored && !stored.answered) {
+    return c.json({ reachable: false, error: stored.error ?? undefined }, 200);
+  }
   let probe;
   try {
-    probe = await registry.probeConnection(c.req.valid('param').provider_id);
+    probe = await registry.probeConnection(providerId);
   } catch (e) {
     if (e instanceof UnknownProviderError) return c.json({ error: 'Unknown provider' }, 404);
     throw e;
   }
-  // Unreachable is a 200 with `reachable: false` — the provider being down is a
-  // state the UI renders, not a request failure.
   return probe.ok
     ? c.json({ reachable: true }, 200)
-    : c.json({ reachable: false, error: probe.detail }, 200);
+    : c.json({ reachable: false, error: probe.detail ?? undefined }, 200);
 });
 
 const modelsOrderRoute = createRoute({
