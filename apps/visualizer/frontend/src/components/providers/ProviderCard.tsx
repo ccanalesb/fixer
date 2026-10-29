@@ -19,6 +19,7 @@ interface ProviderCardProps {
   onAddModel: (model: { id: string; name: string; vision: boolean }) => Promise<void>;
   onRemoveModel: (modelId: string) => void;
   onReorderModel: (modelId: string, direction: 'up' | 'down') => void;
+  onRetryModelImages?: (modelId: string) => void;
   onSaveProvider: (values: ProviderEditValues) => Promise<void>;
   onTestConnection: () => Promise<void>;
   testingConnection?: boolean;
@@ -32,6 +33,7 @@ export function ProviderCard({
   onAddModel,
   onRemoveModel,
   onReorderModel,
+  onRetryModelImages,
   onSaveProvider,
   onTestConnection,
   testingConnection = false,
@@ -73,7 +75,12 @@ export function ProviderCard({
           {models.length === 0 ? (
             <p className="text-sm text-text-tertiary">{PROVIDER_NO_MODELS}</p>
           ) : (
-            <ModelList models={models} onRemove={onRemoveModel} onReorder={onReorderModel} />
+            <ModelList
+              models={models}
+              onRemove={onRemoveModel}
+              onReorder={onReorderModel}
+              onRetryImages={onRetryModelImages}
+            />
           )}
           <AddModelForm onAdd={onAddModel} />
         </div>

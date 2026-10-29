@@ -130,6 +130,72 @@ export function addUserModel(
   }
 }
 
+/** Record that the provider refused an image for this model. */
+export function markModelImageRefused(
+  db: Db,
+  providerId: string,
+  modelId: string,
+  reason: string,
+): void {
+  const trimmed = reason.trim().slice(0, 500);
+  const existing = db
+    .prepare('SELECT model_name, origin FROM provider_models WHERE provider_id = ? AND model_id = ?')
+    .get(providerId, modelId) as { model_name: string; origin: ProviderModelOrigin } | undefined;
+  if (existing) {
+    db.prepare(
+      `
+      UPDATE provider_models
+      SET image_refused_at = datetime('now'),
+          image_refused_reason = ?,
+          vision = 0
+      WHERE provider_id = ? AND model_id = ?
+      `,
+    ).run(trimmed, providerId, modelId);
+    return;
+  }
+  insertProviderModel(db, {
+    providerId,
+    modelId,
+    modelName: modelId,
+    origin: 'config',
+    acceptsImages: false,
+    refusedReason: trimmed,
+  });
+}
+
+/** Clear an image-refusal mark so jobs may try the model again. */
+export function clearModelImageRefusal(db: Db, providerId: string, modelId: string): boolean {
+  const info = db
+    .prepare(
+      `
+      UPDATE provider_models
+      SET image_refused_at = NULL, image_refused_reason = NULL, vision = 1
+      WHERE provider_id = ? AND model_id = ? AND image_refused_at IS NOT NULL
+      `,
+    )
+    .run(providerId, modelId);
+  return info.changes > 0;
+}
+
+/** Rename a model and clear any image-refusal mark. */
+export function updateProviderModelName(
+  db: Db,
+  providerId: string,
+  modelId: string,
+  modelName: string,
+): boolean {
+  const info = db
+    .prepare(
+      `
+      UPDATE provider_models
+      SET model_name = ?, image_refused_at = NULL, image_refused_reason = NULL, vision = 1
+      WHERE provider_id = ? AND model_id = ?
+      `,
+    )
+    .run(modelName, providerId, modelId);
+  return info.changes > 0;
+}
+
 /** Clear image-refusal marks for every model on a provider (address change). */
 export function clearProviderImageRefusalMarks(db: Db, providerId: string): void {
   db.prepare(

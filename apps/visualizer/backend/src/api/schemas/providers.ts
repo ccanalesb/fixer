@@ -88,6 +88,7 @@ export const ProviderModel = z
     name: z.string(),
     source: ProviderModelSource,
     vision: z.boolean().nullish(),
+    image_refused_reason: z.string().nullish(),
   })
   .strict()
   .openapi('ProviderModel');
