@@ -59,7 +59,7 @@ beforeEach(async () => {
   process.env.LT_PROVIDERS_JSON = providersPath;
   process.env.DATABASE_PATH = jobsDbPath;
   writeNewShapeProviders(providersPath, { providers: {}, defaults: {}, fallback_order: [] });
-  initJobsDb(jobsDbPath);
+  initJobsDb(jobsDbPath).close();
   await startModelsStub();
 });
 
@@ -185,17 +185,32 @@ describe('PUT /api/providers/{id}', () => {
     db.close();
 
     await send('PUT', '/api/providers/edge', { auth: { key: 'new-key' } });
-    let row = new Database(jobsDbPath, { readonly: true })
-      .prepare('SELECT image_refused_at FROM provider_models WHERE provider_id = ?')
-      .get('edge') as { image_refused_at: string | null };
+    let row: { image_refused_at: string | null };
+    {
+      const check = new Database(jobsDbPath, { readonly: true });
+      try {
+        row = check
+          .prepare('SELECT image_refused_at FROM provider_models WHERE provider_id = ?')
+          .get('edge') as { image_refused_at: string | null };
+      } finally {
+        check.close();
+      }
+    }
     expect(row.image_refused_at).toBeTruthy();
 
     await send('PUT', '/api/providers/edge', {
       base_url: stubBase.replace(/:(\d+)$/, ':59998'),
     });
-    row = new Database(jobsDbPath, { readonly: true })
-      .prepare('SELECT image_refused_at FROM provider_models WHERE provider_id = ?')
-      .get('edge') as { image_refused_at: string | null };
+    {
+      const check = new Database(jobsDbPath, { readonly: true });
+      try {
+        row = check
+          .prepare('SELECT image_refused_at FROM provider_models WHERE provider_id = ?')
+          .get('edge') as { image_refused_at: string | null };
+      } finally {
+        check.close();
+      }
+    }
     expect(row.image_refused_at).toBeNull();
   });
 });

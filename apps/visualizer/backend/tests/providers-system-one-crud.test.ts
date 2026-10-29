@@ -76,7 +76,7 @@ beforeEach(async () => {
 `,
   );
   writeNewShapeProviders(providersPath, { providers: {}, defaults: {}, fallback_order: [] });
-  initJobsDb(jobsDbPath);
+  initJobsDb(jobsDbPath).close();
   await startModelsStub();
 });
 
