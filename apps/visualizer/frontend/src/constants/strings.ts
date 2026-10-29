@@ -974,8 +974,23 @@ export const STAGE_IN_SENTENCE = { culling_profile: 'the culling profile', score
 export const STAGE_ENDPOINT = 'Endpoint'
 export const STAGE_ENDPOINT_THIS_APP = 'This app'
 export const STAGE_ENDPOINT_PARKED = '(parked)'
-export const STAGE_PROVIDERS_LINK = 'Add or edit providers'
+export const STAGE_PROVIDERS_LINK = 'Add or edit System One providers'
 export const PROCESSING_PROVIDERS_ROUTE = '/processing?tab=providers'
+export const PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE = '/processing?tab=providers#system-one-providers'
+export const PROVIDERS_GROUP_OPENAI = 'For descriptions and AI score · OpenAI-compatible'
+export const PROVIDERS_GROUP_SYSTEM_ONE = 'For culling · System One'
+export const PROVIDERS_GROUP_SYSTEM_ONE_EMPTY =
+  'None. Culling uses this app unless you add a System One endpoint.'
+export const PROVIDERS_ADD_SYSTEM_ONE = 'Add a System One endpoint'
+export const PROVIDERS_SYSTEM_ONE_MODELS_LABEL = 'Models'
+export const PROVIDERS_SYSTEM_ONE_MODELS_HINT = 'Model ids, comma-separated'
+export const PROVIDERS_SYSTEM_ONE_USED_BY = (names: string) => `Used by ${names}`
+export const PROVIDERS_SYSTEM_ONE_UNUSED = 'No culling stage uses it'
+export const PROVIDERS_ADDRESS_CHANGE_WARNING = (
+  photos: number,
+  stages: string,
+) =>
+  `Changing the address makes ${photos.toLocaleString('en-US')} photo${photos === 1 ? '' : 's'} on ${stages} be answered again on the next cull pass (a new address is a new model identity).`
 export const STAGE_MODEL_NONE_FOR_PROVIDER = 'No models in this provider yet'
 export const STAGE_URL = 'URL'
 export const STAGE_URL_PLACEHOLDER = 'http://localhost:11434'

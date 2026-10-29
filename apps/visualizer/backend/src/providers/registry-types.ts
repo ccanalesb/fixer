@@ -49,6 +49,7 @@ export interface ProviderAddressProbeSummary {
 export interface ProviderSummary {
   id: string;
   name: string;
+  protocol: 'openai' | 'system_one';
   available: boolean;
   tool_calling: boolean;
   enabled: boolean;
@@ -60,6 +61,9 @@ export interface ProviderSummary {
 export interface CreateProviderInput {
   name: string;
   base_url: string;
+  protocol?: 'openai' | 'system_one';
+  /** System One only: model ids typed in at create time. */
+  model_ids?: string[];
   auth: {
     mode: 'none' | 'bearer' | 'header';
     header_name?: string;

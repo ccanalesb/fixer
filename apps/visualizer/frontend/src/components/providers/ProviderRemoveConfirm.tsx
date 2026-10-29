@@ -27,6 +27,7 @@ interface ProviderRemoveConfirmProps {
   models: ProviderModel[];
   activeJobs: Job[];
   isDescriptionDefault: boolean;
+  cullingStageNames?: string[];
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
@@ -37,6 +38,7 @@ export function ProviderRemoveConfirm({
   models,
   activeJobs,
   isDescriptionDefault,
+  cullingStageNames,
   onConfirm,
   onCancel,
   busy = false,
@@ -61,6 +63,12 @@ export function ProviderRemoveConfirm({
         ) : null}
         {isDescriptionDefault ? (
           <li>The description default points here. It will move to the next provider that can read a photo.</li>
+        ) : null}
+        {cullingStageNames && cullingStageNames.length > 0 ? (
+          <li>
+            {cullingStageNames.join(' and ')} use this endpoint today. They will have no endpoint until you choose
+            another in Culling models.
+          </li>
         ) : null}
         {models.length > 0 ? (
           <li>

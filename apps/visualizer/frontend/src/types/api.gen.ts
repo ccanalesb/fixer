@@ -4837,6 +4837,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/providers/{provider_id}/address-change-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderAddressChangeImpact"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/{provider_id}/health": {
         parameters: {
             query?: never;
@@ -6639,6 +6703,7 @@ export interface components {
         Provider: {
             id: string;
             name: string;
+            protocol: components["schemas"]["ProviderProtocol"];
             available: boolean;
             tool_calling: boolean;
             enabled: boolean;
@@ -6646,6 +6711,8 @@ export interface components {
             auth: components["schemas"]["ProviderAuthSummary"];
             address_probe?: components["schemas"]["ProviderAddressProbe"];
         };
+        /** @enum {string} */
+        ProviderProtocol: "openai" | "system_one";
         ValueRef: {
             /** @enum {string} */
             from: "literal" | "env";
@@ -6670,6 +6737,8 @@ export interface components {
         ProviderCreateBody: {
             name: string;
             base_url: string;
+            protocol?: components["schemas"]["ProviderProtocol"];
+            models?: string[];
             auth: {
                 /** @enum {string} */
                 mode: "none" | "bearer" | "header";
@@ -6724,6 +6793,13 @@ export interface components {
         ProviderDeletedResponse: {
             deleted: boolean;
             defaults_notice?: string | null;
+        };
+        ProviderAddressChangeImpact: {
+            stages: {
+                kind: string;
+                name: string;
+            }[];
+            photos: number;
         };
         ProviderHealthResponse: {
             reachable: boolean;

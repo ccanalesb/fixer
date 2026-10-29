@@ -15,6 +15,7 @@ import { config, providersExamplePath } from '../config.js';
 import { openDb } from '../db/connection.js';
 import { initJobsDb } from '../db/jobs/jobs.js';
 import {
+  addUserModel,
   clearProviderImageRefusalMarks,
   deleteAllProviderModels,
   listProviderModels,
@@ -202,22 +203,42 @@ export class ProviderRegistry {
     if (!name) throw new RangeError('name is required');
     const base = normalizeBaseUrlInput(input.base_url);
     if (!base) throw new RangeError('base_url is required');
+    const protocol = input.protocol ?? 'openai';
+    if (protocol !== 'openai' && protocol !== 'system_one') {
+      throw new RangeError('protocol must be openai or system_one');
+    }
+    const modelIds =
+      protocol === 'system_one'
+        ? (input.model_ids ?? []).map((id) => id.trim()).filter(Boolean)
+        : [];
+    if (protocol === 'system_one' && modelIds.length === 0) {
+      throw new RangeError('at least one model id is required for a System One provider');
+    }
 
     const id = deriveProviderId(name, new Set(Object.keys(this.providers)));
     const cfg: ProviderConfig = {
       name,
-      protocol: 'openai',
+      protocol,
       enabled: true,
       base_url: { from: 'literal', value: base },
       auth: this.authFromCreateInput(input.auth),
       ...(input.extra_headers ? { extra_headers: { ...input.extra_headers } } : {}),
     };
     this.providers[id] = cfg;
-    const order = this.fallbackOrder;
-    if (!order.includes(id)) {
-      this.config.fallback_order = [...order, id];
+    if (protocol === 'openai') {
+      const order = this.fallbackOrder;
+      if (!order.includes(id)) {
+        this.config.fallback_order = [...order, id];
+      }
     }
     this.saveConfig();
+    if (protocol === 'system_one') {
+      this.withJobsDbWrite((db) => {
+        for (const modelId of modelIds) {
+          addUserModel(db, id, modelId, modelId, true);
+        }
+      });
+    }
     await this.runAndPersistAddressProbe(id, base);
     return await this.buildProviderSummary(id, cfg);
   }
@@ -413,6 +434,7 @@ export class ProviderRegistry {
     return {
       id,
       name: cfg.name,
+      protocol: cfg.protocol,
       available: this.isAvailable(cfg),
       tool_calling: await this.resolveToolCalling(id, cfg),
       enabled: cfg.enabled !== false,
@@ -659,6 +681,7 @@ export class ProviderRegistry {
 
   /** Explicit config wins; otherwise a lazily-cached live probe. */
   private async resolveToolCalling(providerId: string, cfg: ProviderConfig): Promise<boolean> {
+    if (cfg.protocol === 'system_one') return false;
     if (cfg.tool_calling !== undefined) return Boolean(cfg.tool_calling);
     const cached = toolCallingProbeCache.get(providerId);
     if (cached !== undefined) return cached;

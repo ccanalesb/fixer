@@ -6,6 +6,7 @@ import type { Job, Provider, ProviderModel } from '../../../services/api';
 const baseProvider: Provider = {
   id: 'local',
   name: 'Local',
+  protocol: 'openai',
   available: true,
   enabled: true,
   tool_calling: false,
@@ -38,7 +39,7 @@ function renderCard(over: Partial<Parameters<typeof ProviderCard>[0]> = {}) {
     <ProviderCard
       provider={baseProvider}
       models={models}
-      providers={[baseProvider, { ...baseProvider, id: 'cloud', name: 'Cloud' }]}
+      providers={[baseProvider, { ...baseProvider, id: 'cloud', name: 'Cloud', protocol: 'openai' }]}
       fallbackOrder={['local', 'cloud']}
       modelCache={{
         local: models,
