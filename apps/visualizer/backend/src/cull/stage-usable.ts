@@ -4,6 +4,7 @@
  */
 import type { CullingModelConfig } from '../config.js';
 import type { AppModelStatus } from '../app-models/install.js';
+import type { ProviderRegistry } from '../providers/registry.js';
 import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
 import type { StageKind } from './types.js';
 
@@ -29,6 +30,7 @@ export interface StageUsabilityInput {
   /** The Score forecast's questions; ignored for the culling profile. */
   questionCount: number;
   timeoutMs?: number;
+  registry?: ProviderRegistry;
 }
 
 export async function stageUsability(kind: StageKind, input: StageUsabilityInput): Promise<StageUsability> {
@@ -49,7 +51,9 @@ export async function stageUsability(kind: StageKind, input: StageUsabilityInput
   }
   let listed;
   try {
-    listed = await listSystemOneModels(systemOneEndpoint(cfg), { timeoutMs: input.timeoutMs });
+    listed = await listSystemOneModels(systemOneEndpoint(cfg, { registry: input.registry }), {
+      timeoutMs: input.timeoutMs,
+    });
   } catch (e) {
     if (!(e instanceof SystemOneError)) throw e;
     return { ...base, problem: e.failure === 'refused' ? 'refused' : 'down', detail: e.message };

@@ -165,11 +165,12 @@ export interface LibraryConfig {
   cullingModels: CullingModelsConfig;
 }
 
-/** One stage's System One endpoint: `this_app` or a URL, the model (`''` for none), and an API key (`''` for none). */
+/** One stage's endpoint: `this_app` or a System One provider id, and the model (`''` for none). */
 export interface CullingModelConfig {
   endpoint: string;
   model: string;
-  apiKey: string;
+  /** Tests and unmigrated URLs only; config on disk never carries a key after migration. */
+  apiKey?: string;
 }
 
 export interface CullingModelsConfig {
@@ -179,8 +180,8 @@ export interface CullingModelsConfig {
 
 /** A new install: this app's endpoint, and no model until the user chooses one. */
 export const CULLING_MODELS_DEFAULTS: CullingModelsConfig = {
-  culling_profile: { endpoint: 'this_app', model: '', apiKey: '' },
-  score_forecast: { endpoint: 'this_app', model: '', apiKey: '' },
+  culling_profile: { endpoint: 'this_app', model: '' },
+  score_forecast: { endpoint: 'this_app', model: '' },
 };
 
 function cullingModelsField(raw: unknown): CullingModelsConfig {
@@ -189,7 +190,7 @@ function cullingModelsField(raw: unknown): CullingModelsConfig {
     const v = block[key] && typeof block[key] === 'object' ? (block[key] as Record<string, unknown>) : {};
     const str = (k: string, fallback: string) => (typeof v[k] === 'string' && v[k] ? (v[k] as string) : fallback);
     const d = CULLING_MODELS_DEFAULTS[key];
-    return { endpoint: str('endpoint', d.endpoint), model: str('model', d.model), apiKey: str('api_key', d.apiKey) };
+    return { endpoint: str('endpoint', d.endpoint), model: str('model', d.model) };
   };
   return { culling_profile: stage('culling_profile'), score_forecast: stage('score_forecast') };
 }
@@ -202,7 +203,7 @@ export function updateConfigYamlCullingModel(
 ): void {
   const current = loadLibraryConfig(configFile).cullingModels;
   const next = { ...current, [stage]: value };
-  const entry = (m: CullingModelConfig) => ({ endpoint: m.endpoint, model: m.model, api_key: m.apiKey });
+  const entry = (m: CullingModelConfig) => ({ endpoint: m.endpoint, model: m.model });
   updateConfigYaml(configFile, 'culling_models', {
     culling_profile: entry(next.culling_profile),
     score_forecast: entry(next.score_forecast),

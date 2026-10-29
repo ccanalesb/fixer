@@ -45,7 +45,7 @@ beforeEach(() => {
   writeMinimalModel(modelsDir);
   writeFileSync(
     join(jobsDir, 'config.yaml'),
-    `app_models_dir: ${modelsDir}\nculling_models:\n  culling_profile: {endpoint: this_app, model: culling-model, api_key: ""}\n`,
+    `app_models_dir: ${modelsDir}\nculling_models:\n  culling_profile: {endpoint: this_app, model: culling-model}\n`,
   );
   process.env.DATABASE_PATH = jobsDbPath;
   process.env.LT_CONFIG_YAML = join(jobsDir, 'config.yaml');

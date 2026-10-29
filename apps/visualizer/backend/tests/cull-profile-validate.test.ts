@@ -36,7 +36,7 @@ function writeMinimalModel(name: string): void {
 function useStageModel(endpoint: string, model: string): void {
   writeFileSync(
     join(dir, 'config.yaml'),
-    `app_models_dir: ${modelsDir}\nculling_models:\n  culling_profile: {endpoint: ${endpoint}, model: ${model}, api_key: ""}\n`,
+    `app_models_dir: ${modelsDir}\nculling_models:\n  culling_profile: {endpoint: ${endpoint}, model: ${model}}\n`,
   );
 }
 

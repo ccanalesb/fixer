@@ -105,8 +105,8 @@ function writeMinimalTokenizer(dir: string): void {
 /** config.yaml lines putting each culling stage on this app's profile model and forecast model (a new install has no model). */
 export const THIS_APP_MODELS_YAML =
   'culling_models:\n' +
-  '  culling_profile: {endpoint: this_app, model: culling-model, api_key: ""}\n' +
-  '  score_forecast: {endpoint: this_app, model: forecast-model, api_key: ""}\n';
+  '  culling_profile: {endpoint: this_app, model: culling-model}\n' +
+  '  score_forecast: {endpoint: this_app, model: forecast-model}\n';
 
 export function writeFakeAppModels(modelsDir: string, opts: { withNew?: boolean } = {}): void {
   const withNew = opts.withNew !== false;

@@ -137,7 +137,8 @@ export class ProviderRegistry {
   }
 
   get fallbackOrder(): string[] {
-    return this.config.fallback_order ?? Object.keys(this.providers);
+    const order = this.config.fallback_order ?? Object.keys(this.providers);
+    return order.filter((id) => this.providers[id]?.protocol !== 'system_one');
   }
 
   get defaults(): Record<string, DefaultsEntry> {
@@ -150,6 +151,22 @@ export class ProviderRegistry {
 
   hasProvider(providerId: string): boolean {
     return Object.hasOwn(this.providers, providerId);
+  }
+
+  providerConfig(providerId: string): ProviderConfig | undefined {
+    return this.providers[providerId];
+  }
+
+  providerConfigs(): Record<string, ProviderConfig> {
+    return this.providers;
+  }
+
+  providerHasKey(cfg: ProviderConfig): boolean {
+    if (cfg.auth.mode === 'none') return false;
+    const secret = cfg.auth.secret;
+    if (!secret) return false;
+    if (secret.from === 'literal') return secret.value.length > 0;
+    return Boolean(process.env[secret.value]);
   }
 
   isEnabled(providerId: string): boolean {
@@ -489,6 +506,10 @@ export class ProviderRegistry {
     if (unknown.length > 0) {
       throw new RangeError(`Unknown provider id(s): [${unknown.map((u) => `'${u}'`).join(', ')}]`);
     }
+    const cullingOnly = ids.filter((id) => this.providers[id]?.protocol === 'system_one');
+    if (cullingOnly.length > 0) {
+      throw new RangeError(`Provider(s) for culling only: [${cullingOnly.map((u) => `'${u}'`).join(', ')}]`);
+    }
     this.config.fallback_order = [...new Set(ids)];
     this.saveConfig();
   }
@@ -508,6 +529,9 @@ export class ProviderRegistry {
       const providerId = String(entry.provider);
       if (!this.hasProvider(providerId)) {
         throw new RangeError(`Unknown provider: ${providerId}`);
+      }
+      if (this.providers[providerId]?.protocol === 'system_one') {
+        throw new RangeError(`Provider '${providerId}' is for culling only`);
       }
     }
     this.config.defaults = {
@@ -613,7 +637,7 @@ export class ProviderRegistry {
   /** Used by the fallback cascade — credentials plus `enabled`. */
   isCascadeEligible(providerId: string): boolean {
     const cfg = this.providers[providerId];
-    if (!cfg || cfg.enabled === false) return false;
+    if (!cfg || cfg.enabled === false || cfg.protocol === 'system_one') return false;
     return this.authResolvable(cfg.auth);
   }
 
@@ -639,6 +663,11 @@ export class ProviderRegistry {
       return base.endsWith('/v1') ? base : `${base}/v1`;
     }
     return base;
+  }
+
+  /** Base URL for System One requests (`GET /v1/models`, `POST /v1/systemone`). */
+  resolveSystemOneBaseUrl(cfg: ProviderConfig): string {
+    return this.resolveBaseUrl(cfg);
   }
 
   resolveApiKey(cfg: ProviderConfig): string {

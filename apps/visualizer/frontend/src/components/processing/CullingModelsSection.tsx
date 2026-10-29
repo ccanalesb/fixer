@@ -9,6 +9,7 @@ import {
   type AppModel,
   type CullingModelsResponse,
   type CullingStageModelPutRequest,
+  type CullingSystemOneProvider,
   type PipelineChangeResponse,
   type PipelineSettingResponse,
 } from '../../services/api'
@@ -18,14 +19,7 @@ import type { Job } from '../../types/job'
 import { Button } from '../ui/Button'
 import { SettingRow } from './SettingRow'
 import { StageModelFields } from './StageModelFields'
-import {
-  stageDescription,
-  stageProblem,
-  shownModel,
-  type EndpointCheck,
-  type EndpointDraft,
-  type StageView,
-} from './stageModelView'
+import { stageDescription, stageProblem, shownModel, type StageView } from './stageModelView'
 import { APP_MODELS_SECTION_ID } from './AppModelsSection'
 import { useCullingGate } from '../cull/useCullingGate'
 import {
@@ -81,9 +75,6 @@ const CULLING_JOB_TYPE = 'batch_cull_photos_before_scoring'
 const LINK_BUTTON =
   'inline-flex items-center rounded-base border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover'
 
-const draftFromSaved = (endpoint: string): EndpointDraft =>
-  endpoint === 'this_app' ? { other: false, url: '', key: '' } : { other: true, url: endpoint, key: '' }
-
 const validThreshold = (text: string) => {
   const n = Number(text)
   return text.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 1
@@ -121,25 +112,40 @@ export function CullingModelsSection() {
   const [saved, setSaved] = useState<{ stage: Stage; jobId: string | null } | null>(null)
   const [threshold, setThreshold] = useState('')
   const [stageModels, setStageModels] = useState<CullingModelsResponse | null>(null)
+  const [providers, setProviders] = useState<CullingSystemOneProvider[]>([])
   const [appModels, setAppModels] = useState<AppModel[]>([])
-  const [drafts, setDrafts] = useState<Record<Stage, EndpointDraft>>({
-    culling_profile: draftFromSaved('this_app'),
-    score_forecast: draftFromSaved('this_app'),
+  const [providerModels, setProviderModels] = useState<Record<Stage, string[] | null>>({
+    culling_profile: null,
+    score_forecast: null,
   })
-  const [checks, setChecks] = useState<Record<Stage, EndpointCheck | null>>({ culling_profile: null, score_forecast: null })
   const [busy, setBusy] = useState<Stage | null>(null)
-  // One note at a time: the stage whose model just changed, then the job it queued.
   const [suggest, setSuggest] = useState<Stage | null>(null)
   const [queued, setQueued] = useState<Stage | null>(null)
   const [queueing, setQueueing] = useState(false)
   const [questionCount, setQuestionCount] = useState<number | null>(null)
-  // "How the Score forecast works" stays open once the Score forecast was just turned on.
   const [explain, setExplain] = useState(false)
   const [created, setCreated] = useState<{ skipped: string[] } | null>(null)
   const stageModelsRef = useRef(stageModels)
   stageModelsRef.current = stageModels
   const appModelsRef = useRef(appModels)
   appModelsRef.current = appModels
+
+  const loadProviderModels = useCallback(async (stage: Stage, endpoint: string) => {
+    if (endpoint === 'this_app') {
+      setProviderModels((m) => ({ ...m, [stage]: null }))
+      return
+    }
+    setProviderModels((m) => ({ ...m, [stage]: null }))
+    try {
+      const listed = await CullingModelsAPI.models(stage)
+      setProviderModels((m) => ({
+        ...m,
+        [stage]: listed.answers ? listed.models : [],
+      }))
+    } catch {
+      setProviderModels((m) => ({ ...m, [stage]: [] }))
+    }
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -151,25 +157,11 @@ export function CullingModelsSection() {
     }
   }, [])
 
-  const check = useCallback(async (stage: Stage) => {
-    setChecks((c) => ({ ...c, [stage]: { status: 'checking' } }))
-    try {
-      const listed = await CullingModelsAPI.models(stage)
-      setChecks((c) => ({
-        ...c,
-        [stage]: listed.answers ? { status: 'ok', models: listed.models } : { status: 'down', error: listed.error ?? '' },
-      }))
-    } catch (e) {
-      setChecks((c) => ({ ...c, [stage]: { status: 'down', error: e instanceof Error ? e.message : String(e) } }))
-    }
-  }, [])
-
   const refreshAppModels = useCallback(async () => {
     try {
       const before = appModelsRef.current
       const { models } = await AppModelsAPI.list()
       setAppModels(models)
-      // A model a stage runs that has just finished converting can now process the photos.
       const current = stageModelsRef.current
       if (!current) return
       for (const stage of STAGES) {
@@ -197,16 +189,13 @@ export function CullingModelsSection() {
       try {
         const next = await CullingModelsAPI.get()
         setStageModels(next)
-        setDrafts({
-          culling_profile: draftFromSaved(next.culling_profile.endpoint),
-          score_forecast: draftFromSaved(next.score_forecast.endpoint),
-        })
-        for (const stage of STAGES) if (next[stage].endpoint !== 'this_app') void check(stage)
+        setProviders(next.system_one_providers)
+        for (const stage of STAGES) void loadProviderModels(stage, next[stage].endpoint)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not load the culling models')
       }
     })()
-  }, [load, refreshAppModels, check])
+  }, [load, refreshAppModels, loadProviderModels])
 
   const { run: runCullingGate, dialog: cullingDialog } = useCullingGate({ onStageOff: () => void load() })
 
@@ -224,13 +213,13 @@ export function CullingModelsSection() {
   )
   useJobSocket({ onJobUpdated })
 
-  /** Saves one stage's endpoint fields; the saved state comes back, the key never. */
   const saveStage = async (stage: Stage, body: CullingStageModelPutRequest) => {
     setBusy(stage)
     setError(null)
     try {
       const next = await CullingModelsAPI.save(stage, body)
       setStageModels((s) => (s ? { ...s, [stage]: next } : s))
+      if (body.endpoint !== undefined) void loadProviderModels(stage, next.endpoint)
       return next
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed')
@@ -240,32 +229,11 @@ export function CullingModelsSection() {
     }
   }
 
-  const setDraft = (stage: Stage, change: Partial<EndpointDraft>) => {
-    setDrafts((d) => ({ ...d, [stage]: { ...d[stage], ...change } }))
-    if (change.url !== undefined || change.other !== undefined) setChecks((c) => ({ ...c, [stage]: null }))
-  }
-
-  const onEndpoint = async (stage: Stage, other: boolean) => {
+  const onEndpoint = async (stage: Stage, endpoint: string) => {
     setSuggest(null)
     setQueued(null)
-    if (other) {
-      const endpoint = stageModels![stage].endpoint
-      setDraft(stage, { other: true, url: endpoint === 'this_app' ? '' : endpoint, key: '' })
-      return
-    }
-    setDraft(stage, { other: false, url: '', key: '' })
-    if (stageModels![stage].endpoint !== 'this_app') await saveStage(stage, { endpoint: 'this_app' })
-  }
-
-  const onCheck = async (stage: Stage) => {
-    const { url, key } = drafts[stage]
-    const next = await saveStage(stage, { endpoint: url.trim(), ...(key ? { api_key: key } : {}) })
-    if (!next) {
-      setChecks((c) => ({ ...c, [stage]: { status: 'down', error: '' } }))
-      return
-    }
-    setDrafts((d) => ({ ...d, [stage]: { other: true, url: next.endpoint, key: '' } }))
-    await check(stage)
+    if (stageModels![stage].endpoint === endpoint) return
+    await saveStage(stage, { endpoint })
   }
 
   const onModel = async (stage: Stage, model: string | null) => {
@@ -328,9 +296,9 @@ export function CullingModelsSection() {
   const view = (stage: Stage): StageView => ({
     on: on[stage],
     saved: stageModels[stage],
-    draft: drafts[stage],
-    check: checks[stage],
+    providerModels: providerModels[stage],
     appModels,
+    providers,
     ...(stage === 'score_forecast' && questionCount !== null ? { questionCount } : {}),
   })
 
@@ -339,10 +307,7 @@ export function CullingModelsSection() {
       kind={stage}
       view={view(stage)}
       busy={busy === stage}
-      onEndpoint={(other) => void onEndpoint(stage, other)}
-      onDraft={(change) => setDraft(stage, change)}
-      onCheck={() => void onCheck(stage)}
-      onRemoveKey={() => void saveStage(stage, { api_key: '' })}
+      onEndpoint={(endpoint) => void onEndpoint(stage, endpoint)}
       onModel={(model) => void onModel(stage, model)}
       onAddModel={scrollToAppModels}
     />
@@ -350,7 +315,6 @@ export function CullingModelsSection() {
 
   const description = (stage: Stage) => <span data-stage-description>{stageDescription(stage, view(stage))}</span>
 
-  /** After a stage's model changes and it can run: process the photos with it, or later. */
   const modelChangeNote = (stage: Stage): ReactNode => {
     if (queued === stage) {
       return (
@@ -421,7 +385,6 @@ export function CullingModelsSection() {
     }
   }
 
-  /** With the Score forecast on: its questions, how to create them, and how it works. */
   const forecastExplain = (): ReactNode => {
     if (questionCount === null) return null
     const line =

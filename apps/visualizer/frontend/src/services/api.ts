@@ -1057,6 +1057,7 @@ export const AppModelsAPI = {
 }
 
 export type CullingModelsResponse = components['schemas']['CullingModelsResponse']
+export type CullingSystemOneProvider = components['schemas']['CullingSystemOneProvider']
 export type CullingStageModel = components['schemas']['CullingStageModel']
 export type CullingStageModelPutRequest = components['schemas']['CullingStageModelPutRequest']
 export type CullingStageModelsList = components['schemas']['CullingStageModelsList']

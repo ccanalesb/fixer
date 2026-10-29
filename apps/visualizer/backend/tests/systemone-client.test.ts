@@ -194,8 +194,8 @@ describe('culling_models in config.yaml', () => {
     const dir = mkdtempSync(join(tmpdir(), 'lt-s1-cfg-'));
     try {
       expect(loadLibraryConfig(join(dir, 'none.yaml')).cullingModels).toEqual({
-        culling_profile: { endpoint: 'this_app', model: '', apiKey: '' },
-        score_forecast: { endpoint: 'this_app', model: '', apiKey: '' },
+        culling_profile: { endpoint: 'this_app', model: '' },
+        score_forecast: { endpoint: 'this_app', model: '' },
       });
       const cfg = join(dir, 'config.yaml');
       writeFileSync(
@@ -216,7 +216,6 @@ describe('culling_models in config.yaml', () => {
       expect(loadLibraryConfig(cfg).cullingModels.score_forecast).toEqual({
         endpoint: 'http://localhost:9000',
         model: 'clef',
-        apiKey: '1234',
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -227,7 +226,7 @@ describe('culling_models in config.yaml', () => {
 describe('systemOneEndpoint', () => {
   it('this app is reached in-process, never over a socket, and takes no API key', async () => {
     const calls: string[] = [];
-    const ep = systemOneEndpoint({ endpoint: 'this_app', model: 'culling-model', apiKey: 'ignored' }, {
+    const ep = systemOneEndpoint({ endpoint: 'this_app', model: 'culling-model' }, {
       thisAppFetch: async (input) => {
         calls.push(String(input instanceof Request ? input.url : input));
         return new Response(JSON.stringify({ models: [{ name: 'culling-model', description: '', release_date: '' }] }), {
