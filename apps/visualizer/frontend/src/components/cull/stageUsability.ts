@@ -6,7 +6,6 @@ import {
   CULLING_PROFILE_UNUSABLE_SUB,
   SCORE_FORECAST_STAGE,
   SCORE_FORECAST_UNUSABLE,
-  SCORE_FORECAST_WHY,
   STAGE_DIALOG_FIX,
   STAGE_DIALOG_RUNS,
   STAGE_DIALOG_WITHOUT_ANY,
@@ -14,7 +13,6 @@ import {
   STAGE_DIALOG_WITHOUT_FORECAST_RULE,
   STAGE_DIALOG_WITHOUT_PROFILE,
   STAGE_IN_SENTENCE,
-  STAGE_THIS_APP,
   STAGE_UNUSABLE_TITLE,
 } from '../../constants/strings'
 
@@ -40,16 +38,20 @@ export function withStageOff(u: CullingModelsUsable, stage: CullingStageKind): C
   return { ...u, [stage]: { ...u[stage], on: false, problem: null } }
 }
 
-const endpointLabel = (s: CullingStageUsability) => (s.endpoint === 'this_app' ? STAGE_THIS_APP : s.endpoint)
+function dialogTitle(stage: CullingStageKind, s: CullingStageUsability): string {
+  const problem = s.problem ?? 'no_model'
+  if (problem === 'parked') return STAGE_UNUSABLE_TITLE.parked(s.provider_name ?? s.endpoint)
+  if (problem === 'removed') return STAGE_UNUSABLE_TITLE.removed()
+  return STAGE_UNUSABLE_TITLE[problem](STAGE_NAME[stage])
+}
 
 /** The Culling tab's note when the culling profile is on and cannot run. */
 export function cullingProfileNote(s: CullingStageUsability): { text: string; sub: string } {
-  const where = endpointLabel(s)
   const text =
-    s.problem === 'down' || s.problem === 'refused'
-      ? CULLING_PROFILE_UNUSABLE[s.problem](where)
-      : s.problem === 'not_listed'
-        ? CULLING_PROFILE_UNUSABLE.not_listed(where, s.model ?? '')
+    s.problem === 'parked'
+      ? CULLING_PROFILE_UNUSABLE.parked(s.provider_name ?? s.endpoint)
+      : s.problem === 'removed'
+        ? CULLING_PROFILE_UNUSABLE.removed()
         : s.problem === 'converting'
           ? CULLING_PROFILE_UNUSABLE.converting()
           : CULLING_PROFILE_UNUSABLE.no_model()
@@ -58,7 +60,17 @@ export function cullingProfileNote(s: CullingStageUsability): { text: string; su
 
 /** The Culling tab's warning when the Score forecast is on and cannot run. */
 export function scoreForecastWarning(s: CullingStageUsability): string {
-  return SCORE_FORECAST_UNUSABLE(SCORE_FORECAST_WHY[s.problem ?? 'no_model'])
+  const why =
+    s.problem === 'parked'
+      ? `${s.provider_name ?? s.endpoint} is parked`
+      : s.problem === 'removed'
+        ? 'its endpoint was removed'
+        : s.problem === 'converting'
+          ? 'its model is still converting'
+          : s.problem === 'no_questions'
+            ? 'has no questions yet'
+            : 'has no model'
+  return SCORE_FORECAST_UNUSABLE(why)
 }
 
 /** The Start dialog's title and text: what the stage is missing, and what turning it off means. */
@@ -68,7 +80,7 @@ export function stageDialogText(
   verb: CullingGateVerb,
 ): { title: string; body: string } {
   const s = u[stage]
-  const title = STAGE_UNUSABLE_TITLE[s.problem ?? 'no_model'](STAGE_NAME[stage])
+  const title = dialogTitle(stage, s)
   const inRange = verb === 'start'
   const without =
     stage === 'culling_profile'

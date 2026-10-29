@@ -4,7 +4,7 @@
  * library.db, the vision cache and the JPEGs are real. An external endpoint is a local fake server.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LibraryFixture } from './helpers/library-fixture.js';
@@ -590,6 +590,20 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
   });
   const forecastElsewhere = (model: string): StageYaml => ({
     score_forecast: `{endpoint: ${providerId}, model: ${model}}`,
+  });
+
+  it('keeps the endpoint the pass started with after the provider is parked', async () => {
+    writeConfig(both());
+    await addPhoto('a', PASS);
+    const providersPath = join(dir, 'providers.json');
+    const stored = JSON.parse(readFileSync(providersPath, 'utf8')) as {
+      providers: Record<string, { enabled: boolean }>;
+    };
+    stored.providers[providerId]!.enabled = false;
+    writeFileSync(providersPath, JSON.stringify(stored, null, 2));
+    const job = await runCull();
+    expect(job.status).toBe('completed');
+    expect(server.requests.length).toBeGreaterThan(0);
   });
 
   it('asks each stage of the endpoint config.yaml names, with its API key, and files answers under it', async () => {

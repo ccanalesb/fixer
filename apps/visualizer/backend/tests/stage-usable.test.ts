@@ -1,6 +1,5 @@
 /**
- * Whether a culling stage that is on can run, before any job starts: the order the causes are checked in,
- * and the Score forecast without questions.
+ * Whether a culling stage that is on can run, before any job starts: local causes only.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -70,7 +69,7 @@ describe('stageUsability', () => {
       model: 'clef-forecast',
       endpoint: providerId,
       job_id: null,
-      detail: null,
+      provider_name: null,
     });
   });
 
@@ -85,7 +84,7 @@ describe('stageUsability', () => {
     expect(r.problem).toBeNull();
   });
 
-  it('a missing model is said before the endpoint is asked', async () => {
+  it('a missing model is said before the endpoint is checked', async () => {
     await server.close();
     const r = await stageUsability('score_forecast', {
       on: true,
@@ -97,15 +96,58 @@ describe('stageUsability', () => {
     expect(r.problem).toBe('no_model');
   });
 
-  it('an endpoint that does not answer is said before missing questions', async () => {
+  it('a parked provider is reported without calling the endpoint', async () => {
+    writeFileSync(
+      providersPath,
+      JSON.stringify(
+        {
+          providers: {
+            [providerId]: {
+              name: 'Studio GPU',
+              protocol: 'system_one',
+              enabled: false,
+              base_url: { from: 'literal', value: server.url },
+              auth: { mode: 'none' },
+            },
+          },
+          defaults: {},
+          fallback_order: [],
+        },
+        null,
+        2,
+      ),
+    );
     await server.close();
     const r = await stageUsability('score_forecast', {
       on: true,
       cfg: at('clef-forecast'),
       appModels: [],
+      questionCount: 3,
+      registry: registry(),
+    });
+    expect(r).toMatchObject({ problem: 'parked', provider_name: 'Studio GPU' });
+  });
+
+  it('a removed endpoint is reported without calling the endpoint', async () => {
+    await server.close();
+    const r = await stageUsability('score_forecast', {
+      on: true,
+      cfg: { endpoint: 'gone_provider', model: 'clef-forecast' },
+      appModels: [],
+      questionCount: 3,
+      registry: registry(),
+    });
+    expect(r.problem).toBe('removed');
+  });
+
+  it('an empty endpoint means removed', async () => {
+    const r = await stageUsability('culling_profile', {
+      on: true,
+      cfg: { endpoint: '', model: 'clef-forecast' },
+      appModels: [],
       questionCount: 0,
       registry: registry(),
     });
-    expect(r.problem).toBe('down');
+    expect(r.problem).toBe('removed');
   });
 });

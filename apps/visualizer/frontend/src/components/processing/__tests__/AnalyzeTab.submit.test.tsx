@@ -46,7 +46,7 @@ vi.mock('../../../services/api', () => ({
   },
   CullingModelsAPI: {
     usable: () => {
-      const ok = { on: true, problem: null, model: 'culling-model', endpoint: 'this_app', job_id: null, detail: null };
+      const ok = { on: true, problem: null, model: 'culling-model', endpoint: 'this_app', job_id: null, provider_name: null };
       return Promise.resolve({ culling_profile: ok, score_forecast: ok, culling_profile_filter: true });
     },
   },

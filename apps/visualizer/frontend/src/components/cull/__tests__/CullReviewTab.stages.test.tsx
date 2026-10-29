@@ -24,7 +24,14 @@ const ROW: CullReviewRow = {
   thumbnail_url: '/thumb.jpg',
 }
 
-const ok = (model: string): CullingStageUsability => ({ on: true, problem: null, model, endpoint: 'this_app', job_id: null, detail: null })
+const ok = (model: string): CullingStageUsability => ({
+  on: true,
+  problem: null,
+  model,
+  endpoint: 'this_app',
+  job_id: null,
+  provider_name: null,
+})
 const broken = (problem: CullingStageUsability['problem'], extra: Partial<CullingStageUsability> = {}) => ({
   ...ok('model-x'),
   problem,
@@ -91,10 +98,8 @@ describe('CullReviewTab: culling stages that cannot run', () => {
 
   it.each([
     ['no_model', {}, 'The culling profile is on but has no model.'],
-    ['down', { endpoint: 'http://h:1' }, "The culling profile's endpoint (http://h:1) does not answer."],
-    ['refused', { endpoint: 'http://h:1' }, "The culling profile's endpoint (http://h:1) refused the API key."],
-    ['not_listed', { endpoint: 'http://h:1', model: 'clef' }, 'clef is no longer listed by http://h:1.'],
-    ['not_listed', { model: 'model-x' }, 'model-x is no longer listed by this app.'],
+    ['parked', { provider_name: 'Studio GPU' }, 'Studio GPU is parked.'],
+    ['removed', {}, 'Its endpoint was removed.'],
   ] as const)('culling profile %s: a page note in place of the list', async (problem, extra, text) => {
     usableSpy.mockResolvedValue(usable({ culling_profile: broken(problem, extra) }))
     renderTab()
@@ -127,12 +132,15 @@ describe('CullReviewTab: culling stages that cannot run', () => {
   it.each([
     ['no_model', 'Score forecast is on but has no model.'],
     ['converting', 'Score forecast is on but its model is still converting.'],
-    ['down', 'Score forecast is on but its endpoint does not answer.'],
-    ['refused', 'Score forecast is on but its endpoint refused the API key.'],
-    ['not_listed', 'Score forecast is on but its model is no longer listed.'],
+    ['parked', 'Score forecast is on but Studio GPU is parked.'],
+    ['removed', 'Score forecast is on but its endpoint was removed.'],
     ['no_questions', 'Score forecast is on but has no questions yet.'],
   ] as const)('Score forecast %s: a warning above the list', async (problem, text) => {
-    usableSpy.mockResolvedValue(usable({ score_forecast: broken(problem) }))
+    usableSpy.mockResolvedValue(
+      usable({
+        score_forecast: broken(problem, problem === 'parked' ? { provider_name: 'Studio GPU' } : {}),
+      }),
+    )
     renderTab()
     const warning = (await screen.findByText(text)).closest('[role="alert"]') as HTMLElement
     expect(within(warning).getByRole('link', { name: 'Open Settings' })).toHaveAttribute(

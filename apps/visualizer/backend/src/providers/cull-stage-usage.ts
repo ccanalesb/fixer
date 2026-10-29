@@ -1,7 +1,7 @@
 /**
  * Which culling stages point at a System One provider, and how many photos have answers there.
  */
-import { config, loadLibraryConfig } from '../config.js';
+import { config, loadLibraryConfig, updateConfigYamlCullingModel } from '../config.js';
 import { STAGE_NAMES } from '../cull/stage-models.js';
 import type { StageKind } from '../cull/types.js';
 import type { Db } from '../db/connection.js';
@@ -37,4 +37,15 @@ export function countPhotosForProviderAddressChange(db: Db, providerId: string):
     db,
     stages.map((s) => s.kind),
   );
+}
+
+/** After a System One provider is removed, its stages keep their model but have no endpoint. */
+export function clearCullingStagesUsingProvider(providerId: string): void {
+  const configPath = config.LT_CONFIG_YAML;
+  const models = loadLibraryConfig(configPath).cullingModels;
+  for (const kind of STAGE_KINDS) {
+    if (models[kind].endpoint === providerId) {
+      updateConfigYamlCullingModel(configPath, kind, { endpoint: '', model: models[kind].model });
+    }
+  }
 }

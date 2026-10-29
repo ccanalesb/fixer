@@ -5,19 +5,20 @@ import {
   APP_MODEL_VIEW_JOB,
   PROCESSING_JOB_QUEUE_ROUTE,
   STAGE_CONVERTING,
-  STAGE_DOWN,
-  STAGE_GONE,
   STAGE_IN_SENTENCE,
   STAGE_NO_MODEL,
   STAGE_NO_QUESTIONS,
   STAGE_OFF,
   STAGE_OFF_WITH,
+  STAGE_PARKED,
+  STAGE_REMOVED,
   STAGE_RUNS,
   STAGE_STILL_CONVERTING,
   STAGE_THIS_APP,
+  STAGE_TURN_PROVIDER_BACK_ON,
 } from '../../constants/strings'
 
-export type StageProblem = 'down' | 'gone' | 'nomodel' | 'converting' | 'noquestions'
+export type StageProblem = 'nomodel' | 'converting' | 'noquestions' | 'parked' | 'removed'
 
 export interface StageView {
   on: boolean
@@ -28,6 +29,8 @@ export interface StageView {
   providers: CullingSystemOneProvider[]
   /** The Score forecast's questions; unset for the culling profile. */
   questionCount?: number
+  /** Unpark a System One provider from the stage row. */
+  onUnparkProvider?: (providerId: string) => void
 }
 
 export function shownModel(v: StageView): string | null {
@@ -38,6 +41,11 @@ export function endpointLabel(v: StageView): string {
   if (v.saved.endpoint === 'this_app') return STAGE_THIS_APP
   const p = v.providers.find((x) => x.id === v.saved.endpoint)
   return p ? `${p.name} (${p.url})` : v.saved.endpoint
+}
+
+function providerForEndpoint(v: StageView): CullingSystemOneProvider | null {
+  if (v.saved.endpoint === 'this_app' || !v.saved.endpoint.trim()) return null
+  return v.providers.find((x) => x.id === v.saved.endpoint) ?? null
 }
 
 /** The models the row offers: this app's (converting ones included), or the provider's typed models. */
@@ -53,12 +61,21 @@ export function stageProblem(v: StageView): StageProblem | null {
   if (!v.on) return null
   const model = shownModel(v)
   if (!model) return 'nomodel'
-  if (v.saved.endpoint !== 'this_app' && v.providerModels === null) return null
+  if (v.saved.endpoint !== 'this_app') {
+    const endpoint = v.saved.endpoint.trim()
+    if (!endpoint) return 'removed'
+    const p = providerForEndpoint(v)
+    if (!p) return 'removed'
+    if (!p.enabled) return 'parked'
+    return null
+  }
   const found = offeredModels(v).find((m) => m.name === model)
-  if (!found) return v.saved.endpoint === 'this_app' ? 'nomodel' : 'gone'
+  if (!found) return 'nomodel'
   if (!found.ready) return 'converting'
   return v.questionCount === 0 ? 'noquestions' : null
 }
+
+const stageOffLabel = (kind: CullingStageKind) => STAGE_IN_SENTENCE[kind]
 
 /** The row's description: which model the stage runs where, or what keeps jobs from starting. */
 export function stageDescription(kind: CullingStageKind, v: StageView): ReactNode {
@@ -66,9 +83,26 @@ export function stageDescription(kind: CullingStageKind, v: StageView): ReactNod
   const where = endpointLabel(v)
   if (!v.on) return model ? STAGE_OFF_WITH(model, where) : STAGE_OFF
   const problem = stageProblem(v)
-  if (problem === 'down') return <span className="text-error">{STAGE_DOWN(where)}</span>
-  if (problem === 'gone') return <span className="text-error">{STAGE_GONE(model!, where)}</span>
-  if (problem === 'nomodel') return <span className="text-error">{STAGE_NO_MODEL(STAGE_IN_SENTENCE[kind])}</span>
+  const off = stageOffLabel(kind)
+  if (problem === 'parked') {
+    const p = providerForEndpoint(v)!
+    return (
+      <span className="text-error">
+        {STAGE_PARKED(p.name, off)}{' '}
+        <button
+          type="button"
+          className="text-accent underline"
+          onClick={() => v.onUnparkProvider?.(p.id)}
+        >
+          {STAGE_TURN_PROVIDER_BACK_ON(p.name)}
+        </button>
+      </span>
+    )
+  }
+  if (problem === 'removed') {
+    return <span className="text-error">{STAGE_REMOVED(off)}</span>
+  }
+  if (problem === 'nomodel') return <span className="text-error">{STAGE_NO_MODEL(off)}</span>
   if (problem === 'converting') {
     return (
       <>

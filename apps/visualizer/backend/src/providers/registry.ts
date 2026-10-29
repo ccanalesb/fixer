@@ -23,6 +23,7 @@ import {
   type ProviderModelRow,
 } from '../db/jobs/provider-models.js';
 import { deleteProviderAddressProbe } from '../db/jobs/provider-probes.js';
+import { clearCullingStagesUsingProvider } from './cull-stage-usage.js';
 import { firstPhotoProvider, providerDisplayName } from './usability.js';
 import { writePrivateFile } from '../utils/private-file.js';
 import { requestJson, type HttpEndpoint } from './http.js';
@@ -321,11 +322,14 @@ export class ProviderRegistry {
   ): Promise<{ defaultsNotice: string | null }> {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
-    if (cfg.protocol === 'system_one') {
-      throw new RangeError('Cannot remove a culling-only provider');
-    }
 
-    const defaultsNotice = await this.repointDescriptionDefaultIfNeeded(providerId);
+    const defaultsNotice =
+      cfg.protocol === 'system_one'
+        ? null
+        : await this.repointDescriptionDefaultIfNeeded(providerId);
+    if (cfg.protocol === 'system_one') {
+      clearCullingStagesUsingProvider(providerId);
+    }
     delete this.providers[providerId];
     if (this.config.fallback_order) {
       this.config.fallback_order = this.config.fallback_order.filter((id) => id !== providerId);

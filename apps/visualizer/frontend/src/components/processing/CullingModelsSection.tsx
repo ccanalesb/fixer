@@ -5,6 +5,7 @@ import {
   CullingModelsAPI,
   CullingProfilesAPI,
   JobsAPI,
+  ProvidersAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
   type CullingModelsResponse,
@@ -293,12 +294,23 @@ export function CullingModelsSection() {
   const forecast = config.score_forecast
   const cullingProfileOn = config.culling_profiles_enabled
   const on: Record<Stage, boolean> = { culling_profile: cullingProfileOn, score_forecast: forecast.enabled }
+  const unparkProvider = async (providerId: string) => {
+    setError(null)
+    try {
+      await ProvidersAPI.update(providerId, { enabled: true })
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const view = (stage: Stage): StageView => ({
     on: on[stage],
     saved: stageModels[stage],
     providerModels: providerModels[stage],
     appModels,
     providers,
+    onUnparkProvider: (id) => void unparkProvider(id),
     ...(stage === 'score_forecast' && questionCount !== null ? { questionCount } : {}),
   })
 

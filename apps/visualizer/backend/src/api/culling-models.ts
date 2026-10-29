@@ -48,9 +48,6 @@ function withJobsDb<T>(fn: (db: Db) => T): T {
   }
 }
 
-/** Check is someone waiting on a button, not a model loading for a job. */
-const CHECK_TIMEOUT_MS = 10_000;
-
 function listSystemOneProviders(registry: ProviderRegistry): z.infer<typeof CullingSystemOneProvider>[] {
   return Object.entries(registry.providerConfigs())
     .filter(([, cfg]) => cfg.protocol === 'system_one')
@@ -187,7 +184,6 @@ cullingModelsRoutes.openapi(usableRoute, async (c) => {
     cfg: cfg[kind],
     appModels,
     questionCount,
-    timeoutMs: CHECK_TIMEOUT_MS,
     registry,
   });
   const [cullingProfile, scoreForecast] = await Promise.all([
@@ -210,7 +206,7 @@ cullingModelsRoutes.openapi(modelsRoute, async (c) => {
   const registry = new ProviderRegistry();
   if (cfg.endpoint === THIS_APP_ENDPOINT) {
     try {
-      const listed = await listSystemOneModels(systemOneEndpoint(cfg, { registry }), { timeoutMs: CHECK_TIMEOUT_MS });
+      const listed = await listSystemOneModels(systemOneEndpoint(cfg, { registry }));
       return c.json({ answers: true, models: listed.map((m) => m.name), error: null }, 200);
     } catch (e) {
       if (!(e instanceof SystemOneError)) throw e;

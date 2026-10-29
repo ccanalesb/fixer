@@ -231,7 +231,14 @@ describe('GET /api/culling-models/{stage}/models', () => {
 });
 
 describe('GET /api/culling-models/usable', () => {
-  type Usable = { on: boolean; problem: string | null; model: string | null; endpoint: string; job_id: string | null; detail: string | null };
+  type Usable = {
+    on: boolean;
+    problem: string | null;
+    model: string | null;
+    endpoint: string;
+    job_id: string | null;
+    provider_name: string | null;
+  };
   type Body = { culling_profile: Usable; score_forecast: Usable; culling_profile_filter: boolean };
   const usable = async () => json<Body>(await app.request('/api/culling-models/usable'));
   const pipelinePut = (path: string, body: unknown) =>
@@ -240,7 +247,14 @@ describe('GET /api/culling-models/usable', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
-  const ok = (model: string, endpoint = 'this_app'): Usable => ({ on: true, problem: null, model, endpoint, job_id: null, detail: null });
+  const ok = (model: string, endpoint = 'this_app'): Usable => ({
+    on: true,
+    problem: null,
+    model,
+    endpoint,
+    job_id: null,
+    provider_name: null,
+  });
   const stagesOn = async () => {
     await pipelinePut('culling-profiles', { enabled: true });
     await pipelinePut('score-forecast', { enabled: true });
@@ -253,7 +267,7 @@ describe('GET /api/culling-models/usable', () => {
   afterEach(() => server.close());
 
   it('a new install: both stages off with no model; turned on, neither has one', async () => {
-    const off: Usable = { on: false, problem: null, model: null, endpoint: 'this_app', job_id: null, detail: null };
+    const off: Usable = { on: false, problem: null, model: null, endpoint: 'this_app', job_id: null, provider_name: null };
     expect(await usable()).toEqual({ culling_profile: off, score_forecast: off, culling_profile_filter: true });
     await stagesOn();
     const none: Usable = { ...off, on: true, problem: 'no_model' };
@@ -263,18 +277,18 @@ describe('GET /api/culling-models/usable', () => {
   it('a stage that is off is never unusable', async () => {
     await pipelinePut('culling-profiles', { enabled: false, filter_enabled: false });
     await pipelinePut('score-forecast', { enabled: false });
-    const off: Usable = { on: false, problem: null, model: null, endpoint: 'this_app', job_id: null, detail: null };
+    const off: Usable = { on: false, problem: null, model: null, endpoint: 'this_app', job_id: null, provider_name: null };
     expect(await usable()).toEqual({ culling_profile: off, score_forecast: off, culling_profile_filter: false });
   });
 
-  it('this app: a listed model is usable, a model it does not list is not', async () => {
+  it('this app: a ready model is usable; one that is not installed is not', async () => {
     await stagesOn();
     writeFakeAppModels(modelsDir);
     await put('culling_profile', { model: 'culling-model' });
     await put('score_forecast', { model: 'model-gone' });
     const body = await usable();
     expect(body.culling_profile).toEqual(ok('culling-model'));
-    expect(body.score_forecast).toMatchObject({ problem: 'not_listed', model: 'model-gone' });
+    expect(body.score_forecast).toMatchObject({ problem: 'no_model', model: 'model-gone' });
   });
 
   it('a model still converting in this app names its job', async () => {
@@ -289,18 +303,15 @@ describe('GET /api/culling-models/usable', () => {
       model: 'model-x',
       endpoint: 'this_app',
       job_id: jobId,
-      detail: null,
+      provider_name: null,
     });
   });
 
-  it('a system_one provider: listed, not listed, refused key, down', async () => {
+  it('a system_one provider: usable when on, parked, removed — without calling the endpoint', async () => {
     await stagesOn();
     const id = seedSystemOneProvider(server.url, '', ['clef-cull']);
     await put('culling_profile', { endpoint: id, model: 'clef-cull' });
     expect((await usable()).culling_profile).toEqual(ok('clef-cull', id));
-
-    await put('culling_profile', { model: 'nope' });
-    expect((await usable()).culling_profile).toMatchObject({ problem: 'not_listed', model: 'nope' });
 
     writeFileSync(
       providersPath,
@@ -310,9 +321,9 @@ describe('GET /api/culling-models/usable', () => {
             [id]: {
               name: 'Test host',
               protocol: 'system_one',
-              enabled: true,
+              enabled: false,
               base_url: { from: 'literal', value: server.url },
-              auth: { mode: 'bearer', secret: { from: 'literal', value: 'wrong' } },
+              auth: { mode: 'none' },
             },
           },
           defaults: {},
@@ -322,16 +333,24 @@ describe('GET /api/culling-models/usable', () => {
         2,
       ),
     );
-    server.apiKey = 'right';
-    await put('culling_profile', { model: 'clef-cull' });
-    const refused = (await usable()).culling_profile;
-    expect(refused.problem).toBe('refused');
-    expect(refused.detail).toContain('refused the API key');
-
     await server.close();
-    const down = (await usable()).culling_profile;
-    expect(down.problem).toBe('down');
-    expect(down.detail).toContain('does not answer');
+    expect((await usable()).culling_profile).toMatchObject({
+      problem: 'parked',
+      provider_name: 'Test host',
+    });
+
+    const stored = JSON.parse(readFileSync(providersPath, 'utf8')) as { providers: Record<string, unknown> };
+    delete stored.providers[id];
+    writeFileSync(providersPath, JSON.stringify(stored, null, 2));
+    expect((await usable()).culling_profile).toMatchObject({ problem: 'removed' });
+  });
+
+  it('answers without HTTP even when the endpoint would fail', async () => {
+    await stagesOn();
+    const id = seedSystemOneProvider(server.url, '', ['clef-cull']);
+    await put('culling_profile', { endpoint: id, model: 'clef-cull' });
+    await server.close();
+    expect((await usable()).culling_profile).toEqual(ok('clef-cull', id));
   });
 });
 
