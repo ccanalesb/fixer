@@ -1,6 +1,6 @@
 {
   "name": "fixer",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "private": true,
   "description": "Fixer — AI culling and tagging for Adobe Lightroom Classic catalogs.",
   "main": "index.js",
