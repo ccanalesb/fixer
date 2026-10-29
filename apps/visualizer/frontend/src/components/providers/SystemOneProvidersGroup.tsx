@@ -1,4 +1,4 @@
-import type { Provider, ProviderModel } from '../../services/api';
+import type { Job, Provider, ProviderModel } from '../../services/api';
 import { PROVIDERS_GROUP_SYSTEM_ONE, PROVIDERS_GROUP_SYSTEM_ONE_EMPTY } from '../../constants/strings';
 import { ProviderCard } from './ProviderCard';
 import { AddSystemOneProviderCard, type CreateSystemOneProviderPayload } from './AddSystemOneProviderCard';
@@ -6,9 +6,12 @@ import type { ProviderEditValues } from './ProviderEditForm';
 
 interface SystemOneProvidersGroupProps {
   providers: Provider[];
+  allProviders: Provider[];
+  fallbackOrder: string[];
+  modelCache: Record<string, ProviderModel[]>;
+  activeJobs: Job[];
   cullingStagesByProvider: Record<string, string[]>;
   expandedId: string | null;
-  modelCache: Record<string, ProviderModel[]>;
   testingId: string | null;
   addressImpactByProvider: Record<string, { photos: number; stageNames: string[] } | null>;
   onToggle: (providerId: string) => void;
@@ -18,14 +21,18 @@ interface SystemOneProvidersGroupProps {
   onAddModel: (providerId: string, model: { id: string; name: string; vision: boolean }) => Promise<void>;
   onRemoveModel: (providerId: string, modelId: string) => void;
   onReorderModel: (providerId: string, modelId: string, direction: 'up' | 'down') => void;
-  onBaseUrlChange: (providerId: string, url: string) => void;
+  onSetEnabled: (providerId: string, enabled: boolean) => Promise<void>;
+  onRequestRemove: (providerId: string) => void;
 }
 
 export function SystemOneProvidersGroup({
   providers,
+  allProviders,
+  fallbackOrder,
+  modelCache,
+  activeJobs,
   cullingStagesByProvider,
   expandedId,
-  modelCache,
   testingId,
   addressImpactByProvider,
   onToggle,
@@ -35,7 +42,8 @@ export function SystemOneProvidersGroup({
   onAddModel,
   onRemoveModel,
   onReorderModel,
-  onBaseUrlChange,
+  onSetEnabled,
+  onRequestRemove,
 }: SystemOneProvidersGroupProps) {
   return (
     <section id="system-one-providers" className="space-y-3 scroll-mt-6">
@@ -54,6 +62,10 @@ export function SystemOneProvidersGroup({
                 key={provider.id}
                 provider={provider}
                 models={modelCache[provider.id] ?? []}
+                providers={allProviders}
+                fallbackOrder={fallbackOrder}
+                modelCache={modelCache}
+                activeJobs={activeJobs}
                 cullingStageNames={cullingStagesByProvider[provider.id]}
                 expanded={expandedId === provider.id}
                 onToggle={() => onToggle(provider.id)}
@@ -62,9 +74,10 @@ export function SystemOneProvidersGroup({
                 onReorderModel={(modelId, direction) => onReorderModel(provider.id, modelId, direction)}
                 onSaveProvider={values => onSaveProvider(provider.id, values)}
                 onTestConnection={() => onTestConnection(provider.id)}
+                onSetEnabled={enabled => onSetEnabled(provider.id, enabled)}
+                onRequestRemove={() => onRequestRemove(provider.id)}
                 testingConnection={testingId === provider.id}
                 addressChangeImpact={addressImpactByProvider[provider.id] ?? null}
-                onBaseUrlChange={url => onBaseUrlChange(provider.id, url)}
               />
             ))
           )}

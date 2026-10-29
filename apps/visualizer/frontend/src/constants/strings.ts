@@ -692,6 +692,21 @@ export const BTN_RETRY = 'Retry'
 
 // Provider Inline Labels
 export const PROVIDER_STATUS_SUFFIX_UNAVAILABLE = '(unavailable)'
+export const PROVIDER_STATUS_SUFFIX_NOT_IN_USE = '(not in use)'
+export const PROVIDER_PARK_SWITCH_LABEL = 'Use this provider'
+export const PROVIDER_MENU_LABEL = 'Provider actions'
+export const PROVIDER_REMOVE_ACTION = 'Remove…'
+export const PROVIDER_REMOVE_CONFIRM_TITLE = 'Remove this provider?'
+export const PROVIDER_REMOVE_CONFIRM_SWITCH_HINT =
+  'To keep its address and models but leave it out of jobs, turn it off with the switch above instead.'
+export const PROVIDER_REMOVE_CONFIRM_CANCEL = 'Keep it'
+export const PROVIDER_REMOVE_CONFIRM_OK = 'Remove it'
+export const PROVIDER_JOB_NOTE_RUNNING = (count: number, nextName: string) =>
+  `${count} running job${count === 1 ? '' : 's'} continue${count === 1 ? 's' : ''} on ${nextName}`
+export const PROVIDER_JOB_NOTE_QUEUED = (count: number, nextName: string) =>
+  `${count} queued job${count === 1 ? '' : 's'} will run on ${nextName}`
+export const PROVIDER_DESCRIPTIONS_WILL_NOT_RUN =
+  'No provider left that can read a photo. Descriptions will not run until you add one.'
 
 // Description Generation Errors
 export const DESC_ERROR_RATE_LIMIT = 'Rate limited — try a different provider or wait.'

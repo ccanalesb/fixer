@@ -1,4 +1,4 @@
-import type { Provider, ProviderModel } from '../../services/api';
+import type { Job, Provider, ProviderModel } from '../../services/api';
 import { PROVIDERS_GROUP_OPENAI } from '../../constants/strings';
 import { AddProviderCard, type CreateProviderPayload } from './AddProviderCard';
 import { ProviderCard } from './ProviderCard';
@@ -6,8 +6,11 @@ import type { ProviderEditValues } from './ProviderEditForm';
 
 interface OpenAiProvidersGroupProps {
   providers: Provider[];
-  expandedId: string | null;
+  allProviders: Provider[];
+  fallbackOrder: string[];
   modelCache: Record<string, ProviderModel[]>;
+  activeJobs: Job[];
+  expandedId: string | null;
   testingId: string | null;
   onToggle: (providerId: string) => void;
   onCreate: (payload: CreateProviderPayload) => Promise<void>;
@@ -17,12 +20,17 @@ interface OpenAiProvidersGroupProps {
   onRemoveModel: (providerId: string, modelId: string) => void;
   onReorderModel: (providerId: string, modelId: string, direction: 'up' | 'down') => void;
   onRetryModelImages?: (providerId: string, modelId: string) => void;
+  onSetEnabled: (providerId: string, enabled: boolean) => Promise<void>;
+  onRequestRemove: (providerId: string) => void;
 }
 
 export function OpenAiProvidersGroup({
   providers,
-  expandedId,
+  allProviders,
+  fallbackOrder,
   modelCache,
+  activeJobs,
+  expandedId,
   testingId,
   onToggle,
   onCreate,
@@ -32,6 +40,8 @@ export function OpenAiProvidersGroup({
   onRemoveModel,
   onReorderModel,
   onRetryModelImages,
+  onSetEnabled,
+  onRequestRemove,
 }: OpenAiProvidersGroupProps) {
   return (
     <section className="space-y-3">
@@ -47,6 +57,10 @@ export function OpenAiProvidersGroup({
               key={provider.id}
               provider={provider}
               models={modelCache[provider.id] ?? []}
+              providers={allProviders}
+              fallbackOrder={fallbackOrder}
+              modelCache={modelCache}
+              activeJobs={activeJobs}
               expanded={expandedId === provider.id}
               onToggle={() => onToggle(provider.id)}
               onAddModel={model => onAddModel(provider.id, model)}
@@ -57,6 +71,8 @@ export function OpenAiProvidersGroup({
               }
               onSaveProvider={values => onSaveProvider(provider.id, values)}
               onTestConnection={() => onTestConnection(provider.id)}
+              onSetEnabled={enabled => onSetEnabled(provider.id, enabled)}
+              onRequestRemove={() => onRequestRemove(provider.id)}
               testingConnection={testingId === provider.id}
             />
           ))}

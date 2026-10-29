@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getDefaults: vi.fn(),
   cullingGet: vi.fn(),
   addressChangeImpact: vi.fn(),
+  getActive: vi.fn(),
 }));
 
 vi.mock('../../../services/api', async (importOriginal) => {
@@ -35,6 +36,10 @@ vi.mock('../../../services/api', async (importOriginal) => {
     CullingModelsAPI: {
       ...actual.CullingModelsAPI,
       get: mocks.cullingGet,
+    },
+    JobsAPI: {
+      ...actual.JobsAPI,
+      getActive: mocks.getActive,
     },
   };
 });
@@ -77,6 +82,7 @@ describe('ProvidersTab', () => {
       photos: 12,
       stages: [{ kind: 'culling_profile', name: 'Culling profile' }],
     });
+    mocks.getActive.mockResolvedValue([]);
   });
 
   it('shows OpenAI-compatible and System One providers in separate groups', async () => {

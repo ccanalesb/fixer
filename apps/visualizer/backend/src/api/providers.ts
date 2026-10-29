@@ -37,6 +37,7 @@ import {
   ProviderListResponse,
   ProviderModel,
   ProviderModelsListResponse,
+  ProviderMutationResponse,
   ProviderReorderSuccessResponse,
   ProviderUpdateBody,
 } from './schemas/providers.js';
@@ -276,7 +277,7 @@ const updateRouteDef = createRoute({
     body: { content: jsonBody(ProviderUpdateBody) },
   },
   responses: withValidationError({
-    200: { description: 'OK', content: jsonBody(Provider) },
+    200: { description: 'OK', content: jsonBody(ProviderMutationResponse) },
     400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
     404: { description: 'Not Found', content: jsonBody(ErrorBody) },
   }),
@@ -306,7 +307,41 @@ providersRoutes.openapi(updateRouteDef, async (c) => {
           }
         : undefined,
     });
-    return c.json(updated, 200);
+    return c.json(
+      {
+        provider: updated.provider,
+        defaults_notice: updated.defaultsNotice ?? undefined,
+      },
+      200,
+    );
+  } catch (e) {
+    if (e instanceof UnknownProviderError) return c.json({ error: e.message }, 404);
+    if (e instanceof RangeError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+const deleteRouteDef = createRoute({
+  method: 'delete',
+  path: '/providers/{provider_id}',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderDeletedResponse) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(deleteRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  try {
+    const { defaultsNotice } = await registry.deleteProvider(providerId);
+    return c.json(
+      { deleted: true, defaults_notice: defaultsNotice ?? undefined },
+      200,
+    );
   } catch (e) {
     if (e instanceof UnknownProviderError) return c.json({ error: e.message }, 404);
     if (e instanceof RangeError) return c.json({ error: e.message }, 400);

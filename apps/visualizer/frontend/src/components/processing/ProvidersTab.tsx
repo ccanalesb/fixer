@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useQuery } from '../../data';
 import {
   CullingModelsAPI,
+  JobsAPI,
   ProvidersAPI,
   type ProviderModel,
 } from '../../services/api';
@@ -10,13 +11,12 @@ import {
   FallbackOrderPanel,
   OpenAiProvidersGroup,
   SystemOneProvidersGroup,
+  ProviderRemoveConfirm,
+  DescriptionDefaultsPanel,
   type CreateProviderPayload,
 } from '../providers';
 import type { CreateSystemOneProviderPayload } from '../providers/AddSystemOneProviderCard';
 import type { ProviderEditValues } from '../providers/ProviderEditForm';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { ProviderModelSelect } from '../ui/ProviderModelSelect';
 
 export function ProvidersTab() {
   const [bundleRev, setBundleRev] = useState(0);
@@ -37,6 +37,10 @@ export function ProvidersTab() {
       };
     },
   );
+
+  const activeJobs = useQuery(['jobs.active'] as const, () => JobsAPI.getActive(), {
+    initialValue: [],
+  });
 
   const { providers, fallbackOrder } = bundle;
   const openAiProviders = useMemo(
@@ -71,6 +75,9 @@ export function ProvidersTab() {
   const [descriptionProvider, setDescriptionProvider] = useState<string | null>(null);
   const [descriptionModel, setDescriptionModel] = useState<string | null>(null);
   const [defaultsSaveMsg, setDefaultsSaveMsg] = useState<string | null>(null);
+  const [defaultsNotice, setDefaultsNotice] = useState<string | null>(null);
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
   const [addressImpactByProvider, setAddressImpactByProvider] = useState<
     Record<string, { photos: number; stageNames: string[] } | null>
   >({});
@@ -113,6 +120,15 @@ export function ProvidersTab() {
       cancelled = true;
     };
   }, [systemOneProviders, bundleRev]);
+
+  useEffect(() => {
+    for (const provider of providers) {
+      if (modelCache[provider.id]) continue;
+      ProvidersAPI.listModels(provider.id)
+        .then(models => setModelCache(previous => ({ ...previous, [provider.id]: models })))
+        .catch(console.error);
+    }
+  }, [providers, modelCache]);
 
   const refreshBundle = useCallback(() => {
     setBundleRev(n => n + 1);
@@ -163,6 +179,31 @@ export function ProvidersTab() {
     },
     [refreshBundle],
   );
+
+  const handleSetEnabled = useCallback(
+    async (providerId: string, enabled: boolean) => {
+      const result = await ProvidersAPI.update(providerId, { enabled });
+      if (result.defaults_notice) setDefaultsNotice(result.defaults_notice);
+      refreshBundle();
+    },
+    [refreshBundle],
+  );
+
+  const handleConfirmRemove = useCallback(async () => {
+    if (!removeTargetId) return;
+    setRemoveBusy(true);
+    try {
+      const result = await ProvidersAPI.remove(removeTargetId);
+      if (result.defaults_notice) setDefaultsNotice(result.defaults_notice);
+      setRemoveTargetId(null);
+      if (expandedId === removeTargetId) setExpandedId(null);
+      refreshBundle();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRemoveBusy(false);
+    }
+  }, [removeTargetId, expandedId, refreshBundle]);
 
   const handleTestConnection = useCallback(
     async (providerId: string) => {
@@ -230,9 +271,14 @@ export function ProvidersTab() {
     refreshBundle();
   }, [refreshBundle]);
 
-  const handleBaseUrlChange = useCallback((_providerId: string, _url: string) => {
-    // Impact counts depend on library answers, not the draft URL; loaded once per provider.
-  }, []);
+  const removeTarget = removeTargetId ? providers.find(p => p.id === removeTargetId) : null;
+
+  const sharedCardContext = {
+    allProviders: providers,
+    fallbackOrder,
+    modelCache,
+    activeJobs,
+  };
 
   return (
     <div className="space-y-6">
@@ -246,7 +292,6 @@ export function ProvidersTab() {
       <OpenAiProvidersGroup
         providers={openAiProviders}
         expandedId={expandedId}
-        modelCache={modelCache}
         testingId={testingId}
         onToggle={id => setExpandedId(previous => (previous === id ? null : id))}
         onCreate={handleCreateOpenAi}
@@ -262,13 +307,15 @@ export function ProvidersTab() {
         onRetryModelImages={(providerId, modelId) => {
           handleRetryModelImages(providerId, modelId).catch(console.error);
         }}
+        {...sharedCardContext}
+        onSetEnabled={handleSetEnabled}
+        onRequestRemove={setRemoveTargetId}
       />
 
       <SystemOneProvidersGroup
         providers={systemOneProviders}
         cullingStagesByProvider={cullingStagesByProvider}
         expandedId={expandedId}
-        modelCache={modelCache}
         testingId={testingId}
         addressImpactByProvider={addressImpactByProvider}
         onToggle={id => setExpandedId(previous => (previous === id ? null : id))}
@@ -282,7 +329,9 @@ export function ProvidersTab() {
         onReorderModel={(providerId, modelId, direction) => {
           handleReorderModel(providerId, modelId, direction).catch(console.error);
         }}
-        onBaseUrlChange={handleBaseUrlChange}
+        {...sharedCardContext}
+        onSetEnabled={handleSetEnabled}
+        onRequestRemove={setRemoveTargetId}
       />
 
       <FallbackOrderPanel
@@ -293,46 +342,49 @@ export function ProvidersTab() {
         }}
       />
 
-      <Card padding="lg">
-        <h4 className="text-base font-semibold text-text mb-1">Default models</h4>
-        <p className="text-sm font-medium text-text mb-3">Descriptions</p>
-        <ProviderModelSelect
-          providerId={descriptionProvider}
-          modelId={descriptionModel}
-          onChange={(providerId, modelId) => {
-            setDescriptionProvider(providerId);
-            setDescriptionModel(modelId);
+      <DescriptionDefaultsPanel
+        providers={openAiProviders}
+        fallbackOrder={fallbackOrder}
+        modelCache={modelCache}
+        descriptionProvider={descriptionProvider}
+        descriptionModel={descriptionModel}
+        onDescriptionChange={(providerId, modelId) => {
+          setDescriptionProvider(providerId);
+          setDescriptionModel(modelId);
+        }}
+        defaultsNotice={defaultsNotice}
+        onSave={() => {
+          if (!descriptionProvider) return;
+          ProvidersAPI.updateDefaults({
+            description: {
+              provider: descriptionProvider,
+              model: descriptionModel,
+            },
+          })
+            .then(() => {
+              setDefaultsSaveMsg('Saved');
+              window.setTimeout(() => setDefaultsSaveMsg(null), 2000);
+              refreshBundle();
+            })
+            .catch(console.error);
+        }}
+        saveMessage={defaultsSaveMsg}
+      />
+
+      {removeTarget ? (
+        <ProviderRemoveConfirm
+          provider={removeTarget}
+          models={modelCache[removeTarget.id] ?? []}
+          activeJobs={activeJobs}
+          isDescriptionDefault={bundle.defaults.description?.provider === removeTarget.id}
+          cullingStageNames={cullingStagesByProvider[removeTarget.id]}
+          onConfirm={() => {
+            handleConfirmRemove().catch(console.error);
           }}
+          onCancel={() => setRemoveTargetId(null)}
+          busy={removeBusy}
         />
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button
-            variant="primary"
-            disabled={!descriptionProvider}
-            onClick={() => {
-              if (!descriptionProvider) return;
-              ProvidersAPI.updateDefaults({
-                description: {
-                  provider: descriptionProvider,
-                  model: descriptionModel,
-                },
-              })
-                .then(() => {
-                  setDefaultsSaveMsg('Saved');
-                  window.setTimeout(() => setDefaultsSaveMsg(null), 2000);
-                  refreshBundle();
-                })
-                .catch(console.error);
-            }}
-          >
-            Save
-          </Button>
-          {defaultsSaveMsg ? (
-            <span className="text-sm text-success" role="status">
-              {defaultsSaveMsg}
-            </span>
-          ) : null}
-        </div>
-      </Card>
+      ) : null}
     </div>
   );
 }

@@ -4695,7 +4695,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Provider"];
+                        "application/json": components["schemas"]["ProviderMutationResponse"];
                     };
                 };
                 /** @description Bad Request */
@@ -4728,7 +4728,55 @@ export interface paths {
             };
         };
         post?: never;
-        delete?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderDeletedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -6723,6 +6771,10 @@ export interface components {
             model_name: string;
             tool_calling: boolean;
         };
+        ProviderMutationResponse: {
+            provider: components["schemas"]["Provider"];
+            defaults_notice?: string | null;
+        };
         ProviderUpdateBody: {
             name?: string | null;
             base_url?: string | null;
@@ -6737,6 +6789,10 @@ export interface components {
                 key?: string | null;
                 clear_key?: boolean | null;
             } | null;
+        };
+        ProviderDeletedResponse: {
+            deleted: boolean;
+            defaults_notice?: string | null;
         };
         ProviderAddressChangeImpact: {
             stages: {
@@ -6760,9 +6816,6 @@ export interface components {
             source: "config" | "discovered" | "user";
             vision?: boolean | null;
             image_refused_reason?: string | null;
-        };
-        ProviderDeletedResponse: {
-            deleted: boolean;
         };
         IdentityBestPhotosResponse: {
             items: components["schemas"]["IdentityBestPhotoItem"][];

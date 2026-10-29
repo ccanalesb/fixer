@@ -846,10 +846,21 @@ export const ProvidersAPI = {
       };
     },
   ) => {
-    const result = await request<Provider>(`/providers/${encodeURIComponent(providerId)}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
+    const result = await request<{ provider: Provider; defaults_notice?: string | null }>(
+      `/providers/${encodeURIComponent(providerId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+    );
+    invalidateAll(['providers.list']);
+    return result;
+  },
+  remove: async (providerId: string) => {
+    const result = await request<{ deleted: boolean; defaults_notice?: string | null }>(
+      `/providers/${encodeURIComponent(providerId)}`,
+      { method: 'DELETE' },
+    );
     invalidateAll(['providers.list']);
     return result;
   },
