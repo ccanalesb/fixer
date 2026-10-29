@@ -13,6 +13,8 @@
 export interface HttpEndpoint {
   baseUrl: string;
   apiKey: string;
+  authMode?: 'none' | 'bearer' | 'header';
+  authHeaderName?: string;
   extraHeaders?: Record<string, string>;
   timeoutMs: number;
 }
@@ -34,12 +36,20 @@ export async function requestJson(
   const base = endpoint.baseUrl.replace(/\/+$/, '');
   const hasBody = opts.body !== undefined;
 
+  const authMode = endpoint.authMode ?? 'bearer';
+  const authHeaders: Record<string, string> = {};
+  if (authMode === 'bearer' && endpoint.apiKey) {
+    authHeaders.Authorization = `Bearer ${endpoint.apiKey}`;
+  } else if (authMode === 'header' && endpoint.authHeaderName && endpoint.apiKey) {
+    authHeaders[endpoint.authHeaderName] = endpoint.apiKey;
+  }
+
   let res: Response;
   try {
     res = await fetch(`${base}${path}`, {
       method: opts.method ?? (hasBody ? 'POST' : 'GET'),
       headers: {
-        Authorization: `Bearer ${endpoint.apiKey}`,
+        ...authHeaders,
         ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         ...(endpoint.extraHeaders ?? {}),
       },
