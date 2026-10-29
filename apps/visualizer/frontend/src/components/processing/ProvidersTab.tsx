@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '../../data';
-import { ProvidersAPI, type ProviderModel } from '../../services/api';
+import { JobsAPI, ProvidersAPI, type ProviderModel } from '../../services/api';
 import {
   AddProviderCard,
   FallbackOrderPanel,
@@ -8,9 +8,8 @@ import {
 } from '../providers';
 import type { ProviderEditValues } from '../providers/ProviderEditForm';
 import { ProviderCard } from '../providers/ProviderCard';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { ProviderModelSelect } from '../ui/ProviderModelSelect';
+import { ProviderRemoveConfirm } from '../providers/ProviderRemoveConfirm';
+import { DescriptionDefaultsPanel } from '../providers/DescriptionDefaultsPanel';
 
 export function ProvidersTab() {
   const [bundleRev, setBundleRev] = useState(0);
@@ -30,6 +29,10 @@ export function ProvidersTab() {
     },
   );
 
+  const activeJobs = useQuery(['jobs.active'] as const, () => JobsAPI.getActive(), {
+    initialValue: [],
+  });
+
   const { providers, fallbackOrder } = bundle;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [modelCache, setModelCache] = useState<Record<string, ProviderModel[]>>({});
@@ -37,6 +40,9 @@ export function ProvidersTab() {
   const [descriptionProvider, setDescriptionProvider] = useState<string | null>(null);
   const [descriptionModel, setDescriptionModel] = useState<string | null>(null);
   const [defaultsSaveMsg, setDefaultsSaveMsg] = useState<string | null>(null);
+  const [defaultsNotice, setDefaultsNotice] = useState<string | null>(null);
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   useEffect(() => {
     const block = bundle.defaults.description;
@@ -45,6 +51,15 @@ export function ProvidersTab() {
       setDescriptionModel(block.model ?? null);
     }
   }, [bundle.defaults]);
+
+  useEffect(() => {
+    for (const provider of providers) {
+      if (modelCache[provider.id]) continue;
+      ProvidersAPI.listModels(provider.id)
+        .then(models => setModelCache(previous => ({ ...previous, [provider.id]: models })))
+        .catch(console.error);
+    }
+  }, [providers, modelCache]);
 
   const refreshBundle = useCallback(() => {
     setBundleRev(n => n + 1);
@@ -85,6 +100,31 @@ export function ProvidersTab() {
     },
     [refreshBundle],
   );
+
+  const handleSetEnabled = useCallback(
+    async (providerId: string, enabled: boolean) => {
+      const result = await ProvidersAPI.update(providerId, { enabled });
+      if (result.defaults_notice) setDefaultsNotice(result.defaults_notice);
+      refreshBundle();
+    },
+    [refreshBundle],
+  );
+
+  const handleConfirmRemove = useCallback(async () => {
+    if (!removeTargetId) return;
+    setRemoveBusy(true);
+    try {
+      const result = await ProvidersAPI.remove(removeTargetId);
+      if (result.defaults_notice) setDefaultsNotice(result.defaults_notice);
+      setRemoveTargetId(null);
+      if (expandedId === removeTargetId) setExpandedId(null);
+      refreshBundle();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRemoveBusy(false);
+    }
+  }, [removeTargetId, expandedId, refreshBundle]);
 
   const handleTestConnection = useCallback(
     async (providerId: string) => {
@@ -152,6 +192,8 @@ export function ProvidersTab() {
     refreshBundle();
   }, [refreshBundle]);
 
+  const removeTarget = removeTargetId ? providers.find(p => p.id === removeTargetId) : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -169,6 +211,10 @@ export function ProvidersTab() {
             key={provider.id}
             provider={provider}
             models={modelCache[provider.id] ?? []}
+            providers={providers}
+            fallbackOrder={fallbackOrder}
+            modelCache={modelCache}
+            activeJobs={activeJobs}
             expanded={expandedId === provider.id}
             onToggle={() =>
               setExpandedId(previous => (previous === provider.id ? null : provider.id))
@@ -185,6 +231,8 @@ export function ProvidersTab() {
             }}
             onSaveProvider={values => handleSaveProvider(provider.id, values)}
             onTestConnection={() => handleTestConnection(provider.id)}
+            onSetEnabled={enabled => handleSetEnabled(provider.id, enabled)}
+            onRequestRemove={() => setRemoveTargetId(provider.id)}
             testingConnection={testingId === provider.id}
           />
         ))}
@@ -198,46 +246,48 @@ export function ProvidersTab() {
         }}
       />
 
-      <Card padding="lg">
-        <h4 className="text-base font-semibold text-text mb-1">Default models</h4>
-        <p className="text-sm font-medium text-text mb-3">Descriptions</p>
-        <ProviderModelSelect
-          providerId={descriptionProvider}
-          modelId={descriptionModel}
-          onChange={(providerId, modelId) => {
-            setDescriptionProvider(providerId);
-            setDescriptionModel(modelId);
+      <DescriptionDefaultsPanel
+        providers={providers}
+        fallbackOrder={fallbackOrder}
+        modelCache={modelCache}
+        descriptionProvider={descriptionProvider}
+        descriptionModel={descriptionModel}
+        onDescriptionChange={(providerId, modelId) => {
+          setDescriptionProvider(providerId);
+          setDescriptionModel(modelId);
+        }}
+        defaultsNotice={defaultsNotice}
+        onSave={() => {
+          if (!descriptionProvider) return;
+          ProvidersAPI.updateDefaults({
+            description: {
+              provider: descriptionProvider,
+              model: descriptionModel,
+            },
+          })
+            .then(() => {
+              setDefaultsSaveMsg('Saved');
+              window.setTimeout(() => setDefaultsSaveMsg(null), 2000);
+              refreshBundle();
+            })
+            .catch(console.error);
+        }}
+        saveMessage={defaultsSaveMsg}
+      />
+
+      {removeTarget ? (
+        <ProviderRemoveConfirm
+          provider={removeTarget}
+          models={modelCache[removeTarget.id] ?? []}
+          activeJobs={activeJobs}
+          isDescriptionDefault={bundle.defaults.description?.provider === removeTarget.id}
+          onConfirm={() => {
+            handleConfirmRemove().catch(console.error);
           }}
+          onCancel={() => setRemoveTargetId(null)}
+          busy={removeBusy}
         />
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button
-            variant="primary"
-            disabled={!descriptionProvider}
-            onClick={() => {
-              if (!descriptionProvider) return;
-              ProvidersAPI.updateDefaults({
-                description: {
-                  provider: descriptionProvider,
-                  model: descriptionModel,
-                },
-              })
-                .then(() => {
-                  setDefaultsSaveMsg('Saved');
-                  window.setTimeout(() => setDefaultsSaveMsg(null), 2000);
-                  refreshBundle();
-                })
-                .catch(console.error);
-            }}
-          >
-            Save
-          </Button>
-          {defaultsSaveMsg ? (
-            <span className="text-sm text-success" role="status">
-              {defaultsSaveMsg}
-            </span>
-          ) : null}
-        </div>
-      </Card>
+      ) : null}
     </div>
   );
 }

@@ -20,8 +20,11 @@ import {
   ProviderError,
 } from './errors.js';
 import type { ProviderRegistry } from './registry.js';
+import { providerDisplayName, providerReadsPhotos } from './usability.js';
 import type { ProviderClient } from './vision-client.js';
 import { CancelledRetryError, retryWithBackoff, type CancelCheck, type LogCallback } from './retry.js';
+
+export const NO_PHOTO_PROVIDER_LEFT = 'No provider left that can read a photo';
 
 /** `(client, model) -> () => Promise<result>` */
 export type FnFactory<T> = (client: ProviderClient, model: string) => () => Promise<T>;
@@ -88,9 +91,10 @@ export class FallbackDispatcher {
     },
   ): Promise<{ result: T; providerId: string; model: string }> {
     const { attempts, emptyFallbacks } = await this.buildAttempts(opts.providerId, opts.model);
-    if (attempts.length === 0) throw new ProviderError('No available providers for operation');
+    if (attempts.length === 0) throw new ProviderError(NO_PHOTO_PROVIDER_LEFT);
 
     const logCallback = opts.logCallback ?? null;
+    this.logWhenSkippingNamedProvider(opts.providerId, attempts, opts.operation, logCallback);
     const cancelCheck = opts.cancelCheck ?? null;
     let lastError: unknown = null;
 
@@ -151,15 +155,36 @@ export class FallbackDispatcher {
    * The ordered `(provider, model)` attempts, plus the fallback providers that
    * turned out to have no vision models.
    */
+  private logWhenSkippingNamedProvider(
+    namedId: string,
+    attempts: readonly [string, string][],
+    operation: string,
+    logCallback: LogCallback | null,
+  ): void {
+    if (!namedId || !logCallback || attempts.length === 0) return;
+    const usingId = attempts[0]![0];
+    if (usingId === namedId) return;
+
+    const usingName = providerDisplayName(this.registry, usingId);
+    if (!this.registry.hasProvider(namedId)) {
+      logCallback('warning', `[${operation}] ${namedId} was removed; using ${usingName}`);
+      return;
+    }
+    if (!this.registry.isEnabled(namedId)) {
+      const named = providerDisplayName(this.registry, namedId);
+      logCallback('warning', `[${operation}] ${named} is parked; using ${usingName}`);
+    }
+  }
+
   private async buildAttempts(
     primaryId: string,
     primaryModel: string,
   ): Promise<{ attempts: [string, string][]; emptyFallbacks: string[] }> {
-    const availableIds = new Set(
-      (await this.registry.listProviders())
-        .filter((p) => p.available && this.registry.isCascadeEligible(p.id))
-        .map((p) => p.id),
-    );
+    const availableIds = new Set<string>();
+    for (const p of await this.registry.listProviders()) {
+      if (!p.available || !this.registry.isCascadeEligible(p.id)) continue;
+      if (await providerReadsPhotos(this.registry, p.id)) availableIds.add(p.id);
+    }
 
     const attempts: [string, string][] = [];
     const emptyFallbacks: string[] = [];

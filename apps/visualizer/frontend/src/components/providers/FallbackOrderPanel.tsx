@@ -4,6 +4,7 @@ import {
   PROVIDER_FALLBACK_HEADING,
   PROVIDER_FALLBACK_DESCRIPTION,
   PROVIDER_STATUS_SUFFIX_UNAVAILABLE,
+  PROVIDER_STATUS_SUFFIX_NOT_IN_USE,
   PROVIDER_MOVE_UP,
   PROVIDER_MOVE_DOWN,
 } from '../../constants/strings';
@@ -119,7 +120,12 @@ export function FallbackOrderPanel({ providers, order, onReorder }: FallbackOrde
               <span className="font-medium text-text flex-1 min-w-0 truncate">
                 {provider?.name ?? providerId}
               </span>
-              {provider && !provider.available && (
+              {provider && !provider.enabled && (
+                <span className="text-xs text-text-tertiary shrink-0">
+                  {PROVIDER_STATUS_SUFFIX_NOT_IN_USE}
+                </span>
+              )}
+              {provider && provider.enabled && !provider.available && (
                 <span className="text-xs text-text-tertiary shrink-0">
                   {PROVIDER_STATUS_SUFFIX_UNAVAILABLE}
                 </span>

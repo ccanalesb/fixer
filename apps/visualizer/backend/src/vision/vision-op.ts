@@ -49,6 +49,7 @@ export interface VisionOpSpec<TParsed> {
   parseResponse: (raw: string, provider: string, model: string) => TParsed | Promise<TParsed>;
   logCallback?: LogCallback;
   registry?: ProviderRegistry | null;
+  allowNamedProviderFallback?: boolean;
   cancelCheck?: CancelCheck;
   /** Always runs, so temp files are removed even when the cascade throws. */
   cleanup?: (() => void | Promise<void>) | null;
@@ -73,6 +74,7 @@ export async function runVisionOp<TParsed>(
       kind: spec.resolveKind,
       providerId: spec.providerId,
       model: spec.model,
+      allowNamedProviderFallback: spec.allowNamedProviderFallback,
     });
     ({ registry, providerId, model } = resolved);
   }

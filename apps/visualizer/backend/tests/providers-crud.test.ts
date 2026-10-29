@@ -115,8 +115,8 @@ describe('PUT /api/providers/{id}', () => {
     });
     const res = await send('PUT', '/api/providers/local', { name: 'Renamed local' });
     expect(res.status).toBe(200);
-    const body = await json<{ id: string; name: string }>(res);
-    expect(body).toMatchObject({ id: 'local', name: 'Renamed local' });
+    const body = await json<{ provider: { id: string; name: string } }>(res);
+    expect(body.provider).toMatchObject({ id: 'local', name: 'Renamed local' });
     expect((readProviders().providers as Record<string, unknown>).local).toBeTruthy();
   });
 
