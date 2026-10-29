@@ -816,6 +816,66 @@ export const IdentityAPI = {
 
 export const ProvidersAPI = {
   list: () => request<Provider[]>('/providers/'),
+  create: async (payload: {
+    name: string;
+    base_url: string;
+    protocol?: 'openai' | 'system_one';
+    models?: string[];
+    auth: { mode: 'none' | 'bearer' | 'header'; header_name?: string; key?: string };
+    extra_headers?: Record<string, string>;
+  }) => {
+    const result = await request<Provider>('/providers/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    invalidateAll(['providers.list']);
+    return result;
+  },
+  update: async (
+    providerId: string,
+    payload: {
+      name?: string;
+      base_url?: string;
+      enabled?: boolean;
+      extra_headers?: Record<string, string>;
+      auth?: {
+        mode?: 'none' | 'bearer' | 'header';
+        header_name?: string;
+        key?: string;
+        clear_key?: boolean;
+      };
+    },
+  ) => {
+    const result = await request<{ provider: Provider; defaults_notice?: string | null }>(
+      `/providers/${encodeURIComponent(providerId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+    );
+    invalidateAll(['providers.list']);
+    return result;
+  },
+  remove: async (providerId: string) => {
+    const result = await request<{ deleted: boolean; defaults_notice?: string | null }>(
+      `/providers/${encodeURIComponent(providerId)}`,
+      { method: 'DELETE' },
+    );
+    invalidateAll(['providers.list']);
+    return result;
+  },
+  probe: async (providerId: string) => {
+    const result = await request<Provider>(
+      `/providers/${encodeURIComponent(providerId)}/probe`,
+      { method: 'POST' },
+    );
+    invalidateAll(['providers.list']);
+    return result;
+  },
+  addressChangeImpact: (providerId: string) =>
+    request<{ stages: { kind: string; name: string }[]; photos: number }>(
+      `/providers/${encodeURIComponent(providerId)}/address-change-impact`,
+    ),
   listDescriptionModels: () =>
     request<DescriptionModelsResponse>('/providers/models/description'),
   health: (providerId: string) =>
@@ -869,6 +929,22 @@ export const ProvidersAPI = {
       method: 'PUT',
       body: JSON.stringify({ order }),
     })
+    invalidateAll(['providers.list'])
+    return result
+  },
+  retryModelImages: async (providerId: string, modelId: string) => {
+    const result = await request<ProviderModel>(
+      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/retry-images`,
+      { method: 'POST' },
+    )
+    invalidateAll(['providers.list'])
+    return result
+  },
+  updateModelName: async (providerId: string, modelId: string, name: string) => {
+    const result = await request<ProviderModel>(
+      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
+      { method: 'PATCH', body: JSON.stringify({ name }) },
+    )
     invalidateAll(['providers.list'])
     return result
   },
@@ -998,6 +1074,7 @@ export const AppModelsAPI = {
 }
 
 export type CullingModelsResponse = components['schemas']['CullingModelsResponse']
+export type CullingSystemOneProvider = components['schemas']['CullingSystemOneProvider']
 export type CullingStageModel = components['schemas']['CullingStageModel']
 export type CullingStageModelPutRequest = components['schemas']['CullingStageModelPutRequest']
 export type CullingStageModelsList = components['schemas']['CullingStageModelsList']

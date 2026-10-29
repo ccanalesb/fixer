@@ -4,10 +4,11 @@
  */
 import type { CullingModelConfig } from '../config.js';
 import type { AppModelStatus } from '../app-models/install.js';
-import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
+import { ProviderRegistry } from '../providers/registry.js';
+import { THIS_APP_ENDPOINT } from '../systemone/client.js';
 import type { StageKind } from './types.js';
 
-export type StageProblem = 'no_model' | 'converting' | 'down' | 'refused' | 'not_listed' | 'no_questions';
+export type StageProblem = 'no_model' | 'converting' | 'parked' | 'removed' | 'no_questions';
 
 export interface StageUsability {
   on: boolean;
@@ -17,8 +18,8 @@ export interface StageUsability {
   endpoint: string;
   /** The conversion job of a model still converting in this app. */
   job_id: string | null;
-  /** What the endpoint said, when it did not answer or refused. */
-  detail: string | null;
+  /** System One provider name when the stage is parked. */
+  provider_name: string | null;
 }
 
 export interface StageUsabilityInput {
@@ -28,7 +29,7 @@ export interface StageUsabilityInput {
   appModels: readonly AppModelStatus[];
   /** The Score forecast's questions; ignored for the culling profile. */
   questionCount: number;
-  timeoutMs?: number;
+  registry?: ProviderRegistry;
 }
 
 export async function stageUsability(kind: StageKind, input: StageUsabilityInput): Promise<StageUsability> {
@@ -39,22 +40,29 @@ export async function stageUsability(kind: StageKind, input: StageUsabilityInput
     model: cfg.model || null,
     endpoint: cfg.endpoint,
     job_id: null,
-    detail: null,
+    provider_name: null,
   };
   if (!input.on) return base;
   if (!cfg.model) return { ...base, problem: 'no_model' };
+
   if (cfg.endpoint === THIS_APP_ENDPOINT) {
     const converting = input.appModels.find((m) => m.name === cfg.model && m.status === 'converting');
     if (converting) return { ...base, problem: 'converting', job_id: converting.job_id };
+    const ready = input.appModels.some((m) => m.name === cfg.model && m.status === 'ready');
+    if (!ready) return { ...base, problem: 'no_model' };
+  } else if (!cfg.endpoint.trim()) {
+    return { ...base, problem: 'removed' };
+  } else {
+    const registry = input.registry ?? new ProviderRegistry();
+    const pcfg = registry.hasProvider(cfg.endpoint) ? registry.providerConfig(cfg.endpoint) : null;
+    if (!pcfg || pcfg.protocol !== 'system_one') {
+      return { ...base, problem: 'removed' };
+    }
+    if (pcfg.enabled === false) {
+      return { ...base, problem: 'parked', provider_name: pcfg.name };
+    }
   }
-  let listed;
-  try {
-    listed = await listSystemOneModels(systemOneEndpoint(cfg), { timeoutMs: input.timeoutMs });
-  } catch (e) {
-    if (!(e instanceof SystemOneError)) throw e;
-    return { ...base, problem: e.failure === 'refused' ? 'refused' : 'down', detail: e.message };
-  }
-  if (!listed.some((m) => m.name === cfg.model)) return { ...base, problem: 'not_listed' };
+
   if (kind === 'score_forecast' && input.questionCount === 0) return { ...base, problem: 'no_questions' };
   return base;
 }

@@ -4092,7 +4092,7 @@ export interface paths {
                         "application/json": components["schemas"]["CullingStageModel"];
                     };
                 };
-                /** @description Neither this app nor an http(s) URL */
+                /** @description Neither this app nor a System One provider */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -4181,7 +4181,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description What the stage’s saved endpoint lists */
+                /** @description Models the stage’s endpoint offers */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -4394,7 +4394,48 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProviderCreateBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Provider"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -4604,6 +4645,241 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["DescriptionModelsResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProviderUpdateBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderMutationResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderDeletedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{provider_id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Provider"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{provider_id}/address-change-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderAddressChangeImpact"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
                     };
                 };
                 /** @description Unprocessable Content */
@@ -4943,6 +5219,111 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                    model_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderModel"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/providers/{provider_id}/models/{model_id}/retry-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider_id: string;
+                    model_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderModel"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6243,20 +6624,26 @@ export interface components {
             culling_profile: components["schemas"]["CullingStageModel"];
             score_forecast: components["schemas"]["CullingStageModel"];
             total_photos: number;
+            system_one_providers: components["schemas"]["CullingSystemOneProvider"][];
         };
         CullingStageModel: {
             endpoint: string;
             model: string | null;
-            has_api_key: boolean;
             answered: {
                 photos: number;
                 model: string | null;
             };
         };
+        CullingSystemOneProvider: {
+            id: string;
+            name: string;
+            url: string;
+            enabled: boolean;
+            has_key: boolean;
+        };
         CullingStageModelPutRequest: {
             endpoint?: string;
             model?: string | null;
-            api_key?: string;
         };
         CullingModelsUsableResponse: {
             culling_profile: components["schemas"]["CullingStageUsability"];
@@ -6266,11 +6653,11 @@ export interface components {
         CullingStageUsability: {
             on: boolean;
             /** @enum {string|null} */
-            problem: "no_model" | "converting" | "down" | "refused" | "not_listed" | "no_questions" | null;
+            problem: "no_model" | "converting" | "parked" | "removed" | "no_questions" | null;
             model: string | null;
             endpoint: string;
             job_id: string | null;
-            detail: string | null;
+            provider_name: string | null;
         };
         CullingStageModelsList: {
             answers: boolean;
@@ -6316,8 +6703,51 @@ export interface components {
         Provider: {
             id: string;
             name: string;
+            protocol: components["schemas"]["ProviderProtocol"];
             available: boolean;
             tool_calling: boolean;
+            enabled: boolean;
+            base_url: components["schemas"]["ValueRef"];
+            auth: components["schemas"]["ProviderAuthSummary"];
+            address_probe?: components["schemas"]["ProviderAddressProbe"];
+        };
+        /** @enum {string} */
+        ProviderProtocol: "openai" | "system_one";
+        ValueRef: {
+            /** @enum {string} */
+            from: "literal" | "env";
+            value: string;
+        };
+        ProviderAuthSummary: {
+            /** @enum {string} */
+            mode: "none" | "bearer" | "header";
+            header_name?: string | null;
+            has_key: boolean;
+            /** @enum {string|null} */
+            secret_from?: "literal" | "env" | null;
+            env_var?: string | null;
+            env_set?: boolean | null;
+        };
+        ProviderAddressProbe: {
+            answered: boolean;
+            url?: string | null;
+            probed_at: string;
+            error?: string | null;
+        } | null;
+        ProviderCreateBody: {
+            name: string;
+            base_url: string;
+            protocol?: components["schemas"]["ProviderProtocol"];
+            models?: string[];
+            auth: {
+                /** @enum {string} */
+                mode: "none" | "bearer" | "header";
+                header_name?: string | null;
+                key?: string | null;
+            };
+            extra_headers?: {
+                [key: string]: string;
+            } | null;
         };
         FallbackOrderResponse: {
             order: string[];
@@ -6341,6 +6771,36 @@ export interface components {
             model_name: string;
             tool_calling: boolean;
         };
+        ProviderMutationResponse: {
+            provider: components["schemas"]["Provider"];
+            defaults_notice?: string | null;
+        };
+        ProviderUpdateBody: {
+            name?: string | null;
+            base_url?: string | null;
+            enabled?: boolean | null;
+            extra_headers?: {
+                [key: string]: string;
+            } | null;
+            auth?: {
+                /** @enum {string|null} */
+                mode?: "none" | "bearer" | "header" | null;
+                header_name?: string | null;
+                key?: string | null;
+                clear_key?: boolean | null;
+            } | null;
+        };
+        ProviderDeletedResponse: {
+            deleted: boolean;
+            defaults_notice?: string | null;
+        };
+        ProviderAddressChangeImpact: {
+            stages: {
+                kind: string;
+                name: string;
+            }[];
+            photos: number;
+        };
         ProviderHealthResponse: {
             reachable: boolean;
             error?: string | null;
@@ -6355,9 +6815,7 @@ export interface components {
             /** @enum {string} */
             source: "config" | "discovered" | "user";
             vision?: boolean | null;
-        };
-        ProviderDeletedResponse: {
-            deleted: boolean;
+            image_refused_reason?: string | null;
         };
         IdentityBestPhotosResponse: {
             items: components["schemas"]["IdentityBestPhotoItem"][];

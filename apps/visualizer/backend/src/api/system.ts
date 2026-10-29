@@ -8,7 +8,6 @@ import { clipCacheDir, config, loadLibraryConfig } from '../config.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openDb, openLibraryDb } from '../db/connection.js';
 import { getCachePipelineStatus } from '../db/jobs/pipeline-status.js';
-import { getUserModels } from '../db/jobs/user-models.js';
 import { getInsightsSummary } from '../db/library/insights.js';
 import {
   getCacheStats,
@@ -316,26 +315,6 @@ systemRoutes.openapi(visionModelsRoute, async (c) => {
           (defaultModel === null || defaultModel === model.id) &&
           !allModels.some((entry) => entry.default);
         allModels.push({ name: model.id, provider_id: provider.id, default: isDefault });
-      }
-    }
-
-    if (existsSync(config.VISUALIZER_DB)) {
-      const db = openDb(config.VISUALIZER_DB, { readonly: true, vec: false });
-      try {
-        const seen = new Set(allModels.map((entry) => `${entry.provider_id}\u0000${entry.name}`));
-        for (const userModel of getUserModels(db)) {
-          if (!userModel.vision) continue;
-          const key = `${userModel.provider_id}\u0000${userModel.model_id}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          allModels.push({
-            name: userModel.model_id,
-            provider_id: userModel.provider_id,
-            default: false,
-          });
-        }
-      } finally {
-        db.close();
       }
     }
 

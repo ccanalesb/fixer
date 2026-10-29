@@ -4,11 +4,13 @@
  * library.db, the vision cache and the JPEGs are real. An external endpoint is a local fake server.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { fakeForecastModelId, fakeModelRuntimeModule, fakeModelState, writeFakeAppModels, writeFakePhoto, type FakeModelScript } from './helpers/fake-app-models.js';
+import { insertProviderModel } from '../src/db/jobs/provider-models.js';
+import { providerIdFromCullingUrl } from '../src/providers/culling-provider-id.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { createJob, getJob, initJobsDb, updateJobStatus } from '../src/db/jobs/jobs.js';
 import type { Db } from '../src/db/connection.js';
@@ -61,8 +63,8 @@ type StageYaml = Partial<Record<'culling_profile' | 'score_forecast', string>>;
 
 /** Each stage on this app's profile model and forecast model, unless named (a YAML flow map per stage). */
 const THIS_APP_MODELS: Required<StageYaml> = {
-  culling_profile: '{endpoint: this_app, model: culling-model, api_key: ""}',
-  score_forecast: '{endpoint: this_app, model: forecast-model, api_key: ""}',
+  culling_profile: '{endpoint: this_app, model: culling-model}',
+  score_forecast: '{endpoint: this_app, model: forecast-model}',
 };
 
 /** config.yaml with a `culling_models` block; `null` leaves the block out. */
@@ -317,7 +319,7 @@ describe('batch_cull_photos_before_scoring', () => {
   });
 
   it('a Score forecast that is on with no model fails the job, naming it', async () => {
-    writeConfig({ score_forecast: '{endpoint: this_app, model: "", api_key: ""}' });
+    writeConfig({ score_forecast: '{endpoint: this_app, model: ""}' });
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');
@@ -327,14 +329,14 @@ describe('batch_cull_photos_before_scoring', () => {
   });
 
   it('a stage that is off needs no model', async () => {
-    writeConfig({ score_forecast: '{endpoint: this_app, model: "", api_key: ""}' });
+    writeConfig({ score_forecast: '{endpoint: this_app, model: ""}' });
     changePipeline((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, enabled: false } }));
     await addPhoto('a', PASS);
     expect((await runCull()).status).toBe('completed');
   });
 
   it('a model still converting in this app fails the job saying so, not that the setup step is missing', async () => {
-    writeConfig({ culling_profile: '{endpoint: this_app, model: model-x, api_key: ""}' });
+    writeConfig({ culling_profile: '{endpoint: this_app, model: model-x}' });
     await addPhoto('a', PASS);
     const job = await runCull({}, (db) => {
       updateJobStatus(db, createJob(db, APP_MODEL_INSTALL_JOB_TYPE, { source: '/models/model-x', name: 'model-x' }), 'running');
@@ -537,18 +539,71 @@ describe('batch_cull_photos_before_scoring', () => {
 
 describe('batch_cull_photos_before_scoring on an external System One endpoint', () => {
   let server: FakeSystemOneServer;
+  let providerId: string;
+
+  function writeSystemOneProvider(url: string, apiKey: string, models: string[]): void {
+    providerId = providerIdFromCullingUrl(url);
+    writeFileSync(
+      join(dir, 'providers.json'),
+      JSON.stringify(
+        {
+          providers: {
+            [providerId]: {
+              name: 'External',
+              protocol: 'system_one',
+              enabled: true,
+              base_url: { from: 'literal', value: url.replace(/\/+$/, '') },
+              auth: { mode: 'bearer', secret: { from: 'literal', value: apiKey } },
+            },
+          },
+          defaults: {},
+          fallback_order: [],
+        },
+        null,
+        2,
+      ),
+    );
+    process.env.LT_PROVIDERS_JSON = join(dir, 'providers.json');
+    const db = initJobsDb(jobsDbPath);
+    for (const m of models) {
+      insertProviderModel(db, {
+        providerId,
+        modelId: m,
+        modelName: m,
+        origin: 'config',
+        acceptsImages: true,
+        refusedReason: null,
+      });
+    }
+    db.close();
+  }
 
   beforeEach(async () => {
     server = await startFakeSystemOneServer(fakeModels, ['clef-cull', 'clef-forecast']);
+    writeSystemOneProvider(server.url, 'k1', ['clef-cull', 'clef-forecast']);
   });
   afterEach(() => server.close());
 
   const both = (): StageYaml => ({
-    culling_profile: `{endpoint: "${server.url}/", model: clef-cull, api_key: k1}`,
-    score_forecast: `{endpoint: "${server.url}", model: clef-forecast, api_key: k1}`,
+    culling_profile: `{endpoint: ${providerId}, model: clef-cull}`,
+    score_forecast: `{endpoint: ${providerId}, model: clef-forecast}`,
   });
   const forecastElsewhere = (model: string): StageYaml => ({
-    score_forecast: `{endpoint: "${server.url}", model: ${model}, api_key: ""}`,
+    score_forecast: `{endpoint: ${providerId}, model: ${model}}`,
+  });
+
+  it('keeps the endpoint the pass started with after the provider is parked', async () => {
+    writeConfig(both());
+    await addPhoto('a', PASS);
+    const providersPath = join(dir, 'providers.json');
+    const stored = JSON.parse(readFileSync(providersPath, 'utf8')) as {
+      providers: Record<string, { enabled: boolean }>;
+    };
+    stored.providers[providerId]!.enabled = false;
+    writeFileSync(providersPath, JSON.stringify(stored, null, 2));
+    const job = await runCull();
+    expect(job.status).toBe('completed');
+    expect(server.requests.length).toBeGreaterThan(0);
   });
 
   it('asks each stage of the endpoint config.yaml names, with its API key, and files answers under it', async () => {
@@ -657,7 +712,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toBe(`Culling profile: the start check failed: ${server.url} answered HTTP 400: question too long`);
+    expect(job.error).toBe('Culling profile: the start check failed: External answered HTTP 400: question too long');
     expect(server.requests.map((r) => r.encoding)).toEqual(['data_url', 'base64']);
   });
 
@@ -667,7 +722,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toBe(`Culling profile: ${server.url} refused the API key (${server.url} answered HTTP 401: invalid api key)`);
+    expect(job.error).toBe('Culling profile: External refused the API key (External answered HTTP 401: invalid api key)');
     expect(job.error_severity).toBe('warning');
   });
 
@@ -676,7 +731,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toBe(`Score forecast: nope is not listed by ${server.url}`);
+    expect(job.error).toBe('Score forecast: nope is not listed by External');
   });
 
   it('an endpoint that does not answer fails the job at the start, naming the stage', async () => {
@@ -685,7 +740,7 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toContain(`Culling profile: ${server.url} does not answer`);
+    expect(job.error).toContain('Culling profile: External does not answer');
   });
 
   it('an HTTP error on one photo leaves it pending; the endpoint going away mid-job stops the job', async () => {
@@ -697,11 +752,11 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     server.dieOn = 'a';
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toContain(`Culling profile: ${server.url} does not answer`);
+    expect(job.error).toContain('Culling profile: External does not answer');
     expect(verdicts().map((v) => [v.image_key, v.verdict, v.pending_reason])).toEqual([
       ['a', 'pending', 'endpoint_down'],
       ['b', 'passed', ''],
-      ['c', 'pending', `model_failed: Culling profile: ${server.url} answered HTTP 500: out of memory`],
+      ['c', 'pending', 'model_failed: Culling profile: External answered HTTP 500: out of memory'],
     ]);
   });
 });

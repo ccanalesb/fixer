@@ -9,32 +9,37 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
-import { openDb, type Db } from '../db/connection.js';
+import { openDb, openLibraryDb, type Db } from '../db/connection.js';
+import {
+  countPhotosForProviderAddressChange,
+  cullingStagesUsingProvider,
+} from '../providers/cull-stage-usage.js';
 import {
   addUserModel,
-  deleteUserModel,
+  clearModelImageRefusal,
   DuplicateUserModelError,
-  getUserModels,
-} from '../db/jobs/user-models.js';
-import {
-  applyModelOrder,
-  ProviderRegistry,
-  UnknownProviderError,
-  type ProviderModelEntry,
-} from '../providers/registry.js';
+  listProviderModels,
+  updateProviderModelName,
+} from '../db/jobs/provider-models.js';
+import { ProviderRegistry, UnknownProviderError } from '../providers/registry.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
 import { ErrorBody } from './schemas/errors.js';
 import {
   DescriptionModelsResponse,
   FallbackOrderResponse,
+  Provider,
+  ProviderAddressChangeImpact,
+  ProviderCreateBody,
   ProviderDefaults,
   ProviderDeletedResponse,
   ProviderHealthResponse,
   ProviderListResponse,
   ProviderModel,
   ProviderModelsListResponse,
+  ProviderMutationResponse,
   ProviderReorderSuccessResponse,
+  ProviderUpdateBody,
 } from './schemas/providers.js';
 
 export const providersRoutes = createOpenApiApp();
@@ -77,6 +82,49 @@ const listRoute = createRoute({
 providersRoutes.openapi(listRoute, async (c) =>
   c.json(await new ProviderRegistry().listProviders(), 200),
 );
+
+const createRouteDef = createRoute({
+  method: 'post',
+  path: '/providers/',
+  tags: ['providers'],
+  request: { body: { content: jsonBody(ProviderCreateBody) } },
+  responses: withValidationError({
+    201: { description: 'Created', content: jsonBody(Provider) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(createRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const data = await readJson(c);
+  const parsed = ProviderCreateBody.safeParse(data);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid provider body' }, 400);
+  }
+  try {
+    const body = parsed.data;
+    const protocol = body.protocol ?? 'openai';
+    if (protocol === 'system_one' && body.auth.mode === 'none') {
+      return c.json({ error: 'System One providers require an API key or bearer auth' }, 400);
+    }
+    const created = await registry.createProvider({
+      name: body.name,
+      base_url: body.base_url,
+      protocol,
+      model_ids: body.models,
+      auth: {
+        mode: body.auth.mode,
+        header_name: body.auth.header_name ?? undefined,
+        key: body.auth.key ?? undefined,
+      },
+      extra_headers: body.extra_headers ?? undefined,
+    });
+    return c.json(created, 201);
+  } catch (e) {
+    if (e instanceof RangeError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
 
 const fallbackOrderGetRoute = createRoute({
   method: 'get',
@@ -195,6 +243,7 @@ providersRoutes.openapi(descriptionModelsRoute, async (c) => {
     const seen = new Set<string>();
     for (const m of modelsList) {
       if (seen.has(m.id)) continue;
+      if (m.vision === false) continue;
       seen.add(m.id);
       result.push({
         provider_id: pid,
@@ -219,6 +268,148 @@ providersRoutes.openapi(descriptionModelsRoute, async (c) => {
 
 // --- per-provider -----------------------------------------------------------
 
+const updateRouteDef = createRoute({
+  method: 'put',
+  path: '/providers/{provider_id}',
+  tags: ['providers'],
+  request: {
+    params: z.object({ provider_id: z.string() }),
+    body: { content: jsonBody(ProviderUpdateBody) },
+  },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderMutationResponse) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(updateRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  const data = await readJson(c);
+  const parsed = ProviderUpdateBody.safeParse(data);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid provider body' }, 400);
+  }
+  try {
+    const body = parsed.data;
+    const updated = await registry.updateProvider(providerId, {
+      name: body.name ?? undefined,
+      base_url: body.base_url ?? undefined,
+      enabled: body.enabled ?? undefined,
+      extra_headers: body.extra_headers ?? undefined,
+      auth: body.auth
+        ? {
+            mode: body.auth.mode ?? undefined,
+            header_name: body.auth.header_name ?? undefined,
+            key: body.auth.key ?? undefined,
+            clear_key: body.auth.clear_key ?? undefined,
+          }
+        : undefined,
+    });
+    return c.json(
+      {
+        provider: updated.provider,
+        defaults_notice: updated.defaultsNotice ?? undefined,
+      },
+      200,
+    );
+  } catch (e) {
+    if (e instanceof UnknownProviderError) return c.json({ error: e.message }, 404);
+    if (e instanceof RangeError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+const deleteRouteDef = createRoute({
+  method: 'delete',
+  path: '/providers/{provider_id}',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderDeletedResponse) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(deleteRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  try {
+    const { defaultsNotice } = await registry.deleteProvider(providerId);
+    return c.json(
+      { deleted: true, defaults_notice: defaultsNotice ?? undefined },
+      200,
+    );
+  } catch (e) {
+    if (e instanceof UnknownProviderError) return c.json({ error: e.message }, 404);
+    if (e instanceof RangeError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+const probeRouteDef = createRoute({
+  method: 'post',
+  path: '/providers/{provider_id}/probe',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(Provider) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(probeRouteDef, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  if (!registry.hasProvider(providerId)) {
+    return c.json({ error: `Unknown provider: ${providerId}` }, 404);
+  }
+  await registry.runAndPersistAddressProbe(providerId);
+  const list = await registry.listProviders();
+  const row = list.find((p) => p.id === providerId);
+  return c.json(row!, 200);
+});
+
+const addressChangeImpactRoute = createRoute({
+  method: 'get',
+  path: '/providers/{provider_id}/address-change-impact',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderAddressChangeImpact) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(addressChangeImpactRoute, async (c) => {
+  const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  const cfg = registry.providerConfig(providerId);
+  if (!cfg) {
+    return c.json({ error: `Unknown provider: ${providerId}` }, 404);
+  }
+  if (cfg.protocol !== 'system_one') {
+    return c.json({ error: 'Only System One providers have culling address-change impact' }, 400);
+  }
+  const stages = cullingStagesUsingProvider(providerId).map((s) => ({
+    kind: s.kind,
+    name: s.name,
+  }));
+  let photos = 0;
+  if (existsSync(config.LIBRARY_DB)) {
+    const db = openLibraryDb(config.LIBRARY_DB, { readonly: true });
+    try {
+      photos = countPhotosForProviderAddressChange(db, providerId);
+    } finally {
+      db.close();
+    }
+  }
+  return c.json({ stages, photos }, 200);
+});
+
 const healthRoute = createRoute({
   method: 'get',
   path: '/providers/{provider_id}/health',
@@ -232,18 +423,27 @@ const healthRoute = createRoute({
 
 providersRoutes.openapi(healthRoute, async (c) => {
   const registry = new ProviderRegistry();
+  const providerId = c.req.valid('param').provider_id;
+  if (!registry.hasProvider(providerId)) {
+    return c.json({ error: 'Unknown provider' }, 404);
+  }
+  const stored = registry.readStoredAddressProbe(providerId);
+  if (stored?.answered) {
+    return c.json({ reachable: true }, 200);
+  }
+  if (stored && !stored.answered) {
+    return c.json({ reachable: false, error: stored.error ?? undefined }, 200);
+  }
   let probe;
   try {
-    probe = await registry.probeConnection(c.req.valid('param').provider_id);
+    probe = await registry.probeConnection(providerId);
   } catch (e) {
     if (e instanceof UnknownProviderError) return c.json({ error: 'Unknown provider' }, 404);
     throw e;
   }
-  // Unreachable is a 200 with `reachable: false` — the provider being down is a
-  // state the UI renders, not a request failure.
   return probe.ok
     ? c.json({ reachable: true }, 200)
-    : c.json({ reachable: false, error: probe.detail }, 200);
+    : c.json({ reachable: false, error: probe.detail ?? undefined }, 200);
 });
 
 const modelsOrderRoute = createRoute({
@@ -296,29 +496,8 @@ providersRoutes.openapi(modelsListRoute, async (c) => {
     return c.json({ error: `Unknown provider: ${providerId}` }, 404);
   }
 
-  const modelsList: ProviderModelEntry[] = await registry.listModels(providerId);
-  const existing = new Set(modelsList.map((m) => m.id));
-  const userModels = existsSync(config.VISUALIZER_DB)
-    ? withJobsDb(false, (db) => getUserModels(db, providerId))
-    : [];
-  for (const userModel of userModels) {
-    if (existing.has(userModel.model_id)) continue;
-    existing.add(userModel.model_id);
-    modelsList.push({
-      id: userModel.model_id,
-      name: userModel.model_name,
-      vision: Boolean(userModel.vision),
-      source: 'user',
-    });
-  }
-
-  // The custom order is applied again after user models are appended.
-  return c.json(
-    applyModelOrder(modelsList, registry.modelOrderFor(providerId)) as z.infer<
-      typeof ProviderModelsListResponse
-    >,
-    200,
-  );
+  const modelsList = await registry.listModels(providerId);
+  return c.json(modelsList as z.infer<typeof ProviderModelsListResponse>, 200);
 });
 
 const modelsCreateRoute = createRoute({
@@ -370,33 +549,143 @@ providersRoutes.openapi(modelsCreateRoute, async (c) => {
   return c.json({ id: modelId, name: modelName, vision, source: 'user' as const }, 201);
 });
 
+// --- model update and image-refusal retry -----------------------------------
+
+async function readModelEntry(
+  registry: ProviderRegistry,
+  providerId: string,
+  modelId: string,
+): Promise<z.infer<typeof ProviderModel> | null> {
+  const models = await registry.listModels(providerId);
+  const found = models.find((m) => m.id === modelId);
+  if (!found) return null;
+  return {
+    id: found.id,
+    name: found.name,
+    source: found.source ?? 'config',
+    vision: found.vision,
+    image_refused_reason:
+      typeof found.image_refused_reason === 'string' || found.image_refused_reason === null
+        ? found.image_refused_reason
+        : undefined,
+  };
+}
+
+async function patchModel(
+  providerId: string,
+  modelId: string,
+  name: string,
+): Promise<{ status: 200 | 404; body: z.infer<typeof ProviderModel> | { error: string } }> {
+  const registry = new ProviderRegistry();
+  if (!registry.hasProvider(providerId)) {
+    return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
+  }
+  const updated = withJobsDb(true, (db) => updateProviderModelName(db, providerId, modelId, name));
+  if (!updated) return { status: 404, body: { error: 'Model not found' } };
+  const entry = await readModelEntry(registry, providerId, modelId);
+  if (!entry) return { status: 404, body: { error: 'Model not found' } };
+  return { status: 200, body: entry };
+}
+
+const modelPatchRoute = createRoute({
+  method: 'patch',
+  path: '/providers/{provider_id}/models/{model_id}',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string(), model_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderModel) },
+    400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(modelPatchRoute, async (c) => {
+  const data = await readJson(c);
+  if (!data || typeof data !== 'object' || !('name' in data)) {
+    return c.json({ error: 'name is required' }, 400);
+  }
+  const name = (data as { name: unknown }).name;
+  if (typeof name !== 'string' || !name.trim()) {
+    return c.json({ error: 'name must be a non-empty string' }, 400);
+  }
+  const result = await patchModel(c.req.valid('param').provider_id, c.req.valid('param').model_id, name.trim());
+  return result.status === 200
+    ? c.json(result.body as z.infer<typeof ProviderModel>, 200)
+    : c.json(result.body as { error: string }, 404);
+});
+
+providersRoutes.patch('/providers/:provider_id/models/:model_id{.+}', async (c) => {
+  const data = await readJson(c);
+  if (!data || typeof data !== 'object' || !('name' in data)) {
+    return c.json({ error: 'name is required' }, 400);
+  }
+  const name = (data as { name: unknown }).name;
+  if (typeof name !== 'string' || !name.trim()) {
+    return c.json({ error: 'name must be a non-empty string' }, 400);
+  }
+  const result = await patchModel(c.req.param('provider_id'), c.req.param('model_id'), name.trim());
+  return c.json(result.body, result.status);
+});
+
+async function retryModelImages(
+  providerId: string,
+  modelId: string,
+): Promise<{ status: 200 | 404; body: z.infer<typeof ProviderModel> | { error: string } }> {
+  const registry = new ProviderRegistry();
+  if (!registry.hasProvider(providerId)) {
+    return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
+  }
+  const hadMark = withJobsDb(true, (db) => {
+    const rows = listProviderModels(db, providerId);
+    const row = rows.find((r) => r.model_id === modelId);
+    if (!row || !row.image_refused_at) return false;
+    return clearModelImageRefusal(db, providerId, modelId);
+  });
+  if (!hadMark) return { status: 404, body: { error: 'Model not found or not marked' } };
+  const entry = await readModelEntry(registry, providerId, modelId);
+  if (!entry) return { status: 404, body: { error: 'Model not found' } };
+  return { status: 200, body: entry };
+}
+
+const modelRetryImagesRoute = createRoute({
+  method: 'post',
+  path: '/providers/{provider_id}/models/{model_id}/retry-images',
+  tags: ['providers'],
+  request: { params: z.object({ provider_id: z.string(), model_id: z.string() }) },
+  responses: withValidationError({
+    200: { description: 'OK', content: jsonBody(ProviderModel) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+providersRoutes.openapi(modelRetryImagesRoute, async (c) => {
+  const result = await retryModelImages(
+    c.req.valid('param').provider_id,
+    c.req.valid('param').model_id,
+  );
+  return result.status === 200
+    ? c.json(result.body as z.infer<typeof ProviderModel>, 200)
+    : c.json(result.body as { error: string }, 404);
+});
+
+providersRoutes.post('/providers/:provider_id/models/:model_id{.+}/retry-images', async (c) => {
+  const result = await retryModelImages(c.req.param('provider_id'), c.req.param('model_id'));
+  return c.json(result.body, result.status);
+});
+
 // --- model deletion ---------------------------------------------------------
 
-/**
- * Delete a model — the user-added row first, then the `providers.json` entry.
- *
- * The order matters: a config model and a user model can share an id, and the user
- * row is the one the user just added, so it is the one they mean.
- */
+/** Delete a model row from `visualizer.db`. */
 async function deleteModel(
   providerId: string,
   modelId: string,
 ): Promise<{ status: 200 | 404; body: { deleted: true } | { error: string } }> {
-  const deleted = existsSync(config.VISUALIZER_DB)
-    ? withJobsDb(true, (db) => deleteUserModel(db, providerId, modelId))
-    : false;
-  if (deleted) return { status: 200, body: { deleted: true } };
-
   const registry = new ProviderRegistry();
-  try {
-    if (registry.removeModel(providerId, modelId)) {
-      return { status: 200, body: { deleted: true } };
-    }
-  } catch (e) {
-    if (e instanceof UnknownProviderError) {
-      return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
-    }
-    throw e;
+  if (!registry.hasProvider(providerId)) {
+    return { status: 404, body: { error: `Unknown provider: ${providerId}` } };
+  }
+  if (registry.removeModel(providerId, modelId)) {
+    return { status: 200, body: { deleted: true } };
   }
   return { status: 404, body: { error: 'Model not found' } };
 }

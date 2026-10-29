@@ -1,6 +1,5 @@
 /**
- * Provider registry — loads `providers.json`, auto-discovers Ollama models, and
- * resolves credentials.
+ * Provider registry — loads `providers.json` and resolves credentials.
  *
  * `providers.json` is gitignored and owned by the user's machine, so it is treated
  * as untrusted input in one specific way: a `defaults` block may name a resolution
@@ -8,13 +7,51 @@
  * warning rather than failing — the same courtesy `load_config` extends to
  * `config.yaml`.
  *
- * Model listing, Ollama discovery, and tool-calling probes use plain `fetch`
- * against OpenAI-compatible endpoints. Probe requests do not retry.
+ * Model listing and tool-calling probes use plain `fetch` against OpenAI-compatible
+ * endpoints. Probe requests do not retry.
  */
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { config, providersExamplePath } from '../config.js';
-import { requestJson } from './http.js';
+import { openDb } from '../db/connection.js';
+import { initJobsDb } from '../db/jobs/jobs.js';
+import {
+  addUserModel,
+  clearProviderImageRefusalMarks,
+  deleteAllProviderModels,
+  listProviderModels,
+  visionFromRow,
+  type ProviderModelRow,
+} from '../db/jobs/provider-models.js';
+import { deleteProviderAddressProbe } from '../db/jobs/provider-probes.js';
+import { clearCullingStagesUsingProvider } from './cull-stage-usage.js';
+import { firstPhotoProvider, providerDisplayName } from './usability.js';
+import { writePrivateFile } from '../utils/private-file.js';
+import { requestJson, type HttpEndpoint } from './http.js';
+import {
+  getProviderAddressProbe,
+  upsertProviderAddressProbe,
+} from '../db/jobs/provider-probes.js';
+import { runAddressProbe, storedLiteralBaseAfterProbe } from './address-probe.js';
+import {
+  normalizeBaseUrlInput,
+  providerAddressesEquivalent,
+  providerHostKey,
+} from './base-url.js';
+import { migrateProvidersConfigIfNeeded } from './migrate-providers.js';
+import { deriveProviderId } from './provider-id.js';
 import type { ProviderClient } from './vision-client.js';
+import type {
+  CreateProviderInput,
+  DefaultsEntry,
+  ProviderAddressProbeSummary,
+  ProviderAuthSummary,
+  ProviderConfig,
+  ProviderModelEntry,
+  ProviderSummary,
+  RegistryConfig,
+  UpdateProviderInput,
+  ValueRef,
+} from './registry-types.js';
 
 /** The shipped template the registry bootstraps from on first use. */
 function examplePath(): string {
@@ -45,50 +82,18 @@ const PROBE_TOOL = {
   },
 } as const;
 
-export interface ProviderModelEntry {
-  id: string;
-  name: string;
-  vision?: boolean;
-  source?: 'config' | 'discovered' | 'user';
-  [key: string]: unknown;
-}
-
-export interface ProviderConfig {
-  name: string;
-  tool_calling?: boolean;
-  base_url?: string;
-  base_url_env?: string;
-  base_url_default?: string;
-  api_key?: string;
-  api_key_env?: string;
-  auto_discover?: boolean;
-  /** Use Ollama's native `/api/chat` for vision calls. See `ProviderClient`. */
-  native_chat?: boolean;
-  extra_headers?: Record<string, string>;
-  request_timeout_seconds?: number;
-  retry?: Record<string, unknown>;
-  models?: ProviderModelEntry[];
-  model_order?: string[];
-}
-
-export interface ProviderSummary {
-  id: string;
-  name: string;
-  available: boolean;
-  tool_calling: boolean;
-}
-
-export interface DefaultsEntry {
-  provider: string;
-  model?: string | null;
-}
-
-interface RegistryConfig {
-  retry_defaults?: Record<string, unknown>;
-  providers: Record<string, ProviderConfig>;
-  defaults?: Record<string, DefaultsEntry>;
-  fallback_order?: string[];
-}
+export type {
+  CreateProviderInput,
+  DefaultsEntry,
+  ProviderAddressProbeSummary,
+  ProviderAuthSummary,
+  ProviderConfig,
+  ProviderModelEntry,
+  ProviderSummary,
+  RegistryConfig,
+  UpdateProviderInput,
+  ValueRef,
+} from './registry-types.js';
 
 /** Raised for caller mistakes the API maps to 404 (unknown provider). */
 export class UnknownProviderError extends Error {
@@ -101,7 +106,6 @@ export class UnknownProviderError extends Error {
 export class ProviderRegistry {
   private readonly configPath: string;
   private config: RegistryConfig;
-  private readonly discoveredCache = new Map<string, ProviderModelEntry[]>();
 
   constructor(configPath: string = config.LT_PROVIDERS_JSON) {
     this.configPath = configPath;
@@ -109,6 +113,7 @@ export class ProviderRegistry {
     if (!existsSync(this.configPath) && existsSync(example)) {
       copyFileSync(example, this.configPath);
     }
+    migrateProvidersConfigIfNeeded(this.configPath, config.VISUALIZER_DB);
     this.config = JSON.parse(readFileSync(this.configPath, 'utf8')) as RegistryConfig;
     this.dropUnknownDefaults();
   }
@@ -137,7 +142,8 @@ export class ProviderRegistry {
   }
 
   get fallbackOrder(): string[] {
-    return this.config.fallback_order ?? Object.keys(this.providers);
+    const order = this.config.fallback_order ?? Object.keys(this.providers);
+    return order.filter((id) => this.providers[id]?.protocol !== 'system_one');
   }
 
   get defaults(): Record<string, DefaultsEntry> {
@@ -150,6 +156,28 @@ export class ProviderRegistry {
 
   hasProvider(providerId: string): boolean {
     return Object.hasOwn(this.providers, providerId);
+  }
+
+  providerConfig(providerId: string): ProviderConfig | undefined {
+    return this.providers[providerId];
+  }
+
+  providerConfigs(): Record<string, ProviderConfig> {
+    return this.providers;
+  }
+
+  providerHasKey(cfg: ProviderConfig): boolean {
+    if (cfg.auth.mode === 'none') return false;
+    const secret = cfg.auth.secret;
+    if (!secret) return false;
+    if (secret.from === 'literal') return secret.value.length > 0;
+    return Boolean(process.env[secret.value]);
+  }
+
+  isEnabled(providerId: string): boolean {
+    const cfg = this.providers[providerId];
+    if (!cfg) return false;
+    return cfg.enabled !== false;
   }
 
   /** The provider's custom model order, or `[]`. */
@@ -166,29 +194,363 @@ export class ProviderRegistry {
   async listProviders(): Promise<ProviderSummary[]> {
     const out: ProviderSummary[] = [];
     for (const [id, cfg] of Object.entries(this.providers)) {
-      out.push({
-        id,
-        name: cfg.name,
-        available: this.isAvailable(cfg),
-        tool_calling: await this.resolveToolCalling(id, cfg),
-      });
+      out.push(await this.buildProviderSummary(id, cfg));
     }
     return out;
   }
 
-  /** Config models plus auto-discovered ones, in the user's custom order. */
+  async createProvider(input: CreateProviderInput): Promise<ProviderSummary> {
+    const name = input.name.trim();
+    if (!name) throw new RangeError('name is required');
+    const base = normalizeBaseUrlInput(input.base_url);
+    if (!base) throw new RangeError('base_url is required');
+    const protocol = input.protocol ?? 'openai';
+    if (protocol !== 'openai' && protocol !== 'system_one') {
+      throw new RangeError('protocol must be openai or system_one');
+    }
+    const modelIds =
+      protocol === 'system_one'
+        ? (input.model_ids ?? []).map((id) => id.trim()).filter(Boolean)
+        : [];
+    if (protocol === 'system_one' && modelIds.length === 0) {
+      throw new RangeError('at least one model id is required for a System One provider');
+    }
+
+    const id = deriveProviderId(name, new Set(Object.keys(this.providers)));
+    const cfg: ProviderConfig = {
+      name,
+      protocol,
+      enabled: true,
+      base_url: { from: 'literal', value: base },
+      auth: this.authFromCreateInput(input.auth),
+      ...(input.extra_headers ? { extra_headers: { ...input.extra_headers } } : {}),
+    };
+    this.providers[id] = cfg;
+    if (protocol === 'openai') {
+      const order = this.fallbackOrder;
+      if (!order.includes(id)) {
+        this.config.fallback_order = [...order, id];
+      }
+    }
+    this.saveConfig();
+    if (protocol === 'system_one') {
+      this.withJobsDbWrite((db) => {
+        for (const modelId of modelIds) {
+          addUserModel(db, id, modelId, modelId, true);
+        }
+      });
+    }
+    await this.runAndPersistAddressProbe(id, base);
+    return await this.buildProviderSummary(id, cfg);
+  }
+
+  async updateProvider(
+    providerId: string,
+    input: UpdateProviderInput,
+  ): Promise<{ provider: ProviderSummary; defaultsNotice: string | null }> {
+    const cfg = this.providers[providerId];
+    if (!cfg) throw new UnknownProviderError(providerId);
+
+    const prevBase = cfg.base_url.value;
+    let nextBase = prevBase;
+    if (input.base_url !== undefined) {
+      nextBase = normalizeBaseUrlInput(input.base_url);
+      if (!nextBase) throw new RangeError('base_url must not be empty');
+    }
+
+    const hostChanged =
+      input.base_url !== undefined &&
+      providerHostKey(prevBase) !== providerHostKey(nextBase);
+    const addressChanged =
+      input.base_url !== undefined && !providerAddressesEquivalent(prevBase, nextBase);
+
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (!name) throw new RangeError('name must not be empty');
+      cfg.name = name;
+    }
+    if (input.base_url !== undefined) {
+      cfg.base_url = { ...cfg.base_url, from: 'literal', value: nextBase };
+    }
+    if (input.enabled !== undefined) {
+      cfg.enabled = input.enabled;
+    }
+    if (input.extra_headers !== undefined) {
+      cfg.extra_headers = { ...input.extra_headers };
+    }
+    if (input.auth) {
+      this.applyAuthUpdate(cfg, input.auth, hostChanged);
+    } else if (hostChanged) {
+      this.clearAuthSecret(cfg);
+    }
+
+    if (addressChanged) {
+      this.withJobsDbWrite((db) => clearProviderImageRefusalMarks(db, providerId));
+    }
+
+    let defaultsNotice: string | null = null;
+    if (input.enabled === false) {
+      defaultsNotice = await this.repointDescriptionDefaultIfNeeded(providerId);
+    }
+
+    this.saveConfig();
+
+    const togglingEnabledOnly =
+      input.enabled !== undefined &&
+      input.name === undefined &&
+      input.base_url === undefined &&
+      input.extra_headers === undefined &&
+      input.auth === undefined;
+
+    if (!togglingEnabledOnly) {
+      const probeTrimmed =
+        input.base_url !== undefined ? normalizeBaseUrlInput(input.base_url) : undefined;
+      await this.runAndPersistAddressProbe(providerId, probeTrimmed);
+    }
+    return {
+      provider: await this.buildProviderSummary(providerId, cfg),
+      defaultsNotice,
+    };
+  }
+
+  /**
+   * Remove a provider from `providers.json` and drop its model and probe rows.
+   * Ids left in `fallback_order` without a config entry are ignored elsewhere.
+   */
+  async deleteProvider(
+    providerId: string,
+  ): Promise<{ defaultsNotice: string | null }> {
+    const cfg = this.providers[providerId];
+    if (!cfg) throw new UnknownProviderError(providerId);
+
+    const defaultsNotice =
+      cfg.protocol === 'system_one'
+        ? null
+        : await this.repointDescriptionDefaultIfNeeded(providerId);
+    if (cfg.protocol === 'system_one') {
+      clearCullingStagesUsingProvider(providerId);
+    }
+    delete this.providers[providerId];
+    if (this.config.fallback_order) {
+      this.config.fallback_order = this.config.fallback_order.filter((id) => id !== providerId);
+    }
+
+    this.withJobsDbWrite((db) => {
+      deleteAllProviderModels(db, providerId);
+      deleteProviderAddressProbe(db, providerId);
+    });
+
+    this.saveConfig();
+    return { defaultsNotice };
+  }
+
+  /** Move the description default off a provider that was parked or removed. */
+  async repointDescriptionDefaultIfNeeded(affectedId: string): Promise<string | null> {
+    const entry = this.config.defaults?.description;
+    if (!entry || entry.provider !== affectedId) return null;
+
+    const affectedName = providerDisplayName(this, affectedId);
+    const nextId = await firstPhotoProvider(this, { skipId: affectedId });
+    if (!nextId) {
+      const nextDefaults = { ...(this.config.defaults ?? {}) };
+      delete nextDefaults.description;
+      this.config.defaults = nextDefaults;
+      return `${affectedName} was your default for descriptions. No provider left that can read a photo — descriptions will not run until you add one.`;
+    }
+
+    const models = await this.listModels(nextId);
+    const firstModel = models.find((m) => m.vision !== false && !m.image_refused_reason);
+    this.config.defaults = {
+      ...(this.config.defaults ?? {}),
+      description: { provider: nextId, model: firstModel?.id ?? entry.model ?? null },
+    };
+    const nextName = providerDisplayName(this, nextId);
+    return `${affectedName} was your default for descriptions. Now using ${nextName}.`;
+  }
+
+  /** Whether any cascade-eligible provider can still read a photo. */
+  async hasPhotoReadingProvider(): Promise<boolean> {
+    return (await firstPhotoProvider(this)) !== null;
+  }
+
+  /** Run the address probe and store the outcome in `visualizer.db`. */
+  async runAndPersistAddressProbe(
+    providerId: string,
+    trimmedBaseOverride?: string,
+  ): Promise<ProviderAddressProbeSummary> {
+    const cfg = this.providers[providerId];
+    if (!cfg) throw new UnknownProviderError(providerId);
+    const probeBase = trimmedBaseOverride ?? cfg.base_url.value;
+    const http = this.buildHttpEndpoint(cfg);
+    const { answered, url, error } = await runAddressProbe(
+      {
+        apiKey: http.apiKey,
+        authMode: http.authMode,
+        authHeaderName: http.authHeaderName,
+        extraHeaders: http.extraHeaders,
+        timeoutMs: 5000,
+      },
+      probeBase,
+    );
+    if (cfg.base_url.from === 'literal' && cfg.protocol !== 'system_one') {
+      const stored = storedLiteralBaseAfterProbe(probeBase, { answered, url });
+      if (stored !== cfg.base_url.value) {
+        cfg.base_url.value = stored;
+        this.saveConfig();
+      }
+    }
+    const row: ProviderAddressProbeSummary = {
+      answered,
+      url,
+      probed_at: new Date().toISOString(),
+      error,
+    };
+    this.withJobsDbWrite((db) =>
+      upsertProviderAddressProbe(db, {
+        provider_id: providerId,
+        answered,
+        answered_url: url,
+        probed_at: row.probed_at,
+        error,
+      }),
+    );
+    return row;
+  }
+
+  readStoredAddressProbe(providerId: string): ProviderAddressProbeSummary | null {
+    if (!existsSync(config.VISUALIZER_DB)) return null;
+    const db = openDb(config.VISUALIZER_DB, { readonly: true, vec: false });
+    try {
+      const row = getProviderAddressProbe(db, providerId);
+      if (!row) return null;
+      return {
+        answered: row.answered,
+        url: row.answered_url,
+        probed_at: row.probed_at,
+        error: row.error,
+      };
+    } finally {
+      db.close();
+    }
+  }
+
+  private async buildProviderSummary(id: string, cfg: ProviderConfig): Promise<ProviderSummary> {
+    return {
+      id,
+      name: cfg.name,
+      protocol: cfg.protocol,
+      available: this.isAvailable(cfg),
+      tool_calling: await this.resolveToolCalling(id, cfg),
+      enabled: cfg.enabled !== false,
+      base_url: { from: cfg.base_url.from, value: cfg.base_url.value },
+      auth: this.authSummary(cfg),
+      address_probe: this.readStoredAddressProbe(id),
+    };
+  }
+
+  private authSummary(cfg: ProviderConfig): ProviderAuthSummary {
+    const auth = cfg.auth;
+    if (auth.mode === 'none') {
+      return { mode: 'none', has_key: false };
+    }
+    const secret = auth.secret;
+    if (!secret) {
+      return { mode: auth.mode, header_name: auth.header_name, has_key: false };
+    }
+    if (secret.from === 'env') {
+      const set = Boolean(process.env[secret.value]);
+      return {
+        mode: auth.mode,
+        header_name: auth.header_name,
+        has_key: set,
+        secret_from: 'env',
+        env_var: secret.value,
+        env_set: set,
+      };
+    }
+    return {
+      mode: auth.mode,
+      header_name: auth.header_name,
+      has_key: secret.value.length > 0,
+      secret_from: 'literal',
+    };
+  }
+
+  private authFromCreateInput(auth: CreateProviderInput['auth']): ProviderConfig['auth'] {
+    if (auth.mode === 'none') return { mode: 'none' };
+    const key = auth.key?.trim() ?? '';
+    if (!key) {
+      return { mode: auth.mode, header_name: auth.header_name };
+    }
+    return {
+      mode: auth.mode,
+      header_name: auth.header_name,
+      secret: { from: 'literal', value: key },
+    };
+  }
+
+  private applyAuthUpdate(
+    cfg: ProviderConfig,
+    patch: NonNullable<UpdateProviderInput['auth']>,
+    hostChanged: boolean,
+  ): void {
+    if (patch.mode !== undefined) {
+      cfg.auth.mode = patch.mode;
+    }
+    if (patch.header_name !== undefined) {
+      cfg.auth.header_name = patch.header_name;
+    }
+    if (patch.clear_key) {
+      delete cfg.auth.secret;
+    }
+    if (patch.key !== undefined) {
+      const key = patch.key.trim();
+      if (key) {
+        cfg.auth.secret = { from: 'literal', value: key };
+      } else {
+        delete cfg.auth.secret;
+      }
+    } else if (hostChanged) {
+      this.clearAuthSecret(cfg);
+    }
+    if (cfg.auth.mode === 'none') {
+      delete cfg.auth.secret;
+      delete cfg.auth.header_name;
+    }
+  }
+
+  private clearAuthSecret(cfg: ProviderConfig): void {
+    if (cfg.auth.mode === 'none') return;
+    delete cfg.auth.secret;
+  }
+
+  private withJobsDbWrite<T>(fn: (db: ReturnType<typeof initJobsDb>) => T): T {
+    const db = initJobsDb(config.VISUALIZER_DB);
+    try {
+      return fn(db);
+    } finally {
+      db.close();
+    }
+  }
+
+  /** Models stored for this provider in `visualizer.db`. */
   async listModels(providerId: string): Promise<ProviderModelEntry[]> {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
 
-    const models: ProviderModelEntry[] = (cfg.models ?? []).map((m) => ({
-      ...m,
-      source: 'config' as const,
-    }));
-    if (cfg.auto_discover) {
-      models.push(...(await this.discoverModels(providerId, cfg)));
-    }
+    const rows = this.readModelRows(providerId);
+    const models: ProviderModelEntry[] = rows.map((row) => rowToEntry(row));
     return applyModelOrder(models, cfg.model_order ?? []);
+  }
+
+  private readModelRows(providerId: string): ProviderModelRow[] {
+    if (!existsSync(config.VISUALIZER_DB)) return [];
+    const db = openDb(config.VISUALIZER_DB, { readonly: true, vec: false });
+    try {
+      return listProviderModels(db, providerId);
+    } finally {
+      db.close();
+    }
   }
 
   /**
@@ -222,16 +584,15 @@ export class ProviderRegistry {
   getClient(providerId: string): ProviderClient {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
+    const endpoint = this.buildHttpEndpoint(cfg);
     return {
       providerId,
-      baseUrl: this.resolveBaseUrl(cfg),
-      apiKey: this.resolveApiKey(cfg),
+      baseUrl: endpoint.baseUrl,
+      apiKey: endpoint.apiKey,
+      authMode: endpoint.authMode,
+      authHeaderName: endpoint.authHeaderName,
       extraHeaders: cfg.extra_headers ?? {},
       timeoutMs: Number(cfg.request_timeout_seconds ?? 120) * 1000,
-      // Defaulting on the id covers `providers.json` files written before the
-      // flag existed. Renaming that provider without setting `native_chat` is
-      // the one case this gets wrong, and it degrades to the compat endpoint.
-      nativeChat: cfg.native_chat ?? providerId === 'ollama',
     };
   }
 
@@ -251,6 +612,10 @@ export class ProviderRegistry {
     const unknown = ids.filter((id) => !this.hasProvider(id));
     if (unknown.length > 0) {
       throw new RangeError(`Unknown provider id(s): [${unknown.map((u) => `'${u}'`).join(', ')}]`);
+    }
+    const cullingOnly = ids.filter((id) => this.providers[id]?.protocol === 'system_one');
+    if (cullingOnly.length > 0) {
+      throw new RangeError(`Provider(s) for culling only: [${cullingOnly.map((u) => `'${u}'`).join(', ')}]`);
     }
     this.config.fallback_order = [...new Set(ids)];
     this.saveConfig();
@@ -272,6 +637,9 @@ export class ProviderRegistry {
       if (!this.hasProvider(providerId)) {
         throw new RangeError(`Unknown provider: ${providerId}`);
       }
+      if (this.providers[providerId]?.protocol === 'system_one') {
+        throw new RangeError(`Provider '${providerId}' is for culling only`);
+      }
     }
     this.config.defaults = {
       ...(this.config.defaults ?? {}),
@@ -280,16 +648,20 @@ export class ProviderRegistry {
     this.saveConfig();
   }
 
-  /** Remove a config model from `providers.json`. Returns whether one went. */
+  /** Remove a model row from `visualizer.db`. Returns whether one went. */
   removeModel(providerId: string, modelId: string): boolean {
     const cfg = this.providers[providerId];
     if (!cfg) throw new UnknownProviderError(providerId);
-    const models = cfg.models ?? [];
-    const kept = models.filter((m) => m.id !== modelId);
-    if (kept.length === models.length) return false;
-    cfg.models = kept;
-    this.saveConfig();
-    return true;
+    if (!existsSync(config.VISUALIZER_DB)) return false;
+    const db = openDb(config.VISUALIZER_DB, { readonly: false, vec: false });
+    try {
+      const info = db
+        .prepare('DELETE FROM provider_models WHERE provider_id = ? AND model_id = ?')
+        .run(providerId, modelId);
+      return info.changes > 0;
+    } finally {
+      db.close();
+    }
   }
 
   /**
@@ -313,6 +685,7 @@ export class ProviderRegistry {
 
   /** Explicit config wins; otherwise a lazily-cached live probe. */
   private async resolveToolCalling(providerId: string, cfg: ProviderConfig): Promise<boolean> {
+    if (cfg.protocol === 'system_one') return false;
     if (cfg.tool_calling !== undefined) return Boolean(cfg.tool_calling);
     const cached = toolCallingProbeCache.get(providerId);
     if (cached !== undefined) return cached;
@@ -329,7 +702,7 @@ export class ProviderRegistry {
    * from a provider that refuses tools, and guessing `true` would break real requests.
    */
   private async probeToolCalling(providerId: string, cfg: ProviderConfig): Promise<boolean> {
-    let probeModel = cfg.models?.[0]?.id;
+    let probeModel = this.readModelRows(providerId).find((r) => visionFromRow(r))?.model_id;
     if (!probeModel) {
       try {
         probeModel = (await this.discoverOpenAiModels(providerId, 5000))[0];
@@ -358,36 +731,68 @@ export class ProviderRegistry {
   }
 
   private saveConfig(): void {
-    writeFileSync(this.configPath, `${JSON.stringify(this.config, null, 2)}\n`, 'utf8');
+    writePrivateFile(this.configPath, `${JSON.stringify(this.config, null, 2)}\n`);
   }
 
   /**
-   * A provider is available when a credential can be resolved.
-   *
-   * An inline `api_key` (Ollama's literal `"ollama"`) always counts; otherwise the
-   * named environment variable has to be set.
+   * A provider is available when it is enabled and a credential can be resolved.
    */
   private isAvailable(cfg: ProviderConfig): boolean {
-    if (cfg.api_key !== undefined) return true;
-    if (cfg.api_key_env) return Boolean(process.env[cfg.api_key_env]);
-    return false;
+    if (cfg.enabled === false) return false;
+    return this.authResolvable(cfg.auth);
   }
 
-  private resolveBaseUrl(cfg: ProviderConfig): string {
-    if (cfg.base_url !== undefined) return cfg.base_url;
-    const host = cfg.base_url_env ? (process.env[cfg.base_url_env] ?? '') : '';
-    if (host) {
-      // A bare host from the environment gets `/v1` appended; an explicit one is
-      // left alone, so `OLLAMA_HOST=http://box:11434` works either way.
-      const base = host.replace(/\/+$/, '');
+  /** Used by the fallback cascade — credentials plus `enabled`. */
+  isCascadeEligible(providerId: string): boolean {
+    const cfg = this.providers[providerId];
+    if (!cfg || cfg.enabled === false || cfg.protocol === 'system_one') return false;
+    return this.authResolvable(cfg.auth);
+  }
+
+  private authResolvable(auth: ProviderConfig['auth']): boolean {
+    if (auth.mode === 'none') return true;
+    const secret = auth.secret;
+    if (!secret) return false;
+    if (secret.from === 'literal') return secret.value.length > 0;
+    return Boolean(process.env[secret.value]);
+  }
+
+  resolveValueRef(ref: ValueRef): string {
+    if (ref.from === 'literal') return ref.value;
+    return process.env[ref.value] ?? '';
+  }
+
+  resolveBaseUrl(cfg: ProviderConfig): string {
+    const host = this.resolveValueRef(cfg.base_url);
+    if (!host) return '';
+    const base = host.replace(/\/+$/, '');
+    if (cfg.protocol === 'system_one') return base;
+    if (cfg.base_url.from === 'env') {
       return base.endsWith('/v1') ? base : `${base}/v1`;
     }
-    return cfg.base_url_default ?? '';
+    return base;
   }
 
-  private resolveApiKey(cfg: ProviderConfig): string {
-    if (cfg.api_key !== undefined) return cfg.api_key;
-    return cfg.api_key_env ? (process.env[cfg.api_key_env] ?? '') : '';
+  /** Base URL for System One requests (`GET /v1/models`, `POST /v1/systemone`). */
+  resolveSystemOneBaseUrl(cfg: ProviderConfig): string {
+    return this.resolveBaseUrl(cfg);
+  }
+
+  resolveApiKey(cfg: ProviderConfig): string {
+    const auth = cfg.auth;
+    if (auth.mode === 'none') return '';
+    return auth.secret ? this.resolveValueRef(auth.secret) : '';
+  }
+
+  private buildHttpEndpoint(cfg: ProviderConfig): HttpEndpoint {
+    return {
+      baseUrl: this.resolveBaseUrl(cfg),
+      apiKey: this.resolveApiKey(cfg),
+      authMode: cfg.auth.mode,
+      authHeaderName: cfg.auth.header_name,
+      extraHeaders: cfg.extra_headers ?? {},
+      timeoutMs: Number(cfg.request_timeout_seconds ?? 120) * 1000,
+    };
   }
 
   /**
@@ -402,64 +807,29 @@ export class ProviderRegistry {
     path: string,
     opts: { timeoutMs: number; method?: string; body?: unknown },
   ): Promise<unknown> {
-    return requestJson(
-      {
-        baseUrl: this.resolveBaseUrl(cfg),
-        apiKey: this.resolveApiKey(cfg),
-        extraHeaders: cfg.extra_headers ?? {},
-        timeoutMs: opts.timeoutMs,
-      },
-      path,
-      {
-        method: opts.method ?? 'GET',
-        body: opts.body,
-        onHttpError: (res) => new Error(`${res.status} ${res.statusText}`),
-      },
-    );
+    return requestJson(this.buildHttpEndpoint(cfg), path, {
+      method: opts.method ?? 'GET',
+      body: opts.body,
+      onHttpError: (res) => new Error(`${res.status} ${res.statusText}`),
+    });
   }
+}
 
-  /**
-   * Ollama's `/api/tags`, cached per registry instance.
-   *
-   * Not the OpenAI `/models` endpoint: Ollama's tag list is what reports locally
-   * pulled models, and everything it returns is treated as vision-capable because
-   * the tag list does not say.
-   */
-  private async discoverModels(
-    providerId: string,
-    cfg: ProviderConfig,
-  ): Promise<ProviderModelEntry[]> {
-    const cached = this.discoveredCache.get(providerId);
-    if (cached) return cached;
-
-    const tagsUrl = this.resolveBaseUrl(cfg).replace('/v1', '/api/tags');
-    let models: ProviderModelEntry[] = [];
-    try {
-      const res = await fetch(tagsUrl, { signal: AbortSignal.timeout(5000) });
-      if (res.ok) {
-        const data = (await res.json()) as { models?: { name?: string }[] };
-        models = (data.models ?? [])
-          .filter((m) => m.name)
-          .map((m) => ({
-            id: String(m.name),
-            name: String(m.name),
-            vision: true,
-            source: 'discovered' as const,
-          }));
-      }
-    } catch {
-      // A provider that is not running is not an error; it just has no models.
-    }
-    this.discoveredCache.set(providerId, models);
-    return models;
-  }
+function rowToEntry(row: ProviderModelRow): ProviderModelEntry {
+  return {
+    id: row.model_id,
+    name: row.model_name,
+    vision: visionFromRow(row),
+    source: row.origin === 'user' ? 'user' : 'config',
+    image_refused_reason: row.image_refused_at ? row.image_refused_reason : null,
+  };
 }
 
 /**
  * Apply a custom model order, appending anything the order does not mention.
  *
- * Newly discovered models are not in `model_order` yet and must still appear, or
- * pulling a new Ollama model would make it invisible.
+ * Newly added models are not in `model_order` yet and must still appear, or a
+ * hand-entered model would be invisible in the UI.
  */
 export function applyModelOrder(
   models: readonly ProviderModelEntry[],

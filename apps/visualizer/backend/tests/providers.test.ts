@@ -15,7 +15,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app.js';
+import { initJobsDb } from '../src/db/jobs/jobs.js';
+import { insertProviderModel } from '../src/db/jobs/provider-models.js';
 import { applyModelOrder } from '../src/providers/registry.js';
+import {
+  CLOUD_PROVIDER,
+  DEFAULT_LOCAL_MODELS,
+  LOCAL_PROVIDER,
+  writeNewShapeProviders,
+} from './helpers/provider-config.js';
 
 let dir: string;
 let providersPath: string;
@@ -35,77 +43,65 @@ const readProviders = (): Record<string, unknown> =>
   JSON.parse(readFileSync(providersPath, 'utf8')) as Record<string, unknown>;
 
 interface StoredProvider {
-  models?: { id: string }[];
   model_order?: string[];
 }
 
 const localConfig = (): StoredProvider =>
   (readProviders().providers as Record<string, StoredProvider>).local ?? {};
 
-const localModels = (): { id: string }[] => localConfig().models ?? [];
-
 /** A providers.json with no network-touching behaviour. */
 function writeProviders(overrides: Record<string, unknown> = {}): void {
-  writeFileSync(
-    providersPath,
-    JSON.stringify(
-      {
-        retry_defaults: { max_retries: 3, backoff_seconds: [2, 8, 32] },
-        providers: {
-          local: {
-            name: 'Local',
-            tool_calling: false,
-            base_url: 'http://127.0.0.1:1/v1',
-            api_key: 'local-key',
-            auto_discover: false,
-            models: [
-              { id: 'small', name: 'Small', vision: true },
-              { id: 'vendor/big', name: 'Big', vision: false },
-            ],
-          },
-          cloud: {
-            name: 'Cloud',
-            tool_calling: true,
-            base_url: 'http://127.0.0.1:1/v1',
-            api_key_env: 'LT_TEST_CLOUD_KEY',
-            auto_discover: false,
-            models: [{ id: 'vision-1', name: 'Vision One', vision: true }],
-          },
-        },
-        defaults: { description: { provider: 'local', model: null } },
-        fallback_order: ['local', 'cloud'],
-        ...overrides,
-      },
-      null,
-      2,
-    ),
-  );
+  writeNewShapeProviders(providersPath, {
+    providers: (overrides.providers as Record<string, unknown>) ?? {
+      local: LOCAL_PROVIDER,
+      cloud: CLOUD_PROVIDER,
+    },
+    defaults: overrides.defaults as Record<string, unknown> | undefined,
+    fallback_order: overrides.fallback_order as string[] | undefined,
+    retry_defaults: overrides.retry_defaults as Record<string, unknown> | undefined,
+  });
+  seedJobsDb(DEFAULT_LOCAL_MODELS);
 }
 
-/** `visualizer.db` with just the provider_models table. */
-function seedJobsDb(rows: { provider_id: string; model_id: string; model_name: string; vision?: number }[] = []): void {
-  const db = new Database(jobsDbPath);
-  // `IF NOT EXISTS` because tests re-seed after `beforeEach` already created it.
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS provider_models (
-      provider_id TEXT NOT NULL,
-      model_id TEXT NOT NULL,
-      model_name TEXT NOT NULL,
-      vision INTEGER DEFAULT 1,
-      PRIMARY KEY (provider_id, model_id)
-    );
-  `);
+/** `visualizer.db` provider model rows. */
+function seedJobsDb(
+  rows: {
+    provider_id: string;
+    model_id: string;
+    model_name: string;
+    vision?: number;
+    image_refused_at?: string | null;
+    image_refused_reason?: string | null;
+    origin?: 'config' | 'user';
+  }[] = DEFAULT_LOCAL_MODELS,
+): void {
+  const db = initJobsDb(jobsDbPath);
   db.exec('DELETE FROM provider_models;');
-  const ins = db.prepare(
-    'INSERT INTO provider_models (provider_id, model_id, model_name, vision) VALUES (?, ?, ?, ?)',
-  );
-  for (const r of rows) ins.run(r.provider_id, r.model_id, r.model_name, r.vision ?? 1);
+  for (const r of rows) {
+    insertProviderModel(db, {
+      providerId: r.provider_id,
+      modelId: r.model_id,
+      modelName: r.model_name,
+      origin: r.origin ?? 'config',
+      acceptsImages: (r.vision ?? 1) === 1 && !r.image_refused_at,
+      refusedReason:
+        r.image_refused_reason ??
+        ((r.vision ?? 1) === 0 ? 'declared without image input' : null),
+    });
+  }
   db.close();
 }
 
-const userModels = (): { provider_id: string; model_id: string }[] => {
+const userModels = (providerId?: string): { provider_id: string; model_id: string }[] => {
   const db = new Database(jobsDbPath, { readonly: true });
   try {
+    if (providerId) {
+      return db
+        .prepare(
+          'SELECT provider_id, model_id FROM provider_models WHERE provider_id = ? ORDER BY model_id',
+        )
+        .all(providerId) as { provider_id: string; model_id: string }[];
+    }
     return db
       .prepare('SELECT provider_id, model_id FROM provider_models ORDER BY provider_id, model_id')
       .all() as { provider_id: string; model_id: string }[];
@@ -159,9 +155,34 @@ describe('GET /api/providers/', () => {
     // A top-level array, not an object wrapping one.
     expect(Array.isArray(body)).toBe(true);
     expect(body).toEqual([
-      { id: 'local', name: 'Local', available: true, tool_calling: false },
-      // `cloud` needs LT_TEST_CLOUD_KEY, which is unset.
-      { id: 'cloud', name: 'Cloud', available: false, tool_calling: true },
+      {
+        id: 'local',
+        name: 'Local',
+        protocol: 'openai',
+        available: true,
+        tool_calling: false,
+        enabled: true,
+        base_url: LOCAL_PROVIDER.base_url,
+        auth: { mode: 'bearer', has_key: true, secret_from: 'literal' },
+        address_probe: null,
+      },
+      {
+        id: 'cloud',
+        name: 'Cloud',
+        available: false,
+        tool_calling: true,
+        enabled: true,
+        protocol: 'openai',
+        base_url: CLOUD_PROVIDER.base_url,
+        auth: {
+          mode: 'bearer',
+          has_key: false,
+          secret_from: 'env',
+          env_var: 'LT_TEST_CLOUD_KEY',
+          env_set: false,
+        },
+        address_probe: null,
+      },
     ]);
   });
 
@@ -267,33 +288,78 @@ describe('defaults', () => {
   });
 });
 
+describe('POST /api/providers/{id}/models/{model_id}/retry-images', () => {
+  it('clears an image-refusal mark', async () => {
+    seedJobsDb([
+      ...DEFAULT_LOCAL_MODELS,
+      {
+        provider_id: 'local',
+        model_id: 'marked',
+        model_name: 'Marked',
+        vision: 0,
+        image_refused_at: '2024-01-01T00:00:00.000Z',
+        image_refused_reason: 'no image input',
+      },
+    ]);
+    const res = await send('POST', '/api/providers/local/models/marked/retry-images');
+    expect(res.status).toBe(200);
+    const body = await json<{ vision?: boolean; image_refused_reason?: string | null }>(res);
+    expect(body.vision).toBe(true);
+    expect(body.image_refused_reason).toBeNull();
+
+    const db = new Database(jobsDbPath, { readonly: true });
+    const row = db
+      .prepare('SELECT image_refused_at FROM provider_models WHERE model_id = ?')
+      .get('marked') as { image_refused_at: string | null };
+    db.close();
+    expect(row.image_refused_at).toBeNull();
+  });
+});
+
+describe('PATCH /api/providers/{id}/models/{model_id}', () => {
+  it('renames a model and clears an image-refusal mark', async () => {
+    seedJobsDb([
+      ...DEFAULT_LOCAL_MODELS,
+      {
+        provider_id: 'local',
+        model_id: 'marked',
+        model_name: 'Marked',
+        vision: 0,
+        image_refused_at: '2024-01-01T00:00:00.000Z',
+        image_refused_reason: 'no image input',
+      },
+    ]);
+    const res = await send('PATCH', '/api/providers/local/models/marked', { name: 'Renamed' });
+    expect(res.status).toBe(200);
+    const body = await json<{ name: string; vision?: boolean }>(res);
+    expect(body.name).toBe('Renamed');
+    expect(body.vision).toBe(true);
+  });
+});
+
 describe('GET /api/providers/{id}/models', () => {
-  it('lists config models and folds in user-added ones', async () => {
-    seedJobsDb([{ provider_id: 'local', model_id: 'mine', model_name: 'My Model', vision: 1 }]);
+  it('lists stored models and folds in user-added ones', async () => {
+    seedJobsDb([
+      ...DEFAULT_LOCAL_MODELS,
+      { provider_id: 'local', model_id: 'mine', model_name: 'My Model', vision: 1, origin: 'user' },
+    ]);
     const res = await send('GET', '/api/providers/local/models');
     expect(res.status).toBe(200);
     const body = await json<{ id: string; source: string; vision?: boolean }[]>(res);
 
     expect(body.map((m) => [m.id, m.source])).toEqual([
+      ['mine', 'user'],
       ['small', 'config'],
       ['vendor/big', 'config'],
-      ['mine', 'user'],
     ]);
   });
 
-  it('does not duplicate a user model that shadows a config id', async () => {
-    seedJobsDb([{ provider_id: 'local', model_id: 'small', model_name: 'Shadow' }]);
-    const body = await json<{ id: string; name: string }[]>(
-      await send('GET', '/api/providers/local/models'),
-    );
-    expect(body.filter((m) => m.id === 'small')).toHaveLength(1);
-    // The config entry wins, so the shadowing row does not rename it.
-    expect(body.find((m) => m.id === 'small')!.name).toBe('Small');
-  });
-
-  it('applies the custom order across config and user models alike', async () => {
+  it('applies the custom order across stored and user models alike', async () => {
     writeProviders();
-    seedJobsDb([{ provider_id: 'local', model_id: 'mine', model_name: 'My Model' }]);
+    seedJobsDb([
+      ...DEFAULT_LOCAL_MODELS,
+      { provider_id: 'local', model_id: 'mine', model_name: 'My Model', origin: 'user' },
+    ]);
     await send('PUT', '/api/providers/local/models/order', { order: ['mine', 'small'] });
 
     const body = await json<{ id: string }[]>(await send('GET', '/api/providers/local/models'));
@@ -313,7 +379,7 @@ describe('POST /api/providers/{id}/models', () => {
     const res = await send('POST', '/api/providers/local/models', { id: 'new', name: 'New' });
     expect(res.status).toBe(201);
     expect(await json(res)).toEqual({ id: 'new', name: 'New', vision: true, source: 'user' });
-    expect(userModels()).toEqual([{ provider_id: 'local', model_id: 'new' }]);
+    expect(userModels('local').map((m) => m.model_id)).toEqual(['new', 'small', 'vendor/big']);
   });
 
   it('honours an explicit vision flag', async () => {
@@ -345,39 +411,26 @@ describe('POST /api/providers/{id}/models', () => {
   });
 
   it('404s for an unknown provider before writing', async () => {
+    const before = userModels('local');
     const res = await send('POST', '/api/providers/nope/models', { id: 'x', name: 'X' });
     expect(res.status).toBe(404);
-    expect(userModels()).toEqual([]);
+    expect(userModels('local')).toEqual(before);
   });
 });
 
 describe('DELETE /api/providers/{id}/models/{model_id}', () => {
-  it('removes a user model in preference to a config one', async () => {
-    seedJobsDb([{ provider_id: 'local', model_id: 'small', model_name: 'Shadow' }]);
+  it('removes a stored model row', async () => {
     const res = await send('DELETE', '/api/providers/local/models/small');
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({ deleted: true });
-
-    // The user row went; the config entry is untouched.
-    expect(userModels()).toEqual([]);
-    const models = localModels();
-    expect(models.map((m) => m.id)).toContain('small');
-  });
-
-  it('removes a config model and persists', async () => {
-    const res = await send('DELETE', '/api/providers/local/models/small');
-    expect(res.status).toBe(200);
-    const models = localModels();
-    expect(models.map((m) => m.id)).toEqual(['vendor/big']);
+    expect(userModels('local')).toEqual([{ provider_id: 'local', model_id: 'vendor/big' }]);
   });
 
   it('deletes a model id containing a slash', async () => {
-    // Model ids can contain slashes; the route must accept the full path segment.
     const res = await send('DELETE', '/api/providers/local/models/vendor/big');
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({ deleted: true });
-    const models = localModels();
-    expect(models.map((m) => m.id)).toEqual(['small']);
+    expect(userModels('local').map((m) => m.model_id)).toEqual(['small']);
   });
 
   it('404s for an unknown model and an unknown provider', async () => {
@@ -445,7 +498,6 @@ describe('GET /api/providers/models/description', () => {
     // Includes unavailable providers, unlike /api/vision-models.
     expect(body.models.map((m) => `${m.provider_id}:${m.model_id}`)).toEqual([
       'local:small',
-      'local:vendor/big',
       'cloud:vision-1',
     ]);
     expect(body.models[0]!.tool_calling).toBe(false);
@@ -471,11 +523,11 @@ describe('GET /api/vision-models', () => {
 
   it('adds user-added vision models', async () => {
     seedJobsDb([
-      { provider_id: 'local', model_id: 'mine', model_name: 'Mine', vision: 1 },
-      { provider_id: 'local', model_id: 'text', model_name: 'Text', vision: 0 },
+      ...DEFAULT_LOCAL_MODELS,
+      { provider_id: 'local', model_id: 'mine', model_name: 'Mine', vision: 1, origin: 'user' },
     ]);
     const body = await json<{ models: { name: string }[] }>(await send('GET', '/api/vision-models'));
-    expect(body.models.map((m) => m.name)).toEqual(['small', 'mine']);
+    expect(body.models.map((m) => m.name).sort()).toEqual(['mine', 'small']);
   });
 
   it('marks exactly one default even when none matches the configured one', async () => {
@@ -489,7 +541,8 @@ describe('GET /api/vision-models', () => {
   });
 
   it('falls back rather than failing when nothing is configured', async () => {
-    writeProviders({ providers: {}, defaults: {}, fallback_order: [] });
+    writeNewShapeProviders(providersPath, { providers: {}, defaults: {}, fallback_order: [] });
+    seedJobsDb([]);
     const res = await send('GET', '/api/vision-models');
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({

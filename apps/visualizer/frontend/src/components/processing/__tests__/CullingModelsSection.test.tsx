@@ -7,12 +7,14 @@ import {
   CullingModelsAPI,
   CullingProfilesAPI,
   JobsAPI,
+  ProvidersAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
   type CullingModelsResponse,
   type CullingModelsUsable,
   type CullingStageModel,
   type CullingStageUsability,
+  type CullingSystemOneProvider,
   type PipelineSettingResponse,
   type ScoreForecastQuestion,
 } from '../../../services/api'
@@ -38,13 +40,15 @@ import {
   SCORE_FORECAST_STAGE,
   SCORE_FORECAST_THRESHOLD,
   SCORE_FORECAST_THRESHOLD_INVALID,
+  PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
   STAGE_ADD_MODEL,
-  STAGE_API_KEY_REMOVE,
-  STAGE_API_KEY_SAVED,
-  STAGE_CHECK,
-  STAGE_ENDPOINT_OTHER,
+  STAGE_ENDPOINT_PARKED,
   STAGE_ENDPOINT_THIS_APP,
   STAGE_NO_QUESTIONS,
+  STAGE_PARKED,
+  STAGE_PROVIDERS_LINK,
+  STAGE_REMOVED,
+  STAGE_TURN_PROVIDER_BACK_ON,
 } from '../../../constants/strings'
 import type { Job } from '../../../types/job'
 
@@ -62,14 +66,15 @@ type Stage = 'culling_profile' | 'score_forecast'
 let stored: Config
 let stages: CullingModelsResponse
 let appModels: AppModel[]
-/** What each external URL lists; any other URL does not answer. */
-let endpoints: Record<string, string[]>
+/** Models typed into each System One provider id. */
+let providerModels: Record<string, string[]>
+let systemOneProviders: CullingSystemOneProvider[]
 
 const OLLAMA = 'http://localhost:11434'
+const PROVIDER_ID = 'localhost-11434'
 const stage = (over: Partial<CullingStageModel> = {}): CullingStageModel => ({
   endpoint: 'this_app',
   model: null,
-  has_api_key: false,
   answered: { photos: 0, model: null },
   ...over,
 })
@@ -93,7 +98,7 @@ const usableStage = (over: Partial<CullingStageUsability> = {}): CullingStageUsa
   model: 'culling-model',
   endpoint: 'this_app',
   job_id: null,
-  detail: null,
+  provider_name: null,
   ...over,
 })
 /** What `GET /api/culling-models/usable` answers. */
@@ -120,9 +125,17 @@ beforeEach(() => {
   socket.onJobUpdated = null
   pipeline()
   usable = { culling_profile: usableStage(), score_forecast: usableStage({ model: 'forecast-model' }), culling_profile_filter: true }
-  stages = { culling_profile: stage(), score_forecast: stage(), total_photos: 3 }
+  systemOneProviders = [
+    { id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: true, has_key: true },
+  ]
+  providerModels = { [PROVIDER_ID]: ['intern-decision-2b', 'clef-flash'] }
+  stages = {
+    culling_profile: stage(),
+    score_forecast: stage(),
+    total_photos: 3,
+    system_one_providers: systemOneProviders,
+  }
   appModels = [ready('culling-model'), ready('forecast-model')]
-  endpoints = { [OLLAMA]: ['intern-decision-2b', 'clef-flash'] }
   questionCount = 4
   vi.spyOn(ScoreForecastQuestionsAPI, 'get').mockImplementation(async () => questionsResponse())
   vi.spyOn(CullingModelsAPI, 'get').mockImplementation(async () => stages)
@@ -134,16 +147,19 @@ beforeEach(() => {
       ...s,
       endpoint,
       model: body.model !== undefined ? body.model : moved ? null : s.model,
-      has_api_key: endpoint === 'this_app' ? false : body.api_key !== undefined ? body.api_key !== '' : moved ? false : s.has_api_key,
     }
     stages = { ...stages, [k]: next }
     return next
   })
   vi.spyOn(CullingModelsAPI, 'models').mockImplementation(async (k: Stage) => {
-    const listed = endpoints[stages[k].endpoint]
+    const ep = stages[k].endpoint
+    if (ep === 'this_app') {
+      return { answers: true, models: appModels.map((m) => m.name), error: null }
+    }
+    const listed = providerModels[ep]
     return listed
       ? { answers: true, models: listed, error: null }
-      : { answers: false, models: [], error: `${stages[k].endpoint} does not answer (fetch failed)` }
+      : { answers: false, models: [], error: 'Unknown provider' }
   })
   vi.spyOn(AppModelsAPI, 'list').mockImplementation(async () => ({ models: appModels, picker_available: true }))
   vi.spyOn(JobsAPI, 'create').mockResolvedValue({ id: 'job-cull' } as Job)
@@ -415,73 +431,37 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     expect(await within(cull).findByText('Culling profile now uses culling-model.')).toBeInTheDocument()
   })
 
-  it('another endpoint saves nothing until Check, which saves the URL and key, then lists its models', async () => {
+  it('choosing a System One provider saves once and lists its typed models', async () => {
     renderSection()
     const cull = await row('culling_profile')
-    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'other' } })
-    expect(CullingModelsAPI.save).not.toHaveBeenCalled()
-    expect(control(cull, 'combobox', 'Model')).toBeDisabled()
-    expect(within(cull).getByRole('option', { name: 'Check the URL first' })).toBeInTheDocument()
-    fireEvent.change(control(cull, 'textbox', 'URL'), { target: { value: OLLAMA } })
-    fireEvent.change(within(cull).getByLabelText('API key'), { target: { value: 'sk-1' } })
-    fireEvent.click(within(cull).getByRole('button', { name: STAGE_CHECK }))
-    expect(await within(cull).findByText('Answers · 2 models')).toBeInTheDocument()
-    expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { endpoint: OLLAMA, api_key: 'sk-1' })
-    expect(within(cull).getByLabelText('API key')).toHaveValue('')
-    expect(within(cull).getByLabelText('API key')).toHaveAttribute('placeholder', STAGE_API_KEY_SAVED)
+    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: PROVIDER_ID } })
+    await waitFor(() => expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { endpoint: PROVIDER_ID }))
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'clef-flash' })).toBeInTheDocument())
     expect(control(cull, 'combobox', 'Model')).not.toBeDisabled()
-    expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off")
     fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'clef-flash' } })
-    await waitFor(() => expect(desc(cull)).toBe(`clef-flash on ${OLLAMA}`))
+    await waitFor(() => expect(desc(cull)).toBe(`clef-flash on Ollama (${OLLAMA})`))
   })
 
-  it('Check on a URL that does not answer says so and lists nothing; Enter checks too', async () => {
+  it('a parked provider says so and Turn back on unparks it', async () => {
+    systemOneProviders = [{ id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: false, has_key: true }]
+    stages = { ...stages, system_one_providers: systemOneProviders, culling_profile: stage({ endpoint: PROVIDER_ID, model: 'clef-flash' }) }
+    vi.spyOn(ProvidersAPI, 'update').mockResolvedValue({ provider: {} as never })
     renderSection()
     const cull = await row('culling_profile')
-    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'other' } })
-    fireEvent.change(control(cull, 'textbox', 'URL'), { target: { value: 'http://localhost:9999' } })
-    fireEvent.keyDown(control(cull, 'textbox', 'URL'), { key: 'Enter' })
-    expect(await within(cull).findByText('No answer')).toBeInTheDocument()
-    expect(within(cull).getByText('No answer')).toHaveAttribute('title', 'http://localhost:9999 does not answer (fetch failed)')
-    expect(control(cull, 'combobox', 'Model')).toBeDisabled()
-    expect(desc(cull)).toBe("http://localhost:9999 does not answer — jobs won't start")
+    expect(desc(cull)).toContain(STAGE_PARKED('Ollama', 'the culling profile'))
+    fireEvent.click(within(cull).getByRole('button', { name: STAGE_TURN_PROVIDER_BACK_ON('Ollama') }))
+    await waitFor(() => expect(ProvidersAPI.update).toHaveBeenCalledWith(PROVIDER_ID, { enabled: true }))
   })
 
-  it('editing the URL clears what Check found, and checks nothing until asked', async () => {
-    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'clef-flash' })
+  it('a removed endpoint says so', async () => {
+    stages.culling_profile = stage({ endpoint: '', model: 'clef-flash' })
     renderSection()
     const cull = await row('culling_profile')
-    expect(await within(cull).findByText('Answers · 2 models')).toBeInTheDocument()
-    fireEvent.change(control(cull, 'textbox', 'URL'), { target: { value: `${OLLAMA}/x` } })
-    expect(within(cull).queryByText('Answers · 2 models')).not.toBeInTheDocument()
-    expect(CullingModelsAPI.models).toHaveBeenCalledTimes(1)
+    expect(desc(cull)).toContain(STAGE_REMOVED('the culling profile'))
   })
 
-  it('a saved URL is checked once when Settings opens; a model it no longer lists says so', async () => {
-    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'gone-model', has_api_key: true })
-    renderSection()
-    const cull = await row('culling_profile')
-    expect(control(cull, 'combobox', 'Endpoint')).toHaveValue('other')
-    expect(control(cull, 'textbox', 'URL')).toHaveValue(OLLAMA)
-    await waitFor(() => expect(desc(cull)).toBe(`gone-model is no longer listed by ${OLLAMA} — jobs won't start`))
-    expect(CullingModelsAPI.models).toHaveBeenCalledTimes(1)
-    expect(CullingModelsAPI.models).toHaveBeenCalledWith('culling_profile')
-  })
-
-  it('a saved key is never shown; Remove clears it', async () => {
-    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'clef-flash', has_api_key: true })
-    renderSection()
-    const cull = await row('culling_profile')
-    const key = await within(cull).findByLabelText('API key')
-    expect(key).toHaveValue('')
-    expect(key).toHaveAttribute('type', 'password')
-    fireEvent.click(within(cull).getByRole('button', { name: STAGE_API_KEY_REMOVE }))
-    await waitFor(() => expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { api_key: '' }))
-    await waitFor(() => expect(within(cull).queryByRole('button', { name: STAGE_API_KEY_REMOVE })).not.toBeInTheDocument())
-  })
-
-  it('going back to this app saves at once and leaves no model chosen', async () => {
-    stages.culling_profile = stage({ endpoint: OLLAMA, model: 'clef-flash' })
+  it('going back to this app saves at once and clears the model', async () => {
+    stages.culling_profile = stage({ endpoint: PROVIDER_ID, model: 'clef-flash' })
     renderSection()
     const cull = await row('culling_profile')
     fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'this_app' } })
@@ -489,10 +469,9 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     await waitFor(() =>
       expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off"),
     )
-    expect(within(cull).queryByRole('textbox', { name: 'URL' })).not.toBeInTheDocument()
   })
 
-  it('"Add a model to this app" goes to Models in this app; another endpoint has no such link', async () => {
+  it('"Add a model to this app" goes to Models in this app; a provider has no such link', async () => {
     const target = document.createElement('div')
     target.id = 'app-models'
     target.scrollIntoView = vi.fn()
@@ -501,16 +480,26 @@ describe('CullingModelsSection — endpoint and model per stage', () => {
     const cull = await row('culling_profile')
     fireEvent.click(within(cull).getByRole('button', { name: STAGE_ADD_MODEL }))
     expect(target.scrollIntoView).toHaveBeenCalledTimes(1)
-    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'other' } })
-    expect(within(cull).queryByRole('button', { name: STAGE_ADD_MODEL })).not.toBeInTheDocument()
+    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: PROVIDER_ID } })
+    await waitFor(() => expect(within(cull).queryByRole('button', { name: STAGE_ADD_MODEL })).not.toBeInTheDocument())
     target.remove()
   })
 
-  it('the endpoint select offers this app and another System One endpoint', async () => {
+  it('the endpoint select offers this app and each system_one provider, with parked called out', async () => {
+    systemOneProviders = [
+      { id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: true, has_key: true },
+      { id: 'studio', name: 'Studio', url: 'http://studio:8000', enabled: false, has_key: true },
+    ]
+    stages = { ...stages, system_one_providers: systemOneProviders }
     renderSection()
     const cull = await row('culling_profile')
     expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_THIS_APP })).toBeInTheDocument()
-    expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_OTHER })).toBeInTheDocument()
+    expect(within(cull).getByRole('option', { name: `Ollama (${OLLAMA})` })).toBeInTheDocument()
+    expect(within(cull).getByRole('option', { name: `Studio (http://studio:8000) ${STAGE_ENDPOINT_PARKED}` })).toBeInTheDocument()
+    expect(within(cull).getByRole('link', { name: STAGE_PROVIDERS_LINK })).toHaveAttribute(
+      'href',
+      PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
+    )
   })
 })
 

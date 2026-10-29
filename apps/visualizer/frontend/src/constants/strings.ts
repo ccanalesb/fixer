@@ -683,6 +683,8 @@ export const PROVIDER_ADD_MODEL_VISION_LABEL = 'Supports vision'
 export const PROVIDER_ADD_MODEL_SUBMIT = 'Add model'
 export const PROVIDER_ADD_MODEL_SUBMITTING = 'Adding…'
 export const PROVIDER_ADD_MODEL_ERROR = 'Could not add model. Please try again.'
+export const PROVIDER_MODEL_NO_IMAGES = "Doesn't take images"
+export const PROVIDER_MODEL_TRY_AGAIN = 'Try again'
 
 // Generic Buttons
 export const BTN_DISMISS = 'Dismiss'
@@ -690,6 +692,21 @@ export const BTN_RETRY = 'Retry'
 
 // Provider Inline Labels
 export const PROVIDER_STATUS_SUFFIX_UNAVAILABLE = '(unavailable)'
+export const PROVIDER_STATUS_SUFFIX_NOT_IN_USE = '(not in use)'
+export const PROVIDER_PARK_SWITCH_LABEL = 'Use this provider'
+export const PROVIDER_MENU_LABEL = 'Provider actions'
+export const PROVIDER_REMOVE_ACTION = 'Remove…'
+export const PROVIDER_REMOVE_CONFIRM_TITLE = 'Remove this provider?'
+export const PROVIDER_REMOVE_CONFIRM_SWITCH_HINT =
+  'To keep its address and models but leave it out of jobs, turn it off with the switch above instead.'
+export const PROVIDER_REMOVE_CONFIRM_CANCEL = 'Keep it'
+export const PROVIDER_REMOVE_CONFIRM_OK = 'Remove it'
+export const PROVIDER_JOB_NOTE_RUNNING = (count: number, nextName: string) =>
+  `${count} running job${count === 1 ? '' : 's'} continue${count === 1 ? 's' : ''} on ${nextName}`
+export const PROVIDER_JOB_NOTE_QUEUED = (count: number, nextName: string) =>
+  `${count} queued job${count === 1 ? '' : 's'} will run on ${nextName}`
+export const PROVIDER_DESCRIPTIONS_WILL_NOT_RUN =
+  'No provider left that can read a photo. Descriptions will not run until you add one.'
 
 // Description Generation Errors
 export const DESC_ERROR_RATE_LIMIT = 'Rate limited — try a different provider or wait.'
@@ -956,7 +973,25 @@ export const SCORE_FORECAST_DOES_NOT_APPLY = 'does not apply'
 export const STAGE_IN_SENTENCE = { culling_profile: 'the culling profile', score_forecast: 'the Score forecast' } as const
 export const STAGE_ENDPOINT = 'Endpoint'
 export const STAGE_ENDPOINT_THIS_APP = 'This app'
-export const STAGE_ENDPOINT_OTHER = 'Another System One endpoint…'
+export const STAGE_ENDPOINT_PARKED = '(parked)'
+export const STAGE_PROVIDERS_LINK = 'Add or edit System One providers'
+export const PROCESSING_PROVIDERS_ROUTE = '/processing?tab=providers'
+export const PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE = '/processing?tab=providers#system-one-providers'
+export const PROVIDERS_GROUP_OPENAI = 'For descriptions and AI score · OpenAI-compatible'
+export const PROVIDERS_GROUP_SYSTEM_ONE = 'For culling · System One'
+export const PROVIDERS_GROUP_SYSTEM_ONE_EMPTY =
+  'None. Culling uses this app unless you add a System One endpoint.'
+export const PROVIDERS_ADD_SYSTEM_ONE = 'Add a System One endpoint'
+export const PROVIDERS_SYSTEM_ONE_MODELS_LABEL = 'Models'
+export const PROVIDERS_SYSTEM_ONE_MODELS_HINT = 'Model ids, comma-separated'
+export const PROVIDERS_SYSTEM_ONE_USED_BY = (names: string) => `Used by ${names}`
+export const PROVIDERS_SYSTEM_ONE_UNUSED = 'No culling stage uses it'
+export const PROVIDERS_ADDRESS_CHANGE_WARNING = (
+  photos: number,
+  stages: string,
+) =>
+  `Changing the address makes ${photos.toLocaleString('en-US')} photo${photos === 1 ? '' : 's'} on ${stages} be answered again on the next cull pass (a new address is a new model identity).`
+export const STAGE_MODEL_NONE_FOR_PROVIDER = 'No models in this provider yet'
 export const STAGE_URL = 'URL'
 export const STAGE_URL_PLACEHOLDER = 'http://localhost:11434'
 export const STAGE_CHECK = 'Check'
@@ -977,10 +1012,13 @@ export const STAGE_THIS_APP = 'this app'
 export const STAGE_OFF = 'Off'
 export const STAGE_OFF_WITH = (model: string, where: string) => `Off · ${model} on ${where}`
 export const STAGE_RUNS = (model: string, where: string) => `${model} on ${where}`
-export const STAGE_DOWN = (url: string) => `${url || 'No URL'} does not answer — jobs won't start`
-export const STAGE_GONE = (model: string, url: string) => `${model} is no longer listed by ${url} — jobs won't start`
 export const STAGE_NO_MODEL = (stage: string) =>
   `No model chosen — jobs won't start until you choose one or turn ${stage} off`
+export const STAGE_PARKED = (name: string, stage: string) =>
+  `${name} is parked — jobs won't start until you turn it back on, choose another endpoint, or turn ${stage} off`
+export const STAGE_REMOVED = (stage: string) =>
+  `Its endpoint was removed — jobs won't start until you choose one or turn ${stage} off`
+export const STAGE_TURN_PROVIDER_BACK_ON = (name: string) => `Turn ${name} back on`
 export const STAGE_CONVERTING = (model: string) => `${model} on this app — `
 export const STAGE_STILL_CONVERTING = 'still converting'
 export const MODEL_CHANGE_TITLE = (stage: string, model: string) => `${stage} now uses ${model}.`
@@ -1005,9 +1043,8 @@ export const CULLING_PROFILE_OFF_SUB =
 export const CULLING_PROFILE_UNUSABLE = {
   no_model: () => 'The culling profile is on but has no model.',
   converting: () => "The culling profile's model is still converting.",
-  down: (endpoint: string) => `The culling profile's endpoint (${endpoint}) does not answer.`,
-  refused: (endpoint: string) => `The culling profile's endpoint (${endpoint}) refused the API key.`,
-  not_listed: (endpoint: string, model: string) => `${model} is no longer listed by ${endpoint}.`,
+  parked: (name: string) => `${name} is parked.`,
+  removed: () => 'Its endpoint was removed.',
 } as const
 export const CULLING_PROFILE_UNUSABLE_SUB = 'Fix it in Settings → Culling models, or turn the culling profile off.'
 export const CULLING_PROFILE_CONVERTING_SUB = 'It can be used once the conversion job finishes.'
@@ -1015,19 +1052,18 @@ export const SCORE_FORECAST_UNUSABLE = (why: string) => `Score forecast is on bu
 export const SCORE_FORECAST_WHY = {
   no_model: 'has no model',
   converting: 'its model is still converting',
-  down: 'its endpoint does not answer',
-  refused: 'its endpoint refused the API key',
-  not_listed: 'its model is no longer listed',
+  parked: (name: string) => `${name} is parked`,
+  removed: 'its endpoint was removed',
   no_questions: 'has no questions yet',
 } as const
 export const STAGE_UNUSABLE_TITLE = {
   no_model: (stage: string) => `${stage} has no model`,
   converting: (stage: string) => `${stage}'s model is still converting`,
-  down: (stage: string) => `${stage}'s endpoint does not answer`,
-  refused: (stage: string) => `${stage}'s endpoint refused the API key`,
-  not_listed: (stage: string) => `${stage}'s model is no longer listed`,
+  parked: (name: string) => `${name} is parked`,
+  removed: () => 'Its endpoint was removed',
   no_questions: () => 'Score forecast has no questions',
 } as const
+export const STAGE_DIALOG_TURN_BACK_ON = 'Turn it back on'
 /** How the dialog says what runs the stage, by what is being started. */
 export const STAGE_DIALOG_RUNS = {
   start: (stage: string) => `This job runs ${stage} before the big model.`,

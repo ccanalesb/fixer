@@ -28,7 +28,7 @@ interface Dump {
 
 describeMaybe("this app's System One endpoint vs the direct model calls", () => {
   const dump = enabled ? (JSON.parse(readFileSync(dumpPath, 'utf8')) as Dump) : { model_ids: { base: '', new: null }, answers: {} };
-  const ep = systemOneEndpoint({ endpoint: 'this_app', model: '', apiKey: '' });
+  const ep = systemOneEndpoint({ endpoint: 'this_app', model: '' });
   afterAll(() => closeAppModels());
 
   it('lists both models under the ids stage versions already hash', async () => {

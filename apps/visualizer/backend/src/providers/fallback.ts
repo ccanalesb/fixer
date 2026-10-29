@@ -7,7 +7,12 @@
  * batch to a paid API, and a paid API that is rate-limiting should not stall the
  * batch when a local model is available.
  */
+import { existsSync } from 'node:fs';
+import { config } from '../config.js';
+import { openDb } from '../db/connection.js';
+import { markModelImageRefused } from '../db/jobs/provider-models.js';
 import {
+  ImageRefusedError,
   InvalidRequestError,
   isRetryableError,
   ModelUnavailableError,
@@ -15,8 +20,11 @@ import {
   ProviderError,
 } from './errors.js';
 import type { ProviderRegistry } from './registry.js';
+import { providerDisplayName, providerReadsPhotos } from './usability.js';
 import type { ProviderClient } from './vision-client.js';
 import { CancelledRetryError, retryWithBackoff, type CancelCheck, type LogCallback } from './retry.js';
+
+export const NO_PHOTO_PROVIDER_LEFT = 'No provider left that can read a photo';
 
 /** `(client, model) -> () => Promise<result>` */
 export type FnFactory<T> = (client: ProviderClient, model: string) => () => Promise<T>;
@@ -34,10 +42,28 @@ function logCascade(
   if (!logCallback) return;
   const next = attempts[index + 1];
   const nextLabel = next ? `${next[0]}/${next[1]}` : 'none';
+  if (e instanceof ImageRefusedError) {
+    const reason = e.responseBody.replace(/\s+/g, ' ').slice(0, 120);
+    logCallback(
+      'warning',
+      `[${operation}] ${pid}/${mid} doesn't take images (${reason}), fallback -> ${nextLabel}`,
+    );
+    return;
+  }
   logCallback(
     'warning',
     `[${operation}] ${pid}/${mid} failed (${(e as Error).name}), fallback -> ${nextLabel}`,
   );
+}
+
+function persistImageRefusal(providerId: string, modelId: string, reason: string): void {
+  if (!existsSync(config.VISUALIZER_DB)) return;
+  const db = openDb(config.VISUALIZER_DB, { readonly: false, vec: false });
+  try {
+    markModelImageRefused(db, providerId, modelId, reason);
+  } finally {
+    db.close();
+  }
 }
 
 export class FallbackDispatcher {
@@ -65,9 +91,10 @@ export class FallbackDispatcher {
     },
   ): Promise<{ result: T; providerId: string; model: string }> {
     const { attempts, emptyFallbacks } = await this.buildAttempts(opts.providerId, opts.model);
-    if (attempts.length === 0) throw new ProviderError('No available providers for operation');
+    if (attempts.length === 0) throw new ProviderError(NO_PHOTO_PROVIDER_LEFT);
 
     const logCallback = opts.logCallback ?? null;
+    this.logWhenSkippingNamedProvider(opts.providerId, attempts, opts.operation, logCallback);
     const cancelCheck = opts.cancelCheck ?? null;
     let lastError: unknown = null;
 
@@ -92,6 +119,13 @@ export class FallbackDispatcher {
         if (e instanceof CancelledRetryError) throw e;
 
         if (e instanceof InvalidRequestError) throw e;
+
+        if (e instanceof ImageRefusedError) {
+          persistImageRefusal(pid, mid, e.responseBody);
+          lastError = e;
+          logCascade(logCallback, opts.operation, pid, mid, e, attempts, index);
+          continue;
+        }
 
         if (isRetryableError(e) || e instanceof ProviderConnectionError) {
           // `ProviderConnectionError` is not retryable — a refused connection is
@@ -121,31 +155,59 @@ export class FallbackDispatcher {
    * The ordered `(provider, model)` attempts, plus the fallback providers that
    * turned out to have no vision models.
    */
+  private logWhenSkippingNamedProvider(
+    namedId: string,
+    attempts: readonly [string, string][],
+    operation: string,
+    logCallback: LogCallback | null,
+  ): void {
+    if (!namedId || !logCallback || attempts.length === 0) return;
+    const usingId = attempts[0]![0];
+    if (usingId === namedId) return;
+
+    const usingName = providerDisplayName(this.registry, usingId);
+    if (!this.registry.hasProvider(namedId)) {
+      logCallback('warning', `[${operation}] ${namedId} was removed; using ${usingName}`);
+      return;
+    }
+    if (!this.registry.isEnabled(namedId)) {
+      const named = providerDisplayName(this.registry, namedId);
+      logCallback('warning', `[${operation}] ${named} is parked; using ${usingName}`);
+    }
+  }
+
   private async buildAttempts(
     primaryId: string,
     primaryModel: string,
   ): Promise<{ attempts: [string, string][]; emptyFallbacks: string[] }> {
-    const availableIds = new Set(
-      (await this.registry.listProviders()).filter((p) => p.available).map((p) => p.id),
-    );
+    const availableIds = new Set<string>();
+    for (const p of await this.registry.listProviders()) {
+      if (!p.available || !this.registry.isCascadeEligible(p.id)) continue;
+      if (await providerReadsPhotos(this.registry, p.id)) availableIds.add(p.id);
+    }
 
     const attempts: [string, string][] = [];
     const emptyFallbacks: string[] = [];
 
     if (availableIds.has(primaryId)) {
-      const visionModels = (await this.registry.listModels(primaryId))
-        .filter((m) => m.vision)
-        .map((m) => m.id);
-      // The requested model goes first even when it is not in the list — the
-      // user may have typed a model the registry has not discovered yet.
-      const ordered = [primaryModel, ...visionModels.filter((m) => m !== primaryModel)];
+      const listed = await this.registry.listModels(primaryId);
+      const byId = new Map(listed.map((m) => [m.id, m]));
+      const visionModels = listed.filter((m) => m.vision !== false).map((m) => m.id);
+      const listedPrimary = byId.get(primaryModel);
+      const primaryAccepts =
+        listedPrimary === undefined || listedPrimary.vision !== false;
+      // The requested model goes first when it is unknown or still accepts images.
+      const ordered = [
+        ...(primaryAccepts ? [primaryModel] : []),
+        ...visionModels.filter((m) => m !== primaryModel),
+      ];
       for (const mid of ordered) attempts.push([primaryId, mid]);
     }
 
     for (const pid of this.registry.fallbackOrder) {
       if (pid === primaryId || !availableIds.has(pid)) continue;
       const visionModels = (await this.registry.listModels(pid))
-        .filter((m) => m.vision)
+        .filter((m) => m.vision !== false)
         .map((m) => m.id);
       if (visionModels.length > 0) attempts.push([pid, visionModels[0]!]);
       else emptyFallbacks.push(pid);

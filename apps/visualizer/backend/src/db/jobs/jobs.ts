@@ -11,6 +11,8 @@ import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import type { Db } from '../connection.js';
 import { nowIsoLocal } from '../../utils/datetime.js';
+import { migrateLegacyVisionColumn } from './provider-models.js';
+import { ensureProviderProbeSchema } from './provider-probes.js';
 
 /**
  * Default tail length when a caller does not ask for the full history.
@@ -98,6 +100,9 @@ export function ensureJobsSchema(db: Db): void {
       model_id TEXT NOT NULL,
       model_name TEXT NOT NULL,
       vision INTEGER DEFAULT 1,
+      origin TEXT NOT NULL DEFAULT 'config',
+      image_refused_at TEXT,
+      image_refused_reason TEXT,
       PRIMARY KEY (provider_id, model_id)
     );
   `);
@@ -108,6 +113,8 @@ export function ensureJobsSchema(db: Db): void {
   }
 
   migrateLegacyLogs(db);
+  migrateLegacyVisionColumn(db);
+  ensureProviderProbeSchema(db);
 }
 
 /**

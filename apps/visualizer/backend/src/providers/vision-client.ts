@@ -1,18 +1,12 @@
 /**
  * Vision calls against OpenAI-compatible providers.
- *
- * Ollama serves an OpenAI-compatible surface at `/v1`, but only its native
- * `/api/chat` honours the `think` toggle. Through the compat endpoint `think` is
- * silently ignored, so a thinking model (kimi-k2.6) burns its entire output-token
- * budget on the reasoning channel and returns empty content. Routing Ollama
- * natively with `think: false` yields the actual answer, and is a harmless no-op
- * for non-thinking models.
  */
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import {
   AuthenticationError,
   ContextLengthError,
+  ImageRefusedError,
   InvalidRequestError,
   ModelUnavailableError,
   PayloadTooLargeError,
@@ -21,6 +15,7 @@ import {
   ProviderTimeoutError,
   RateLimitError,
 } from './errors.js';
+import { isImageRefusalResponse, trimImageRefusalReason } from './image-refusal.js';
 import { requestJson } from './http.js';
 import type { LogCallback } from './retry.js';
 
@@ -29,18 +24,10 @@ export interface ProviderClient {
   providerId: string;
   baseUrl: string;
   apiKey: string;
+  authMode?: 'none' | 'bearer' | 'header';
+  authHeaderName?: string;
   extraHeaders: Record<string, string>;
   timeoutMs: number;
-  /**
-   * Send vision calls to Ollama's native `/api/chat` instead of the OpenAI-compat
-   * `/v1/chat/completions`.
-   *
-   * A capability, not an identity: the compat endpoint silently ignores `think`,
-   * so a thinking model answers with its reasoning inline and the parse fails.
-   * The registry decides this from config; nothing downstream should be asking
-   * which provider it is talking to.
-   */
-  nativeChat: boolean;
 }
 
 interface ChatMessageContentPart {
@@ -74,6 +61,7 @@ function mapHttpError(
   body: string,
   headers: Headers,
   ctx: { provider: string | null; model: string | null },
+  requestPath: string,
 ): ProviderError {
   const retryAfterRaw = headers.get('retry-after');
   const parsed = retryAfterRaw === null ? Number.NaN : Number.parseFloat(retryAfterRaw);
@@ -85,6 +73,9 @@ function mapHttpError(
   if (status === 429) return new RateLimitError(msg, opts);
   if (status === 401 || status === 403) return new AuthenticationError(msg, ctx);
   if (status === 413) return new PayloadTooLargeError(msg, ctx);
+  if (isImageRefusalResponse(status, body, requestPath)) {
+    return new ImageRefusedError(msg, ctx, trimImageRefusalReason(body));
+  }
   if (status === 400) {
     if (
       lower.includes('context length') ||
@@ -95,13 +86,6 @@ function mapHttpError(
     ) {
       return new ContextLengthError(msg, ctx);
     }
-    return new InvalidRequestError(msg, ctx);
-  }
-  if (
-    lower.includes('multimodal') ||
-    lower.includes('image_url') ||
-    lower.includes('modality')
-  ) {
     return new InvalidRequestError(msg, ctx);
   }
   if (status === 503) return new ModelUnavailableError(msg, ctx);
@@ -131,79 +115,9 @@ async function postJson(
   return requestJson(client, path, {
     method: 'POST',
     body,
-    onHttpError: (res, text) => mapHttpError(res.status, text, res.headers, ctx),
+    onHttpError: (res, text) => mapHttpError(res.status, text, res.headers, ctx, path),
     onTransportError: (e) => mapTransportError(e, ctx),
   });
-}
-
-/** Ollama's native `/api/chat` URL, derived from its OpenAI-compat base. */
-export function nativeChatUrl(baseUrl: string): string {
-  let trimmed = baseUrl.replace(/\/+$/, '');
-  if (trimmed.endsWith('/v1')) trimmed = trimmed.slice(0, -'/v1'.length);
-  return `${trimmed}/api/chat`;
-}
-
-
-/**
- * Split OpenAI-style content into Ollama's `(text, images)` shape.
- *
- * Ollama's native API wants the bare base64 payload in a separate `images` array
- * rather than a data URL inside the content parts.
- */
-export function contentToNative(
-  content: string | ChatMessageContentPart[],
-): { text: string; images: string[] } {
-  if (typeof content === 'string') return { text: content, images: [] };
-  const textChunks: string[] = [];
-  const images: string[] = [];
-  for (const part of content) {
-    if (part.type === 'text') textChunks.push(String(part.text ?? ''));
-    else if (part.type === 'image_url') {
-      const url = part.image_url?.url ?? '';
-      const marker = 'base64,';
-      const at = url.indexOf(marker);
-      if (at !== -1) images.push(url.slice(at + marker.length));
-    }
-  }
-  return { text: textChunks.join('\n'), images };
-}
-
-/** One turn through Ollama's native chat endpoint, so `think` is honoured. */
-async function nativeChat(
-  client: ProviderClient,
-  model: string,
-  messages: readonly ChatMessage[],
-  opts: { maxTokens: number; think: boolean },
-): Promise<string> {
-  const ctx = { provider: client.providerId, model };
-  const nativeMessages = messages.map((m) => {
-    const { text, images } = contentToNative(m.content);
-    return images.length > 0
-      ? { role: m.role, content: text, images }
-      : { role: m.role, content: text };
-  });
-
-  let res: Response;
-  try {
-    res = await fetch(nativeChatUrl(client.baseUrl), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...client.extraHeaders },
-      body: JSON.stringify({
-        model,
-        messages: nativeMessages,
-        stream: false,
-        think: opts.think,
-        options: { num_predict: opts.maxTokens },
-      }),
-      signal: AbortSignal.timeout(client.timeoutMs),
-    });
-  } catch (e) {
-    throw mapTransportError(e, ctx);
-  }
-  if (!res.ok) throw mapHttpError(res.status, await res.text(), res.headers, ctx);
-
-  const body = (await res.json()) as { message?: { content?: string } };
-  return body.message?.content ?? '';
 }
 
 interface ChatCompletion {
@@ -230,7 +144,6 @@ export async function generateDescription(
   },
 ): Promise<string> {
   const maxTokens = opts.maxTokens ?? 2048;
-  const think = opts.think ?? false;
   const imgB64 = await encodeImage(imagePath);
   const textPrompt =
     opts.userPrompt && opts.userPrompt.trim() ? opts.userPrompt.trim() : opts.fallbackPrompt;
@@ -242,18 +155,13 @@ export async function generateDescription(
     },
   ];
 
-  let raw: string;
-  if (client.nativeChat) {
-    raw = await nativeChat(client, model, messages, { maxTokens, think });
-  } else {
-    const body = (await postJson(
-      client,
-      '/chat/completions',
-      { model, messages, max_tokens: maxTokens },
-      model,
-    )) as ChatCompletion;
-    raw = body.choices?.[0]?.message?.content ?? '';
-  }
+  const body = (await postJson(
+    client,
+    '/chat/completions',
+    { model, messages, max_tokens: maxTokens },
+    model,
+  )) as ChatCompletion;
+  const raw = body.choices?.[0]?.message?.content ?? '';
 
   opts.logCallback?.('debug', `[describe] ${basename(imagePath)} -> ${raw.length} chars`);
   return raw;

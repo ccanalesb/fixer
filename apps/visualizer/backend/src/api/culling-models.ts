@@ -1,7 +1,6 @@
 /**
- * Culling models: each culling stage's System One endpoint, model and API key (`culling_models` in
- * `config.yaml`, ADR-0021), the models that endpoint lists, and how many photos the stage's current
- * answers cover. The API key is written here and never read back out.
+ * Culling models: each culling stage's System One provider (or this app) and model (`culling_models` in
+ * `config.yaml`), the models that endpoint offers, and how many photos the stage's current answers cover.
  */
 import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig, updateConfigYamlCullingModel, type CullingModelConfig } from '../config.js';
@@ -15,6 +14,7 @@ import { countCatalogPhotosForCullEstimate } from '../db/library/cull-profiles-m
 import { countPhotosAnsweredByCurrentStage, readStoredStageModelIds } from '../db/library/cull-stages.js';
 import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
 import { listAppModels } from '../app-models/install.js';
+import { ProviderRegistry } from '../providers/registry.js';
 import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
 import { errorBadRequest } from '../utils/responses.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
@@ -27,6 +27,7 @@ import {
   CullingStageModelPutRequest,
   CullingStageModelsList,
   CullingStageParam,
+  CullingSystemOneProvider,
 } from './schemas/culling-models.js';
 import { ErrorBody } from './schemas/errors.js';
 import type { z } from '@hono/zod-openapi';
@@ -47,27 +48,31 @@ function withJobsDb<T>(fn: (db: Db) => T): T {
   }
 }
 
-/** Check is someone waiting on a button, not a model loading for a job. */
-const CHECK_TIMEOUT_MS = 10_000;
+function listSystemOneProviders(registry: ProviderRegistry): z.infer<typeof CullingSystemOneProvider>[] {
+  return Object.entries(registry.providerConfigs())
+    .filter(([, cfg]) => cfg.protocol === 'system_one')
+    .map(([id, cfg]) => ({
+      id,
+      name: cfg.name,
+      url: registry.resolveSystemOneBaseUrl(cfg),
+      enabled: cfg.enabled !== false,
+      has_key: registry.providerHasKey(cfg),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
-/** `this_app`, or an http(s) URL without its trailing slash; null for anything else. */
-function normalizeEndpoint(raw: string): string | null {
+function normalizeEndpoint(raw: string, registry: ProviderRegistry): string | null {
   const text = raw.trim();
   if (text === THIS_APP_ENDPOINT) return text;
-  try {
-    const url = new URL(text);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-  } catch {
-    return null;
-  }
-  return text.replace(/\/+$/, '');
+  if (registry.hasProvider(text) && registry.providerConfig(text)?.protocol === 'system_one') return text;
+  return null;
 }
 
 /** What a model identity is called: this app's model by its name, `<name>@<url>` as "name on url". */
 async function modelName(identity: string | null): Promise<string | null> {
   if (identity === null) return null;
   try {
-    const own = await listSystemOneModels(systemOneEndpoint({ endpoint: THIS_APP_ENDPOINT, model: '', apiKey: '' }));
+    const own = await listSystemOneModels(systemOneEndpoint({ endpoint: THIS_APP_ENDPOINT, model: '' }));
     const mine = own.find((m) => m.modelId === identity);
     if (mine) return mine.name;
   } catch {
@@ -86,7 +91,6 @@ async function stageState(
   return {
     endpoint: cfg.endpoint,
     model: cfg.model || null,
-    has_api_key: cfg.endpoint !== THIS_APP_ENDPOINT && cfg.apiKey !== '',
     answered: { photos: countPhotosAnsweredByCurrentStage(db, kind), model: await modelName(storedModelId) },
   };
 }
@@ -104,11 +108,13 @@ cullingModelsRoutes.openapi(getRoute, async (c) => {
   const db = c.get('libraryDb');
   const cfg = stagesConfig();
   const stored = readStoredStageModelIds(db);
+  const registry = new ProviderRegistry();
   return c.json(
     {
       culling_profile: await stageState(db, 'culling_profile', cfg.culling_profile, stored.culling_profile),
       score_forecast: await stageState(db, 'score_forecast', cfg.score_forecast, stored.score_forecast),
       total_photos: countCatalogPhotosForCullEstimate(db),
+      system_one_providers: listSystemOneProviders(registry),
     },
     200,
   );
@@ -121,7 +127,7 @@ const putRoute = createRoute({
   request: { params: CullingStageParam, body: { content: jsonBody(CullingStageModelPutRequest) } },
   responses: withValidationError({
     200: { description: 'Saved in config.yaml', content: jsonBody(CullingStageModel) },
-    400: { description: 'Neither this app nor an http(s) URL', content: jsonBody(ErrorBody) },
+    400: { description: 'Neither this app nor a System One provider', content: jsonBody(ErrorBody) },
   }),
 });
 
@@ -129,18 +135,17 @@ cullingModelsRoutes.openapi(putRoute, async (c) => {
   const { stage } = c.req.valid('param');
   const body = c.req.valid('json');
   const saved = stagesConfig()[stage];
+  const registry = new ProviderRegistry();
   let endpoint = saved.endpoint;
   if (body.endpoint !== undefined) {
-    const normalized = normalizeEndpoint(body.endpoint);
-    if (normalized === null) return errorBadRequest(c, 'Enter this app or an http(s) URL');
+    const normalized = normalizeEndpoint(body.endpoint, registry);
+    if (normalized === null) return errorBadRequest(c, 'Choose this app or a System One provider');
     endpoint = normalized;
   }
-  // A model and a key belong to the endpoint they were chosen for.
   const moved = endpoint !== saved.endpoint;
   const next: CullingModelConfig = {
     endpoint,
     model: body.model !== undefined ? (body.model ?? '') : moved ? '' : saved.model,
-    apiKey: endpoint === THIS_APP_ENDPOINT ? '' : (body.api_key ?? (moved ? '' : saved.apiKey)),
   };
   updateConfigYamlCullingModel(config.LT_CONFIG_YAML, stage, next);
   const db = c.get('libraryDb');
@@ -153,7 +158,7 @@ const modelsRoute = createRoute({
   tags: ['culling-models'],
   request: { params: CullingStageParam },
   responses: withValidationError({
-    200: { description: 'What the stage’s saved endpoint lists', content: jsonBody(CullingStageModelsList) },
+    200: { description: 'Models the stage’s endpoint offers', content: jsonBody(CullingStageModelsList) },
   }),
 });
 
@@ -172,13 +177,14 @@ cullingModelsRoutes.openapi(usableRoute, async (c) => {
   const questionCount = getForecastQuestions(libDb).questions.length;
   const on = stagesOn(pipeline);
   const cfg = stagesConfig();
+  const registry = new ProviderRegistry();
   const appModels = withJobsDb((db) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir, db));
   const input = (kind: StageKind) => ({
     on: on[kind],
     cfg: cfg[kind],
     appModels,
     questionCount,
-    timeoutMs: CHECK_TIMEOUT_MS,
+    registry,
   });
   const [cullingProfile, scoreForecast] = await Promise.all([
     stageUsability('culling_profile', input('culling_profile')),
@@ -196,11 +202,21 @@ cullingModelsRoutes.openapi(usableRoute, async (c) => {
 
 cullingModelsRoutes.openapi(modelsRoute, async (c) => {
   const { stage } = c.req.valid('param');
-  try {
-    const listed = await listSystemOneModels(systemOneEndpoint(stagesConfig()[stage]), { timeoutMs: CHECK_TIMEOUT_MS });
-    return c.json({ answers: true, models: listed.map((m) => m.name), error: null }, 200);
-  } catch (e) {
-    if (!(e instanceof SystemOneError)) throw e;
-    return c.json({ answers: false, models: [], error: e.message }, 200);
+  const cfg = stagesConfig()[stage];
+  const registry = new ProviderRegistry();
+  if (cfg.endpoint === THIS_APP_ENDPOINT) {
+    try {
+      const listed = await listSystemOneModels(systemOneEndpoint(cfg, { registry }));
+      return c.json({ answers: true, models: listed.map((m) => m.name), error: null }, 200);
+    } catch (e) {
+      if (!(e instanceof SystemOneError)) throw e;
+      return c.json({ answers: false, models: [], error: e.message }, 200);
+    }
   }
+  const pcfg = registry.providerConfig(cfg.endpoint);
+  if (!pcfg || pcfg.protocol !== 'system_one') {
+    return c.json({ answers: false, models: [], error: 'Unknown provider' }, 200);
+  }
+  const models = await registry.listModels(cfg.endpoint);
+  return c.json({ answers: true, models: models.map((m) => m.id), error: null }, 200);
 });

@@ -12,6 +12,8 @@ import {
   ANALYZE_ADVANCED_DESCRIBE_ONLY,
   ANALYZE_ADVANCED_SCORE_ONLY,
   CULLING_CHECKING,
+  CULLING_FIX_IN_SETTINGS,
+  STAGE_DIALOG_TURN_BACK_ON,
 } from '../../../constants/strings'
 
 vi.mock('../../../stores/analyzeOptionsContext', () => ({
@@ -24,11 +26,15 @@ const mockCreate = vi.fn()
 const mockUsable = vi.fn()
 const mockSaveSwitches = vi.fn()
 const mockSaveForecast = vi.fn()
+const mockProviderUpdate = vi.fn()
 
 vi.mock('../../../services/api', () => ({
   JobsAPI: { create: (...a: unknown[]) => mockCreate(...a) },
   PerspectivesAPI: { list: () => Promise.resolve([{ slug: 'street', display_name: 'Street' }]) },
-  ProvidersAPI: { getDefaults: () => Promise.resolve({ description: { provider: 'ollama', model: 'llava' } }) },
+  ProvidersAPI: {
+    getDefaults: () => Promise.resolve({ description: { provider: 'ollama', model: 'llava' } }),
+    update: (...a: unknown[]) => mockProviderUpdate(...a),
+  },
   CullingModelsAPI: { usable: () => mockUsable() },
   CullingProfilesAPI: {
     saveCullingProfileSwitches: (b: unknown) => mockSaveSwitches(b),
@@ -42,7 +48,7 @@ const ok = (model: string): CullingStageUsability => ({
   model,
   endpoint: 'this_app',
   job_id: null,
-  detail: null,
+  provider_name: null,
 })
 const broken = (problem: CullingStageUsability['problem'], extra: Partial<CullingStageUsability> = {}) => ({
   ...ok('model-x'),
@@ -79,6 +85,7 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
     mockUsable.mockReset()
     mockSaveSwitches.mockReset().mockResolvedValue({ version: 2, redecide_job_id: null })
     mockSaveForecast.mockReset().mockResolvedValue({ version: 2, redecide_job_id: null })
+    mockProviderUpdate.mockReset().mockResolvedValue({ provider: {} })
   })
 
   it('starts the job when every stage that is on can run', async () => {
@@ -88,7 +95,7 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('says it is checking while the backend asks the endpoints', async () => {
+  it('says it is checking while the backend is asked', async () => {
     let answer: (u: CullingModelsUsable) => void = () => {}
     mockUsable.mockReturnValue(new Promise((r) => (answer = r)))
     await start()
@@ -114,14 +121,28 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
   })
 
   it('"Turn off and start" saves the switch and queues the job in one action', async () => {
-    mockUsable.mockResolvedValue(usable({ culling_profile: broken('down', { endpoint: 'http://h:1', detail: 'http://h:1 does not answer' }) }))
+    mockUsable.mockResolvedValue(usable({ culling_profile: broken('removed') }))
     await start()
-    const dialog = await screen.findByRole('dialog', { name: "Culling profile's endpoint does not answer" })
+    const dialog = await screen.findByRole('dialog', { name: 'Its endpoint was removed' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Turn off and start' }))
     await waitFor(() => expect(mockCreate).toHaveBeenCalledWith('batch_analyze', expect.any(Object)))
     expect(mockSaveSwitches).toHaveBeenCalledWith({ enabled: false })
     expect(mockSaveSwitches.mock.invocationCallOrder[0]).toBeLessThan(mockCreate.mock.invocationCallOrder[0]!)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('a parked provider offers Turn it back on and then starts the job', async () => {
+    mockUsable.mockResolvedValueOnce(
+      usable({
+        culling_profile: broken('parked', { endpoint: 'studio_gpu', provider_name: 'Studio GPU' }),
+      }),
+    )
+    mockUsable.mockResolvedValueOnce(usable())
+    await start()
+    const dialog = await screen.findByRole('dialog', { name: 'Studio GPU is parked' })
+    fireEvent.click(within(dialog).getByRole('button', { name: STAGE_DIALOG_TURN_BACK_ON }))
+    await waitFor(() => expect(mockProviderUpdate).toHaveBeenCalledWith('studio_gpu', { enabled: true }))
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledWith('batch_analyze', expect.any(Object)))
   })
 
   it('with both stages unusable, asks about the culling profile first, then the Score forecast', async () => {
@@ -152,19 +173,30 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
   })
 
   it.each([
-    ['no_model', 'Culling profile has no model', 'Fix in Settings'],
+    ['no_model', 'Culling profile has no model', CULLING_FIX_IN_SETTINGS],
     ['converting', "Culling profile's model is still converting", 'View job'],
-    ['down', "Culling profile's endpoint does not answer", 'Fix in Settings'],
-    ['refused', "Culling profile's endpoint refused the API key", 'Fix in Settings'],
-    ['not_listed', "Culling profile's model is no longer listed", 'Fix in Settings'],
+    ['removed', 'Its endpoint was removed', CULLING_FIX_IN_SETTINGS],
+    ['parked', 'Studio GPU is parked', STAGE_DIALOG_TURN_BACK_ON],
   ] as const)('%s: the dialog says "%s" and offers %s', async (problem, title, fix) => {
-    mockUsable.mockResolvedValue(usable({ culling_profile: broken(problem, { job_id: problem === 'converting' ? 'install-1' : null }) }))
+    mockUsable.mockResolvedValue(
+      usable({
+        culling_profile: broken(problem, {
+          job_id: problem === 'converting' ? 'install-1' : null,
+          endpoint: problem === 'parked' ? 'studio_gpu' : 'this_app',
+          provider_name: problem === 'parked' ? 'Studio GPU' : null,
+        }),
+      }),
+    )
     await start()
     const dialog = await screen.findByRole('dialog', { name: title })
-    expect(within(dialog).getByRole('link', { name: fix })).toHaveAttribute(
-      'href',
-      fix === 'View job' ? '/processing?tab=jobs' : '/processing?tab=settings#stage-culling_profile',
-    )
+    if (fix === STAGE_DIALOG_TURN_BACK_ON) {
+      expect(within(dialog).getByRole('button', { name: fix })).toBeInTheDocument()
+    } else {
+      expect(within(dialog).getByRole('link', { name: fix })).toHaveAttribute(
+        'href',
+        fix === 'View job' ? '/processing?tab=jobs' : '/processing?tab=settings#stage-culling_profile',
+      )
+    }
   })
 
   it('with the Score forecast off, turning the culling profile off sends every photo to the big model', async () => {

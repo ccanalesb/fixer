@@ -1,27 +1,19 @@
+import { Link } from 'react-router-dom'
 import type { CullingStageKind } from '../../services/api'
-import { Button } from '../ui/Button'
 import {
+  PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
   STAGE_ADD_MODEL,
-  STAGE_API_KEY,
-  STAGE_API_KEY_OPTIONAL,
-  STAGE_API_KEY_REMOVE,
-  STAGE_API_KEY_SAVED,
-  STAGE_CHECK,
-  STAGE_CHECK_ANSWERS,
-  STAGE_CHECK_NO_ANSWER,
-  STAGE_CHECKING,
   STAGE_ENDPOINT,
-  STAGE_ENDPOINT_OTHER,
+  STAGE_ENDPOINT_PARKED,
   STAGE_ENDPOINT_THIS_APP,
   STAGE_MODEL,
-  STAGE_MODEL_CHECK_FIRST,
   STAGE_MODEL_CHOOSE,
   STAGE_MODEL_CONVERTING,
+  STAGE_MODEL_NONE_FOR_PROVIDER,
   STAGE_MODEL_NONE_IN_APP,
-  STAGE_URL,
-  STAGE_URL_PLACEHOLDER,
+  STAGE_PROVIDERS_LINK,
 } from '../../constants/strings'
-import { offeredModels, shownModel, type EndpointDraft, type StageView } from './stageModelView'
+import { offeredModels, shownModel, type StageView } from './stageModelView'
 
 const field = 'border border-border rounded-base px-2.5 py-1.5 bg-bg text-sm text-text min-w-0'
 const label = 'text-sm font-medium text-text-secondary'
@@ -30,95 +22,49 @@ interface StageModelFieldsProps {
   kind: CullingStageKind
   view: StageView
   busy: boolean
-  onEndpoint: (other: boolean) => void
-  onDraft: (change: Partial<EndpointDraft>) => void
-  onCheck: () => void
-  onRemoveKey: () => void
+  onEndpoint: (endpoint: string) => void
   onModel: (model: string | null) => void
   onAddModel: () => void
 }
 
-/** One stage's endpoint ("This app" or another System One URL, with Check and an API key) and model. */
-export function StageModelFields({
-  kind,
-  view,
-  busy,
-  onEndpoint,
-  onDraft,
-  onCheck,
-  onRemoveKey,
-  onModel,
-  onAddModel,
-}: StageModelFieldsProps) {
-  const { draft, check, saved } = view
+function providerOptionLabel(v: StageView, id: string): string {
+  const p = v.providers.find((x) => x.id === id)
+  if (!p) return id
+  const parked = p.enabled ? '' : ` ${STAGE_ENDPOINT_PARKED}`
+  return `${p.name} (${p.url})${parked}`
+}
+
+/** One stage's endpoint (this app or a System One provider) and model. */
+export function StageModelFields({ kind, view, busy, onEndpoint, onModel, onAddModel }: StageModelFieldsProps) {
   const models = offeredModels(view)
   const model = shownModel(view)
   const id = (part: string) => `${kind}-${part}`
+  const onProvider = view.saved.endpoint !== 'this_app'
 
   return (
     <div className="grid grid-cols-[160px_1fr] items-center gap-x-3 gap-y-2">
       <label htmlFor={id('endpoint')} className={label}>
         {STAGE_ENDPOINT}
       </label>
-      <select
-        id={id('endpoint')}
-        className={`${field} justify-self-start`}
-        value={draft.other ? 'other' : 'this_app'}
-        disabled={busy}
-        onChange={(e) => onEndpoint(e.target.value === 'other')}
-      >
-        <option value="this_app">{STAGE_ENDPOINT_THIS_APP}</option>
-        <option value="other">{STAGE_ENDPOINT_OTHER}</option>
-      </select>
-
-      {draft.other && (
-        <>
-          <label htmlFor={id('url')} className={label}>
-            {STAGE_URL}
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              id={id('url')}
-              className={`${field} flex-1`}
-              placeholder={STAGE_URL_PLACEHOLDER}
-              value={draft.url}
-              onChange={(e) => onDraft({ url: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onCheck()
-              }}
-            />
-            <Button type="button" size="sm" variant="secondary" onClick={onCheck} disabled={busy}>
-              {STAGE_CHECK}
-            </Button>
-            {check?.status === 'checking' && <span className="text-xs text-text-tertiary">{STAGE_CHECKING}</span>}
-            {check?.status === 'ok' && <span className="text-sm text-success">{STAGE_CHECK_ANSWERS(check.models.length)}</span>}
-            {check?.status === 'down' && (
-              <span className="text-sm text-error" title={check.error}>
-                {STAGE_CHECK_NO_ANSWER}
-              </span>
-            )}
-          </div>
-          <label htmlFor={id('api-key')} className={label}>
-            {STAGE_API_KEY}
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              id={id('api-key')}
-              type="password"
-              autoComplete="off"
-              className={`${field} flex-1`}
-              placeholder={saved.has_api_key ? STAGE_API_KEY_SAVED : STAGE_API_KEY_OPTIONAL}
-              value={draft.key}
-              onChange={(e) => onDraft({ key: e.target.value })}
-            />
-            {saved.has_api_key && (
-              <Button type="button" size="sm" variant="secondary" onClick={onRemoveKey} disabled={busy}>
-                {STAGE_API_KEY_REMOVE}
-              </Button>
-            )}
-          </div>
-        </>
-      )}
+      <div className="flex flex-col gap-1">
+        <select
+          id={id('endpoint')}
+          className={`${field} justify-self-start max-w-full`}
+          value={view.saved.endpoint}
+          disabled={busy}
+          onChange={(e) => onEndpoint(e.target.value)}
+        >
+          <option value="this_app">{STAGE_ENDPOINT_THIS_APP}</option>
+          {view.providers.map((p) => (
+            <option key={p.id} value={p.id}>
+              {providerOptionLabel(view, p.id)}
+            </option>
+          ))}
+        </select>
+        <Link to={PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE} className="text-sm text-accent underline w-fit">
+          {STAGE_PROVIDERS_LINK}
+        </Link>
+      </div>
 
       <label htmlFor={id('model')} className={label}>
         {STAGE_MODEL}
@@ -128,11 +74,13 @@ export function StageModelFields({
           id={id('model')}
           className={field}
           value={model && models.some((m) => m.name === model) ? model : ''}
-          disabled={busy || models.length === 0}
+          disabled={busy || (onProvider && view.providerModels === null) || models.length === 0}
           onChange={(e) => onModel(e.target.value || null)}
         >
           {models.length === 0 ? (
-            <option value="">{draft.other ? STAGE_MODEL_CHECK_FIRST : STAGE_MODEL_NONE_IN_APP}</option>
+            <option value="">
+              {onProvider ? STAGE_MODEL_NONE_FOR_PROVIDER : STAGE_MODEL_NONE_IN_APP}
+            </option>
           ) : (
             <>
               <option value="">{STAGE_MODEL_CHOOSE}</option>
@@ -144,7 +92,7 @@ export function StageModelFields({
             </>
           )}
         </select>
-        {!draft.other && (
+        {!onProvider && (
           <button type="button" className="text-sm text-accent underline" onClick={onAddModel}>
             {STAGE_ADD_MODEL}
           </button>
