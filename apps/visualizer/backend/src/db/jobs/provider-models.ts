@@ -130,6 +130,19 @@ export function addUserModel(
   }
 }
 
+/** Clear image-refusal marks for every model on a provider (address change). */
+export function clearProviderImageRefusalMarks(db: Db, providerId: string): void {
+  db.prepare(
+    `
+    UPDATE provider_models
+    SET image_refused_at = NULL,
+        image_refused_reason = NULL,
+        vision = 1
+    WHERE provider_id = ? AND image_refused_at IS NOT NULL
+    `,
+  ).run(providerId);
+}
+
 /** Delete a model row. Returns whether one was removed. */
 export function deleteUserModel(db: Db, providerId: string, modelId: string): boolean {
   const info = db

@@ -8,6 +8,8 @@ import {
 import { Badge } from '../ui/badges';
 import { ModelList } from './ModelList';
 import { AddModelForm } from './AddModelForm';
+import { ProviderEditForm, type ProviderEditValues } from './ProviderEditForm';
+import { ProviderAddressProbe } from './ProviderAddressProbe';
 
 interface ProviderCardProps {
   provider: Provider;
@@ -17,9 +19,9 @@ interface ProviderCardProps {
   onAddModel: (model: { id: string; name: string; vision: boolean }) => Promise<void>;
   onRemoveModel: (modelId: string) => void;
   onReorderModel: (modelId: string, direction: 'up' | 'down') => void;
-  /** null = probe not completed yet */
-  connectionReachable?: boolean | null;
-  connectionError?: string | null;
+  onSaveProvider: (values: ProviderEditValues) => Promise<void>;
+  onTestConnection: () => Promise<void>;
+  testingConnection?: boolean;
 }
 
 export function ProviderCard({
@@ -30,9 +32,12 @@ export function ProviderCard({
   onAddModel,
   onRemoveModel,
   onReorderModel,
-  connectionReachable = null,
-  connectionError = null,
+  onSaveProvider,
+  onTestConnection,
+  testingConnection = false,
 }: ProviderCardProps) {
+  const probeAnswered = provider.address_probe?.answered;
+
   return (
     <div className="rounded-card border border-border bg-bg shadow-card">
       <button
@@ -45,11 +50,9 @@ export function ProviderCard({
           <Badge variant={provider.available ? 'success' : 'default'}>
             {provider.available ? PROVIDER_STATUS_AVAILABLE : PROVIDER_STATUS_UNAVAILABLE}
           </Badge>
-          {connectionReachable === true && (
-            <Badge variant="success">Reachable</Badge>
-          )}
-          {connectionReachable === false && (
-            <span title={connectionError ?? undefined}>
+          {probeAnswered === true && <Badge variant="success">Reachable</Badge>}
+          {probeAnswered === false && (
+            <span title={provider.address_probe?.error ?? undefined}>
               <Badge variant="error">Unreachable</Badge>
             </span>
           )}
@@ -59,7 +62,14 @@ export function ProviderCard({
 
       {expanded && (
         <div className="px-4 pb-4 border-t border-border pt-3">
-          <h4 className="text-sm font-medium text-text mb-2">{PROVIDER_MODELS_HEADING}</h4>
+          <ProviderEditForm
+            provider={provider}
+            onSave={onSaveProvider}
+            onTestConnection={onTestConnection}
+            testing={testingConnection}
+          />
+          <ProviderAddressProbe probe={provider.address_probe} />
+          <h4 className="text-sm font-medium text-text mb-2 mt-4">{PROVIDER_MODELS_HEADING}</h4>
           {models.length === 0 ? (
             <p className="text-sm text-text-tertiary">{PROVIDER_NO_MODELS}</p>
           ) : (

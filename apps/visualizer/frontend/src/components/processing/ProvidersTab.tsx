@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '../../data';
 import { ProvidersAPI, type ProviderModel } from '../../services/api';
-import { ProviderCard, FallbackOrderPanel } from '../providers';
+import {
+  AddProviderCard,
+  FallbackOrderPanel,
+  type CreateProviderPayload,
+} from '../providers';
+import type { ProviderEditValues } from '../providers/ProviderEditForm';
+import { ProviderCard } from '../providers/ProviderCard';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ProviderModelSelect } from '../ui/ProviderModelSelect';
@@ -27,8 +33,7 @@ export function ProvidersTab() {
   const { providers, fallbackOrder } = bundle;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [modelCache, setModelCache] = useState<Record<string, ProviderModel[]>>({});
-  const [reachability, setReachability] = useState<Record<string, boolean | null>>({});
-  const [connectionErrors, setConnectionErrors] = useState<Record<string, string | undefined>>({});
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [descriptionProvider, setDescriptionProvider] = useState<string | null>(null);
   const [descriptionModel, setDescriptionModel] = useState<string | null>(null);
   const [defaultsSaveMsg, setDefaultsSaveMsg] = useState<string | null>(null);
@@ -41,9 +46,13 @@ export function ProvidersTab() {
     }
   }, [bundle.defaults]);
 
+  const refreshBundle = useCallback(() => {
+    setBundleRev(n => n + 1);
+  }, []);
+
   const refreshModelsForProvider = useCallback(async (providerId: string) => {
     const models = await ProvidersAPI.listModels(providerId);
-    setModelCache((previous) => ({ ...previous, [providerId]: models }));
+    setModelCache(previous => ({ ...previous, [providerId]: models }));
   }, []);
 
   useEffect(() => {
@@ -51,45 +60,44 @@ export function ProvidersTab() {
     refreshModelsForProvider(expandedId).catch(console.error);
   }, [expandedId, modelCache, refreshModelsForProvider]);
 
-  useEffect(() => {
-    if (providers.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      providers.map((provider) =>
-        ProvidersAPI.health(provider.id)
-          .then((response) => ({
-            id: provider.id,
-            reachable: response.reachable,
-            detail: response.reachable ? undefined : response.error,
-          }))
-          .catch((err) => ({
-            id: provider.id,
-            reachable: false,
-            detail: err instanceof Error ? err.message : String(err),
-          })),
-      ),
-    ).then((results) => {
-      if (cancelled) return;
-      setReachability((prev) => {
-        const next = { ...prev };
-        for (const row of results) {
-          next[row.id] = row.reachable;
-        }
-        return next;
+  const handleCreateProvider = useCallback(
+    async (payload: CreateProviderPayload) => {
+      const created = await ProvidersAPI.create(payload);
+      refreshBundle();
+      setExpandedId(created.id);
+      await refreshModelsForProvider(created.id);
+    },
+    [refreshBundle, refreshModelsForProvider],
+  );
+
+  const handleSaveProvider = useCallback(
+    async (providerId: string, values: ProviderEditValues) => {
+      await ProvidersAPI.update(providerId, {
+        name: values.name,
+        base_url: values.base_url,
+        auth: {
+          mode: values.auth_mode,
+          header_name: values.auth_mode === 'header' ? values.header_name : undefined,
+          key: values.key || undefined,
+        },
       });
-      setConnectionErrors((prev) => {
-        const next = { ...prev };
-        for (const row of results) {
-          if (row.detail) next[row.id] = row.detail;
-          else delete next[row.id];
-        }
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [providers]);
+      refreshBundle();
+    },
+    [refreshBundle],
+  );
+
+  const handleTestConnection = useCallback(
+    async (providerId: string) => {
+      setTestingId(providerId);
+      try {
+        await ProvidersAPI.probe(providerId);
+        refreshBundle();
+      } finally {
+        setTestingId(null);
+      }
+    },
+    [refreshBundle],
+  );
 
   const handleAddModel = useCallback(
     async (providerId: string, model: { id: string; name: string; vision: boolean }) => {
@@ -110,7 +118,7 @@ export function ProvidersTab() {
   const handleReorderModel = useCallback(
     async (providerId: string, modelId: string, direction: 'up' | 'down') => {
       const models = modelCache[providerId] ?? [];
-      const index = models.findIndex((m) => m.id === modelId);
+      const index = models.findIndex(m => m.id === modelId);
       if (index === -1) return;
 
       const newModels = [...models];
@@ -118,9 +126,9 @@ export function ProvidersTab() {
       if (targetIndex < 0 || targetIndex >= newModels.length) return;
 
       [newModels[index], newModels[targetIndex]] = [newModels[targetIndex], newModels[index]];
-      const newOrder = newModels.map((m) => m.id);
+      const newOrder = newModels.map(m => m.id);
 
-      setModelCache((previous) => ({ ...previous, [providerId]: newModels }));
+      setModelCache(previous => ({ ...previous, [providerId]: newModels }));
 
       try {
         await ProvidersAPI.reorderModels(providerId, newOrder);
@@ -133,8 +141,8 @@ export function ProvidersTab() {
 
   const updateFallbackOrder = useCallback(async (order: string[]) => {
     await ProvidersAPI.updateFallbackOrder(order);
-    setBundleRev((n) => n + 1);
-  }, []);
+    refreshBundle();
+  }, [refreshBundle]);
 
   return (
     <div className="space-y-6">
@@ -145,23 +153,28 @@ export function ProvidersTab() {
         </p>
       </div>
 
+      <AddProviderCard onCreate={handleCreateProvider} />
+
       <div className="space-y-3">
-        {providers.map((provider) => (
+        {providers.map(provider => (
           <ProviderCard
             key={provider.id}
             provider={provider}
             models={modelCache[provider.id] ?? []}
             expanded={expandedId === provider.id}
-            onToggle={() => setExpandedId((previous) => (previous === provider.id ? null : provider.id))}
-            onAddModel={(model) => handleAddModel(provider.id, model)}
-            onRemoveModel={(modelId) => {
+            onToggle={() =>
+              setExpandedId(previous => (previous === provider.id ? null : provider.id))
+            }
+            onAddModel={model => handleAddModel(provider.id, model)}
+            onRemoveModel={modelId => {
               handleRemoveModel(provider.id, modelId).catch(console.error);
             }}
             onReorderModel={(modelId, direction) => {
               handleReorderModel(provider.id, modelId, direction).catch(console.error);
             }}
-            connectionReachable={reachability[provider.id] ?? null}
-            connectionError={connectionErrors[provider.id] ?? null}
+            onSaveProvider={values => handleSaveProvider(provider.id, values)}
+            onTestConnection={() => handleTestConnection(provider.id)}
+            testingConnection={testingId === provider.id}
           />
         ))}
       </div>
@@ -169,7 +182,7 @@ export function ProvidersTab() {
       <FallbackOrderPanel
         providers={providers}
         order={fallbackOrder}
-        onReorder={(order) => {
+        onReorder={order => {
           updateFallbackOrder(order).catch(console.error);
         }}
       />
@@ -200,7 +213,7 @@ export function ProvidersTab() {
                 .then(() => {
                   setDefaultsSaveMsg('Saved');
                   window.setTimeout(() => setDefaultsSaveMsg(null), 2000);
-                  setBundleRev((n) => n + 1);
+                  refreshBundle();
                 })
                 .catch(console.error);
             }}
