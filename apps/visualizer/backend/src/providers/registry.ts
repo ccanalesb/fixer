@@ -684,6 +684,7 @@ function rowToEntry(row: ProviderModelRow): ProviderModelEntry {
     name: row.model_name,
     vision: visionFromRow(row),
     source: row.origin === 'user' ? 'user' : 'config',
+    image_refused_reason: row.image_refused_at ? row.image_refused_reason : null,
   };
 }
 

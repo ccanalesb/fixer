@@ -683,6 +683,8 @@ export const PROVIDER_ADD_MODEL_VISION_LABEL = 'Supports vision'
 export const PROVIDER_ADD_MODEL_SUBMIT = 'Add model'
 export const PROVIDER_ADD_MODEL_SUBMITTING = 'Adding…'
 export const PROVIDER_ADD_MODEL_ERROR = 'Could not add model. Please try again.'
+export const PROVIDER_MODEL_NO_IMAGES = "Doesn't take images"
+export const PROVIDER_MODEL_TRY_AGAIN = 'Try again'
 
 // Generic Buttons
 export const BTN_DISMISS = 'Dismiss'

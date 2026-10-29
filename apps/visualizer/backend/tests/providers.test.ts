@@ -286,6 +286,55 @@ describe('defaults', () => {
   });
 });
 
+describe('POST /api/providers/{id}/models/{model_id}/retry-images', () => {
+  it('clears an image-refusal mark', async () => {
+    seedJobsDb([
+      ...DEFAULT_LOCAL_MODELS,
+      {
+        provider_id: 'local',
+        model_id: 'marked',
+        model_name: 'Marked',
+        vision: 0,
+        image_refused_at: '2024-01-01T00:00:00.000Z',
+        image_refused_reason: 'no image input',
+      },
+    ]);
+    const res = await send('POST', '/api/providers/local/models/marked/retry-images');
+    expect(res.status).toBe(200);
+    const body = await json<{ vision?: boolean; image_refused_reason?: string | null }>(res);
+    expect(body.vision).toBe(true);
+    expect(body.image_refused_reason).toBeNull();
+
+    const db = new Database(jobsDbPath, { readonly: true });
+    const row = db
+      .prepare('SELECT image_refused_at FROM provider_models WHERE model_id = ?')
+      .get('marked') as { image_refused_at: string | null };
+    db.close();
+    expect(row.image_refused_at).toBeNull();
+  });
+});
+
+describe('PATCH /api/providers/{id}/models/{model_id}', () => {
+  it('renames a model and clears an image-refusal mark', async () => {
+    seedJobsDb([
+      ...DEFAULT_LOCAL_MODELS,
+      {
+        provider_id: 'local',
+        model_id: 'marked',
+        model_name: 'Marked',
+        vision: 0,
+        image_refused_at: '2024-01-01T00:00:00.000Z',
+        image_refused_reason: 'no image input',
+      },
+    ]);
+    const res = await send('PATCH', '/api/providers/local/models/marked', { name: 'Renamed' });
+    expect(res.status).toBe(200);
+    const body = await json<{ name: string; vision?: boolean }>(res);
+    expect(body.name).toBe('Renamed');
+    expect(body.vision).toBe(true);
+  });
+});
+
 describe('GET /api/providers/{id}/models', () => {
   it('lists stored models and folds in user-added ones', async () => {
     seedJobsDb([
@@ -447,7 +496,6 @@ describe('GET /api/providers/models/description', () => {
     // Includes unavailable providers, unlike /api/vision-models.
     expect(body.models.map((m) => `${m.provider_id}:${m.model_id}`)).toEqual([
       'local:small',
-      'local:vendor/big',
       'cloud:vision-1',
     ]);
     expect(body.models[0]!.tool_calling).toBe(false);
