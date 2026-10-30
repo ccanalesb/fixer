@@ -26,7 +26,7 @@ export interface ProviderModelEntry {
   id: string;
   name: string;
   vision?: boolean;
-  source?: 'config' | 'discovered' | 'user';
+  source?: 'config' | 'user';
   [key: string]: unknown;
 }
 

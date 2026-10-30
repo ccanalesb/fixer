@@ -1,7 +1,7 @@
 /** Providers API models. */
 import { z } from '@hono/zod-openapi';
 
-export const ProviderModelSource = z.enum(['config', 'discovered', 'user']);
+export const ProviderModelSource = z.enum(['config', 'user']);
 
 export const ValueRef = z
   .object({

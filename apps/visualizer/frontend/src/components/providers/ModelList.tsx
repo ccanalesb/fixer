@@ -8,14 +8,12 @@ import {
   PROVIDER_MODEL_TRY_AGAIN,
   PROVIDER_REMOVE_MODEL,
   PROVIDER_SOURCE_CONFIG,
-  PROVIDER_SOURCE_DISCOVERED,
   PROVIDER_SOURCE_USER,
 } from '../../constants/strings';
 import { Button } from '../ui/Button';
 
 const SOURCE_LABELS: Record<string, string> = {
   config: PROVIDER_SOURCE_CONFIG,
-  discovered: PROVIDER_SOURCE_DISCOVERED,
   user: PROVIDER_SOURCE_USER,
 };
 
