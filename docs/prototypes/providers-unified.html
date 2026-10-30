@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE — Providers holds every model source</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --color-background:#ffffff;--color-surface:#f6f5f4;--color-surface-hover:#f1f0ed;
+    --color-text-primary:rgba(0,0,0,0.95);--color-text-secondary:#4a4642;--color-text-tertiary:#847f7a;
+    --color-border:rgba(0,0,0,0.12);--color-border-strong:rgba(0,0,0,0.2);
+    --color-accent:#0075de;--color-accent-hover:#005bab;--color-accent-light:#f2f9ff;
+    --color-success:#1aae39;--color-warning:#dd5b00;--color-error:#e03e3e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,system-ui,'Segoe UI',sans-serif;background:var(--color-surface);color:var(--color-text-primary);-webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5}
+  main{max-width:72rem;margin:0 auto;padding:24px 32px 120px}
+  h1{font-size:26px;font-weight:700;letter-spacing:-.625px;margin:0 0 4px}
+  h2.part{font-size:22px;font-weight:700;letter-spacing:-.25px;margin:40px 0 4px}
+  .lead{font-size:14px;color:var(--color-text-secondary);max-width:80ch;margin:0 0 12px}
+  p{margin:0}
+  code{background:var(--color-surface);padding:1px 5px;border-radius:4px;font-family:ui-monospace,Menlo,monospace;font-size:.86em}
+  .s{font-size:14px}.s2{font-size:14px;color:var(--color-text-secondary)}.t3{font-size:12px;color:var(--color-text-tertiary)}
+  .vnote{font-size:13px;color:var(--color-text-secondary);max-width:80ch;margin-bottom:8px}
+  .open{font-size:13px;color:var(--color-warning);max-width:80ch;margin-bottom:8px}
+  .frame{background:var(--color-background);border:1px solid var(--color-border);border-radius:12px;padding:16px;box-shadow:rgba(0,0,0,.04) 0 4px 18px,rgba(0,0,0,.027) 0 2px 8px;position:relative;min-height:80px}
+  .frame.flash{outline:2px solid var(--color-accent);outline-offset:4px}
+  .box{border:1px solid var(--color-border);border-radius:8px;background:var(--color-background)}
+  .box > * + *{border-top:1px solid var(--color-border)}
+  .box + .box{margin-top:20px}
+  .head{padding:16px}.head h4{font-size:14px;font-weight:600;margin:0}
+  .srow{padding:16px}
+  .srow-top{display:flex;justify-content:space-between;gap:16px;align-items:center}
+  .srow-left{min-width:0}
+  .rname{font-size:14px;font-weight:500;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .rdesc{font-size:14px;color:var(--color-text-secondary);margin-top:2px}
+  .ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex-shrink:0;position:relative}
+  .under{margin-top:12px;display:flex;flex-direction:column;gap:12px}
+  button.btn{font:500 14px Inter,sans-serif;border-radius:8px;padding:6px 12px;cursor:pointer;background:var(--color-surface);color:var(--color-text-primary);border:1px solid var(--color-border);white-space:nowrap}
+  button.btn:hover{background:var(--color-surface-hover)}
+  button.btn.primary{background:var(--color-accent);color:#fff;border:2px solid var(--color-background);font-weight:600}
+  button.btn.primary:hover{background:var(--color-accent-hover)}
+  button.btn.ghost{background:transparent;border-color:transparent}
+  button.btn.danger{color:var(--color-error)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  .link{color:var(--color-accent);background:none;border:0;padding:0;font:inherit;font-size:14px;cursor:pointer;text-decoration:underline}
+  input.in,select.in{font:400 14px Inter,sans-serif;border:1px solid var(--color-border);border-radius:8px;padding:6px 10px;background:var(--color-background);color:var(--color-text-primary);min-width:0}
+  .field{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .lbl{font-size:14px;font-weight:500;color:var(--color-text-secondary)}
+  .grid2{display:grid;grid-template-columns:150px 1fr;gap:8px 12px;align-items:center}
+  .switch{position:relative;width:36px;height:20px;flex:none;cursor:pointer;display:inline-block}
+  .switch input{opacity:0;width:0;height:0}
+  .switch span{position:absolute;inset:0;background:var(--color-border-strong);border-radius:9999px;transition:.15s}
+  .switch span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.15s}
+  .switch input:checked + span{background:var(--color-accent)}
+  .switch input:checked + span:before{transform:translateX(16px)}
+  .badge{display:inline-flex;align-items:center;padding:1px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-secondary);white-space:nowrap}
+  .badge.so{background:#f6f0ff;color:#6b3fc4;border-color:rgba(107,63,196,.25)}
+  .badge.success{background:rgba(26,174,57,.08);color:var(--color-success);border-color:rgba(26,174,57,.25)}
+  .badge.muted{color:var(--color-text-tertiary)}
+  .err{color:var(--color-error)}.ok{color:var(--color-success)}.warn{color:var(--color-warning)}
+  .alert{border:1px solid rgba(221,91,0,.3);background:rgba(221,91,0,.06);border-radius:8px;padding:12px 16px;font-size:14px}
+  .alert.info{border-color:var(--color-border);background:var(--color-surface)}
+  .alert .t{font-weight:600}
+  .seg{display:inline-flex;border:1px solid var(--color-border);border-radius:8px;overflow:hidden}
+  .seg button{font:500 14px Inter,sans-serif;padding:6px 12px;border:0;background:var(--color-background);cursor:pointer;color:var(--color-text-secondary)}
+  .seg button + button{border-left:1px solid var(--color-border)}
+  .seg button.on{background:var(--color-accent-light);color:var(--color-accent)}
+  .tiles{display:flex;gap:8px;flex-wrap:wrap}
+  .tile{border:1px solid var(--color-border);border-radius:8px;padding:10px 14px;font-size:14px;cursor:pointer;background:var(--color-background);min-width:120px}
+  .tile:hover{background:var(--color-surface)}
+  .tile .t3{display:block}
+  .radio{display:flex;flex-direction:column;gap:6px}
+  .radio label{display:flex;gap:8px;align-items:flex-start;font-size:14px;cursor:pointer}
+  .menu{position:absolute;right:0;top:34px;background:var(--color-background);border:1px solid var(--color-border-strong);border-radius:8px;box-shadow:rgba(0,0,0,.08) 0 8px 24px;z-index:10;min-width:150px;padding:4px}
+  .menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:6px 10px;font:500 14px Inter,sans-serif;border-radius:6px;cursor:pointer;color:var(--color-error)}
+  .menu button:hover{background:var(--color-surface)}
+  .scrim{position:absolute;inset:0;background:rgba(0,0,0,.35);border-radius:12px;display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+  .modal{background:var(--color-background);border:1px solid var(--color-border-strong);border-radius:12px;padding:24px;max-width:480px;width:100%;box-shadow:rgba(0,0,0,.05) 0 23px 52px}
+  .modal h5{font-size:18px;font-weight:700;margin:0 0 8px}
+  .modal .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}
+  .modal ul{margin:8px 0 0;padding-left:20px;font-size:14px;color:var(--color-text-secondary)}
+  .group-h{padding:12px 16px;background:var(--color-surface);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-tertiary)}
+  .inline-form{border:1px dashed var(--color-border-strong);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .off .rname,.off .rdesc{color:var(--color-text-tertiary)}
+  .bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#1f1d1b;color:#fff;border-radius:12px;padding:8px;display:flex;gap:6px;align-items:center;z-index:50;box-shadow:rgba(0,0,0,.25) 0 8px 24px;font-size:13px;flex-wrap:wrap;max-width:96vw}
+  .bar button{font:500 13px Inter,sans-serif;border:0;border-radius:8px;padding:6px 10px;background:transparent;color:#d8d4cf;cursor:pointer}
+  .bar button.on{background:#fff;color:#1f1d1b}
+  .bar .sep{width:1px;height:20px;background:#4a4642;margin:0 4px}
+  .statebox{font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:pre;background:var(--color-surface);border-radius:8px;padding:12px;color:var(--color-text-secondary);overflow:auto}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--color-border);margin:16px 0}
+  .tabs a{padding:8px 12px;font-size:14px;font-weight:500;color:var(--color-text-secondary);text-decoration:none;border-bottom:2px solid transparent;cursor:pointer}
+  .tabs a.on{color:var(--color-accent);border-bottom-color:var(--color-accent)}
+  .task{display:grid;grid-template-columns:170px 1fr;gap:6px 12px;align-items:start;padding:14px 16px}
+  .task + .task{border-top:1px solid var(--color-border)}
+  .task .nm{font-size:14px;font-weight:600;padding-top:6px}
+  .task .sub{font-size:12px;color:var(--color-text-tertiary);font-weight:400}
+  .redrow{border:1px solid rgba(224,62,62,.3);background:rgba(224,62,62,.05);border-radius:8px;padding:8px 12px;font-size:14px;color:var(--color-error);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .note{font-size:14px;color:var(--color-success)}
+  .card{border:1px solid var(--color-border);border-radius:8px;background:var(--color-background)}
+  .card + .card{margin-top:8px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap}
+  .card-h h3{font-size:15px;font-weight:600;margin:0}
+  .card-b{padding:0 16px 14px;display:flex;flex-direction:column;gap:8px}
+  .mrow{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:6px 10px;border:1px solid var(--color-border);border-radius:6px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  .md{display:grid;grid-template-columns:240px 1fr;gap:0;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;min-height:460px}
+  .md nav{background:var(--color-surface);border-right:1px solid var(--color-border);padding:8px}
+  .md nav .gh{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-tertiary);padding:10px 8px 4px}
+  .md nav button{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;border:0;background:none;padding:7px 8px;border-radius:6px;font:500 14px Inter,sans-serif;cursor:pointer;color:var(--color-text-primary)}
+  .md nav button.on{background:var(--color-background);box-shadow:0 0 0 1px var(--color-border)}
+  .md .pane{padding:16px;display:flex;flex-direction:column;gap:12px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--color-error);display:inline-block}
+  .sec-h{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-tertiary);margin:20px 0 8px}
+  .proto-note{font-size:13px;color:var(--color-text-secondary);background:#fffbe6;border:1px solid #f0e2a8;border-radius:8px;padding:8px 12px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<main>
+  <div class="proto-note">PROTOTYPE — throwaway. Question: what does the Providers tab look like when it holds every place a model comes from (this app included) and who answers each task? Three layouts (A, B, C) share the same state; Settings and the pre-job dialog react to it. Arrow keys ← → switch layouts.</div>
+  <h1>Processing</h1>
+  <div class="tabs">
+    <a data-view="analyze">Analyze</a><a data-view="providers">Providers</a><a data-view="settings">Settings</a>
+  </div>
+  <div id="app"></div>
+</main>
+
+<div class="bar" id="bar"></div>
+
+<script>
+const S = {
+  variant: new URLSearchParams(location.search).get('variant') || 'A',
+  view: new URLSearchParams(location.search).get('view') || 'providers',
+  showState: false,
+  openForm: null,       // 'this_app' | provider id with add-model open
+  selected: 'tasks',    // variant C
+  notes: {},            // stage -> note
+  dialog: null,
+  fb: new URLSearchParams(location.search).get('fb') || 'group',
+  fallback: ['ollama', 'omlx'],
+  providers: {
+    ollama: { name: 'Ollama', protocol: 'openai', url: 'http://localhost:11434/v1', enabled: true, models: ['gemma4:31b-cloud'] },
+    omlx:   { name: 'oMLX',   protocol: 'openai', url: 'http://127.0.0.1:9000/v1',  enabled: true, models: [] },
+    studio: { name: 'Studio GPU', protocol: 'system_one', url: 'http://studio.local:8080', enabled: true, models: ['cull-v2', 'forecast-v1'] },
+  },
+  appModels: [ { name: 'smolvlm-cull', status: 'ready' }, { name: 'smolvlm-forecast-ft', status: 'converting' } ],
+  tasks: {
+    description:     { endpoint: 'ollama',   model: 'gemma4:31b-cloud' },
+    culling_profile: { endpoint: 'this_app', model: 'smolvlm-cull', on: true },
+    score_forecast:  { endpoint: 'studio',   model: 'forecast-v1', on: false },
+  },
+};
+const TASK_NAMES = { description: 'Descriptions', culling_profile: 'Culling profile', score_forecast: 'Score forecast' };
+const TASK_SUB = { description: 'Also used by AI score', culling_profile: 'Culling stage', score_forecast: 'Culling stage' };
+
+function sysOneSources() { return [['this_app', 'This app'], ...Object.entries(S.providers).filter(([, p]) => p.protocol === 'system_one').map(([id, p]) => [id, p.name + (p.enabled ? '' : ' (not in use)')])]; }
+function openAiSources() { return Object.entries(S.providers).filter(([, p]) => p.protocol === 'openai').map(([id, p]) => [id, p.name + (p.enabled ? '' : ' (not in use)')]); }
+function modelsOf(endpoint) {
+  if (endpoint === 'this_app') return S.appModels.map(m => [m.name, m.status === 'ready']);
+  const p = S.providers[endpoint]; return p ? p.models.map(m => [m, true]) : [];
+}
+function stageProblem(k) {
+  const t = S.tasks[k];
+  if (!t.endpoint) return { kind: 'removed', text: 'Its endpoint was removed — jobs won\u2019t start until you choose one or turn culling off' };
+  if (t.endpoint !== 'this_app') {
+    const p = S.providers[t.endpoint];
+    if (!p) return { kind: 'removed', text: 'Its endpoint was removed — jobs won\u2019t start until you choose one or turn culling off' };
+    if (!p.enabled) return { kind: 'parked', text: `${p.name} is parked — jobs won\u2019t start until you turn it back on, choose another endpoint, or turn culling off`, pid: t.endpoint };
+  }
+  if (!t.model) return { kind: 'no_model', text: 'No model chosen — jobs won\u2019t start until you choose one or turn culling off' };
+  const am = t.endpoint === 'this_app' && S.appModels.find(m => m.name === t.model);
+  if (am && am.status === 'converting') return { kind: 'converting', text: `${t.model} is still converting — jobs wait until it\u2019s ready` };
+  return null;
+}
+function usedBy(id) { return Object.keys(S.tasks).filter(k => S.tasks[k].endpoint === id).map(k => TASK_NAMES[k]); }
+
+function sel(opts, value, onchange, placeholder) {
+  return `<select class="in" onchange="${onchange}">${placeholder ? `<option value="">${placeholder}</option>` : ''}${opts.map(([v, l, en = true]) => `<option value="${v}" ${v === value ? 'selected' : ''} ${en ? '' : 'disabled'}>${l}</option>`).join('')}</select>`;
+}
+
+function taskRow(k) {
+  const t = S.tasks[k]; const culling = k !== 'description';
+  const sources = culling ? sysOneSources() : openAiSources();
+  const models = modelsOf(t.endpoint).map(([m, ready]) => [m, ready ? m : `${m} (converting…)`, ready]);
+  const prob = culling ? stageProblem(k) : null;
+  const off = culling && !t.on;
+  return `<div class="task ${off ? 'off' : ''}">
+    <div class="nm">${TASK_NAMES[k]}<div class="sub">${TASK_SUB[k]}</div></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="field">${sel(sources, t.endpoint, `setEndpoint('${k}',this.value)`)}
+        ${sel(models, t.model, `setModel('${k}',this.value)`, models.length ? 'Choose a model' : 'No models — add one')}
+        ${off ? `<span class="badge muted">Off in Settings</span><button class="link" onclick="setOn('${k}',true)">Turn on</button>` : ''}</div>
+      ${prob && t.on ? `<div class="redrow">${prob.text}${prob.kind === 'parked' ? ` <button class="btn" onclick="park('${prob.pid}',true)">Turn ${S.providers[prob.pid].name} back on</button>` : ''}</div>` : ''}
+      ${k === 'description' && S.variant === 'A' && S.fb === 'task' ? fallbackPanel(true) : ''}
+      ${S.notes[k] ? `<div class="note">${S.notes[k]} <button class="btn primary" onclick="S.notes['${k}']='Culling job queued · View in Job queue';render()">Answer photos with it</button> <button class="link" onclick="delete S.notes['${k}'];render()">Not now</button></div>` : ''}
+    </div></div>`;
+}
+function tasksBlock(keys = ['description', 'culling_profile', 'score_forecast'], title = 'Who answers each task') {
+  return `<div class="box"><div class="head"><h4>${title}</h4><p class="s2" style="margin-top:4px">Pick a provider and one of its models. Culling stages are turned on in Settings.</p></div><div>${keys.map(taskRow).join('')}</div></div>`;
+}
+
+function thisAppCard(compact) {
+  const used = usedBy('this_app');
+  return `<div class="card"><div class="card-h"><h3>This app</h3><span class="badge so">System One</span><span class="badge success">Built in</span>
+      <span class="t3">${used.length ? 'Used by ' + used.join(' and ') : 'No task uses it'}</span></div>
+    <div class="card-b">
+      ${S.appModels.map((m, i) => `<div class="mrow"><span>${m.name}</span><span>${m.status === 'ready' ? '<span class="badge success">Ready</span>' : `<span class="badge">Converting…</span> <button class="link" onclick="S.appModels[${i}].status='ready';render()">(simulate done)</button>`}</span></div>`).join('')}
+      ${S.openForm === 'this_app' ? `<div class="inline-form"><div class="lbl">Add a model to this app</div>
+          <div class="field"><input class="in" id="hf" placeholder="Folder in Hugging Face format, or a Hugging Face id" style="flex:1;min-width:280px"><button class="btn primary" onclick="addAppModel()">Add and convert</button><button class="btn ghost" onclick="S.openForm=null;render()">Cancel</button></div>
+          <span class="t3">Converted once by a job; listed as Ready when it finishes.</span></div>`
+        : `<div><button class="btn" onclick="S.openForm='this_app';render()">Add a model</button></div>`}
+    </div></div>`;
+}
+function providerCard(id) {
+  const p = S.providers[id]; const so = p.protocol === 'system_one'; const used = usedBy(id);
+  return `<div class="card"><div class="card-h"><h3>${p.name}</h3>${so ? '<span class="badge so">System One</span>' : ''}<span class="badge success">Reachable</span>
+      ${p.enabled ? '' : '<span class="badge" style="color:var(--color-warning)">Not in use</span>'}
+      <span class="t3">${used.length ? 'Used by ' + used.join(' and ') : 'No task uses it'}</span>
+      <span style="flex:1"></span><label class="switch" title="In use"><input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="park('${id}',this.checked)"><span></span></label>
+      <button class="btn ghost" title="Remove…" onclick="removeProvider('${id}')">⋯</button></div>
+    <div class="card-b"><span class="t3">${p.url}</span>
+      ${p.models.length ? p.models.map(m => `<div class="mrow"><span>${m}</span></div>`).join('') : '<span class="s2">No models yet.</span>'}
+      ${S.openForm === id ? `<div class="field"><input class="in" id="mid" placeholder="Model id"><button class="btn primary" onclick="addModel('${id}')">Add</button><button class="btn ghost" onclick="S.openForm=null;render()">Cancel</button></div>`
+        : `<div><button class="btn" onclick="S.openForm='${id}';render()">Add a model</button></div>`}
+    </div></div>`;
+}
+const addOpenAi = `<div class="tiles" style="margin-top:8px"><div class="tile">Ollama<span class="t3">local</span></div><div class="tile">LM Studio<span class="t3">local</span></div><div class="tile">OpenRouter<span class="t3">remote</span></div><div class="tile">Manual…</div></div>`;
+const addSysOne = `<div style="margin-top:8px"><button class="btn">Add a System One endpoint</button></div>`;
+function fallbackPanel(inTask) {
+  const order = S.fallback.filter(id => S.providers[id]);
+  const rows = order.map((id, i) => `<div class="mrow"><span>${i + 1}. ${S.providers[id].name}${S.providers[id].enabled ? '' : ' <span class="t3">(not in use — skipped)</span>'}</span><span><button class="btn ghost" ${i === 0 ? 'disabled' : ''} onclick="moveFb(${i},-1)">↑</button><button class="btn ghost" ${i === order.length - 1 ? 'disabled' : ''} onclick="moveFb(${i},1)">↓</button></span></div>`).join('');
+  return inTask
+    ? `<div style="display:flex;flex-direction:column;gap:6px"><div class="lbl">If it fails, try next</div>${rows}</div>`
+    : `<div class="box" style="margin-top:12px"><div class="head"><h4>Fallback order</h4><p class="s2" style="margin-top:4px">When a description or AI score request fails, the next provider in this order is tried.</p></div><div style="padding:12px 16px;display:flex;flex-direction:column;gap:6px">${rows}</div></div>`;
+}
+const fallback = () => S.variant === 'A' && S.fb === 'task' ? '' : fallbackPanel(false);
+const ids = proto => Object.keys(S.providers).filter(id => S.providers[id].protocol === proto);
+
+// A — task block on top, then two catalog groups
+function variantA() {
+  return `${tasksBlock()}
+    <div class="sec-h">For descriptions and AI score · OpenAI-compatible</div>${ids('openai').map(providerCard).join('')}${addOpenAi}${fallback()}
+    <div class="sec-h" id="system-one-providers">For culling · System One</div>${thisAppCard()}${ids('system_one').map(providerCard).join('')}${addSysOne}`;
+}
+// B — each group starts with the tasks it answers
+function variantB() {
+  return `<div class="cols">
+    <div><div class="sec-h" style="margin-top:0">Descriptions and AI score · OpenAI-compatible</div>${tasksBlock(['description'], 'Who answers')}
+      <div class="sec-h">Providers</div>${ids('openai').map(providerCard).join('')}${addOpenAi}${fallback()}</div>
+    <div><div class="sec-h" style="margin-top:0">Culling · System One</div>${tasksBlock(['culling_profile', 'score_forecast'], 'Who answers')}
+      <div class="sec-h">Providers</div>${thisAppCard()}${ids('system_one').map(providerCard).join('')}${addSysOne}</div>
+  </div>`;
+}
+// C — master/detail
+function variantC() {
+  const anyRed = ['culling_profile', 'score_forecast'].some(k => S.tasks[k].on && stageProblem(k));
+  const item = (key, label, extra = '') => `<button class="${S.selected === key ? 'on' : ''}" onclick="S.selected='${key}';render()"><span>${label}</span>${extra}</button>`;
+  let pane;
+  if (S.selected === 'tasks') pane = tasksBlock();
+  else if (S.selected === 'this_app') pane = thisAppCard();
+  else if (S.selected === 'add_openai') pane = `<h4 style="margin:0">Add an OpenAI-compatible provider</h4>${addOpenAi}`;
+  else if (S.selected === 'add_so') pane = `<h4 style="margin:0">Add a System One endpoint</h4>${addSysOne}`;
+  else pane = S.providers[S.selected] ? providerCard(S.selected) : tasksBlock();
+  return `<div class="md"><nav>
+      ${item('tasks', 'Who answers each task', anyRed ? '<span class="dot"></span>' : '')}
+      <div class="gh">OpenAI-compatible</div>${ids('openai').map(id => item(id, S.providers[id].name, S.providers[id].enabled ? '' : '<span class="t3">off</span>')).join('')}${item('add_openai', '+ Add')}
+      <div class="gh">System One</div>${item('this_app', 'This app')}${ids('system_one').map(id => item(id, S.providers[id].name, S.providers[id].enabled ? '' : '<span class="t3">off</span>')).join('')}${item('add_so', '+ Add')}
+    </nav><div class="pane">${pane}</div></div>`;
+}
+
+function settingsView() {
+  const row = k => {
+    const t = S.tasks[k]; const prob = stageProblem(k);
+    const src = t.endpoint === 'this_app' ? 'This app' : (S.providers[t.endpoint]?.name ?? '—');
+    return `<div class="srow"><div class="srow-top"><div class="srow-left"><div class="rname">${TASK_NAMES[k]}</div>
+        <div class="rdesc">Model: ${t.model || '—'} on ${src} · <button class="link" onclick="go('providers')">change in Providers</button></div>
+        ${t.on && prob ? `<div class="err s" style="margin-top:4px">Its model isn\u2019t ready · <button class="link" onclick="go('providers')">fix it in Providers</button></div>` : ''}</div>
+      <div class="ctl"><label class="switch"><input type="checkbox" ${t.on ? 'checked' : ''} onchange="setOn('${k}',this.checked)"><span></span></label></div></div>
+      ${k === 'culling_profile' ? `<div class="under"><div class="field s2">Filter photos by the culling profile <label class="switch"><input type="checkbox" checked><span></span></label></div></div>`
+        : `<div class="under"><div class="field s2">High from level <select class="in"><option>3</option></select> Threshold <input class="in" value="0.6" style="width:70px"></div><div class="s2">8 questions · <button class="link">Edit questions</button></div></div>`}</div>`;
+  };
+  return `<div class="box"><div class="head"><h4>Culling</h4><p class="s2" style="margin-top:4px">How culling decides. Which model answers each stage is chosen in <button class="link" onclick="go('providers')">Providers</button>.</p></div>${row('culling_profile')}${row('score_forecast')}</div>
+    <div class="t3" style="margin-top:12px">"Models in this app" is no longer here — it is the This app card in Providers.</div>`;
+}
+function analyzeView() {
+  let modal = '';
+  if (S.dialog) {
+    const k = S.dialog; const prob = stageProblem(k);
+    const acts = prob.kind === 'parked'
+      ? `<button class="btn" onclick="S.dialog=null;render()">Cancel</button><button class="btn primary" onclick="park('${prob.pid}',true);S.dialog=null;startJob()">Turn it back on</button><button class="btn" onclick="setOn('${k}',false);S.dialog=null;startJob()">Turn off and start</button>`
+      : `<button class="btn" onclick="S.dialog=null;render()">Cancel</button><button class="btn primary" onclick="S.dialog=null;go('providers')">Fix in Providers</button><button class="btn" onclick="setOn('${k}',false);S.dialog=null;startJob()">Turn off and start</button>`;
+    modal = `<div class="scrim"><div class="modal"><h5>${TASK_NAMES[k]} can\u2019t run</h5><p class="s2">${prob.text}</p><div class="acts">${acts}</div></div></div>`;
+  }
+  return `<div class="frame" style="min-height:260px"><h4 style="margin:0 0 8px">Analyze</h4><p class="s2">Describe and score the photos, with culling first.</p>
+    <div style="margin-top:12px"><button class="btn primary" onclick="startJob()">Start job</button> <span class="note" id="started">${S.started ? 'Job started.' : ''}</span></div>${modal}</div>`;
+}
+
+function render() {
+  document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.view === S.view));
+  const app = document.getElementById('app');
+  if (S.view === 'providers') app.innerHTML = ({ A: variantA, B: variantB, C: variantC }[S.variant] || variantA)();
+  else if (S.view === 'settings') app.innerHTML = settingsView();
+  else app.innerHTML = analyzeView();
+  if (S.showState) app.innerHTML += `<div class="sec-h">State</div><div class="statebox">${JSON.stringify({ tasks: S.tasks, providers: Object.fromEntries(Object.entries(S.providers).map(([k, p]) => [k, { enabled: p.enabled, models: p.models }])), appModels: S.appModels }, null, 2)}</div>`;
+  const names = { A: 'A — Tasks on top, then catalogs', B: 'B — Each group starts with its tasks', C: 'C — Sidebar and detail' };
+  document.getElementById('bar').innerHTML = `<button onclick="cycle(-1)">←</button>${['A', 'B', 'C'].map(v => `<button class="${S.variant === v ? 'on' : ''}" onclick="setVariant('${v}')">${names[v]}</button>`).join('')}<button onclick="cycle(1)">→</button><span class="sep"></span>
+    ${S.variant === 'A' ? `<button class="${S.fb === 'group' ? 'on' : ''}" onclick="S.fb='group';render()">A1 Fallback at end of OpenAI group</button><button class="${S.fb === 'task' ? 'on' : ''}" onclick="S.fb='task';render()">A2 Fallback under Descriptions</button><span class="sep"></span>` : ''}
+    <button onclick="park('studio',!S.providers.studio.enabled)">${S.providers.studio.enabled ? 'Park' : 'Unpark'} Studio GPU</button>
+    <button onclick="setOn('score_forecast',!S.tasks.score_forecast.on)">Score forecast ${S.tasks.score_forecast.on ? 'on' : 'off'}</button>
+    <button class="${S.showState ? 'on' : ''}" onclick="S.showState=!S.showState;render()">State</button>`;
+  const u = new URL(location); u.searchParams.set('variant', S.variant); u.searchParams.set('view', S.view); u.searchParams.set('fb', S.fb); history.replaceState(null, '', u);
+}
+function moveFb(i, d) { const o = S.fallback.filter(id => S.providers[id]); [o[i], o[i + d]] = [o[i + d], o[i]]; S.fallback = o; render(); }
+function setVariant(v) { S.variant = v; render(); }
+function cycle(d) { const vs = ['A', 'B', 'C']; S.variant = vs[(vs.indexOf(S.variant) + d + 3) % 3]; render(); }
+function go(v) { S.view = v; render(); scrollTo(0, 0); }
+function setEndpoint(k, v) { S.tasks[k].endpoint = v; const ms = modelsOf(v); S.tasks[k].model = ms.length === 1 ? ms[0][0] : ''; if (k !== 'description') S.notes[k] = 'Saved · until a culling job runs, verdicts rest on the previous model\u2019s answers.'; render(); }
+function setModel(k, v) { S.tasks[k].model = v; if (k !== 'description' && v) S.notes[k] = 'Saved · until a culling job runs, verdicts rest on the previous model\u2019s answers.'; render(); }
+function setOn(k, on) { S.tasks[k].on = on; render(); }
+function park(id, on) { S.providers[id].enabled = on; render(); }
+function removeProvider(id) { if (!confirm(`Remove ${S.providers[id].name}?` + (usedBy(id).length ? `\n${usedBy(id).join(' and ')} lose their endpoint.` : ''))) return; delete S.providers[id]; for (const t of Object.values(S.tasks)) if (t.endpoint === id) { t.endpoint = ''; t.model = ''; } if (S.selected === id) S.selected = 'tasks'; render(); }
+function addModel(id) { const v = document.getElementById('mid').value.trim(); if (v) S.providers[id].models.push(v); S.openForm = null; render(); }
+function addAppModel() { const v = document.getElementById('hf').value.trim(); if (v) S.appModels.push({ name: v.split('/').pop(), status: 'converting' }); S.openForm = null; render(); }
+function startJob() { const bad = ['culling_profile', 'score_forecast'].find(k => S.tasks[k].on && stageProblem(k)); S.started = false; if (bad) { S.dialog = bad; S.view = 'analyze'; } else S.started = true; render(); }
+document.querySelectorAll('.tabs a').forEach(a => a.onclick = () => go(a.dataset.view));
+addEventListener('keydown', e => { if (e.target.matches('input,textarea,select,[contenteditable]')) return; if (e.key === 'ArrowLeft') cycle(-1); if (e.key === 'ArrowRight') cycle(1); });
+render();
+</script>
+</body>
+</html>
