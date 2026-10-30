@@ -95,12 +95,24 @@ function getModel(options: LoadClipModelOptions = {}): Promise<VisionModel> {
   return modelPromise;
 }
 
-/** Fail fast before walking images when the Hub is unreachable. */
+/** `fetch` rejects with these when the connection fails or drops mid-download. */
+const NETWORK_FAILURE_MESSAGES = new Set(['fetch failed', 'terminated']);
+
+/** Whether a load failure is the Hub being unreachable, rather than the model failing to load. */
+function isHubUnreachable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err instanceof TypeError && NETWORK_FAILURE_MESSAGES.has(err.message)) return true;
+  return err.message.includes('huggingface.co');
+}
+
+/** Fail fast before walking images when the model cannot be downloaded or loaded. */
 export async function loadClipModel(options: LoadClipModelOptions = {}): Promise<void> {
   try {
     await getModel(options);
-  } catch {
-    throw new Error(CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
+  } catch (err) {
+    if (isHubUnreachable(err)) throw new Error(CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`Could not load the image model: ${reason}`);
   }
 }
 

@@ -10,10 +10,10 @@
  */
 import { createServer } from 'node:net';
 import { existsSync } from 'node:fs';
-import { serve } from '@hono/node-server';
 import { Server as SocketIOServer } from 'socket.io';
 import { config } from './config.js';
 import { createApp } from './app.js';
+import { serveApp } from './http-server.js';
 import { upgradeLibraryDb } from './api/library-db.js';
 import { initLibraryDb } from './db/library/bootstrap.js';
 import { startJobProcessor } from './jobs/processor.js';
@@ -67,8 +67,11 @@ try {
 
 const app = createApp();
 
-const server = serve({ fetch: app.fetch, hostname: config.HOST, port: config.PORT }, (info) => {
-  process.stderr.write(`backend listening on http://${config.HOST}:${info.port}\n`);
+const server = serveApp({
+  fetch: app.fetch,
+  hostname: config.HOST,
+  port: config.PORT,
+  onListening: (info) => process.stderr.write(`backend listening on http://${config.HOST}:${info.port}\n`),
 });
 
 /**
