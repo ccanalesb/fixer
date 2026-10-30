@@ -52,7 +52,7 @@ describe('CLIP model loading', () => {
 
   it('tries the download again after a rejected load', async () => {
     fromPretrained
-      .mockRejectedValueOnce(new Error('network down'))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
       .mockResolvedValueOnce(async () => ({ image_embeds: { data: new Float32Array(512).fill(2) } }));
 
     const { loadClipModel, CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE } = await import(
@@ -62,5 +62,29 @@ describe('CLIP model loading', () => {
     await expect(loadClipModel()).rejects.toThrow(CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
     await expect(loadClipModel()).resolves.toBeUndefined();
     expect(fromPretrained).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['a dropped connection', new TypeError('terminated')],
+    [
+      'a Hub error status',
+      new Error('Could not locate file: "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/config.json".'),
+    ],
+  ])('reports %s as a failed download', async (_label, error) => {
+    fromPretrained.mockRejectedValueOnce(error);
+    const { loadClipModel, CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE } = await import(
+      '../src/imaging/clip-embed.js'
+    );
+
+    await expect(loadClipModel()).rejects.toThrow(CLIP_MODEL_DOWNLOAD_FAILED_MESSAGE);
+  });
+
+  it('reports a model that downloaded but did not load with its own reason', async () => {
+    fromPretrained.mockRejectedValueOnce(new Error('Unable to get model file path or buffer.'));
+    const { loadClipModel } = await import('../src/imaging/clip-embed.js');
+
+    await expect(loadClipModel()).rejects.toThrow(
+      'Could not load the image model: Unable to get model file path or buffer.',
+    );
   });
 });
