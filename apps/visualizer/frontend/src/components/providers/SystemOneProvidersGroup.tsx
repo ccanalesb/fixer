@@ -2,6 +2,7 @@ import type { Job, Provider, ProviderModel } from '../../services/api';
 import { PROVIDERS_GROUP_SYSTEM_ONE, PROVIDERS_GROUP_SYSTEM_ONE_EMPTY } from '../../constants/strings';
 import { ProviderCard } from './ProviderCard';
 import { AddSystemOneProviderCard, type CreateSystemOneProviderPayload } from './AddSystemOneProviderCard';
+import { ThisAppCard } from './ThisAppCard';
 import type { ProviderEditValues } from './ProviderEditForm';
 
 interface SystemOneProvidersGroupProps {
@@ -11,6 +12,8 @@ interface SystemOneProvidersGroupProps {
   modelCache: Record<string, ProviderModel[]>;
   activeJobs: Job[];
   cullingStagesByProvider: Record<string, string[]>;
+  cullingProfileUsesThisApp: boolean;
+  scoreForecastUsesThisApp: boolean;
   expandedId: string | null;
   testingId: string | null;
   addressImpactByProvider: Record<string, { photos: number; stageNames: string[] } | null>;
@@ -32,6 +35,8 @@ export function SystemOneProvidersGroup({
   modelCache,
   activeJobs,
   cullingStagesByProvider,
+  cullingProfileUsesThisApp,
+  scoreForecastUsesThisApp,
   expandedId,
   testingId,
   addressImpactByProvider,
@@ -54,6 +59,10 @@ export function SystemOneProvidersGroup({
           </h4>
         </div>
         <div className="p-4 space-y-3">
+          <ThisAppCard
+            cullingProfileUsesThisApp={cullingProfileUsesThisApp}
+            scoreForecastUsesThisApp={scoreForecastUsesThisApp}
+          />
           {providers.length === 0 ? (
             <p className="text-sm text-text-secondary">{PROVIDERS_GROUP_SYSTEM_ONE_EMPTY}</p>
           ) : (

@@ -1,5 +1,4 @@
 import { AboutSection } from './AboutSection';
-import { AppModelsSection } from './AppModelsSection';
 import { AppPortSettingRow } from './AppPortSettingRow';
 import { CatalogSettingRow } from './CatalogSettingRow';
 import { CullingModelsSection } from './CullingModelsSection';
@@ -24,8 +23,6 @@ export function SettingsTab() {
       </div>
 
       <CullingModelsSection />
-
-      <AppModelsSection />
 
       <LightroomWritebackSection />
 

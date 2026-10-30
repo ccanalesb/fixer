@@ -6,8 +6,9 @@ import {
   APP_MODEL_VIEW_JOB,
   CULLING_CANCEL,
   CULLING_CREATE_QUESTIONS,
-  CULLING_FIX_IN_SETTINGS,
+  CULLING_FIX_IN_PROVIDERS,
   PROCESSING_JOB_QUEUE_ROUTE,
+  PROCESSING_PROVIDERS_STAGE_ROUTE,
   PROCESSING_SETTINGS_STAGE_ROUTE,
   STAGE_DIALOG_TURN_BACK_ON,
   STAGE_DIALOG_TURN_OFF,
@@ -17,7 +18,7 @@ import { stageDialogText, type CullingGateVerb } from './stageUsability'
 const LINK_BUTTON =
   'inline-flex items-center rounded-base border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover'
 
-/** Where the stage gets fixed: its conversion job, or its row in Settings → Culling models. */
+/** Where the stage gets fixed: its conversion job, Providers task row, or Settings for questions. */
 export function StageFixLink({
   stage,
   usable,
@@ -37,9 +38,16 @@ export function StageFixLink({
       </Link>
     )
   }
+  if (problem === 'no_questions') {
+    return (
+      <Link to={PROCESSING_SETTINGS_STAGE_ROUTE(stage)} className={LINK_BUTTON} onClick={onClick}>
+        {label ?? CULLING_CREATE_QUESTIONS}
+      </Link>
+    )
+  }
   return (
-    <Link to={PROCESSING_SETTINGS_STAGE_ROUTE(stage)} className={LINK_BUTTON} onClick={onClick}>
-      {label ?? (problem === 'no_questions' ? CULLING_CREATE_QUESTIONS : CULLING_FIX_IN_SETTINGS)}
+    <Link to={PROCESSING_PROVIDERS_STAGE_ROUTE(stage)} className={LINK_BUTTON} onClick={onClick}>
+      {label ?? CULLING_FIX_IN_PROVIDERS}
     </Link>
   )
 }

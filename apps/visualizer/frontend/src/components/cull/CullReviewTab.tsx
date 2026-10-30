@@ -22,7 +22,9 @@ import {
   CULL_SUB_MANUAL,
   CULL_ALREADY_SCORED,
   CULLING_CHECKING,
+  CULLING_OPEN_PROVIDERS,
   CULLING_OPEN_SETTINGS,
+  PROCESSING_PROVIDERS_STAGE_ROUTE,
   CULLING_PROFILE_OFF_NOTE,
   CULLING_PROFILE_OFF_SUB,
   CULLING_TURN_OFF,
@@ -86,6 +88,11 @@ export function CullReviewTab() {
       {CULLING_OPEN_SETTINGS}
     </Link>
   )
+  const providersLink = (stage: CullingStageKind) => (
+    <Link to={PROCESSING_PROVIDERS_STAGE_ROUTE(stage)} className={SETTINGS_LINK}>
+      {CULLING_OPEN_PROVIDERS}
+    </Link>
+  )
 
   if (usable === null) return <PageNote text={CULLING_CHECKING} />
   if (usable === 'unknown') return <CullReviewList onStageOff={load} />
@@ -99,9 +106,14 @@ export function CullReviewTab() {
     const actions =
       profile.problem === 'converting' ? (
         <StageFixLink stage="culling_profile" usable={usable} />
+      ) : profile.problem === 'no_questions' ? (
+        <>
+          <StageFixLink stage="culling_profile" usable={usable} />
+          {turnOffButton('culling_profile')}
+        </>
       ) : (
         <>
-          {settingsLink('culling_profile')}
+          {providersLink('culling_profile')}
           {turnOffButton('culling_profile')}
         </>
       )
@@ -115,7 +127,13 @@ export function CullReviewTab() {
         <div role="alert" className="rounded-base border border-warning/30 bg-warning/5 px-4 py-3 text-sm">
           <div className="font-semibold text-text">{scoreForecastWarning(forecast)}</div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {settingsLink('score_forecast')}
+            {forecast.problem === 'no_questions' ? (
+              settingsLink('score_forecast')
+            ) : forecast.problem === 'converting' ? (
+              <StageFixLink stage="score_forecast" usable={usable} />
+            ) : (
+              providersLink('score_forecast')
+            )}
             {turnOffButton('score_forecast')}
           </div>
         </div>

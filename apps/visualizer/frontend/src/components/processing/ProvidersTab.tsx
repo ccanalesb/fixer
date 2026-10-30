@@ -8,15 +8,15 @@ import {
   type ProviderModel,
 } from '../../services/api';
 import {
-  FallbackOrderPanel,
   OpenAiProvidersGroup,
   SystemOneProvidersGroup,
   ProviderRemoveConfirm,
-  DescriptionDefaultsPanel,
+  TaskAssignmentsBlock,
   type CreateProviderPayload,
 } from '../providers';
 import type { CreateSystemOneProviderPayload } from '../providers/AddSystemOneProviderCard';
 import type { ProviderEditValues } from '../providers/ProviderEditForm';
+import { THIS_APP_SECTION_ID } from '../../constants/strings';
 
 export function ProvidersTab() {
   const [bundleRev, setBundleRev] = useState(0);
@@ -69,12 +69,18 @@ export function ProvidersTab() {
     return map;
   }, [bundle.cullingModels]);
 
+  const thisAppTaskUsage = useMemo(() => {
+    const cm = bundle.cullingModels;
+    if (!cm) return { cullingProfile: false, scoreForecast: false };
+    return {
+      cullingProfile: cm.culling_profile.endpoint === 'this_app',
+      scoreForecast: cm.score_forecast.endpoint === 'this_app',
+    };
+  }, [bundle.cullingModels]);
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [modelCache, setModelCache] = useState<Record<string, ProviderModel[]>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [descriptionProvider, setDescriptionProvider] = useState<string | null>(null);
-  const [descriptionModel, setDescriptionModel] = useState<string | null>(null);
-  const [defaultsSaveMsg, setDefaultsSaveMsg] = useState<string | null>(null);
   const [defaultsNotice, setDefaultsNotice] = useState<string | null>(null);
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
@@ -84,18 +90,10 @@ export function ProvidersTab() {
 
   const { hash } = useLocation();
   useEffect(() => {
-    if (hash === '#system-one-providers') {
-      document.getElementById('system-one-providers')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (hash === '#system-one-providers' || hash === `#${THIS_APP_SECTION_ID}`) {
+      document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [hash, bundleRev]);
-
-  useEffect(() => {
-    const block = bundle.defaults.description;
-    if (block?.provider) {
-      setDescriptionProvider(block.provider);
-      setDescriptionModel(block.model ?? null);
-    }
-  }, [bundle.defaults]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,11 +264,6 @@ export function ProvidersTab() {
     [modelCache, refreshModelsForProvider],
   );
 
-  const updateFallbackOrder = useCallback(async (order: string[]) => {
-    await ProvidersAPI.updateFallbackOrder(order);
-    refreshBundle();
-  }, [refreshBundle]);
-
   const removeTarget = removeTargetId ? providers.find(p => p.id === removeTargetId) : null;
 
   const sharedCardContext = {
@@ -285,9 +278,18 @@ export function ProvidersTab() {
       <div>
         <h3 className="text-card-title text-text mb-2">AI Model Providers</h3>
         <p className="text-sm text-text-secondary">
-          OpenAI-compatible servers for descriptions and scoring; System One endpoints for culling stages
+          Who answers each task, then the servers that provide those models
         </p>
       </div>
+
+      <TaskAssignmentsBlock
+        openAiProviders={openAiProviders}
+        fallbackOrder={fallbackOrder}
+        modelCache={modelCache}
+        defaults={bundle.defaults}
+        defaultsNotice={defaultsNotice}
+        onRefreshBundle={refreshBundle}
+      />
 
       <OpenAiProvidersGroup
         providers={openAiProviders}
@@ -315,6 +317,8 @@ export function ProvidersTab() {
       <SystemOneProvidersGroup
         providers={systemOneProviders}
         cullingStagesByProvider={cullingStagesByProvider}
+        cullingProfileUsesThisApp={thisAppTaskUsage.cullingProfile}
+        scoreForecastUsesThisApp={thisAppTaskUsage.scoreForecast}
         expandedId={expandedId}
         testingId={testingId}
         addressImpactByProvider={addressImpactByProvider}
@@ -332,43 +336,6 @@ export function ProvidersTab() {
         {...sharedCardContext}
         onSetEnabled={handleSetEnabled}
         onRequestRemove={setRemoveTargetId}
-      />
-
-      <FallbackOrderPanel
-        providers={openAiProviders}
-        order={fallbackOrder}
-        onReorder={order => {
-          updateFallbackOrder(order).catch(console.error);
-        }}
-      />
-
-      <DescriptionDefaultsPanel
-        providers={openAiProviders}
-        fallbackOrder={fallbackOrder}
-        modelCache={modelCache}
-        descriptionProvider={descriptionProvider}
-        descriptionModel={descriptionModel}
-        onDescriptionChange={(providerId, modelId) => {
-          setDescriptionProvider(providerId);
-          setDescriptionModel(modelId);
-        }}
-        defaultsNotice={defaultsNotice}
-        onSave={() => {
-          if (!descriptionProvider) return;
-          ProvidersAPI.updateDefaults({
-            description: {
-              provider: descriptionProvider,
-              model: descriptionModel,
-            },
-          })
-            .then(() => {
-              setDefaultsSaveMsg('Saved');
-              window.setTimeout(() => setDefaultsSaveMsg(null), 2000);
-              refreshBundle();
-            })
-            .catch(console.error);
-        }}
-        saveMessage={defaultsSaveMsg}
       />
 
       {removeTarget ? (

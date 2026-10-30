@@ -7,7 +7,6 @@ import {
   CullingModelsAPI,
   CullingProfilesAPI,
   JobsAPI,
-  ProvidersAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
   type CullingModelsResponse,
@@ -25,8 +24,6 @@ import {
   CULLING_PROFILE_FILTER,
   CULLING_PROFILE_FILTER_UNAVAILABLE,
   CULLING_PROFILE_STAGE,
-  MODEL_CHANGE_LATER,
-  MODEL_CHANGE_PROCESS,
   PROCESSING_JOB_QUEUE_ROUTE,
   SCORE_FORECAST_CREATE_FROM_PERSPECTIVES,
   SCORE_FORECAST_EDIT_QUESTIONS,
@@ -40,15 +37,10 @@ import {
   SCORE_FORECAST_STAGE,
   SCORE_FORECAST_THRESHOLD,
   SCORE_FORECAST_THRESHOLD_INVALID,
-  PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
-  STAGE_ADD_MODEL,
-  STAGE_ENDPOINT_PARKED,
-  STAGE_ENDPOINT_THIS_APP,
+  CULLING_CHANGE_IN_PROVIDERS,
+  CULLING_FIX_IN_PROVIDERS_LINK,
+  PROCESSING_PROVIDERS_STAGE_ROUTE,
   STAGE_NO_QUESTIONS,
-  STAGE_PARKED,
-  STAGE_PROVIDERS_LINK,
-  STAGE_REMOVED,
-  STAGE_TURN_PROVIDER_BACK_ON,
 } from '../../../constants/strings'
 import type { Job } from '../../../types/job'
 
@@ -191,6 +183,38 @@ async function expectQueued() {
   expect(screen.getByRole('link', { name: CULLING_MODELS_VIEW_QUEUE })).toHaveAttribute('href', PROCESSING_JOB_QUEUE_ROUTE)
 }
 
+describe('CullingModelsSection — settings model summary', () => {
+  const profileRow = () => document.querySelector('[data-stage="culling_profile"]') as HTMLElement
+
+  it('links to Providers for the model and when it cannot run', async () => {
+    pipeline()
+    stages.culling_profile = stage({ model: 'culling-model' })
+    renderSection()
+    await screen.findByRole('checkbox', { name: CULLING_PROFILE_STAGE })
+    expect(profileRow()).toBeTruthy()
+    expect(
+      within(profileRow()).getByRole('link', { name: CULLING_CHANGE_IN_PROVIDERS }),
+    ).toHaveAttribute('href', PROCESSING_PROVIDERS_STAGE_ROUTE('culling_profile'))
+  })
+
+  it('shows the short not-ready line when the stage is on but the model cannot run', async () => {
+    pipeline()
+    systemOneProviders = [{ id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: false, has_key: true }]
+    stages = {
+      ...stages,
+      system_one_providers: systemOneProviders,
+      culling_profile: stage({ endpoint: PROVIDER_ID, model: 'clef-flash' }),
+    }
+    renderSection()
+    await screen.findByRole('checkbox', { name: CULLING_PROFILE_STAGE })
+    expect(await within(profileRow()).findByText(/Its model isn't ready/)).toBeInTheDocument()
+    expect(within(profileRow()).getByRole('link', { name: CULLING_FIX_IN_PROVIDERS_LINK })).toHaveAttribute(
+      'href',
+      PROCESSING_PROVIDERS_STAGE_ROUTE('culling_profile'),
+    )
+  })
+})
+
 describe('CullingModelsSection', () => {
   it('shows each stage with its switch as the pipeline setting has it', async () => {
     pipeline({ culling_profiles_filter_enabled: false }, { enabled: false })
@@ -300,208 +324,6 @@ describe('CullingModelsSection', () => {
   })
 })
 
-describe('CullingModelsSection — endpoint and model per stage', () => {
-  const row = async (k: Stage) => {
-    await screen.findByRole('checkbox', { name: CULLING_PROFILE_STAGE })
-    return document.querySelector(`[data-stage="${k}"]`) as HTMLElement
-  }
-  const control = (r: HTMLElement, role: 'combobox' | 'textbox', name: string) => within(r).getByRole(role, { name })
-  const desc = (r: HTMLElement) => r.querySelector('[data-stage-description]')!.textContent
-
-  it('a new install: this app, no model; a stage that is on says jobs won’t start, one that is off says Off', async () => {
-    pipeline({}, { enabled: false })
-    renderSection()
-    const cull = await row('culling_profile')
-    expect(control(cull, 'combobox', 'Endpoint')).toHaveValue('this_app')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'culling-model' })).toBeInTheDocument())
-    expect(control(cull, 'combobox', 'Model')).toHaveValue('')
-    expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off")
-    expect(desc(await row('score_forecast'))).toBe('Off')
-  })
-
-  it('lists the models in this app, a converting one disabled, and says which model a stage runs', async () => {
-    appModels = [ready('culling-model'), { ...ready('my-run-best'), status: 'converting', job_id: 'job-2' }]
-    stages.culling_profile = stage({ model: 'culling-model' })
-    stages.score_forecast = stage({ model: 'my-run-best' })
-    renderSection()
-    const cull = await row('culling_profile')
-    await waitFor(() => expect(desc(cull)).toBe('culling-model on this app'))
-    const forecast = await row('score_forecast')
-    expect(within(forecast).getByRole('option', { name: 'my-run-best (converting)' })).toBeDisabled()
-    expect(desc(forecast)).toBe('my-run-best on this app — still converting · View job')
-    expect(within(forecast).getByRole('link', { name: 'View job' })).toHaveAttribute('href', PROCESSING_JOB_QUEUE_ROUTE)
-  })
-
-  it('choosing a model saves it once and offers to process the photos the previous model answered', async () => {
-    stages.culling_profile = stage({ model: 'culling-model', answered: { photos: 45793, model: 'culling-model' } })
-    appModels = [ready('culling-model'), ready('my-run-best')]
-    renderSection()
-    const cull = await row('culling_profile')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'my-run-best' })).toBeInTheDocument())
-    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'my-run-best' } })
-    expect(await within(cull).findByText('Culling profile now uses my-run-best.')).toBeInTheDocument()
-    expect(CullingModelsAPI.save).toHaveBeenCalledTimes(1)
-    expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { model: 'my-run-best' })
-    expect(
-      within(cull).getByText(
-        '45,793 photos were answered by culling-model. Process them with my-run-best in a background job? Until then their verdicts stay as they are; earlier answers are kept.',
-      ),
-    ).toBeInTheDocument()
-    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_PROCESS }))
-    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_PROCESS }))
-    expect(await within(cull).findByText('Job queued ·', { exact: false })).toBeInTheDocument()
-    expect(within(cull).getByRole('link', { name: CULLING_MODELS_VIEW_QUEUE })).toHaveAttribute('href', PROCESSING_JOB_QUEUE_ROUTE)
-    expect(JobsAPI.create).toHaveBeenCalledTimes(1)
-    expect(JobsAPI.create).toHaveBeenCalledWith('batch_cull_photos_before_scoring', {})
-    expect(within(cull).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
-  })
-
-  it('Process photos asks first while the other stage cannot run, and can turn it off and start', async () => {
-    stages.culling_profile = stage({ model: 'culling-model', answered: { photos: 45793, model: 'culling-model' } })
-    appModels = [ready('culling-model'), ready('my-run-best')]
-    usable = { ...usable, score_forecast: usableStage({ model: null, problem: 'no_model' }) }
-    renderSection()
-    const cull = await row('culling_profile')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'my-run-best' })).toBeInTheDocument())
-    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'my-run-best' } })
-    fireEvent.click(await within(cull).findByRole('button', { name: MODEL_CHANGE_PROCESS }))
-    const dialog = await screen.findByRole('dialog', { name: 'Score forecast has no model' })
-    expect(
-      within(dialog).getByText(
-        "This job runs the Score forecast. Fix it, or turn the Score forecast off and start without it. Without it, the culling profile's rule decides what goes to the big model.",
-      ),
-    ).toBeInTheDocument()
-    expect(JobsAPI.create).not.toHaveBeenCalled()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Turn off and start' }))
-    expect(await within(cull).findByText('Job queued ·', { exact: false })).toBeInTheDocument()
-    expect(CullingProfilesAPI.saveScoreForecast).toHaveBeenCalledWith({ enabled: false })
-    expect(JobsAPI.create).toHaveBeenCalledWith('batch_cull_photos_before_scoring', {})
-    expect(await stageSwitch(SCORE_FORECAST_STAGE)).not.toBeChecked()
-  })
-
-  it('arriving from "Open Settings" scrolls to that stage’s row', async () => {
-    const scrolled: string[] = []
-    const original = Element.prototype.scrollIntoView
-    Element.prototype.scrollIntoView = function (this: Element) {
-      scrolled.push(this.id)
-    }
-    try {
-      render(
-        <MemoryRouter initialEntries={['/processing?tab=settings#stage-score_forecast']}>
-          <CullingModelsSection />
-        </MemoryRouter>,
-      )
-      await waitFor(() => expect(scrolled).toEqual(['stage-score_forecast']))
-    } finally {
-      Element.prototype.scrollIntoView = original
-    }
-  })
-
-  it('with nothing answered yet the note says so; Later dismisses it', async () => {
-    renderSection()
-    const cull = await row('culling_profile')
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'culling-model' })).toBeInTheDocument())
-    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'culling-model' } })
-    expect(
-      await within(cull).findByText('No photo has been answered by the culling profile yet. Process the 3 photos in a background job?'),
-    ).toBeInTheDocument()
-    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_LATER }))
-    expect(within(cull).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
-    expect(JobsAPI.create).not.toHaveBeenCalled()
-  })
-
-  it('a stage that is off saves the model but offers no processing', async () => {
-    pipeline({}, { enabled: false })
-    renderSection()
-    const forecast = await row('score_forecast')
-    await waitFor(() => expect(within(forecast).getByRole('option', { name: 'forecast-model' })).toBeInTheDocument())
-    fireEvent.change(control(forecast, 'combobox', 'Model'), { target: { value: 'forecast-model' } })
-    await waitFor(() => expect(desc(forecast)).toBe('Off · forecast-model on this app'))
-    expect(within(forecast).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
-  })
-
-  it('a conversion job finishing for the model a stage runs offers to process the photos', async () => {
-    appModels = [{ ...ready('culling-model'), status: 'converting', job_id: 'job-1' }]
-    stages.culling_profile = stage({ model: 'culling-model' })
-    renderSection()
-    const cull = await row('culling_profile')
-    await waitFor(() => expect(desc(cull)).toBe('culling-model on this app — still converting · View job'))
-    appModels = [ready('culling-model')]
-    socket.onJobUpdated?.({ id: 'job-1', type: 'app_model_install', status: 'completed' } as Job)
-    expect(await within(cull).findByText('Culling profile now uses culling-model.')).toBeInTheDocument()
-  })
-
-  it('choosing a System One provider saves once and lists its typed models', async () => {
-    renderSection()
-    const cull = await row('culling_profile')
-    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: PROVIDER_ID } })
-    await waitFor(() => expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { endpoint: PROVIDER_ID }))
-    await waitFor(() => expect(within(cull).getByRole('option', { name: 'clef-flash' })).toBeInTheDocument())
-    expect(control(cull, 'combobox', 'Model')).not.toBeDisabled()
-    fireEvent.change(control(cull, 'combobox', 'Model'), { target: { value: 'clef-flash' } })
-    await waitFor(() => expect(desc(cull)).toBe(`clef-flash on Ollama (${OLLAMA})`))
-  })
-
-  it('a parked provider says so and Turn back on unparks it', async () => {
-    systemOneProviders = [{ id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: false, has_key: true }]
-    stages = { ...stages, system_one_providers: systemOneProviders, culling_profile: stage({ endpoint: PROVIDER_ID, model: 'clef-flash' }) }
-    vi.spyOn(ProvidersAPI, 'update').mockResolvedValue({ provider: {} as never })
-    renderSection()
-    const cull = await row('culling_profile')
-    expect(desc(cull)).toContain(STAGE_PARKED('Ollama', 'the culling profile'))
-    fireEvent.click(within(cull).getByRole('button', { name: STAGE_TURN_PROVIDER_BACK_ON('Ollama') }))
-    await waitFor(() => expect(ProvidersAPI.update).toHaveBeenCalledWith(PROVIDER_ID, { enabled: true }))
-  })
-
-  it('a removed endpoint says so', async () => {
-    stages.culling_profile = stage({ endpoint: '', model: 'clef-flash' })
-    renderSection()
-    const cull = await row('culling_profile')
-    expect(desc(cull)).toContain(STAGE_REMOVED('the culling profile'))
-  })
-
-  it('going back to this app saves at once and clears the model', async () => {
-    stages.culling_profile = stage({ endpoint: PROVIDER_ID, model: 'clef-flash' })
-    renderSection()
-    const cull = await row('culling_profile')
-    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: 'this_app' } })
-    await waitFor(() => expect(CullingModelsAPI.save).toHaveBeenCalledWith('culling_profile', { endpoint: 'this_app' }))
-    await waitFor(() =>
-      expect(desc(cull)).toBe("No model chosen — jobs won't start until you choose one or turn the culling profile off"),
-    )
-  })
-
-  it('"Add a model to this app" goes to Models in this app; a provider has no such link', async () => {
-    const target = document.createElement('div')
-    target.id = 'app-models'
-    target.scrollIntoView = vi.fn()
-    document.body.appendChild(target)
-    renderSection()
-    const cull = await row('culling_profile')
-    fireEvent.click(within(cull).getByRole('button', { name: STAGE_ADD_MODEL }))
-    expect(target.scrollIntoView).toHaveBeenCalledTimes(1)
-    fireEvent.change(control(cull, 'combobox', 'Endpoint'), { target: { value: PROVIDER_ID } })
-    await waitFor(() => expect(within(cull).queryByRole('button', { name: STAGE_ADD_MODEL })).not.toBeInTheDocument())
-    target.remove()
-  })
-
-  it('the endpoint select offers this app and each system_one provider, with parked called out', async () => {
-    systemOneProviders = [
-      { id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: true, has_key: true },
-      { id: 'studio', name: 'Studio', url: 'http://studio:8000', enabled: false, has_key: true },
-    ]
-    stages = { ...stages, system_one_providers: systemOneProviders }
-    renderSection()
-    const cull = await row('culling_profile')
-    expect(within(cull).getByRole('option', { name: STAGE_ENDPOINT_THIS_APP })).toBeInTheDocument()
-    expect(within(cull).getByRole('option', { name: `Ollama (${OLLAMA})` })).toBeInTheDocument()
-    expect(within(cull).getByRole('option', { name: `Studio (http://studio:8000) ${STAGE_ENDPOINT_PARKED}` })).toBeInTheDocument()
-    expect(within(cull).getByRole('link', { name: STAGE_PROVIDERS_LINK })).toHaveAttribute(
-      'href',
-      PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
-    )
-  })
-})
 
 describe('CullingModelsSection — Score forecast questions', () => {
   beforeEach(() => {
@@ -511,8 +333,7 @@ describe('CullingModelsSection — Score forecast questions', () => {
   it('with the Score forecast on and no questions: says so, explains it, and offers both ways to create them', async () => {
     questionCount = 0
     renderSection()
-    expect(await screen.findByText(STAGE_NO_QUESTIONS)).toHaveClass('text-error')
-    expect(screen.getByText(SCORE_FORECAST_HOW_TITLE)).toBeInTheDocument()
+    expect(await screen.findByText(SCORE_FORECAST_HOW_TITLE)).toBeInTheDocument()
     expect(screen.getByText(SCORE_FORECAST_NO_QUESTIONS_HOW)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: SCORE_FORECAST_CREATE_FROM_PERSPECTIVES })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: SCORE_FORECAST_WRITE_THEM })).toHaveAttribute('href', SCORE_FORECAST_QUESTIONS_ROUTE)

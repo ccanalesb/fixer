@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   APP_MODEL_ADD,
@@ -20,9 +20,16 @@ import {
   APP_MODEL_VIEW_JOB,
   APP_MODELS_EMPTY,
   APP_MODELS_LOADING,
-  APP_MODELS_SECTION,
   CULLING_MODELS_CANCEL,
+  CULLING_PROFILE_STAGE,
   PROCESSING_JOB_QUEUE_ROUTE,
+  SCORE_FORECAST_STAGE,
+  THIS_APP_BUILT_IN,
+  THIS_APP_CARD_LEAD,
+  THIS_APP_CARD_TITLE,
+  THIS_APP_SECTION_ID,
+  THIS_APP_UNUSED,
+  THIS_APP_USED_BY,
 } from '../../constants/strings'
 import { useAppModelPicker } from '../../hooks/useAppModelPicker'
 import { useJobSocket } from '../../hooks/useJobSocket'
@@ -31,29 +38,25 @@ import { Badge } from '../ui/badges'
 import { Button } from '../ui/Button/Button'
 import { ConfirmModalFrame } from '../ui/ConfirmUndoAction'
 import { Input } from '../ui/Input/Input'
-import { PathSummary, SettingRow } from './SettingRow'
+import { PathSummary, SettingRow } from '../processing/SettingRow'
 
 const INSTALL_JOB_TYPE = 'app_model_install'
 
-/** Where a stage row's "Add a model to this app" scrolls to. */
-export const APP_MODELS_SECTION_ID = 'app-models'
-
-/** A folder as a path that truncates its directory; a Hugging Face id as it is. */
 function SourceSummary({ source }: { source: string }) {
   return source.startsWith('/') || source.startsWith('~') ? <PathSummary path={source} /> : <span>{source}</span>
 }
 
-/** Processing → Settings → Models in this app: what this app's System One endpoint serves, and adding one. */
-export function AppModelsSection() {
+interface ThisAppCardProps {
+  cullingProfileUsesThisApp: boolean
+  scoreForecastUsesThisApp: boolean
+}
+
+export function ThisAppCard({ cullingProfileUsesThisApp, scoreForecastUsesThisApp }: ThisAppCardProps) {
   const { models, pickerUsable, draft, setDraft, picking, adding, error, pick, add, clear, refresh } =
     useAppModelPicker()
-  // `null` means the user has not touched the disclosure, so it follows whether
-  // there is a dialog to prefer over it.
   const [typing, setTyping] = useState<boolean | null>(null)
   const [costConfirmOpen, setCostConfirmOpen] = useState(false)
 
-  // A conversion job that ends moves its model from Converting to Ready, or off
-  // the list when it failed.
   const onJobUpdated = useCallback(
     (job: Job) => {
       if (job.type === INSTALL_JOB_TYPE && job.status !== 'pending' && job.status !== 'running') void refresh()
@@ -62,12 +65,19 @@ export function AppModelsSection() {
   )
   useJobSocket({ onJobUpdated })
 
+  const usedBy = useMemo(() => {
+    const names: string[] = []
+    if (cullingProfileUsesThisApp) names.push(CULLING_PROFILE_STAGE)
+    if (scoreForecastUsesThisApp) names.push(SCORE_FORECAST_STAGE)
+    if (names.length === 0) return THIS_APP_UNUSED
+    if (names.length === 1) return THIS_APP_USED_BY(names[0]!)
+    return THIS_APP_USED_BY(`${names[0]!} and ${names[1]!}`)
+  }, [cullingProfileUsesThisApp, scoreForecastUsesThisApp])
+
   const manual = typing ?? !pickerUsable
   const changed = draft.trim() !== ''
   const busy = picking || adding
 
-  // Only a queued conversion closes the field: on failure the value stays where
-  // the user can correct it.
   const commit = () => {
     if (!changed || busy) return
     setCostConfirmOpen(true)
@@ -98,17 +108,16 @@ export function AppModelsSection() {
   )
 
   return (
-    <div id={APP_MODELS_SECTION_ID} className="divide-y divide-border rounded-base border border-border bg-bg">
-      <div className="p-4">
-        <h4 className="text-sm font-semibold text-text">{APP_MODELS_SECTION}</h4>
-        <p className="mt-1 text-sm text-text-secondary">
-          What this app serves on its own System One endpoint. Add one as a folder in Hugging Face format
-          (<code>model.safetensors</code>, <code>processor/</code>, config) or a Hugging Face id; it is converted once in
-          a job, which needs <code>uv</code>. Today only SmolVLM (Idefics3) models with a decision head convert.
-        </p>
+    <div id={THIS_APP_SECTION_ID} className="rounded-card border border-border bg-bg shadow-card overflow-hidden scroll-mt-6">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 bg-surface">
+        <h3 className="text-base font-semibold text-text">{THIS_APP_CARD_TITLE}</h3>
+        <Badge variant="accent">System One</Badge>
+        <Badge variant="success">{THIS_APP_BUILT_IN}</Badge>
+        <span className="text-xs text-text-tertiary">{usedBy}</span>
       </div>
+      <p className="px-4 pt-3 text-sm text-text-secondary">{THIS_APP_CARD_LEAD}</p>
 
-      <div className="divide-y divide-border">
+      <div className="divide-y divide-border mt-3">
         {models === null ? (
           <p className="px-4 py-3 text-sm text-text-secondary">{APP_MODELS_LOADING}</p>
         ) : models.length === 0 ? (
@@ -141,7 +150,7 @@ export function AppModelsSection() {
         )}
       </div>
 
-      <div data-add>
+      <div data-add className="border-t border-border">
         <SettingRow
           name={APP_MODEL_ADD}
           description={
@@ -157,8 +166,6 @@ export function AppModelsSection() {
           control={
             <>
               {pickerUsable && (
-                // One way in at a time: with the field open, the dialog would
-                // overwrite what is being typed.
                 <Button type="button" size="sm" variant="secondary" onClick={pick} disabled={manual || busy}>
                   {picking ? APP_MODEL_CHOOSING : APP_MODEL_CHOOSE}
                 </Button>
