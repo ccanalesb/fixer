@@ -11,7 +11,6 @@ import {
   MODEL_CHANGE_TITLE,
   MODEL_CHANGE_UNANSWERED,
   PROCESSING_JOB_QUEUE_ROUTE,
-  PROCESSING_SETTINGS_STAGE_ROUTE,
   SCORE_FORECAST_STAGE,
   STAGE_IN_SENTENCE,
   TASK_CULLING_STAGE_SUB,
@@ -46,6 +45,9 @@ export interface CullingStageTaskRowProps {
   onModel: (model: string | null) => void
   onAddModel: () => void
   onUnparkProvider: (providerId: string) => void
+  onTurnOn: () => void
+  turnOnBusy: boolean
+  savedNote: ReactNode
   onProcessPhotos: () => void
   onDismissSuggest: () => void
 }
@@ -66,6 +68,9 @@ export function CullingStageTaskRow({
   onModel,
   onAddModel,
   onUnparkProvider,
+  onTurnOn,
+  turnOnBusy,
+  savedNote,
   onProcessPhotos,
   onDismissSuggest,
 }: CullingStageTaskRowProps) {
@@ -143,12 +148,14 @@ export function CullingStageTaskRow({
             {!stageOn && (
               <div className="flex flex-wrap items-center gap-2 self-start">
                 <Badge variant="default">{TASK_OFF_IN_SETTINGS}</Badge>
-                <Link
-                  to={PROCESSING_SETTINGS_STAGE_ROUTE(stage)}
-                  className="text-sm text-accent underline"
+                <button
+                  type="button"
+                  className="text-sm text-accent underline disabled:opacity-50"
+                  disabled={turnOnBusy || busy}
+                  onClick={onTurnOn}
                 >
                   {TASK_TURN_ON_IN_SETTINGS}
-                </Link>
+                </button>
               </div>
             )}
           </div>
@@ -157,6 +164,7 @@ export function CullingStageTaskRow({
               <span data-stage-description>{stageDescription(stage, view)}</span>
             </div>
           )}
+          {savedNote}
           {modelChangeNote()}
         </div>
       </div>

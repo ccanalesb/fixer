@@ -30,7 +30,9 @@ import {
   STAGE_TURN_PROVIDER_BACK_ON,
   TASK_ASSIGNMENTS_HEADING,
   TASK_FALLBACK_LABEL,
+  CULLING_MODELS_SAVED,
   TASK_OFF_IN_SETTINGS,
+  TASK_TURN_ON_IN_SETTINGS,
   THIS_APP_SECTION_ID,
   PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
 } from '../../../constants/strings'
@@ -126,6 +128,11 @@ beforeEach(() => {
   vi.spyOn(JobsAPI, 'create').mockResolvedValue({ id: 'job-cull' } as Job)
   vi.spyOn(CullingModelsAPI, 'usable').mockImplementation(async () => usable)
   vi.spyOn(CullingProfilesAPI, 'getPipeline').mockImplementation(async () => ({ version: 1, config: stored }))
+  vi.spyOn(CullingProfilesAPI, 'saveCullingProfileSwitches').mockImplementation(async (body) => {
+    if (body.enabled !== undefined) stored = { ...stored, culling_profiles_enabled: body.enabled }
+    if (body.filter_enabled !== undefined) stored = { ...stored, culling_profiles_filter_enabled: body.filter_enabled }
+    return { version: 2, redecide_job_id: 'job-9' }
+  })
   vi.spyOn(CullingProfilesAPI, 'saveScoreForecast').mockImplementation(async (body) => {
     stored = { ...stored, score_forecast: { ...stored.score_forecast, ...body } }
     return { version: 2, redecide_job_id: 'job-9' }
@@ -200,6 +207,17 @@ describe('TaskAssignmentsBlock', () => {
     renderBlock()
     const forecast = await row('score_forecast')
     expect(within(forecast).getByText(TASK_OFF_IN_SETTINGS)).toBeInTheDocument()
+  })
+
+  it('Turn on enables the stage in place and shows the re-decide note', async () => {
+    pipeline({}, { enabled: false })
+    renderBlock()
+    const forecast = await row('score_forecast')
+    fireEvent.click(within(forecast).getByRole('button', { name: TASK_TURN_ON_IN_SETTINGS }))
+    await waitFor(() => expect(CullingProfilesAPI.saveScoreForecast).toHaveBeenCalledWith({ enabled: true }))
+    expect(within(forecast).queryByText(TASK_OFF_IN_SETTINGS)).not.toBeInTheDocument()
+    expect(await within(forecast).findByText(CULLING_MODELS_SAVED, { exact: false })).toBeInTheDocument()
+    expect(desc(forecast)).toContain("No model chosen")
   })
 
   it('a parked provider shows Turn back on in the red row', async () => {

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
   CullingModelsAPI,
@@ -13,9 +13,19 @@ import {
   type Provider,
   type ProviderModel,
 } from '../../services/api'
+import { invalidateAll } from '../../data'
 import { useJobSocket } from '../../hooks/useJobSocket'
 import type { Job } from '../../types/job'
-import { TASK_ASSIGNMENTS_HEADING, TASK_ASSIGNMENTS_LEAD, THIS_APP_SECTION_ID } from '../../constants/strings'
+import {
+  CULLING_MODELS_SAVED,
+  CULLING_MODELS_SAVED_JOB_WAITING,
+  CULLING_MODELS_VIEW_QUEUE,
+  PROCESSING_JOB_QUEUE_ROUTE,
+  TASK_ASSIGNMENTS_HEADING,
+  TASK_ASSIGNMENTS_LEAD,
+  THIS_APP_SECTION_ID,
+} from '../../constants/strings'
+import { applyPipelineStageChange } from '../cull/pipelineStageSwitch'
 import { useCullingGate } from '../cull/useCullingGate'
 import { CullingStageTaskRow } from './CullingStageTaskRow'
 import { DescriptionTaskRow } from './DescriptionTaskRow'
@@ -59,6 +69,8 @@ export function TaskAssignmentsBlock({
   const [queueing, setQueueing] = useState(false)
   const [questionCount, setQuestionCount] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState<{ stage: Stage; jobId: string | null } | null>(null)
+  const [turningOn, setTurningOn] = useState<Stage | null>(null)
 
   const stageModelsRef = useRef(stageModels)
   stageModelsRef.current = stageModels
@@ -211,6 +223,36 @@ export function TaskAssignmentsBlock({
   const scrollToThisApp = () =>
     document.getElementById(THIS_APP_SECTION_ID)?.scrollIntoView({ behavior: 'smooth' })
 
+  const turnOnStage = async (stage: Stage) => {
+    if (turningOn) return
+    setTurningOn(stage)
+    setSaved(null)
+    setError(null)
+    setPipelineOn((p) => (p ? { ...p, [stage]: true } : p))
+    try {
+      const { redecide_job_id } = await applyPipelineStageChange(stage, { enabled: true })
+      setSaved({ stage, jobId: redecide_job_id })
+      invalidateAll(['culling-profiles.pipeline'])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setTurningOn(null)
+    }
+    await load()
+  }
+
+  const savedNote = (stage: Stage): ReactNode => {
+    if (saved?.stage !== stage) return null
+    return (
+      <p className="text-sm text-success">
+        {saved.jobId ? CULLING_MODELS_SAVED : CULLING_MODELS_SAVED_JOB_WAITING}{' '}
+        <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-accent underline">
+          {CULLING_MODELS_VIEW_QUEUE}
+        </Link>
+      </p>
+    )
+  }
+
   const unparkProvider = async (providerId: string) => {
     setError(null)
     try {
@@ -291,6 +333,9 @@ export function TaskAssignmentsBlock({
           onModel={(model) => void onModel(stage, model)}
           onAddModel={scrollToThisApp}
           onUnparkProvider={(id) => void unparkProvider(id)}
+          onTurnOn={() => void turnOnStage(stage)}
+          turnOnBusy={turningOn === stage}
+          savedNote={savedNote(stage)}
           onProcessPhotos={() => void processPhotos(stage)}
           onDismissSuggest={() => setSuggest(null)}
         />

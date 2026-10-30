@@ -51,6 +51,7 @@ import {
   SCORE_FORECAST_THRESHOLD_LABEL,
   SCORE_FORECAST_WRITE_THEM,
 } from '../../constants/strings'
+import { applyPipelineStageChange } from '../cull/pipelineStageSwitch'
 import { Button } from '../ui/Button'
 import { SettingRow } from './SettingRow'
 import { endpointLabel, stageProblem, type StageView } from '../providers/stageModelView'
@@ -200,12 +201,12 @@ export function CullingModelsSection() {
         culling_profiles_enabled: body.enabled ?? config.culling_profiles_enabled,
         culling_profiles_filter_enabled: body.filter_enabled ?? config.culling_profiles_filter_enabled,
       },
-      () => CullingProfilesAPI.saveCullingProfileSwitches(body),
+      () => applyPipelineStageChange('culling_profile', body),
     )
 
   const setForecast = (body: { enabled?: boolean; threshold?: number; high_from_level?: number }) =>
     void save('score_forecast', { ...config, score_forecast: { ...forecast, ...body } }, () =>
-      CullingProfilesAPI.saveScoreForecast(body),
+      applyPipelineStageChange('score_forecast', body),
     )
 
   const saveThreshold = () => {
