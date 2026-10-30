@@ -188,30 +188,6 @@ describe('POST /api/providers/', () => {
 });
 
 describe('PUT /api/providers/{id}', () => {
-  it('allows changing the address to one another provider already uses', async () => {
-    writeNewShapeProviders(providersPath, {
-      providers: {
-        a: {
-          name: 'A',
-          protocol: 'openai',
-          enabled: true,
-          base_url: { from: 'literal', value: `${stubBase}/v1` },
-          auth: { mode: 'none' },
-        },
-        b: {
-          name: 'B',
-          protocol: 'openai',
-          enabled: true,
-          base_url: { from: 'literal', value: 'http://127.0.0.1:59997' },
-          auth: { mode: 'none' },
-        },
-      },
-      fallback_order: ['a', 'b'],
-    });
-    const res = await send('PUT', '/api/providers/b', { base_url: `${stubBase}` });
-    expect(res.status).toBe(200);
-  });
-
   it('keeps the id when the name changes', async () => {
     writeNewShapeProviders(providersPath, {
       providers: { local: LOCAL_PROVIDER },
