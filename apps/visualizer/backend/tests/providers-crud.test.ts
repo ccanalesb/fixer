@@ -72,6 +72,39 @@ afterEach(() => {
 });
 
 describe('POST /api/providers/', () => {
+  it('creates with only the address probe (no chat or extra models discovery)', async () => {
+    const requests: string[] = [];
+    stub?.close();
+    await new Promise<void>((resolve) => {
+      stub = createServer((req, res) => {
+        requests.push(req.url ?? '');
+        if (req.url === '/v1/models' || req.url === '/models') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ data: [{ id: 'm1' }] }));
+          return;
+        }
+        res.writeHead(404);
+        res.end();
+      });
+      stub.listen(0, '127.0.0.1', () => resolve());
+    });
+    const port = (stub!.address() as AddressInfo).port;
+    const base = `http://127.0.0.1:${port}`;
+    stubBase = base;
+
+    const res = await send('POST', '/api/providers/', {
+      name: 'Probe only',
+      base_url: base,
+      auth: { mode: 'none' },
+    });
+    expect(res.status).toBe(201);
+    const body = await json<{ tool_calling: boolean }>(res);
+    expect(body.tool_calling).toBe(false);
+    expect(requests.some((u) => u.includes('chat'))).toBe(false);
+    expect(requests.every((u) => u === '/v1/models' || u === '/models')).toBe(true);
+    expect(requests.length).toBeLessThanOrEqual(2);
+  });
+
   it('creates a provider, stores a literal key off the wire, and persists the probe', async () => {
     const res = await send('POST', '/api/providers/', {
       name: 'Stub',
@@ -104,6 +137,53 @@ describe('POST /api/providers/', () => {
     } finally {
       db.close();
     }
+  });
+
+  it('409s when the address matches an existing provider (normalized variants)', async () => {
+    await send('POST', '/api/providers/', {
+      name: 'First',
+      base_url: `${stubBase}/v1`,
+      auth: { mode: 'none' },
+    });
+    const variants = [
+      `${stubBase}`,
+      `${stubBase}/`,
+      `${stubBase}/v1/`,
+      `${stubBase}/v1/chat/completions`,
+    ];
+    for (const base_url of variants) {
+      const res = await send('POST', '/api/providers/', {
+        name: 'Second',
+        base_url,
+        auth: { mode: 'none' },
+      });
+      expect(res.status).toBe(409);
+      expect(await json(res)).toEqual({
+        error: 'There is already a provider at this address: First',
+      });
+    }
+    expect(Object.keys((readProviders().providers as Record<string, unknown>) ?? {})).toEqual([
+      'first',
+    ]);
+  });
+
+  it('accepts a different address', async () => {
+    await send('POST', '/api/providers/', {
+      name: 'A',
+      base_url: stubBase,
+      auth: { mode: 'none' },
+    });
+    const otherPort = Number(stubBase.match(/:(\d+)$/)![1]) + 1;
+    const res = await send('POST', '/api/providers/', {
+      name: 'B',
+      base_url: `http://127.0.0.1:${otherPort}`,
+      auth: { mode: 'none' },
+    });
+    expect(res.status).toBe(201);
+    expect(Object.keys((readProviders().providers as Record<string, unknown>) ?? {}).sort()).toEqual([
+      'a',
+      'b',
+    ]);
   });
 });
 

@@ -7,8 +7,8 @@
  * warning rather than failing — the same courtesy `load_config` extends to
  * `config.yaml`.
  *
- * Model listing and tool-calling probes use plain `fetch` against OpenAI-compatible
- * endpoints. Probe requests do not retry.
+ * Connection health checks use plain `fetch` against OpenAI-compatible endpoints.
+ * Those requests do not retry.
  */
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { config, providersExamplePath } from '../config.js';
@@ -65,23 +65,6 @@ function examplePath(): string {
  */
 const DEFAULTS_KEYS = new Set(['description']);
 
-/**
- * Tool-calling probe cache, shared for the process lifetime.
- *
- * A fresh `ProviderRegistry` is constructed per request, so a per-instance cache
- * would probe on every page load.
- */
-const toolCallingProbeCache = new Map<string, boolean>();
-
-const PROBE_TOOL = {
-  type: 'function',
-  function: {
-    name: 'noop',
-    description: 'No-op capability probe.',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
-  },
-} as const;
-
 export type {
   CreateProviderInput,
   DefaultsEntry,
@@ -100,6 +83,17 @@ export class UnknownProviderError extends Error {
   constructor(providerId: string) {
     super(`Unknown provider: ${providerId}`);
     this.name = 'UnknownProviderError';
+  }
+}
+
+/** Raised when create would duplicate another provider's address; the API maps to 409. */
+export class ProviderAddressConflictError extends Error {
+  readonly existingName: string;
+
+  constructor(existingName: string) {
+    super(`There is already a provider at this address: ${existingName}`);
+    this.name = 'ProviderAddressConflictError';
+    this.existingName = existingName;
   }
 }
 
@@ -185,12 +179,7 @@ export class ProviderRegistry {
     return this.providers[providerId]?.model_order ?? [];
   }
 
-  /**
-   * Every provider with its availability and tool-calling capability.
-   *
-   * Note that this can make network calls: a provider with no explicit
-   * `tool_calling` triggers a live probe (cached per process).
-   */
+  /** Every provider with its availability and configured tool-calling flag. */
   async listProviders(): Promise<ProviderSummary[]> {
     const out: ProviderSummary[] = [];
     for (const [id, cfg] of Object.entries(this.providers)) {
@@ -214,6 +203,11 @@ export class ProviderRegistry {
         : [];
     if (protocol === 'system_one' && modelIds.length === 0) {
       throw new RangeError('at least one model id is required for a System One provider');
+    }
+
+    const conflict = this.findProviderAtAddress(base);
+    if (conflict) {
+      throw new ProviderAddressConflictError(conflict.name);
     }
 
     const id = deriveProviderId(name, new Set(Object.keys(this.providers)));
@@ -440,7 +434,7 @@ export class ProviderRegistry {
       name: cfg.name,
       protocol: cfg.protocol,
       available: this.isAvailable(cfg),
-      tool_calling: await this.resolveToolCalling(id, cfg),
+      tool_calling: cfg.protocol === 'system_one' ? false : Boolean(cfg.tool_calling),
       enabled: cfg.enabled !== false,
       base_url: { from: cfg.base_url.from, value: cfg.base_url.value },
       auth: this.authSummary(cfg),
@@ -570,16 +564,6 @@ export class ProviderRegistry {
     }
   }
 
-  /** Model ids the provider reports live, for providers with none configured. */
-  async discoverOpenAiModels(providerId: string, timeoutMs = 2000): Promise<string[]> {
-    const cfg = this.providers[providerId];
-    if (!cfg) throw new UnknownProviderError(providerId);
-    const body = (await this.fetchJson(cfg, '/models', { timeoutMs })) as {
-      data?: { id?: string }[];
-    };
-    return (body.data ?? []).map((m) => String(m.id)).filter(Boolean);
-  }
-
   /** A resolved endpoint for the vision client. */
   getClient(providerId: string): ProviderClient {
     const cfg = this.providers[providerId];
@@ -683,51 +667,25 @@ export class ProviderRegistry {
     return true;
   }
 
-  /** Explicit config wins; otherwise a lazily-cached live probe. */
-  private async resolveToolCalling(providerId: string, cfg: ProviderConfig): Promise<boolean> {
-    if (cfg.protocol === 'system_one') return false;
-    if (cfg.tool_calling !== undefined) return Boolean(cfg.tool_calling);
-    const cached = toolCallingProbeCache.get(providerId);
-    if (cached !== undefined) return cached;
-    const result = await this.probeToolCalling(providerId, cfg);
-    toolCallingProbeCache.set(providerId, result);
-    return result;
+  /** Another provider already using this normalized address, if any. */
+  private findProviderAtAddress(candidateBase: string): ProviderConfig | null {
+    for (const cfg of Object.values(this.providers)) {
+      const existing = this.storedBaseForAddressCompare(cfg);
+      if (!existing) continue;
+      if (providerAddressesEquivalent(candidateBase, existing)) return cfg;
+    }
+    return null;
   }
 
   /**
-   * Send a minimal tool-calling request to detect support.
+   * Literal or env-resolved base URL for duplicate-address checks.
    *
-   * Uses the first configured model, or a discovered one when none are configured.
-   * Any error means "not capable" — a probe that cannot complete is indistinguishable
-   * from a provider that refuses tools, and guessing `true` would break real requests.
+   * Env references with no value set are skipped — nothing to compare yet.
    */
-  private async probeToolCalling(providerId: string, cfg: ProviderConfig): Promise<boolean> {
-    let probeModel = this.readModelRows(providerId).find((r) => visionFromRow(r))?.model_id;
-    if (!probeModel) {
-      try {
-        probeModel = (await this.discoverOpenAiModels(providerId, 5000))[0];
-      } catch {
-        return false;
-      }
-    }
-    if (!probeModel) return false;
-
-    try {
-      await this.fetchJson(cfg, '/chat/completions', {
-        timeoutMs: 10000,
-        method: 'POST',
-        body: {
-          model: probeModel,
-          messages: [{ role: 'user', content: 'hi' }],
-          tools: [PROBE_TOOL],
-          tool_choice: 'auto',
-          max_tokens: 1,
-        },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+  private storedBaseForAddressCompare(cfg: ProviderConfig): string | null {
+    const raw = this.resolveValueRef(cfg.base_url);
+    if (!raw.trim()) return null;
+    return normalizeBaseUrlInput(raw);
   }
 
   private saveConfig(): void {

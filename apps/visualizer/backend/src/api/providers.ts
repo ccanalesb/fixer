@@ -21,7 +21,11 @@ import {
   listProviderModels,
   updateProviderModelName,
 } from '../db/jobs/provider-models.js';
-import { ProviderRegistry, UnknownProviderError } from '../providers/registry.js';
+import {
+  ProviderAddressConflictError,
+  ProviderRegistry,
+  UnknownProviderError,
+} from '../providers/registry.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
 import { ErrorBody } from './schemas/errors.js';
@@ -91,6 +95,7 @@ const createRouteDef = createRoute({
   responses: withValidationError({
     201: { description: 'Created', content: jsonBody(Provider) },
     400: { description: 'Bad Request', content: jsonBody(ErrorBody) },
+    409: { description: 'Conflict', content: jsonBody(ErrorBody) },
   }),
 });
 
@@ -121,6 +126,7 @@ providersRoutes.openapi(createRouteDef, async (c) => {
     });
     return c.json(created, 201);
   } catch (e) {
+    if (e instanceof ProviderAddressConflictError) return c.json({ error: e.message }, 409);
     if (e instanceof RangeError) return c.json({ error: e.message }, 400);
     throw e;
   }
@@ -213,32 +219,14 @@ const descriptionModelsRoute = createRoute({
   }),
 });
 
-/**
- * Every model across every provider, flattened for the description task selector.
- *
- * Providers with no statically configured models (oMLX, for one) get a live
- * `/v1/models` discovery with a short timeout, so the selector still lists them
- * while they are running and simply omits them when they are not.
- */
+/** Every user-configured model across every provider, for the description selector. */
 providersRoutes.openapi(descriptionModelsRoute, async (c) => {
   const registry = new ProviderRegistry();
   const result: z.infer<typeof DescriptionModelsResponse>['models'] = [];
 
   for (const provider of await registry.listProviders()) {
     const pid = provider.id;
-    let modelsList = await registry.listModels(pid);
-
-    if (modelsList.length === 0) {
-      try {
-        modelsList = (await registry.discoverOpenAiModels(pid, 2000)).map((id) => ({
-          id,
-          name: id,
-          source: 'discovered' as const,
-        }));
-      } catch {
-        // Not running, or no such endpoint. Leave it out of the selector.
-      }
-    }
+    const modelsList = await registry.listModels(pid);
 
     const seen = new Set<string>();
     for (const m of modelsList) {

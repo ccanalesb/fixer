@@ -5,9 +5,7 @@
  * rewrite the user's real provider list — `PUT /fallback-order`, `PUT /defaults`,
  * `PUT /models/order` and `DELETE /models/{id}` all save `providers.json`.
  *
- * No test lets a provider reach the network: the fixtures declare `tool_calling`
- * explicitly (which short-circuits the live probe) and leave `auto_discover` off.
- * The one test that does exercise discovery points the base URL at a closed port.
+ * Fixtures declare `tool_calling` explicitly where the tests assert on it.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
@@ -486,6 +484,25 @@ describe('GET /api/providers/{id}/health', () => {
 });
 
 describe('GET /api/providers/models/description', () => {
+  it('lists only stored models and omits providers with none configured', async () => {
+    writeProviders({
+      providers: {
+        local: LOCAL_PROVIDER,
+        cloud: CLOUD_PROVIDER,
+        empty: {
+          ...LOCAL_PROVIDER,
+          name: 'Empty',
+          base_url: { from: 'literal', value: 'http://127.0.0.1:59999' },
+        },
+      },
+      fallback_order: ['local', 'cloud', 'empty'],
+    });
+    const res = await send('GET', '/api/providers/models/description');
+    expect(res.status).toBe(200);
+    const body = await json<{ models: { provider_id: string }[] }>(res);
+    expect(body.models.some((m) => m.provider_id === 'empty')).toBe(false);
+  });
+
   it('flattens every provider model with its tool-calling capability', async () => {
     const res = await send('GET', '/api/providers/models/description');
     expect(res.status).toBe(200);

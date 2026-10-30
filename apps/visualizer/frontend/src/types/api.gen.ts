@@ -4425,6 +4425,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorBody"];
                     };
                 };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
                 /** @description Unprocessable Content */
                 422: {
                     headers: {
@@ -6813,7 +6822,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            source: "config" | "discovered" | "user";
+            source: "config" | "user";
             vision?: boolean | null;
             image_refused_reason?: string | null;
         };

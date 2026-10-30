@@ -129,6 +129,43 @@ describe('literal base_url storage from probe', () => {
   });
 });
 
+describe('duplicate address on create', () => {
+  it('409s when a new literal matches an env-resolved base', async () => {
+    writeNewShapeProviders(providersPath, {
+      providers: {
+        cloud: {
+          name: 'Cloud',
+          protocol: 'openai',
+          enabled: true,
+          base_url: { from: 'env', value: 'LT_TEST_HOST' },
+          auth: { mode: 'none' },
+        },
+      },
+      fallback_order: ['cloud'],
+    });
+    const base = await listenStub((req, res) => {
+      if (req.url === '/v1/models') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ data: [] }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    process.env.LT_TEST_HOST = base;
+    const conflict = await send('POST', '/api/providers/', {
+      name: 'Dup',
+      base_url: `${base}/v1`,
+      auth: { mode: 'none' },
+    });
+    expect(conflict.status).toBe(409);
+    expect(await json(conflict)).toEqual({
+      error: 'There is already a provider at this address: Cloud',
+    });
+    expect(Object.keys((JSON.parse(readFileSync(providersPath, 'utf8')) as { providers: Record<string, unknown> }).providers)).toEqual(['cloud']);
+  });
+});
+
 describe('resolveBaseUrl', () => {
   it('returns a migrated literal with /v1 unchanged', () => {
     writeNewShapeProviders(providersPath, {
