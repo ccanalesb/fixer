@@ -9,7 +9,7 @@ Fixer is for Adobe Lightroom Classic: it reads your `.lrcat` catalog, builds a l
 ## Prerequisites
 
 1. **Adobe Lightroom Classic catalog** — a `.lrcat` file path. **Close Lightroom Classic** before scanning; an open catalog can cause `database is locked`.
-2. **Vision provider** — local [Ollama](https://ollama.ai) (default model `gemma3:27b`: `ollama pull gemma3:27b`) or a cloud provider configured in `providers.json`.
+2. **Vision provider** — local [Ollama](https://ollama.ai) (default model `gemma3:27b`: `ollama pull gemma3:27b`) or any OpenAI-compatible server (LM Studio, OpenRouter, a company proxy…), added in Processing → Providers.
 3. **Backend port 5001** — the API listens on **5001**, not 5000. macOS AirPlay Receiver occupies 5000 and returns empty 200/403 responses that look like a broken backend. Vite proxies `/api` to 5001.
 
 ## Installation
@@ -28,8 +28,10 @@ commands below as `npm run cli -- <command>` from `apps/visualizer/backend`.
 
 Culling's stages can run models in this app, locally through ONNX
 ([ADR-0020](docs/adr/0020-laya-in-node-through-onnx.md)). A model is added in
-Processing → Settings → Culling models → "Add a model", from a folder in Hugging
-Face format or a Hugging Face id; a job converts it once, with
+Processing → Providers → **This app** → "Add a model", from a folder in Hugging
+Face format or a Hugging Face id (`owner/model`, or `owner/model@revision` to pin
+it); each stage's model is chosen in Processing → Providers → **Who answers each
+task**. A job converts it once, with
 [uv](https://docs.astral.sh/uv/), into the git-ignored `models/` (about 800 MB for
 the first model, 430 MB for one that shares its vision tower). The same script by
 hand:
