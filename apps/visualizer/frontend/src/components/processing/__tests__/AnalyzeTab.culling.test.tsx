@@ -12,7 +12,8 @@ import {
   ANALYZE_ADVANCED_DESCRIBE_ONLY,
   ANALYZE_ADVANCED_SCORE_ONLY,
   CULLING_CHECKING,
-  CULLING_FIX_IN_SETTINGS,
+  CULLING_FIX_IN_PROVIDERS,
+  PROCESSING_PROVIDERS_STAGE_ROUTE,
   STAGE_DIALOG_TURN_BACK_ON,
 } from '../../../constants/strings'
 
@@ -173,9 +174,9 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
   })
 
   it.each([
-    ['no_model', 'Culling profile has no model', CULLING_FIX_IN_SETTINGS],
+    ['no_model', 'Culling profile has no model', CULLING_FIX_IN_PROVIDERS],
     ['converting', "Culling profile's model is still converting", 'View job'],
-    ['removed', 'Its endpoint was removed', CULLING_FIX_IN_SETTINGS],
+    ['removed', 'Its endpoint was removed', CULLING_FIX_IN_PROVIDERS],
     ['parked', 'Studio GPU is parked', STAGE_DIALOG_TURN_BACK_ON],
   ] as const)('%s: the dialog says "%s" and offers %s', async (problem, title, fix) => {
     mockUsable.mockResolvedValue(
@@ -194,7 +195,7 @@ describe('AnalyzeTab: a culling stage that is on but cannot run', () => {
     } else {
       expect(within(dialog).getByRole('link', { name: fix })).toHaveAttribute(
         'href',
-        fix === 'View job' ? '/processing?tab=jobs' : '/processing?tab=settings#stage-culling_profile',
+        fix === 'View job' ? '/processing?tab=jobs' : PROCESSING_PROVIDERS_STAGE_ROUTE('culling_profile'),
       )
     }
   })

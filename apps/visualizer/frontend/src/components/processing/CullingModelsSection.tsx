@@ -1,29 +1,21 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
   CullingModelsAPI,
   CullingProfilesAPI,
-  JobsAPI,
-  ProvidersAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
   type CullingModelsResponse,
-  type CullingStageModelPutRequest,
-  type CullingSystemOneProvider,
   type PipelineChangeResponse,
   type PipelineSettingResponse,
 } from '../../services/api'
 import { invalidateAll } from '../../data'
-import { useJobSocket } from '../../hooks/useJobSocket'
-import type { Job } from '../../types/job'
-import { Button } from '../ui/Button'
-import { SettingRow } from './SettingRow'
-import { StageModelFields } from './StageModelFields'
-import { stageDescription, stageProblem, shownModel, type StageView } from './stageModelView'
-import { APP_MODELS_SECTION_ID } from './AppModelsSection'
-import { useCullingGate } from '../cull/useCullingGate'
 import {
+  CULLING_CHANGE_IN_PROVIDERS,
+  CULLING_FIX_IN_PROVIDERS_LINK,
+  CULLING_MODEL_NOT_READY,
+  CULLING_MODEL_SUMMARY,
   CULLING_MODELS_CANCEL,
   CULLING_MODELS_LOADING,
   CULLING_MODELS_NOT_SAVED,
@@ -39,13 +31,9 @@ import {
   CULLING_PROFILE_FILTER_UNAVAILABLE,
   CULLING_PROFILE_STAGE,
   CULLING_PROFILE_STAGE_HELP,
-  MODEL_CHANGE_ANSWERED,
-  MODEL_CHANGE_LATER,
-  MODEL_CHANGE_PROCESS,
-  MODEL_CHANGE_QUEUED,
-  MODEL_CHANGE_TITLE,
-  MODEL_CHANGE_UNANSWERED,
   PROCESSING_JOB_QUEUE_ROUTE,
+  PROCESSING_PROVIDERS_ROUTE,
+  PROCESSING_PROVIDERS_STAGE_ROUTE,
   SCORE_FORECAST_CREATE_FROM_PERSPECTIVES,
   SCORE_FORECAST_EDIT_QUESTIONS,
   SCORE_FORECAST_HOW,
@@ -62,17 +50,15 @@ import {
   SCORE_FORECAST_THRESHOLD_INVALID,
   SCORE_FORECAST_THRESHOLD_LABEL,
   SCORE_FORECAST_WRITE_THEM,
-  STAGE_IN_SENTENCE,
 } from '../../constants/strings'
+import { Button } from '../ui/Button'
+import { SettingRow } from './SettingRow'
+import { endpointLabel, stageProblem, type StageView } from '../providers/stageModelView'
 
 type Config = PipelineSettingResponse['config']
 type Stage = 'culling_profile' | 'score_forecast'
 
-const STAGES: readonly Stage[] = ['culling_profile', 'score_forecast']
-const STAGE_NAME: Record<Stage, string> = { culling_profile: CULLING_PROFILE_STAGE, score_forecast: SCORE_FORECAST_STAGE }
 const LEVELS = [5, 6, 7, 8, 9]
-const INSTALL_JOB_TYPE = 'app_model_install'
-const CULLING_JOB_TYPE = 'batch_cull_photos_before_scoring'
 const LINK_BUTTON =
   'inline-flex items-center rounded-base border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover'
 
@@ -103,50 +89,41 @@ function Switch({ label, checked, disabled, onChange }: {
   )
 }
 
-/**
- * Processing → Settings → Culling models: each stage's switch, endpoint and model, the culling profile's
- * filter, and the Score forecast's level and threshold.
- */
+function ModelSummaryLine({ stage, view }: { stage: Stage; view: StageView }) {
+  const model = view.saved.model
+  const where = endpointLabel(view)
+  const problem = view.on ? stageProblem(view) : null
+  const providersStageRoute = PROCESSING_PROVIDERS_STAGE_ROUTE(stage)
+
+  return (
+    <div className="text-sm text-text-secondary">
+      <span>{CULLING_MODEL_SUMMARY(model, where)} · </span>
+      <Link to={providersStageRoute} className="text-accent underline">
+        {CULLING_CHANGE_IN_PROVIDERS}
+      </Link>
+      {problem && problem !== 'noquestions' ? (
+        <div className="mt-1 text-error">
+          {CULLING_MODEL_NOT_READY} ·{' '}
+          <Link to={providersStageRoute} className="text-accent underline">
+            {CULLING_FIX_IN_PROVIDERS_LINK}
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** Processing → Settings → Culling: stage switches, filter, and Score forecast level, threshold and questions. */
 export function CullingModelsSection() {
   const [config, setConfig] = useState<Config | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<{ stage: Stage; jobId: string | null } | null>(null)
   const [threshold, setThreshold] = useState('')
   const [stageModels, setStageModels] = useState<CullingModelsResponse | null>(null)
-  const [providers, setProviders] = useState<CullingSystemOneProvider[]>([])
   const [appModels, setAppModels] = useState<AppModel[]>([])
-  const [providerModels, setProviderModels] = useState<Record<Stage, string[] | null>>({
-    culling_profile: null,
-    score_forecast: null,
-  })
-  const [busy, setBusy] = useState<Stage | null>(null)
-  const [suggest, setSuggest] = useState<Stage | null>(null)
-  const [queued, setQueued] = useState<Stage | null>(null)
-  const [queueing, setQueueing] = useState(false)
   const [questionCount, setQuestionCount] = useState<number | null>(null)
   const [explain, setExplain] = useState(false)
   const [created, setCreated] = useState<{ skipped: string[] } | null>(null)
-  const stageModelsRef = useRef(stageModels)
-  stageModelsRef.current = stageModels
-  const appModelsRef = useRef(appModels)
-  appModelsRef.current = appModels
-
-  const loadProviderModels = useCallback(async (stage: Stage, endpoint: string) => {
-    if (endpoint === 'this_app') {
-      setProviderModels((m) => ({ ...m, [stage]: null }))
-      return
-    }
-    setProviderModels((m) => ({ ...m, [stage]: null }))
-    try {
-      const listed = await CullingModelsAPI.models(stage)
-      setProviderModels((m) => ({
-        ...m,
-        [stage]: listed.answers ? listed.models : [],
-      }))
-    } catch {
-      setProviderModels((m) => ({ ...m, [stage]: [] }))
-    }
-  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -158,116 +135,24 @@ export function CullingModelsSection() {
     }
   }, [])
 
-  const refreshAppModels = useCallback(async () => {
-    try {
-      const before = appModelsRef.current
-      const { models } = await AppModelsAPI.list()
-      setAppModels(models)
-      const current = stageModelsRef.current
-      if (!current) return
-      for (const stage of STAGES) {
-        const s = current[stage]
-        if (s.endpoint !== 'this_app' || !s.model) continue
-        const was = before.find((m) => m.name === s.model)
-        const now = models.find((m) => m.name === s.model)
-        if (was?.status === 'converting' && now?.status === 'ready') {
-          setSuggest(stage)
-          setQueued(null)
-        }
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
-
   useEffect(() => {
     void load()
-    void refreshAppModels()
+    void AppModelsAPI.list()
+      .then(({ models }) => setAppModels(models))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
     ScoreForecastQuestionsAPI.get()
       .then((r) => setQuestionCount(r.questions.length))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-    void (async () => {
-      try {
-        const next = await CullingModelsAPI.get()
-        setStageModels(next)
-        setProviders(next.system_one_providers)
-        for (const stage of STAGES) void loadProviderModels(stage, next[stage].endpoint)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not load the culling models')
-      }
-    })()
-  }, [load, refreshAppModels, loadProviderModels])
-
-  const { run: runCullingGate, dialog: cullingDialog } = useCullingGate({ onStageOff: () => void load() })
+    void CullingModelsAPI.get()
+      .then(setStageModels)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load culling models'))
+  }, [load])
 
   const { hash } = useLocation()
   const loaded = config !== null && stageModels !== null
   useEffect(() => {
     if (loaded && hash.startsWith('#stage-')) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [loaded, hash])
-
-  const onJobUpdated = useCallback(
-    (job: Job) => {
-      if (job.type === INSTALL_JOB_TYPE && job.status !== 'pending' && job.status !== 'running') void refreshAppModels()
-    },
-    [refreshAppModels],
-  )
-  useJobSocket({ onJobUpdated })
-
-  const saveStage = async (stage: Stage, body: CullingStageModelPutRequest) => {
-    setBusy(stage)
-    setError(null)
-    try {
-      const next = await CullingModelsAPI.save(stage, body)
-      setStageModels((s) => (s ? { ...s, [stage]: next } : s))
-      if (body.endpoint !== undefined) void loadProviderModels(stage, next.endpoint)
-      return next
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed')
-      return null
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const onEndpoint = async (stage: Stage, endpoint: string) => {
-    setSuggest(null)
-    setQueued(null)
-    if (stageModels![stage].endpoint === endpoint) return
-    await saveStage(stage, { endpoint })
-  }
-
-  const onModel = async (stage: Stage, model: string | null) => {
-    const previous = stageModels![stage].model
-    const next = await saveStage(stage, { model })
-    if (!next) return
-    setQueued(null)
-    setSuggest(model && model !== previous ? stage : null)
-  }
-
-  const processPhotos = async (stage: Stage) => {
-    if (queueing) return
-    setQueueing(true)
-    setError(null)
-    const failed = (e: unknown) => setError(e instanceof Error ? e.message : String(e))
-    try {
-      await runCullingGate('cull', async () => {
-        try {
-          await JobsAPI.create(CULLING_JOB_TYPE, {})
-          setQueued(stage)
-          setSuggest(null)
-        } catch (e) {
-          failed(e)
-        }
-      })
-    } catch (e) {
-      failed(e)
-    } finally {
-      setQueueing(false)
-    }
-  }
-
-  const scrollToAppModels = () => document.getElementById(APP_MODELS_SECTION_ID)?.scrollIntoView({ behavior: 'smooth' })
 
   const save = async (stage: Stage, shown: Config, call: () => Promise<PipelineChangeResponse>) => {
     setConfig(shown)
@@ -294,73 +179,16 @@ export function CullingModelsSection() {
   const forecast = config.score_forecast
   const cullingProfileOn = config.culling_profiles_enabled
   const on: Record<Stage, boolean> = { culling_profile: cullingProfileOn, score_forecast: forecast.enabled }
-  const unparkProvider = async (providerId: string) => {
-    setError(null)
-    try {
-      await ProvidersAPI.update(providerId, { enabled: true })
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
 
   const view = (stage: Stage): StageView => ({
     on: on[stage],
     saved: stageModels[stage],
-    providerModels: providerModels[stage],
+    providerModels: null,
     appModels,
-    providers,
-    onUnparkProvider: (id) => void unparkProvider(id),
+    providers: stageModels.system_one_providers,
     ...(stage === 'score_forecast' && questionCount !== null ? { questionCount } : {}),
   })
 
-  const modelFields = (stage: Stage) => (
-    <StageModelFields
-      kind={stage}
-      view={view(stage)}
-      busy={busy === stage}
-      onEndpoint={(endpoint) => void onEndpoint(stage, endpoint)}
-      onModel={(model) => void onModel(stage, model)}
-      onAddModel={scrollToAppModels}
-    />
-  )
-
-  const description = (stage: Stage) => <span data-stage-description>{stageDescription(stage, view(stage))}</span>
-
-  const modelChangeNote = (stage: Stage): ReactNode => {
-    if (queued === stage) {
-      return (
-        <p className="text-sm text-success">
-          {MODEL_CHANGE_QUEUED}{' '}
-          <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-accent underline">
-            {CULLING_MODELS_VIEW_QUEUE}
-          </Link>
-        </p>
-      )
-    }
-    const v = view(stage)
-    const model = shownModel(v)
-    if (suggest !== stage || !v.on || !model || stageProblem(v)) return null
-    const answered = v.saved.answered
-    return (
-      <div className="rounded-base border border-accent/25 bg-accent-light px-4 py-3 text-sm">
-        <div className="font-semibold text-text">{MODEL_CHANGE_TITLE(STAGE_NAME[stage], model)}</div>
-        <div className="text-text-secondary">
-          {answered.photos > 0 && answered.model
-            ? MODEL_CHANGE_ANSWERED(answered.photos, answered.model, model)
-            : MODEL_CHANGE_UNANSWERED(STAGE_IN_SENTENCE[stage], stageModels.total_photos)}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="primary" disabled={queueing} onClick={() => void processPhotos(stage)}>
-            {MODEL_CHANGE_PROCESS}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setSuggest(null)}>
-            {MODEL_CHANGE_LATER}
-          </Button>
-        </div>
-      </div>
-    )
-  }
   const thresholdChanged = threshold.trim() !== String(forecast.threshold)
   const thresholdValid = validThreshold(threshold)
 
@@ -445,21 +273,26 @@ export function CullingModelsSection() {
     <div className="divide-y divide-border rounded-base border border-border bg-bg">
       <div className="p-4">
         <h4 className="text-sm font-semibold text-text">{CULLING_MODELS_SECTION}</h4>
-        <p className="mt-1 text-sm text-text-secondary">{CULLING_MODELS_SECTION_LEAD}</p>
+        <p className="mt-1 text-sm text-text-secondary">
+          {CULLING_MODELS_SECTION_LEAD}{' '}
+          <Link to={PROCESSING_PROVIDERS_ROUTE} className="text-accent underline">
+            Providers
+          </Link>
+          .
+        </p>
         {error ? <p className="mt-2 text-sm text-error">{error}</p> : null}
       </div>
 
       <div id="stage-culling_profile" data-stage="culling_profile">
         <SettingRow
           name={CULLING_PROFILE_STAGE}
-          description={description('culling_profile')}
+          description={<ModelSummaryLine stage="culling_profile" view={view('culling_profile')} />}
           control={
             <Switch label={CULLING_PROFILE_STAGE} checked={cullingProfileOn} onChange={(on) => setCullingProfile({ enabled: on })} />
           }
           under={
             <div className="flex flex-col gap-3">
               <p className="text-xs text-text-tertiary">{CULLING_PROFILE_STAGE_HELP}</p>
-              {modelFields('culling_profile')}
               <div className="ml-4 flex items-center justify-between gap-4 rounded-base border border-border px-4 py-3">
                 <div className="min-w-0">
                   <div className={`text-sm font-medium ${cullingProfileOn ? 'text-text' : 'text-text-tertiary'}`}>
@@ -481,7 +314,6 @@ export function CullingModelsSection() {
                 />
               </div>
               {savedNote('culling_profile')}
-              {modelChangeNote('culling_profile')}
             </div>
           }
         />
@@ -490,7 +322,7 @@ export function CullingModelsSection() {
       <div id="stage-score_forecast" data-stage="score_forecast">
         <SettingRow
           name={SCORE_FORECAST_STAGE}
-          description={description('score_forecast')}
+          description={<ModelSummaryLine stage="score_forecast" view={view('score_forecast')} />}
           control={
             <Switch
               label={SCORE_FORECAST_STAGE}
@@ -504,7 +336,6 @@ export function CullingModelsSection() {
           under={
             <div className="flex flex-col gap-3">
               <p className="text-xs text-text-tertiary">{SCORE_FORECAST_STAGE_HELP}</p>
-              {modelFields('score_forecast')}
               {forecast.enabled ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-medium text-text-secondary">{SCORE_FORECAST_LEVEL_LABEL}</span>
@@ -554,12 +385,10 @@ export function CullingModelsSection() {
               ) : null}
               {forecast.enabled ? forecastExplain() : null}
               {savedNote('score_forecast')}
-              {modelChangeNote('score_forecast')}
             </div>
           }
         />
       </div>
-      {cullingDialog}
     </div>
   )
 }

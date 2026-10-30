@@ -905,8 +905,31 @@ export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom Classic 
 export const LR_WRITEBACK_LOADING = 'Loading Lightroom Classic write-back…'
 
 // Processing → Settings → Culling models
-export const CULLING_MODELS_SECTION = 'Culling models'
-export const CULLING_MODELS_SECTION_LEAD = 'Each stage calls a System One endpoint: this app, or any other System One server.'
+export const CULLING_MODELS_SECTION = 'Culling'
+export const CULLING_MODELS_SECTION_LEAD =
+  'How culling decides. Which model answers each stage is chosen in Providers.'
+export const CULLING_MODEL_SUMMARY = (model: string | null, where: string) =>
+  `Model: ${model ?? '—'} on ${where}`
+export const CULLING_CHANGE_IN_PROVIDERS = 'change in Providers'
+export const CULLING_MODEL_NOT_READY = "Its model isn't ready"
+export const CULLING_FIX_IN_PROVIDERS_LINK = 'fix it in Providers'
+export const TASK_ASSIGNMENTS_HEADING = 'Who answers each task'
+export const TASK_ASSIGNMENTS_LEAD =
+  'Pick a provider and one of its models. Culling stages are turned on in Settings.'
+export const TASK_DESCRIPTIONS = 'Descriptions'
+export const TASK_DESCRIPTIONS_SUB = 'Also used by AI score'
+export const TASK_CULLING_STAGE_SUB = 'Culling stage'
+export const TASK_FALLBACK_LABEL = 'If it fails, try next'
+export const TASK_OFF_IN_SETTINGS = 'Off in Settings'
+export const TASK_TURN_ON_IN_SETTINGS = 'Turn on'
+export const THIS_APP_CARD_TITLE = 'This app'
+export const THIS_APP_CARD_LEAD =
+  'What this app serves on its own System One endpoint. Add one as a folder in Hugging Face format ' +
+  '(model.safetensors, processor/, config) or a Hugging Face id; it is converted once in a job, which needs uv. ' +
+  'Today only SmolVLM (Idefics3) models with a decision head convert.'
+export const THIS_APP_BUILT_IN = 'Built in'
+export const THIS_APP_USED_BY = (names: string) => `Used by ${names}`
+export const THIS_APP_UNUSED = 'No task uses it'
 export const CULLING_MODELS_LOADING = 'Loading culling models…'
 export const CULLING_MODELS_SAVED = 'Saved · re-decide job queued ·'
 export const CULLING_MODELS_SAVED_JOB_WAITING = 'Saved · the re-decide job already queued applies it ·'
@@ -976,6 +999,11 @@ export const STAGE_ENDPOINT_PARKED = '(parked)'
 export const STAGE_PROVIDERS_LINK = 'Add or edit System One providers'
 export const PROCESSING_PROVIDERS_ROUTE = '/processing?tab=providers'
 export const PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE = '/processing?tab=providers#system-one-providers'
+export const THIS_APP_SECTION_ID = 'this-app'
+export const PROCESSING_PROVIDERS_THIS_APP_ROUTE = `/processing?tab=providers#${THIS_APP_SECTION_ID}`
+/** Processing → Providers, scrolled to a culling stage row in Who answers each task. */
+export const PROCESSING_PROVIDERS_STAGE_ROUTE = (stage: 'culling_profile' | 'score_forecast') =>
+  `/processing?tab=providers#task-${stage}`
 export const PROVIDERS_GROUP_OPENAI = 'For descriptions and AI score · OpenAI-compatible'
 export const PROVIDERS_GROUP_SYSTEM_ONE = 'For culling · System One'
 export const PROVIDERS_GROUP_SYSTEM_ONE_EMPTY =
@@ -1032,7 +1060,9 @@ export const MODEL_CHANGE_QUEUED = 'Job queued ·'
 // A culling stage that is on but cannot run: Culling tab notes and the dialog before a job starts
 export const CULLING_CHECKING = 'Checking culling models…'
 export const CULLING_OPEN_SETTINGS = 'Open Settings'
+export const CULLING_OPEN_PROVIDERS = 'Open Providers'
 export const CULLING_FIX_IN_SETTINGS = 'Fix in Settings'
+export const CULLING_FIX_IN_PROVIDERS = 'Fix in Providers'
 export const CULLING_CREATE_QUESTIONS = 'Create questions'
 export const CULLING_CANCEL = 'Cancel'
 export const CULLING_TURN_OFF = { culling_profile: 'Turn culling profile off', score_forecast: 'Turn Score forecast off' } as const
@@ -1045,7 +1075,7 @@ export const CULLING_PROFILE_UNUSABLE = {
   parked: (name: string) => `${name} is parked.`,
   removed: () => 'Its endpoint was removed.',
 } as const
-export const CULLING_PROFILE_UNUSABLE_SUB = 'Fix it in Settings → Culling models, or turn the culling profile off.'
+export const CULLING_PROFILE_UNUSABLE_SUB = 'Fix it in Providers, or turn the culling profile off.'
 export const CULLING_PROFILE_CONVERTING_SUB = 'It can be used once the conversion job finishes.'
 export const SCORE_FORECAST_UNUSABLE = (why: string) => `Score forecast is on but ${why}.`
 export const SCORE_FORECAST_WHY = {
@@ -1084,8 +1114,8 @@ export const SCORE_FORECAST_THRESHOLD = 'Score forecast threshold'
 export const SCORE_FORECAST_THRESHOLD_LABEL = 'is at least'
 export const SCORE_FORECAST_THRESHOLD_INVALID = 'A number from 0 to 1'
 
-// Processing → Settings → Models in this app
-export const APP_MODELS_SECTION = 'Models in this app'
+// Processing → Providers → This app card
+export const APP_MODELS_SECTION = 'This app'
 export const APP_MODELS_LOADING = 'Loading models…'
 export const APP_MODELS_EMPTY = 'No models yet.'
 export const APP_MODEL_READY = 'Ready'

@@ -13,7 +13,7 @@ import {
   STAGE_MODEL_NONE_IN_APP,
   STAGE_PROVIDERS_LINK,
 } from '../../constants/strings'
-import { offeredModels, shownModel, type StageView } from './stageModelView'
+import { offeredModels, shownModel, type StageView } from './stageModelView';
 
 const field = 'border border-border rounded-base px-2.5 py-1.5 bg-bg text-sm text-text min-w-0'
 const label = 'text-sm font-medium text-text-secondary'

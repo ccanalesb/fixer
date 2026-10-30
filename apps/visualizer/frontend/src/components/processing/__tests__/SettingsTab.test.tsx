@@ -6,15 +6,14 @@ vi.mock('../AppPortSettingRow', () => ({ AppPortSettingRow: () => null }))
 vi.mock('../CatalogSettingRow', () => ({ CatalogSettingRow: () => <div>catalog</div> }))
 vi.mock('../StackDetectionSettingRow', () => ({ StackDetectionSettingRow: () => <div>stacks</div> }))
 vi.mock('../CullingModelsSection', () => ({ CullingModelsSection: () => <div>culling models</div> }))
-vi.mock('../AppModelsSection', () => ({ AppModelsSection: () => <div>models in this app</div> }))
 vi.mock('../LightroomWritebackSection', () => ({ LightroomWritebackSection: () => <div>lightroom write-back</div> }))
 vi.mock('../AboutSection', () => ({ AboutSection: () => <div>about</div> }))
 vi.mock('../DeleteAllDataSection', () => ({ DeleteAllDataSection: () => <div>delete all data</div> }))
 
 describe('SettingsTab', () => {
-  it('puts Culling models and the models in this app between the general settings and Lightroom write-back', () => {
+  it('puts Culling between the general settings and Lightroom write-back', () => {
     render(<SettingsTab />)
-    const order = ['catalog', 'stacks', 'culling models', 'models in this app', 'lightroom write-back'].map((t) =>
+    const order = ['catalog', 'stacks', 'culling models', 'lightroom write-back'].map((t) =>
       screen.getByText(t),
     )
     for (let i = 1; i < order.length; i++) {

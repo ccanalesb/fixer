@@ -104,8 +104,8 @@ describe('CullReviewTab: culling stages that cannot run', () => {
     usableSpy.mockResolvedValue(usable({ culling_profile: broken(problem, extra) }))
     renderTab()
     expect(await screen.findByText(text)).toBeInTheDocument()
-    expect(screen.getByText('Fix it in Settings → Culling models, or turn the culling profile off.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open Settings' })).toBeInTheDocument()
+    expect(screen.getByText('Fix it in Providers, or turn the culling profile off.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Providers' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Turn culling profile off' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: HEADING })).not.toBeInTheDocument()
   })
@@ -143,10 +143,19 @@ describe('CullReviewTab: culling stages that cannot run', () => {
     )
     renderTab()
     const warning = (await screen.findByText(text)).closest('[role="alert"]') as HTMLElement
-    expect(within(warning).getByRole('link', { name: 'Open Settings' })).toHaveAttribute(
-      'href',
-      '/processing?tab=settings#stage-score_forecast',
-    )
+    if (problem === 'no_questions') {
+      expect(within(warning).getByRole('link', { name: 'Open Settings' })).toHaveAttribute(
+        'href',
+        '/processing?tab=settings#stage-score_forecast',
+      )
+    } else if (problem === 'converting') {
+      expect(within(warning).getByRole('link', { name: 'View job' })).toHaveAttribute('href', '/processing?tab=jobs')
+    } else {
+      expect(within(warning).getByRole('link', { name: 'Open Providers' })).toHaveAttribute(
+        'href',
+        '/processing?tab=providers#task-score_forecast',
+      )
+    }
     expect(within(warning).getByRole('button', { name: 'Turn Score forecast off' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
   })

@@ -1,11 +1,15 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import {
   PROVIDERS_GROUP_OPENAI,
   PROVIDERS_GROUP_SYSTEM_ONE,
+  TASK_ASSIGNMENTS_HEADING,
+  THIS_APP_CARD_TITLE,
 } from '../../../constants/strings';
 import { ProvidersTab } from '../ProvidersTab';
+
+vi.mock('../../ui/ProviderModelSelect', () => ({ ProviderModelSelect: () => null }));
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -36,6 +40,27 @@ vi.mock('../../../services/api', async (importOriginal) => {
     CullingModelsAPI: {
       ...actual.CullingModelsAPI,
       get: mocks.cullingGet,
+      models: vi.fn().mockResolvedValue({ answers: true, models: [], error: null }),
+    },
+    CullingProfilesAPI: {
+      ...actual.CullingProfilesAPI,
+      getPipeline: vi.fn().mockResolvedValue({
+        version: 1,
+        config: {
+          culling_profiles_enabled: true,
+          culling_profiles_filter_enabled: true,
+          culling_profiles: [],
+          score_forecast: { enabled: true, threshold: 0.111, high_from_level: 8, excused_at: 0.5 },
+        },
+      }),
+    },
+    AppModelsAPI: {
+      ...actual.AppModelsAPI,
+      list: vi.fn().mockResolvedValue({ models: [], picker_available: false }),
+    },
+    ScoreForecastQuestionsAPI: {
+      ...actual.ScoreForecastQuestionsAPI,
+      get: vi.fn().mockResolvedValue({ questions: [], version: 0, perspectives: [] }),
     },
     JobsAPI: {
       ...actual.JobsAPI,
@@ -91,8 +116,10 @@ describe('ProvidersTab', () => {
         <ProvidersTab />
       </MemoryRouter>,
     );
-    await waitFor(() => expect(screen.getByText(PROVIDERS_GROUP_OPENAI)).toBeInTheDocument());
+    expect(await screen.findByText(TASK_ASSIGNMENTS_HEADING, undefined, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText(PROVIDERS_GROUP_OPENAI)).toBeInTheDocument();
     expect(screen.getByText(PROVIDERS_GROUP_SYSTEM_ONE)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: THIS_APP_CARD_TITLE, level: 3 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ollama Available/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Studio Available/ })).toBeInTheDocument();
     expect(screen.getByText(/Used by Culling profile/)).toBeInTheDocument();
