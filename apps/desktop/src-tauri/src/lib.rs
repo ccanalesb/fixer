@@ -49,11 +49,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            show_main_window(app);
         }))
         .invoke_handler(tauri::generate_handler![
             get_app_port,
@@ -115,8 +111,8 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let RunEvent::ExitRequested { api, .. } = event {
+        .run(|app_handle, event| match event {
+            RunEvent::ExitRequested { api, .. } => {
                 if EXIT_APPROVED.load(Ordering::SeqCst) {
                     return;
                 }
@@ -126,7 +122,24 @@ pub fn run() {
                     handle_exit_request(app);
                 });
             }
+            // Closing the window on macOS only hides it; the Dock icon and opening the
+            // app again arrive here, not as a second instance.
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { has_visible_windows, .. } => {
+                if !has_visible_windows {
+                    show_main_window(app_handle);
+                }
+            }
+            _ => {}
         });
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
 }
 
 fn handle_exit_request(app: AppHandle) {
