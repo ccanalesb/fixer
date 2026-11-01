@@ -5,16 +5,12 @@ import {
   CULL_PROFILE_ADD_LEVEL,
   CULL_PROFILE_ADD_LEVEL_SET_BUTTON,
   CULL_PROFILE_ADD_LEVEL_TOP,
-  CULL_PROFILE_BAND_FAILS,
-  CULL_PROFILE_BAND_RANGE,
-  CULL_PROFILE_BAND_STRONG,
   CULL_PROFILE_CANCEL,
   CULL_PROFILE_CREATE,
   CULL_PROFILE_CREATED_SET,
   CULL_PROFILE_EMPTY_COUNT,
   CULL_PROFILE_EMPTY_LEVELS,
   CULL_PROFILE_EMPTY_PLACEHOLDER,
-  CULL_PROFILE_FAILS_AT,
   CULL_PROFILE_FILL_ALL,
   CULL_PROFILE_INSERT_ABOVE,
   CULL_PROFILE_INSERT_BETWEEN,
@@ -40,7 +36,6 @@ import {
   CULL_PROFILE_REMOVE_SET,
   CULL_PROFILE_REMOVE_SET_BODY,
   CULL_PROFILE_REMOVE_SET_TITLE,
-  CULL_PROFILE_STRONG_AT,
 } from '../../constants/strings'
 import { EmptyDot, Segmented } from './Segmented'
 import {
@@ -54,7 +49,6 @@ import {
   newLevelSetProblem,
   removeLevel,
   removeLevelSet,
-  setBands,
   setLevelText,
   type ProfileDraft,
 } from './profileDraft'
@@ -103,10 +97,6 @@ export function CullingProfileLevelsFields<T extends ProfileDraft>({
     setConfirmRemoveSet(false)
     setStatus('')
   }
-  const updateBand = (key: 'fails_at_most' | 'strong_at_least', value: string) => {
-    if (!bands) return
-    setDraft((d) => setBands(d, set.id, { ...bands, [key]: Number.parseInt(value, 10) || 0 }))
-  }
   const addFromForm = () => {
     if (!form || !formReady) return
     setDraft((d) => insertLevel(d, set.id, form.at, form.texts))
@@ -133,9 +123,6 @@ export function CullingProfileLevelsFields<T extends ProfileDraft>({
     setConfirmRemoveSet(false)
     setStatus(CULL_PROFILE_REMOVED_SET(id))
   }
-
-  const failsTo = bands ? Math.min(bands.fails_at_most, n) : 0
-  const strongFrom = bands?.strong_at_least ?? n + 1
 
   return (
     <div className="space-y-3">
@@ -228,39 +215,6 @@ export function CullingProfileLevelsFields<T extends ProfileDraft>({
               {CULL_PROFILE_CANCEL}
             </Button>
           </div>
-        </div>
-      ) : null}
-
-      {bands ? (
-        <div>
-          <div className="flex flex-wrap gap-4 text-xs">
-            <label>
-              {CULL_PROFILE_FAILS_AT} ≤{' '}
-              <input
-                type="number"
-                className={NUM}
-                min={1}
-                max={n}
-                value={bands.fails_at_most}
-                onChange={(e) => updateBand('fails_at_most', e.target.value)}
-              />
-            </label>
-            <label>
-              {CULL_PROFILE_STRONG_AT} ≥{' '}
-              <input
-                type="number"
-                className={NUM}
-                min={1}
-                max={n}
-                value={bands.strong_at_least}
-                onChange={(e) => updateBand('strong_at_least', e.target.value)}
-              />
-            </label>
-          </div>
-          <p className="text-xs text-text-secondary mt-1">
-            <b className="text-warning">{CULL_PROFILE_BAND_FAILS}</b> = {CULL_PROFILE_BAND_RANGE(1, failsTo)} ·{' '}
-            <b className="text-success">{CULL_PROFILE_BAND_STRONG}</b> = {CULL_PROFILE_BAND_RANGE(strongFrom, n)}
-          </p>
         </div>
       ) : null}
 

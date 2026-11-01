@@ -139,18 +139,18 @@ export function bandProblems(draft: ProfileDraft): { setId: string; message: str
     const b = draft.rule.level_sets[set.id]
     const n = levelCount(draft, set.id)
     if (!b) {
-      out.push({ setId: set.id, message: `Level set ${set.id} has no fails/strong bands.` })
+      out.push({ setId: set.id, message: `The ${set.id}-level scale has no low and high levels.` })
       continue
     }
-    if (b.fails_at_most < 1) out.push({ setId: set.id, message: `Level set ${set.id}: fails at must be at least 1.` })
+    if (b.fails_at_most < 1) out.push({ setId: set.id, message: `${set.id}-level scale: at least level 1 must count as low.` })
     if (b.strong_at_least > n) {
       out.push({
         setId: set.id,
-        message: `Level set ${set.id}: strong at ≥ ${b.strong_at_least} but there are only ${n} levels — nothing can be strong.`,
+        message: `${set.id}-level scale: high starts at level ${b.strong_at_least} but there are only ${n} levels — nothing can be high.`,
       })
     }
     if (b.fails_at_most >= b.strong_at_least) {
-      out.push({ setId: set.id, message: `Level set ${set.id}: fails and strong overlap.` })
+      out.push({ setId: set.id, message: `${set.id}-level scale: low and high overlap.` })
     }
   }
   return out

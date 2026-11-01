@@ -1,6 +1,6 @@
 /**
  * Structural checks on a culling profile: every level set has the same scale for
- * every dimension, and its fails/strong bands fit that scale.
+ * every dimension, and what counts as low and high fits that scale.
  */
 import type { ProfileValidationError } from './profile-validate.js';
 import type { ProfileDefinition, ProfileRule } from './types.js';
@@ -53,20 +53,20 @@ export function validateProfileShape(
     }
     const bands = rule.level_sets[set.id];
     if (!bands) {
-      errors.push({ field: bandsField(set.id), message: `Level set ${set.id} has no fails/strong bands.` });
+      errors.push({ field: bandsField(set.id), message: `The ${set.id}-level scale has no low and high levels.` });
       continue;
     }
     if (bands.fails_at_most < 1) {
-      errors.push({ field: bandsField(set.id), message: `Level set ${set.id}: fails at must be at least 1.` });
+      errors.push({ field: bandsField(set.id), message: `${set.id}-level scale: at least level 1 must count as low.` });
     }
     if (bands.strong_at_least > n) {
       errors.push({
         field: bandsField(set.id),
-        message: `Level set ${set.id}: strong at ≥ ${bands.strong_at_least} but there are only ${n} levels — nothing can be strong.`,
+        message: `${set.id}-level scale: high starts at level ${bands.strong_at_least} but there are only ${n} levels — nothing can be high.`,
       });
     }
     if (bands.fails_at_most >= bands.strong_at_least) {
-      errors.push({ field: bandsField(set.id), message: `Level set ${set.id}: fails and strong overlap.` });
+      errors.push({ field: bandsField(set.id), message: `${set.id}-level scale: low and high overlap.` });
     }
   }
   for (const id of Object.keys(rule.level_sets)) {

@@ -63,7 +63,7 @@ describe('profileDraft', () => {
     expect(bandProblems(draft)).toEqual([])
     const shrunk = removeLevel(draft, '3', 2)
     expect(bandProblems(shrunk).map((p) => p.message)).toEqual([
-      'Level set 3: strong at ≥ 3 but there are only 2 levels — nothing can be strong.',
+      '3-level scale: high starts at level 3 but there are only 2 levels — nothing can be high.',
     ])
   })
 })
