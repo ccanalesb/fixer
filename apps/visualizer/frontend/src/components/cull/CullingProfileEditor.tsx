@@ -183,40 +183,45 @@ export function CullingProfileEditor({
         ) : null}
       </div>
 
-      <p className="text-text-secondary text-xs">{CULL_RULE_SAVE_NOTE}</p>
+      {tab === 'rule' ? <p className="text-text-secondary text-xs">{CULL_RULE_SAVE_NOTE}</p> : null}
       {impact ? (
         <p className="text-xs text-warning">{CULL_PROFILE_TEXT_SAVE_IMPACT(impact.photos, impact.hours_estimate)}</p>
       ) : null}
       {redecidedNote()}
 
       <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={definitionChanged || bandsBad}
-          onClick={() => setConfirming('rule')}
-        >
-          {CULL_SAVE}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={!definitionChanged || definitionBlocked}
-          onClick={() => void saveDefinition('save_only')}
-        >
-          {CULL_SAVE_ONLY}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="primary"
-          disabled={!definitionChanged || definitionBlocked}
-          onClick={() => void saveDefinition('save_and_queue_cull')}
-        >
-          {CULL_SAVE_AND_QUEUE}
-        </Button>
+        {tab === 'rule' ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            disabled={definitionChanged || bandsBad}
+            onClick={() => setConfirming('rule')}
+          >
+            {CULL_SAVE}
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!definitionChanged || definitionBlocked}
+              onClick={() => void saveDefinition('save_only')}
+            >
+              {CULL_SAVE_ONLY}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              disabled={!definitionChanged || definitionBlocked}
+              onClick={() => void saveDefinition('save_and_queue_cull')}
+            >
+              {CULL_SAVE_AND_QUEUE}
+            </Button>
+          </>
+        )}
         <Button
           type="button"
           size="sm"

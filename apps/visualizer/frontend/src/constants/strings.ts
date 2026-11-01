@@ -768,7 +768,7 @@ export const CULL_PROFILES_SECTION = 'Culling profiles'
 export const CULL_ADD_PROFILE = 'Add profile'
 export const CULL_DUPLICATE = 'Duplicate'
 export const CULL_NOT_MEASURED = 'Not measured against AI scores'
-export const CULL_SAVE = 'Save'
+export const CULL_SAVE = 'Save and apply'
 export const CULL_SAVE_ONLY = 'Save only'
 export const CULL_SAVE_AND_QUEUE = 'Save and queue culling job'
 export const CULL_RULE_SAVE_NOTE =
@@ -787,13 +787,24 @@ export const CULL_MODAL_PREV = 'Prev'
 export const CULL_MODAL_NEXT = 'Next'
 export const CULL_PROFILE_MODEL = 'Model'
 export const CULL_PROFILE_ADD_LEVEL = 'Add level'
-export const CULL_PROFILE_FAILS_AT = 'fails at'
-export const CULL_PROFILE_STRONG_AT = 'strong at'
-export const CULL_PROFILE_COMBINE_EVERY = 'Filter when every set filters'
-export const CULL_PROFILE_COMBINE_ANY = 'Filter when any set filters'
-export const CULL_PROFILE_RULE_ALL_FAIL = 'All of these fail'
-export const CULL_PROFILE_RULE_N_FAIL = 'N or more fail unless one is strong'
-export const CULL_PROFILE_RULE_MEAN = 'The average fails'
+export const CULL_RULE_SENTENCE_START = 'Set a photo aside when'
+export const CULL_RULE_SUBJECT_ARIA = 'Which aspects score low'
+export const CULL_RULE_SUBJECT_N = (n: number, total: number) =>
+  n === 1 ? 'any aspect scores' : n >= total ? `all ${total} aspects score` : `${n} or more aspects score`
+export const CULL_RULE_SUBJECT_THESE = 'these aspects all score'
+export const CULL_RULE_SUBJECT_AVERAGE = 'the average of the aspects scores'
+export const CULL_RULE_LOW = 'low'
+export const CULL_RULE_HIGH = 'high'
+export const CULL_RULE_UNLESS_HIGH = 'unless one scores high'
+export const CULL_RULE_ON = 'on'
+export const CULL_RULE_COMBINE_ARIA = 'Which scales'
+export const CULL_RULE_SCALE_EITHER = 'either scale'
+export const CULL_RULE_SCALE_BOTH = 'both scales'
+export const CULL_RULE_WHAT_COUNTS = 'What counts as'
+export const CULL_RULE_MOVE_HINT = 'click a level to move the line'
+export const CULL_RULE_SCALE = (levels: number) => `${levels}-level scale`
+export const CULL_RULE_LEVEL_ARIA = (level: number, levels: number, band: string | null) =>
+  `Level ${level} of ${levels}${band ? `: ${band}` : ''}`
 export const CULL_PROFILE_UNMEASURED_HINT =
   'Not measured against AI scores — check what it filters in Processing → Culling.'
 export const CULL_PROFILE_TEXT_SAVE_IMPACT = (photos: number, hours: number) =>
@@ -817,9 +828,6 @@ export const CULL_PROFILE_LEVEL_SET = 'Level set'
 export const CULL_PROFILE_LEVEL_COUNT = (n: number) => `${n} levels`
 export const CULL_PROFILE_LEVEL = (n: number) => `Level ${n}`
 export const CULL_PROFILE_EMPTY_COUNT = (n: number) => `${n} empty`
-export const CULL_PROFILE_BAND_FAILS = 'fails'
-export const CULL_PROFILE_BAND_STRONG = 'strong'
-export const CULL_PROFILE_BAND_RANGE = (from: number, to: number) => (from > to ? 'no level' : `levels ${from}–${to}`)
 export const CULL_PROFILE_ADD_LEVEL_TOP = '+ Add level at the top'
 export const CULL_PROFILE_INSERT_HINT = 'or hover between two levels to insert'
 export const CULL_PROFILE_INSERT_HERE = '+ insert level here'
@@ -852,13 +860,11 @@ export const CULL_PROFILE_REMOVE_SET = (id: string) => `Remove set ${id}`
 export const CULL_PROFILE_LAST_SET = 'The last level set cannot be removed'
 export const CULL_PROFILE_REMOVE_SET_TITLE = (id: string) => `Remove level set ${id}?`
 export const CULL_PROFILE_REMOVE_SET_BODY = (dims: number) =>
-  `Its level texts for all ${dims} dimensions and its fails/strong bands are removed from the profile.`
+  `Its level texts for all ${dims} dimensions and what counts as low and high on it are removed from the profile.`
 export const CULL_PROFILE_REMOVE = 'Remove'
 export const CULL_PROFILE_REMOVED_SET = (id: string) => `Removed level set ${id}.`
-export const CULL_PROFILE_FILTER_RULE = 'Filter rule'
-export const CULL_PROFILE_COMBINE = 'Combine level sets'
 export const CULL_PROFILE_DEFINITION_CHANGED =
-  'Text or levels changed: the model has to answer again, so only “Save only” / “Save and queue culling job” apply.'
+  'Text or levels changed: the model has to answer again. Save them from Dimensions or Levels with “Save only” or “Save and queue culling job”.'
 
 // Lightroom Classic write-back
 export const LR_WRITEBACK_SECTION = 'Lightroom Classic write-back'

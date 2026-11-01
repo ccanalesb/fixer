@@ -38,10 +38,10 @@ describe('validateProfileShape', () => {
   it('flags strong past the top level and overlapping bands', () => {
     const tooHigh = validateProfileShape(definition(full), rule(1, 4), { requireText: true });
     expect(tooHigh.map((e) => e.message)).toEqual([
-      'Level set 3: strong at ≥ 4 but there are only 3 levels — nothing can be strong.',
+      '3-level scale: high starts at level 4 but there are only 3 levels — nothing can be high.',
     ]);
     const overlap = validateProfileShape(definition(full), rule(2, 2), { requireText: true });
-    expect(overlap.map((e) => e.message)).toEqual(['Level set 3: fails and strong overlap.']);
+    expect(overlap.map((e) => e.message)).toEqual(['3-level scale: low and high overlap.']);
   });
 
   it('flags missing bands and bands for a set that does not exist', () => {

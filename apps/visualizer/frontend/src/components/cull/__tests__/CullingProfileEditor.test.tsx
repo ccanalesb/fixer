@@ -12,7 +12,6 @@ import {
   CULL_PROFILE_DEACTIVATE,
   CULL_PROFILE_DEACTIVATE_CONFIRM,
   CULL_PROFILE_DEACTIVATE_CONFIRM_TITLE,
-  CULL_PROFILE_FILTER_RULE,
   CULL_PROFILE_QUESTION,
   CULL_PROFILE_REMOVE,
   CULL_PROFILE_REMOVE_SET,
@@ -22,7 +21,12 @@ import {
   CULL_SAVE,
   CULL_RULE_SAVE_CONFIRM,
   CULL_RULE_SAVE_CONFIRM_TITLE,
+  CULL_SAVE_AND_QUEUE,
   CULL_SAVE_ONLY,
+  CULL_RULE_COMBINE_ARIA,
+  CULL_RULE_LEVEL_ARIA,
+  CULL_RULE_SUBJECT_ARIA,
+  CULL_RULE_UNLESS_HIGH,
   CULLING_CANCEL,
   CULLING_MODELS_SAVED,
   CULLING_MODELS_SAVED_JOB_WAITING,
@@ -77,6 +81,7 @@ const baseProfile = {
 const editQuestion = () =>
   fireEvent.change(screen.getAllByLabelText(CULL_PROFILE_QUESTION)[0]!, { target: { value: 'changed' } })
 const openLevels = () => fireEvent.click(screen.getByRole('tab', { name: CULL_PROFILE_TAB_LEVELS }))
+const openRule = () => fireEvent.click(screen.getByRole('tab', { name: CULL_PROFILE_TAB_RULE }))
 
 describe('CullingProfileEditor', () => {
   beforeEach(() => {
@@ -96,7 +101,6 @@ describe('CullingProfileEditor', () => {
     render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     expect(screen.getByRole('button', { name: CULL_SAVE_ONLY })).toBeDisabled()
     editQuestion()
-    expect(screen.getByRole('button', { name: CULL_SAVE })).toBeDisabled()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_ONLY }))
     })
@@ -108,8 +112,8 @@ describe('CullingProfileEditor', () => {
 
   it('the Rule tab has no Score forecast threshold: it lives in Settings → Culling models', () => {
     render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
-    fireEvent.click(screen.getByRole('tab', { name: CULL_PROFILE_TAB_RULE }))
-    expect(screen.getByText(CULL_PROFILE_FILTER_RULE)).toBeInTheDocument()
+    openRule()
+    expect(screen.getByRole('combobox', { name: CULL_RULE_SUBJECT_ARIA })).toBeInTheDocument()
     expect(screen.queryByText(/score forecast/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /advanced/i })).not.toBeInTheDocument()
   })
@@ -206,6 +210,7 @@ describe('CullingProfileEditor', () => {
 
   it('asks before saving the rule; Cancel saves nothing', () => {
     renderInRouter()
+    openRule()
     fireEvent.click(screen.getByRole('button', { name: CULL_SAVE }))
     expect(within(dialog()).getByText(CULL_RULE_SAVE_CONFIRM_TITLE)).toBeInTheDocument()
     fireEvent.click(within(dialog()).getByRole('button', { name: CULLING_CANCEL }))
@@ -215,6 +220,7 @@ describe('CullingProfileEditor', () => {
 
   it('saves the rule on confirm and says the re-decide job is queued', async () => {
     renderInRouter()
+    openRule()
     fireEvent.click(screen.getByRole('button', { name: CULL_SAVE }))
     await act(async () => {
       fireEvent.click(within(dialog()).getByRole('button', { name: CULL_RULE_SAVE_CONFIRM }))
@@ -237,5 +243,48 @@ describe('CullingProfileEditor', () => {
     expect(patch).toHaveBeenCalledWith('default', { active: false })
     expect(screen.getByText(CULLING_MODELS_SAVED_JOB_WAITING)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: CULL_PROFILE_ACTIVATE })).toBeInTheDocument()
+  })
+
+  it('offers Save and apply on the Rule tab only, and the text saves on the others', () => {
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    expect(screen.queryByRole('button', { name: CULL_SAVE })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: CULL_SAVE_AND_QUEUE })).toBeInTheDocument()
+    openRule()
+    expect(screen.getByRole('button', { name: CULL_SAVE })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: CULL_SAVE_ONLY })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: CULL_SAVE_AND_QUEUE })).not.toBeInTheDocument()
+  })
+
+  it('writes the rule as a sentence and saves the choice', async () => {
+    renderInRouter()
+    openRule()
+    expect(screen.queryByText(new RegExp(CULL_RULE_UNLESS_HIGH))).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: CULL_RULE_COMBINE_ARIA })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: CULL_RULE_SUBJECT_ARIA }), { target: { value: 'n2' } })
+    expect(screen.getByText(new RegExp(CULL_RULE_UNLESS_HIGH))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: CULL_SAVE }))
+    await act(async () => {
+      fireEvent.click(within(dialog()).getByRole('button', { name: CULL_RULE_SAVE_CONFIRM }))
+    })
+    expect(saveRule.mock.calls[0]![1]).toMatchObject({ filter_rule: { type: 'n_fail_unless_strong', n: 2 } })
+  })
+
+  it('moves where low ends by clicking a level on the scale', async () => {
+    renderInRouter()
+    openRule()
+    fireEvent.click(screen.getByRole('button', { name: CULL_RULE_LEVEL_ARIA(3, 5, null) }))
+    expect(screen.getByRole('button', { name: CULL_RULE_LEVEL_ARIA(3, 5, 'low') })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: CULL_SAVE }))
+    await act(async () => {
+      fireEvent.click(within(dialog()).getByRole('button', { name: CULL_RULE_SAVE_CONFIRM }))
+    })
+    expect(saveRule.mock.calls[0]![1]).toMatchObject({ level_sets: { '5': { fails_at_most: 3, strong_at_least: 4 } } })
+  })
+
+  it('keeps low and high out of the Levels tab', () => {
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    openLevels()
+    expect(screen.queryByRole('spinbutton', { name: /fails|strong/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: CULL_RULE_LEVEL_ARIA(1, 5, 'low') })).not.toBeInTheDocument()
   })
 })
