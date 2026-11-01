@@ -69,9 +69,7 @@ export function CullingProfileRuleFields({
       const next =
         level <= bands.fails_at_most + 1 && level < bands.strong_at_least
           ? { ...bands, fails_at_most: level === bands.fails_at_most ? Math.max(1, level - 1) : level }
-          : usesHigh
-            ? { ...bands, strong_at_least: level }
-            : bands
+          : { ...bands, strong_at_least: level }
       return setBands({ ...draft, rule: r }, setId, next).rule
     })
 
@@ -145,13 +143,7 @@ export function CullingProfileRuleFields({
       <div className="space-y-2">
         <div className="text-text-secondary">
           {CULL_RULE_WHAT_COUNTS}{' '}
-          <b className="text-warning">{CULL_RULE_LOW}</b>
-          {usesHigh ? (
-            <>
-              {' '}
-              and <b className="text-success">{CULL_RULE_HIGH}</b>
-            </>
-          ) : null}
+          <b className="text-warning">{CULL_RULE_LOW}</b> and <b className="text-success">{CULL_RULE_HIGH}</b>
           <span className="text-xs text-text-tertiary"> · {CULL_RULE_MOVE_HINT}</span>
         </div>
         {sets.map((s) => {
@@ -164,7 +156,7 @@ export function CullingProfileRuleFields({
               <div className="flex gap-0.5">
                 {Array.from({ length: n }, (_, i) => i + 1).map((level) => {
                   const low = level <= bands.fails_at_most
-                  const high = usesHigh && level >= bands.strong_at_least
+                  const high = level >= bands.strong_at_least
                   const band = low ? CULL_RULE_LOW : high ? CULL_RULE_HIGH : null
                   return (
                     <button

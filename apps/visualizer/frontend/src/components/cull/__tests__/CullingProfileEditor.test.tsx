@@ -281,6 +281,14 @@ describe('CullingProfileEditor', () => {
     expect(saveRule.mock.calls[0]![1]).toMatchObject({ level_sets: { '5': { fails_at_most: 3, strong_at_least: 4 } } })
   })
 
+  it('shows and moves where high starts even when the rule does not use it', () => {
+    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    openRule()
+    expect(screen.getByRole('button', { name: CULL_RULE_LEVEL_ARIA(4, 5, 'high') })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: CULL_RULE_LEVEL_ARIA(5, 5, 'high') }))
+    expect(screen.getByRole('button', { name: CULL_RULE_LEVEL_ARIA(4, 5, null) })).toBeInTheDocument()
+  })
+
   it('keeps low and high out of the Levels tab', () => {
     render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
     openLevels()
