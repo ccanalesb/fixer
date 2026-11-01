@@ -402,12 +402,15 @@ describe('POST /api/jobs/', () => {
     expect(withDb((db) => countJobs(db))).toBe(0);
   });
 
-  it('allows the one job type that does not need the catalog', async () => {
+  it('refuses frame substance without the catalog, which its cache check reads', async () => {
     process.env.LIBRARY_DB = join(dir, 'nope.db');
-    // batch_frame_substance reads the vision cache, not the catalog.
-    expect(catalogRequiringJobTypes().has('batch_frame_substance')).toBe(false);
+    expect(catalogRequiringJobTypes().has('batch_frame_substance')).toBe(true);
     const res = await send('POST', '/api/jobs/', { type: 'batch_frame_substance' });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(422);
+  });
+
+  it('allows a job type that does not need the catalog', () => {
+    expect(catalogRequiringJobTypes().has('app_model_install')).toBe(false);
   });
 });
 
@@ -535,7 +538,8 @@ describe('GET /api/jobs/health', () => {
     expect(body.catalog_available).toBe(true);
     expect(body.library_db.source).toBe('env');
     expect(body.jobs_requiring_catalog).toContain('catalog_sync');
-    expect(body.jobs_requiring_catalog).not.toContain('batch_frame_substance');
+    expect(body.jobs_requiring_catalog).toContain('batch_frame_substance');
+    expect(body.jobs_requiring_catalog).not.toContain('app_model_install');
     // Sorted, so the UI can render it without reordering.
     expect([...body.jobs_requiring_catalog].sort()).toEqual(body.jobs_requiring_catalog);
   });

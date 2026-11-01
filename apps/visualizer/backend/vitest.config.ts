@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    setupFiles: ['./tests/setup/catalog-cache-check.ts'],
     // Windows runners hit SQLite file-lock contention when Vitest files run in parallel,
     // and building an on-disk library fixture per test can take over 30 s there.
     ...(process.platform === 'win32'

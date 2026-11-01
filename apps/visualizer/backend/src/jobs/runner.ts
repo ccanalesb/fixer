@@ -44,6 +44,12 @@ export class JobRunner {
    */
   private readonly lastProgressLog = new Map<string, string>();
 
+  /**
+   * Where a job's own 0–100 starts on the bar, once something ran before it in the
+   * same job (the catalog cache check).
+   */
+  private readonly progressFloor = new Map<string, number>();
+
   constructor(db: Db, emitProgress: EmitProgress = () => {}) {
     this.db = db;
     this.emitProgress = emitProgress;
@@ -82,17 +88,25 @@ export class JobRunner {
     if (!row || row.status === 'cancelled') return false;
     this.activeJobs.set(jobId, { cancelled: false });
     this.lastProgressLog.delete(jobId);
+    this.progressFloor.delete(jobId);
     updateJobStatus(this.db, jobId, 'running', { progress: 0, currentStep: 'Starting...' });
     addJobLog(this.db, jobId, 'info', `Job ${jobType} started`);
     return true;
   }
 
+  /** Map the rest of the job's progress onto `floor`–100 of the bar. */
+  setProgressFloor(jobId: string, floor: number): void {
+    this.progressFloor.set(jobId, floor);
+  }
+
   /** Update progress. A no-op once the job is cancelled or already finished. */
-  updateProgress(jobId: string, progress: number, currentStep: string): void {
+  updateProgress(jobId: string, rawProgress: number, currentStep: string): void {
     if (this.isCancelled(jobId)) return;
     const row = getJob(this.db, jobId, { logsLimit: 0 });
     if (row && (row.status === 'completed' || row.status === 'cancelled')) return;
 
+    const floor = this.progressFloor.get(jobId) ?? 0;
+    const progress = Math.trunc(floor + ((100 - floor) * rawProgress) / 100);
     updateJobStatus(this.db, jobId, 'running', { progress, currentStep });
     const logKey = `${progress}\u0000${currentStep}`;
     if (this.lastProgressLog.get(jobId) !== logKey) {
@@ -159,6 +173,7 @@ export class JobRunner {
     updateJobField(this.db, jobId, 'result', result);
     this.db.prepare('UPDATE jobs SET error_severity = NULL WHERE id = ?').run(jobId);
     this.lastProgressLog.delete(jobId);
+    this.progressFloor.delete(jobId);
     this.clearCancelRegistration(jobId);
   }
 
@@ -179,6 +194,7 @@ export class JobRunner {
       .prepare('UPDATE jobs SET error = ?, error_severity = ? WHERE id = ?')
       .run(error, resolved, jobId);
     this.lastProgressLog.delete(jobId);
+    this.progressFloor.delete(jobId);
     this.clearCancelRegistration(jobId);
   }
 
@@ -203,6 +219,7 @@ export class JobRunner {
   clearCancelRegistration(jobId: string): void {
     this.activeJobs.delete(jobId);
     this.lastProgressLog.delete(jobId);
+    this.progressFloor.delete(jobId);
   }
 
   /** Set the cooperative cancel flag. Deliberately writes nothing to the DB. */

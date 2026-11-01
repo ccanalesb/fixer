@@ -168,6 +168,32 @@ describe('the catalog_cache_build handler', () => {
     expect(countOf('catalog_similarity_groups')).toBe(r.similarity.groups_created);
   });
 
+  it('completes on an empty catalog with a warning, leaving first run open', async () => {
+    makeFakeCatalog(lrcatPath, [], { rootPath: `${dir}/` });
+
+    const job = await runChain();
+
+    expect(job.status).toBe('completed');
+    expect(banners(job)).toContain(
+      '[catalog-cache-build] warning=empty_catalog The Lightroom catalog has no photos yet',
+    );
+    const firstRun = fx.query<{ c: number }>(
+      "SELECT COUNT(*) AS c FROM library_meta WHERE key = 'first_catalog_import_completed'",
+    );
+    expect(Number(firstRun[0]!.c)).toBe(0);
+  });
+
+  it('marks first run done once the catalog has photos', async () => {
+    await seedCatalogBursts();
+
+    await runChain();
+
+    const firstRun = fx.query<{ c: number }>(
+      "SELECT COUNT(*) AS c FROM library_meta WHERE key = 'first_catalog_import_completed'",
+    );
+    expect(Number(firstRun[0]!.c)).toBe(1);
+  });
+
   it('records which knobs the run used, as a digest', async () => {
     await seedCatalogBursts();
 

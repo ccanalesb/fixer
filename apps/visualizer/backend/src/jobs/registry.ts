@@ -60,6 +60,12 @@ export interface JobType {
    * when `library.db` is missing, rather than accepting a job that cannot run.
    */
   requiresCatalog: boolean;
+  /**
+   * Whether the job works on photos, so the processor brings the catalog cache up
+   * to date first, inside the same job. False for the cache's own stages and for
+   * jobs that read no photo.
+   */
+  needsCatalogCache: boolean;
   /** Message logged when a resumed checkpoint no longer matches the inputs. */
   checkpointMismatchMessage: string | null;
 }
@@ -69,24 +75,28 @@ export const JOB_TYPES: readonly JobType[] = [
     name: 'batch_describe',
     handler: handleBatchDescribe,
     requiresCatalog: true,
+    needsCatalogCache: true,
     checkpointMismatchMessage: BATCH_DESCRIBE_CHECKPOINT_MISMATCH,
   },
   {
     name: 'single_describe',
     handler: handleSingleDescribe,
     requiresCatalog: true,
+    needsCatalogCache: true,
     checkpointMismatchMessage: null,
   },
   {
     name: 'single_score',
     handler: handleSingleScore,
     requiresCatalog: true,
+    needsCatalogCache: true,
     checkpointMismatchMessage: null,
   },
   {
     name: 'batch_score',
     handler: handleBatchScore,
     requiresCatalog: true,
+    needsCatalogCache: true,
     checkpointMismatchMessage: BATCH_SCORE_CHECKPOINT_MISMATCH,
   },
   {
@@ -95,61 +105,71 @@ export const JOB_TYPES: readonly JobType[] = [
     requiresCatalog: true,
     // Null because the composite has two checkpoints, not one: each stage logs its
     // own mismatch message, which this single field cannot hold.
+    needsCatalogCache: true,
     checkpointMismatchMessage: null,
   },
   {
     name: 'batch_stack_detect',
     handler: handleBatchStackDetect,
     requiresCatalog: true,
+    needsCatalogCache: false,
     checkpointMismatchMessage: BATCH_STACK_DETECT_CHECKPOINT_MISMATCH,
   },
   {
     name: 'batch_catalog_similarity',
     handler: handleBatchCatalogSimilarity,
     requiresCatalog: true,
+    needsCatalogCache: false,
     checkpointMismatchMessage: null,
   },
   {
     name: 'batch_embed_image',
     handler: handleBatchEmbedImage,
     requiresCatalog: true,
+    needsCatalogCache: false,
     checkpointMismatchMessage: BATCH_EMBED_IMAGE_CHECKPOINT_MISMATCH,
   },
   {
     name: 'batch_frame_substance',
     handler: handleBatchFrameSubstance,
-    // The only type that does not need the catalog: it reads the vision cache.
-    requiresCatalog: false,
+    // Reads only the vision cache, but the cache check before it needs the catalog.
+    requiresCatalog: true,
+    needsCatalogCache: true,
     checkpointMismatchMessage: null,
   },
   {
     name: BATCH_CULL_JOB_TYPE,
     handler: handleBatchCullPhotosBeforeScoring,
     requiresCatalog: true,
+    needsCatalogCache: true,
     checkpointMismatchMessage: BATCH_CULL_CHECKPOINT_MISMATCH,
   },
   {
     name: BATCH_REDECIDE_JOB_TYPE,
     handler: handleBatchRedecideCullVerdicts,
     requiresCatalog: true,
+    needsCatalogCache: false,
     checkpointMismatchMessage: null,
   },
   {
     name: LR_WRITEBACK_JOB_TYPE,
     handler: handleLrWriteback,
     requiresCatalog: true,
+    needsCatalogCache: false,
     checkpointMismatchMessage: null,
   },
   {
     name: 'catalog_sync',
     handler: handleCatalogSync,
     requiresCatalog: true,
+    needsCatalogCache: false,
     checkpointMismatchMessage: null,
   },
   {
     name: 'catalog_cache_build',
     handler: handleCatalogCacheBuild,
     requiresCatalog: true,
+    needsCatalogCache: false,
     checkpointMismatchMessage: null,
   },
   {
@@ -157,6 +177,7 @@ export const JOB_TYPES: readonly JobType[] = [
     handler: handleAppModelInstall,
     // Converts into `app_models_dir`; reads neither library.db nor the catalog.
     requiresCatalog: false,
+    needsCatalogCache: false,
     checkpointMismatchMessage: null,
   },
 ];

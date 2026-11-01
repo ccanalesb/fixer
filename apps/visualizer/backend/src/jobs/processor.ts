@@ -19,6 +19,7 @@ import { emitJobEvent, emitJobsRecovered } from '../websocket/events.js';
 import { compactJobPayload, type Job } from '../api/schemas/jobs.js';
 import { getJobLogStatsBulk } from '../db/jobs/jobs.js';
 import { JOB_TYPES_BY_NAME } from './registry.js';
+import { ensureCatalogCache } from './handlers/catalog-cache.js';
 import { JobRunner } from './runner.js';
 
 /** Emit at most one progress broadcast per job per second. */
@@ -162,7 +163,10 @@ export async function tick(db: Db, activeRunner: JobRunner): Promise<void> {
     try {
       if (entry) {
         try {
-          await entry.handler(activeRunner, jobId, job.metadata);
+          const cacheReady = entry.needsCatalogCache
+            ? await ensureCatalogCache(activeRunner, jobId, jobType)
+            : true;
+          if (cacheReady) await entry.handler(activeRunner, jobId, job.metadata);
         } catch (e) {
           // Only fail a job the handler left running: a handler that already
           // reported failure or completion has said its piece.

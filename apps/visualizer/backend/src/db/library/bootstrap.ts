@@ -40,6 +40,7 @@ export const SYNCED_CATALOG_META_KEY = 'synced_catalog_path';
 
 /** Set when the first `catalog_cache_build` finishes; the Insights setup screen reads it. */
 export const FIRST_CATALOG_IMPORT_META_KEY = 'first_catalog_import_completed';
+export const CATALOG_CACHE_BUILT_META_KEY = 'catalog_cache_built_at';
 
 /**
  * Descriptions and scores made from a vision-cache image that has since been
@@ -517,6 +518,16 @@ export function firstCatalogImportCompleted(db: Db): boolean {
 export function markFirstCatalogImportCompleted(db: Db): void {
   if (firstCatalogImportCompleted(db)) return;
   setLibraryMeta(db, FIRST_CATALOG_IMPORT_META_KEY, nowIsoUtc());
+}
+
+/** Whether the stack and similarity stages have run over the whole catalog at least once. */
+export function catalogCacheBuilt(db: Db): boolean {
+  return getLibraryMeta(db, CATALOG_CACHE_BUILT_META_KEY) !== null;
+}
+
+/** Record that every cache stage ran to the end, sync through similarity. */
+export function markCatalogCacheBuilt(db: Db): void {
+  setLibraryMeta(db, CATALOG_CACHE_BUILT_META_KEY, nowIsoUtc());
 }
 
 /**
