@@ -2,7 +2,7 @@
  * The catalog cache check every photo job runs first — real stages, CLIP stubbed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -54,6 +54,7 @@ async function seedCatalog(names: string[]): Promise<void> {
   rmSync(lrcatPath, { force: true });
   makeFakeCatalog(lrcatPath, files, { rootPath: `${dir}/` });
   for (const name of names) {
+    if (existsSync(join(photoDir, `${name}.jpg`))) continue;
     await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } } })
       .jpeg()
       .toFile(join(photoDir, `${name}.jpg`));
