@@ -119,6 +119,8 @@ The server emits `job_created` on job creation (`POST /jobs`); `useJobSocket` ow
 | **File** | Filename, date, path, dimensions, caption, Posted | Always |
 | **Stack** | The burst stack's members | The photo is in a stack of 2 or more |
 
+On a wide screen the modal is a large card of fixed size (92% of the height, up to 1400px wide), so switching tabs never resizes it; the photo takes 3/5 of the width. On mobile it fills the screen with the photo pinned on top. In both, only the tab content scrolls, so the photo stays in view.
+
 The modal opens on Culling in culling views, on File from the catalog grid and on AI elsewhere (`initialTab`). When the photo does not have that tab, it opens on the first tab it has. The chosen tab stays while you step through photos with Prev / Next.
 
 A tab is built only from the blocks in `image-view/detail-blocks.tsx`; a new section picks one of them and does not style its own:
