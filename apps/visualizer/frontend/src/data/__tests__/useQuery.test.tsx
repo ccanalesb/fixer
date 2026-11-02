@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteMatching } from '../cache'
+import { invalidateAll } from '../invalidate'
 import { useQuery } from '../useQuery'
 
 type Deferred<T> = {
@@ -95,5 +96,32 @@ describe('useQuery', () => {
     )
     expect(screen.queryByText('loading')).not.toBeInTheDocument()
     expect(screen.getByText('value:0')).toBeInTheDocument()
+  })
+
+  it('fetches again when its key is invalidated, keeping the old value until the new one arrives', async () => {
+    let n = 0
+    const next: Deferred<number>[] = [deferred<number>(), deferred<number>()]
+    function Counter() {
+      const value = useQuery(['demo', 'counter'] as const, () => next[n++]!.promise)
+      return <div>{`value:${value}`}</div>
+    }
+    render(
+      <Suspense fallback={<div>loading</div>}>
+        <Counter />
+      </Suspense>,
+    )
+    await act(async () => {
+      next[0]!.resolve(1)
+      await next[0]!.promise
+    })
+    expect(await screen.findByText('value:1')).toBeInTheDocument()
+
+    act(() => invalidateAll(['demo']))
+    expect(screen.getByText('value:1')).toBeInTheDocument()
+    await act(async () => {
+      next[1]!.resolve(2)
+      await next[1]!.promise
+    })
+    expect(await screen.findByText('value:2')).toBeInTheDocument()
   })
 })

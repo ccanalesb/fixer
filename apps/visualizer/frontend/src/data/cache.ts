@@ -8,6 +8,17 @@ export interface CacheEntry {
 }
 
 const store = new Map<string, CacheEntry>()
+const deleteListeners = new Set<(key: string) => void>()
+
+/** Called with each key removed from the cache; returns the unsubscribe. */
+export function onDelete(listener: (key: string) => void): () => void {
+  deleteListeners.add(listener)
+  return () => deleteListeners.delete(listener)
+}
+
+function notifyDeleted(keys: string[]): void {
+  for (const k of keys) for (const l of deleteListeners) l(k)
+}
 
 export function getEntry(key: string): CacheEntry | undefined {
   return store.get(key)
@@ -18,7 +29,7 @@ export function setEntry(key: string, entry: CacheEntry): void {
 }
 
 export function deleteEntry(key: string): void {
-  store.delete(key)
+  if (store.delete(key)) notifyDeleted([key])
 }
 
 export function deleteMatching(predicate: (key: string) => boolean): void {
@@ -29,6 +40,7 @@ export function deleteMatching(predicate: (key: string) => boolean): void {
   for (const k of keys) {
     store.delete(k)
   }
+  notifyDeleted(keys)
 }
 
 export function patchMatching(
