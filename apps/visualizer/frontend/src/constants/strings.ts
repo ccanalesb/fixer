@@ -36,10 +36,28 @@ export const DATE_NO_DATE = 'No date'
 export const DATE_ESTIMATED_SUFFIX = '(est.)'
 
 // Image details
-export const IMAGE_DETAILS_TITLE = 'Image Details'
-export const IMAGE_DETAILS_AI_DESCRIPTION = 'AI Description'
 export const IMAGE_DETAILS_DESCRIPTIVE_TECHNICAL = 'Descriptive & technical'
 export const IMAGE_DETAILS_PERSPECTIVE_ANALYSIS = 'Perspective analysis'
+export const IMAGE_DETAILS_TAB_CULLING = 'Culling'
+export const IMAGE_DETAILS_TAB_AI = 'AI'
+export const IMAGE_DETAILS_TAB_LIGHTROOM = 'Lightroom'
+export const IMAGE_DETAILS_TAB_FILE = 'File'
+export const IMAGE_DETAILS_TAB_STACK = (n: number) => `Stack · ${n}`
+export const IMAGE_DETAILS_FILE = 'File'
+export const IMAGE_DETAILS_POSTED = 'Posted'
+export const IMAGE_DETAILS_YES = 'Yes'
+export const IMAGE_DETAILS_NO = 'No'
+export const IMAGE_DETAILS_MODEL = 'Model'
+export const IMAGE_DETAILS_MODEL_DEFAULT = 'Default model'
+export const IMAGE_DETAILS_GENERATING_DESCRIPTION = 'Generating description…'
+export const IMAGE_DETAILS_GENERATE_DESCRIPTION = (exists: boolean) =>
+  exists ? 'Regenerate description' : 'Generate description'
+export const IMAGE_DETAILS_GENERATE_SCORES = (exists: boolean) =>
+  exists ? 'Regenerate scores' : 'Generate scores'
+export const IMAGE_DETAILS_PROFILE_READINGS = 'Profile readings'
+export const IMAGE_DETAILS_STACK_REPRESENTATIVE = 'Representative'
+export const IMAGE_DETAILS_STACK_SELECTED = (name: string) => `Selected: ${name}`
+export const IMAGE_DETAILS_STACK_MEMBER_ARIA = (name: string) => `Select ${name}`
 
 // Catalog image modal — critique scores (phase 06-03)
 export const SECTION_IMAGE_SCORES = 'Critique scores'
@@ -364,6 +382,8 @@ export const FRAME_SUBSTANCE_OVERRIDE_RESTORE = 'Restore to ranking'
 export const FRAME_SUBSTANCE_OVERRIDE_RESCORE_WARN =
   'Restoring this void frame will return it to ranking after the next scoring run.'
 export const FRAME_SUBSTANCE_RESTORED = 'Restored to ranking via your override.'
+export const FRAME_SUBSTANCE_CHIP = (verdict?: string | null) =>
+  verdict === 'illegible' ? 'Illegible frame' : 'Void frame'
 
 // Phase 06 — stack expand/collapse (STACK-03). On-demand similarity copy was removed in Phase 9 (SIM-02 pivoted to job-driven materialized groups).
 export const CATALOG_STACK_SHOW = 'Show stack'
@@ -764,6 +784,11 @@ export const CULL_PASS_YES = 'Yes, keep it'
 export const CULL_PASS_NO = "No, it shouldn't have passed"
 export const CULL_PASS_HINT = 'Your answer only tunes the culling profiles. The photo stays where it is.'
 export const CULL_PASSED = 'Passed culling'
+export const CULL_FILTERED = 'Filtered by culling'
+export const CULL_VERDICT_PASSED = 'Passed'
+export const CULL_VERDICT_FILTERED = 'Filtered'
+export const CULL_FILTERED_BY = (by: 'culling_profile' | 'score_forecast' | null) =>
+  by === 'score_forecast' ? 'Set aside by the Score forecast.' : by === 'culling_profile' ? 'Set aside by the culling profile.' : null
 export const CULL_PROFILES_SECTION = 'Culling profiles'
 export const CULL_ADD_PROFILE = 'Add profile'
 export const CULL_DUPLICATE = 'Duplicate'
@@ -908,6 +933,10 @@ export const LR_WRITEBACK_KEYWORDS = 'Keywords'
 export const LR_WRITEBACK_UNDO = 'Undo'
 export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
 export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom Classic after the app wrote it.'
+export const LR_WRITEBACK_APP_KEYWORDS = 'App keywords'
+export const LR_WRITEBACK_PICK = 'Pick'
+export const LR_WRITEBACK_UNDO_STARS_ROW = 'Stars written by the app'
+export const LR_WRITEBACK_UNDO_REJECT_ROW = 'Reject written by the app'
 export const LR_WRITEBACK_LOADING = 'Loading Lightroom Classic write-back…'
 
 // Processing → Settings → Culling models

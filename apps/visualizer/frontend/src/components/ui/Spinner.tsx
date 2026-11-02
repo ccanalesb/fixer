@@ -4,10 +4,7 @@ interface SpinnerProps {
   className?: string
 }
 
-/**
- * Small inline loading spinner. Extracted from `AIDescriptionSection`
- * so any surface can reuse the same SVG without duplicating the path.
- */
+/** Small inline loading spinner, shared so every surface uses the same SVG. */
 export function Spinner({ sizeClass = 'h-4 w-4', className = '' }: SpinnerProps) {
   return (
     <svg
