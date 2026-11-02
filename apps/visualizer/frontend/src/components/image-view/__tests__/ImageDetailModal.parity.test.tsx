@@ -121,7 +121,7 @@ async function openFrom(initial: ReturnType<typeof fromCatalogListRow>) {
 describe('ImageDetailModal — cross-entry parity', () => {
   beforeEach(() => {
     vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(SHARED_DETAIL)
-    // CatalogImageDetailSections fires these on mount; stub to avoid
+    // The tabs fire these on mount; stub to avoid
     // real network calls and isolate parity to the detail payload.
     vi.spyOn(ProvidersAPI, 'getDefaults').mockResolvedValue({
       description: { provider: null, model: null },

@@ -1,35 +1,34 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { CatalogImage, ImageView } from '../../services/api'
-import { ImagesAPI } from '../../services/api'
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import type { ImageView } from '../../services/api'
+import { CullAPI, ImagesAPI } from '../../services/api'
 import { useBodyScrollLock, useFocusTrap } from '../../hooks'
 import {
-  IMAGE_DETAILS_TITLE,
-  ACTION_CANCEL,
-  ACTION_UNDO,
-  CATALOG_STACK_SPLIT_OUT,
-  CATALOG_STACK_MAKE_REPRESENTATIVE,
-  CATALOG_STACK_MERGE_INTO,
-  CATALOG_STACK_MERGE_SOURCE_ARIA,
-  CATALOG_STACK_MERGE_PLACEHOLDER,
-  CATALOG_STACK_MERGE_RUN,
-  CATALOG_STACK_CONFIRM_SPLIT_TITLE,
-  CATALOG_STACK_CONFIRM_SPLIT_BODY,
-  CATALOG_STACK_CONFIRM_REP_TITLE,
-  CATALOG_STACK_CONFIRM_REP_BODY,
-  CATALOG_STACK_CONFIRM_MERGE_TITLE,
-  CATALOG_STACK_CONFIRM_MERGE_BODY,
-  CATALOG_STACK_TOAST_REP_UPDATED,
+  CULL_FILTERED,
+  CULL_MODAL_NEXT,
+  CULL_MODAL_PREV,
+  CULL_PASSED,
+  CULL_SENT_BY_HAND,
+  FRAME_SUBSTANCE_CHIP,
+  IMAGE_DETAILS_TAB_AI,
+  IMAGE_DETAILS_TAB_CULLING,
+  IMAGE_DETAILS_TAB_FILE,
+  IMAGE_DETAILS_TAB_LIGHTROOM,
+  IMAGE_DETAILS_TAB_STACK,
 } from '../../constants/strings'
 import { Button } from '../ui/Button/Button'
-import { ConfirmModalFrame, UndoToastBar, useUndoToast } from '../ui/ConfirmUndoAction'
-import { CatalogImageDetailSections } from './CatalogImageDetailSections'
-import { CullDetailSectionLoader } from '../cull/CullDetailSectionLoader'
-import { CULL_DETAIL_SECTION, CULL_MODAL_NEXT, CULL_MODAL_PREV } from '../../constants/strings'
+import { Badge } from '../ui/badges'
+import { TabNav, type TabNavItem } from '../ui/Tabs'
 import { ImageMetadataBadges, type PrimaryScoreSource } from './ImageMetadataBadges'
-import { ImageTile } from './ImageTile'
-import { fromCatalogListRow } from './adapters'
 import { ModalCloseButton } from './ModalCloseButton'
+import { AiTab } from './tabs/AiTab'
+import { CullingTab } from './tabs/CullingTab'
+import { FileTab } from './tabs/FileTab'
+import { LightroomTab } from './tabs/LightroomTab'
+import { StackTab } from './tabs/StackTab'
+import { frameHeldBack, frameSaysNothing, frameSubstanceQuery } from './tabs/frameSubstance'
 import { ErrorBoundary, ErrorState, invalidate, invalidateAll, useQuery } from '../../data'
+
+export type ImageDetailTab = 'culling' | 'ai' | 'lightroom' | 'file' | 'stack'
 
 interface ImageDetailModalProps {
   imageType: 'catalog'
@@ -44,8 +43,10 @@ interface ImageDetailModalProps {
   scorePerspectiveSlug?: string
   /** Optional content rendered above the detail body (e.g. Mirror standout). */
   contextSlot?: ReactNode
-  /** When set, loads `/api/cull/photos/{key}` and renders the culling section. */
+  /** When set, the Culling tab loads `/api/cull/photos/{key}` and shows the verdict. */
   showCullSection?: boolean
+  /** Tab to open on; falls back to the first tab the photo has. Defaults to Culling in culling views, else AI. */
+  initialTab?: ImageDetailTab
   /** Prev / next within a cull review or catalog list. */
   cullNav?: {
     keys: string[]
@@ -53,6 +54,62 @@ interface ImageDetailModalProps {
     onIndexChange: (index: number) => void
   }
   onClose: () => void
+}
+
+type DetailSource = Pick<ImageDetailModalProps, 'imageType' | 'imageKey' | 'scorePerspectiveSlug' | 'initialImage'>
+
+const detailKeyOf = ({ imageType, imageKey, scorePerspectiveSlug }: DetailSource) =>
+  ['images.detail', imageType, imageKey, scorePerspectiveSlug ?? ''] as const
+
+function useImageDetail({ imageType, imageKey, scorePerspectiveSlug, initialImage }: DetailSource) {
+  return useQuery(detailKeyOf({ imageType, imageKey, scorePerspectiveSlug }), () => {
+    if (imageType !== 'catalog') {
+      if (!initialImage) throw new Error('Instagram image detail is no longer available')
+      return Promise.resolve(initialImage)
+    }
+    return ImagesAPI.getImageDetail(
+      imageType,
+      imageKey,
+      scorePerspectiveSlug ? { score_perspective: scorePerspectiveSlug } : undefined,
+    )
+  })
+}
+
+function TitleText({ image, imageKey }: { image?: ImageView; imageKey: string }) {
+  return (
+    <>
+      {image?.filename ?? imageKey}
+      {image?.date_taken ? (
+        <span className="ml-2 text-xs font-normal text-text-tertiary">
+          {new Date(image.date_taken).toLocaleString()}
+        </span>
+      ) : null}
+    </>
+  )
+}
+
+function LoadedTitle(props: DetailSource) {
+  const image = useImageDetail(props)
+  return <TitleText image={image} imageKey={props.imageKey} />
+}
+
+function PhotoView({ imageType, imageKey, alt }: { imageType: 'catalog'; imageKey: string; alt: string }) {
+  return (
+    <div className="aspect-square overflow-hidden rounded-base bg-surface">
+      <img
+        src={`/api/images/${imageType}/${encodeURIComponent(imageKey)}/thumbnail`}
+        alt={alt}
+        className="h-full w-full object-contain"
+      />
+    </div>
+  )
+}
+
+function CullVerdictBadge({ imageKey }: { imageKey: string }) {
+  const detail = useQuery(['cull.detail', imageKey] as const, () => CullAPI.photoDetail(imageKey))
+  if (detail.sent_by_hand) return <Badge variant="accent">{CULL_SENT_BY_HAND}</Badge>
+  if (detail.verdict === 'passed') return <Badge variant="success">{CULL_PASSED}</Badge>
+  return <Badge variant="warning">{CULL_FILTERED}</Badge>
 }
 
 function ImageDetailModalFallback({
@@ -68,221 +125,15 @@ function ImageDetailModalFallback({
 }) {
   return (
     <div className="grid gap-6 p-6 md:grid-cols-2">
-      <div className="aspect-square overflow-hidden rounded-base bg-surface">
-        <img
-          src={`/api/images/${imageType}/${encodeURIComponent(imageKey)}/thumbnail`}
-          alt={initialImage?.filename ?? imageKey}
-          className="h-full w-full object-contain"
-        />
-      </div>
-
-      <div className="space-y-6">
+      <div className="space-y-4">
+        <PhotoView imageType={imageType} imageKey={imageKey} alt={initialImage?.filename ?? imageKey} />
         {initialImage ? (
           <ImageMetadataBadges image={initialImage} primaryScoreSource={primaryScoreSource} />
         ) : null}
-
-        <p className="text-sm text-text-tertiary" role="status" aria-live="polite">
-          Loading image details…
-        </p>
       </div>
-    </div>
-  )
-}
-
-type StackConfirmSpec = {
-  title: ReactNode
-  children: ReactNode
-  confirmLabel: string
-  confirmVariant: 'danger' | 'primary'
-  onConfirm: () => Promise<void>
-}
-
-/** Stack split / merge / representative (catalog detail). Loads members to validate multi-key stack. */
-function CatalogDetailStackEditing({
-  stackId,
-  onDataChanged,
-}: {
-  stackId: number
-  onDataChanged: () => void
-}) {
-  const filmstripRef = useRef<HTMLDivElement>(null)
-  const [members, setMembers] = useState<CatalogImage[] | null>(null)
-  const [mutating, setMutating] = useState(false)
-  const [mergeSourceId, setMergeSourceId] = useState('')
-  const [confirm, setConfirm] = useState<StackConfirmSpec | null>(null)
-  const { toast, offerUndo, runUndo } = useUndoToast()
-
-  useEffect(() => {
-    let cancelled = false
-    void ImagesAPI.getStackMembers(stackId)
-      .then((r) => {
-        if (!cancelled) setMembers(r.items)
-      })
-      .catch(() => {
-        if (!cancelled) setMembers([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [stackId])
-
-  async function refreshMembers() {
-    try {
-      const r = await ImagesAPI.getStackMembers(stackId)
-      setMembers(r.items)
-    } catch {
-      setMembers([])
-    }
-    onDataChanged()
-  }
-
-  async function runConfirmed(spec: StackConfirmSpec) {
-    setMutating(true)
-    try {
-      await spec.onConfirm()
-    } finally {
-      setMutating(false)
-      setConfirm(null)
-    }
-  }
-
-  if (!members || members.length < 2) return null
-
-  const hasRep = members.some((m) => m.is_stack_representative)
-
-  const openSplitConfirm = (memberKey: string) => {
-    setConfirm({
-      title: CATALOG_STACK_CONFIRM_SPLIT_TITLE,
-      children: <p className="text-sm text-text-secondary">{CATALOG_STACK_CONFIRM_SPLIT_BODY}</p>,
-      confirmLabel: CATALOG_STACK_SPLIT_OUT,
-      confirmVariant: 'danger',
-      onConfirm: async () => {
-        await ImagesAPI.splitStackMember(stackId, memberKey)
-        await refreshMembers()
-      },
-    })
-  }
-
-  const openRepConfirm = (memberKey: string) => {
-    const prevRep = members.find((m) => m.is_stack_representative)?.key
-    if (!prevRep || prevRep === memberKey) return
-    setConfirm({
-      title: CATALOG_STACK_CONFIRM_REP_TITLE,
-      children: <p className="text-sm text-text-secondary">{CATALOG_STACK_CONFIRM_REP_BODY}</p>,
-      confirmLabel: CATALOG_STACK_MAKE_REPRESENTATIVE,
-      confirmVariant: 'primary',
-      onConfirm: async () => {
-        await ImagesAPI.setStackRepresentative(stackId, memberKey)
-        await refreshMembers()
-        offerUndo(CATALOG_STACK_TOAST_REP_UPDATED, async () => {
-          await ImagesAPI.setStackRepresentative(stackId, prevRep)
-          await refreshMembers()
-        })
-      },
-    })
-  }
-
-  const openMergeConfirm = () => {
-    const sid = parseInt(mergeSourceId.trim(), 10)
-    if (!Number.isFinite(sid) || sid < 1 || sid === stackId) return
-    setConfirm({
-      title: CATALOG_STACK_CONFIRM_MERGE_TITLE,
-      children: <p className="text-sm text-text-secondary">{CATALOG_STACK_CONFIRM_MERGE_BODY}</p>,
-      confirmLabel: CATALOG_STACK_MERGE_RUN,
-      confirmVariant: 'danger',
-      onConfirm: async () => {
-        await ImagesAPI.mergeStacks(stackId, sid)
-        setMergeSourceId('')
-        onDataChanged()
-      },
-    })
-  }
-
-  return (
-    <div className="space-y-3 rounded-base border border-border bg-surface p-4">
-      <h3 className="text-sm font-semibold text-text">Burst stack</h3>
-      <div ref={filmstripRef} className="flex gap-2 overflow-x-auto pb-1">
-        {members.map((member) => (
-          <div key={member.key} className="w-[7.5rem] shrink-0 min-w-0 space-y-1">
-            <ImageTile
-              image={fromCatalogListRow(member)}
-              variant="strip"
-              primaryScoreSource="catalog"
-              scrollContainerRef={filmstripRef}
-              onClick={() => {}}
-              className="!w-full max-w-full"
-            />
-            <div className="flex flex-col gap-1">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                fullWidth
-                className="min-h-9 text-xs"
-                disabled={mutating}
-                onClick={() => openSplitConfirm(member.key)}
-              >
-                {CATALOG_STACK_SPLIT_OUT}
-              </Button>
-              {!member.is_stack_representative ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  fullWidth
-                  className="min-h-9 text-xs"
-                  disabled={mutating}
-                  onClick={() => openRepConfirm(member.key)}
-                >
-                  {CATALOG_STACK_MAKE_REPRESENTATIVE}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        ))}
-      </div>
-      {hasRep ? (
-        <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
-          <span className="w-full text-xs font-medium text-text-secondary">{CATALOG_STACK_MERGE_INTO}</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            aria-label={CATALOG_STACK_MERGE_SOURCE_ARIA}
-            placeholder={CATALOG_STACK_MERGE_PLACEHOLDER}
-            value={mergeSourceId}
-            disabled={mutating}
-            onChange={(e) => setMergeSourceId(e.target.value)}
-            className="h-9 min-w-[6rem] rounded-base border border-border bg-bg px-2 text-sm text-text"
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="min-h-9"
-            disabled={mutating || !mergeSourceId.trim()}
-            onClick={openMergeConfirm}
-          >
-            {CATALOG_STACK_MERGE_RUN}
-          </Button>
-        </div>
-      ) : null}
-
-      {confirm ? (
-        <ConfirmModalFrame
-          zIndexClass="z-[80]"
-          title={confirm.title}
-          confirmLabel={confirm.confirmLabel}
-          cancelLabel={ACTION_CANCEL}
-          confirmVariant={confirm.confirmVariant}
-          onConfirm={() => void runConfirmed(confirm)}
-          onCancel={() => setConfirm(null)}
-          busy={mutating}
-        >
-          {confirm.children}
-        </ConfirmModalFrame>
-      ) : null}
-
-      <UndoToastBar toast={toast} undoLabel={ACTION_UNDO} onUndo={() => void runUndo()} />
+      <p className="text-sm text-text-tertiary" role="status" aria-live="polite">
+        Loading image details…
+      </p>
     </div>
   )
 }
@@ -293,101 +144,94 @@ function ImageDetailModalBody({
   primaryScoreSource,
   scorePerspectiveSlug,
   initialImage,
-  showCullSection,
-}: Omit<ImageDetailModalProps, 'onClose' | 'cullNav' | 'contextSlot'>) {
-  const detailKey = useMemo(
-    () =>
-      [
-        'images.detail',
-        imageType,
-        imageKey,
-        scorePerspectiveSlug ?? '',
-      ] as const,
-    [imageType, imageKey, scorePerspectiveSlug],
-  )
-
-  const image = useQuery(detailKey, () => {
-    if (imageType !== 'catalog') {
-      if (!initialImage) {
-        throw new Error('Instagram image detail is no longer available')
-      }
-      return Promise.resolve(initialImage)
-    }
-    return ImagesAPI.getImageDetail(
-      imageType,
-      imageKey,
-      scorePerspectiveSlug ? { score_perspective: scorePerspectiveSlug } : undefined,
-    )
-  })
+  showCullSection = false,
+  tab,
+  onTabChange,
+}: DetailSource & {
+  primaryScoreSource: PrimaryScoreSource
+  showCullSection?: boolean
+  tab: ImageDetailTab
+  onTabChange: (tab: ImageDetailTab) => void
+}) {
+  const image = useImageDetail({ imageType, imageKey, scorePerspectiveSlug, initialImage })
+  const frame = useQuery(...frameSubstanceQuery(imageKey))
 
   const [postedOverride, setPostedOverride] = useState<boolean | null>(null)
   useEffect(() => {
     setPostedOverride(null)
   }, [imageKey])
+  const displayImage = postedOverride !== null ? { ...image, instagram_posted: postedOverride } : image
 
-  const displayImage =
-    postedOverride !== null && image
-      ? { ...image, instagram_posted: postedOverride }
-      : image
+  const handleDataChanged = useCallback(
+    () => invalidate(detailKeyOf({ imageType, imageKey, scorePerspectiveSlug })),
+    [imageType, imageKey, scorePerspectiveSlug],
+  )
 
-  const [, bump] = useState(0)
-  const handleDataChanged = useCallback(() => {
-    invalidate(detailKey)
-    bump((n) => n + 1)
-  }, [detailKey])
+  const stackId = image.stack_id != null ? Number(image.stack_id) : null
+  const stackSize = image.stack_member_count ?? 0
+  const hasStack = stackId != null && !Number.isNaN(stackId) && stackSize >= 2
 
-  const stackIdRaw = image.stack_id ?? initialImage?.stack_id
-  const stackId = stackIdRaw != null ? Number(stackIdRaw) : null
+  const tabs: (TabNavItem & { id: ImageDetailTab })[] = [
+    ...(showCullSection || !frameSaysNothing(frame)
+      ? [{ id: 'culling' as const, label: IMAGE_DETAILS_TAB_CULLING }]
+      : []),
+    { id: 'ai', label: IMAGE_DETAILS_TAB_AI },
+    { id: 'lightroom', label: IMAGE_DETAILS_TAB_LIGHTROOM },
+    { id: 'file', label: IMAGE_DETAILS_TAB_FILE },
+    ...(hasStack ? [{ id: 'stack' as const, label: IMAGE_DETAILS_TAB_STACK(stackSize) }] : []),
+  ]
+  const active = tabs.some((t) => t.id === tab) ? tab : tabs[0]!.id
+
+  const panel: Record<ImageDetailTab, () => ReactNode> = {
+    culling: () => (
+      <CullingTab imageKey={imageKey} showVerdict={showCullSection} onDataChanged={handleDataChanged} />
+    ),
+    ai: () => <AiTab imageKey={imageKey} onDataChanged={handleDataChanged} />,
+    lightroom: () => <LightroomTab image={displayImage} />,
+    file: () => <FileTab image={displayImage} onPostedChange={setPostedOverride} />,
+    stack: () =>
+      hasStack ? <StackTab stackId={stackId} imageKey={imageKey} onDataChanged={handleDataChanged} /> : null,
+  }
 
   return (
-    <>
-      <div className="grid gap-6 p-6 md:grid-cols-2">
-        <div className="aspect-square overflow-hidden rounded-base bg-surface">
-          <img
-            src={`/api/images/${imageType}/${encodeURIComponent(imageKey)}/thumbnail`}
-            alt={image?.filename ?? imageKey}
-            className="h-full w-full object-contain"
-          />
-        </div>
-
-        <div className="space-y-6">
+    <div className="grid gap-6 p-6 md:grid-cols-2">
+      <div className="space-y-4">
+        <PhotoView imageType={imageType} imageKey={imageKey} alt={image.filename ?? imageKey} />
+        <div className="flex flex-wrap items-center gap-2">
+          {showCullSection ? (
+            <ErrorBoundary resetKeys={[imageKey]} fallback={() => null}>
+              <Suspense fallback={null}>
+                <CullVerdictBadge imageKey={imageKey} />
+              </Suspense>
+            </ErrorBoundary>
+          ) : null}
+          {frameHeldBack(frame) ? <Badge variant="warning">{FRAME_SUBSTANCE_CHIP(frame.verdict)}</Badge> : null}
           <ImageMetadataBadges image={displayImage} primaryScoreSource={primaryScoreSource} />
-
-          {image.image_type === 'catalog' ? (
-            <CatalogImageDetailSections
-              image={displayImage}
-              onDataChanged={handleDataChanged}
-              onPostedChange={setPostedOverride}
-            />
-          ) : null}
-          {image.image_type === 'catalog' && stackId != null && !Number.isNaN(stackId) ? (
-            <CatalogDetailStackEditing
-              stackId={stackId}
-              onDataChanged={handleDataChanged}
-            />
-          ) : null}
-          {showCullSection && image.image_type === 'catalog' ? (
-            <Suspense
-              fallback={
-                <p className="mt-6 pt-6 border-t border-border text-sm text-text-secondary">
-                  {CULL_DETAIL_SECTION}
-                </p>
-              }
-            >
-              <CullDetailSectionLoader imageKey={imageKey} onMutated={handleDataChanged} />
-            </Suspense>
-          ) : null}
         </div>
       </div>
-    </>
+
+      <div className="min-w-0">
+        <TabNav tabs={tabs} activeTab={active} onTabChange={(id) => onTabChange(id as ImageDetailTab)} />
+        <div role="tabpanel" aria-labelledby={`tab-${active}`} className="mt-4 space-y-4">
+          <ErrorBoundary
+            resetKeys={[active, imageKey]}
+            fallback={({ error, reset }) => <ErrorState error={error} reset={reset} />}
+          >
+            <Suspense fallback={<p className="text-sm text-text-tertiary">Loading…</p>}>{panel[active]()}</Suspense>
+          </ErrorBoundary>
+        </div>
+      </div>
+    </div>
   )
 }
 
 /**
  * The single entry point for viewing any image in detail. Every tile in
  * the app opens this modal with just `{ imageType, imageKey }` so the
- * modal can re-fetch from the authoritative detail endpoint and avoid
- * the zero-score stubs the legacy modals relied on.
+ * modal can re-fetch from the authoritative detail endpoint.
+ *
+ * The photo and its badges stay on the left; everything else is a tab built
+ * from the blocks in `detail-blocks.tsx` (see "Image detail modal" in CONTEXT.md).
  *
  * Responsive (CONTEXT Q4):
  *   - `<md` (<768px): full-screen sheet at `100dvh`.
@@ -407,11 +251,14 @@ export function ImageDetailModal({
   scorePerspectiveSlug,
   contextSlot,
   showCullSection = false,
+  initialTab,
   cullNav,
   onClose,
 }: ImageDetailModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = `image-detail-modal-title-${imageKey.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+  const [tab, setTab] = useState<ImageDetailTab>(initialTab ?? (showCullSection ? 'culling' : 'ai'))
+  const source = { imageType, imageKey, scorePerspectiveSlug, initialImage }
 
   useBodyScrollLock(true)
   useFocusTrap(dialogRef, true)
@@ -446,7 +293,14 @@ export function ImageDetailModal({
             style={{ backgroundColor: 'var(--color-background)' }}
           >
             <h2 id={titleId} className="text-card-title text-text truncate">
-              {IMAGE_DETAILS_TITLE}
+              <ErrorBoundary
+                resetKeys={[imageKey]}
+                fallback={() => <TitleText image={initialImage} imageKey={imageKey} />}
+              >
+                <Suspense fallback={<TitleText image={initialImage} imageKey={imageKey} />}>
+                  <LoadedTitle {...source} />
+                </Suspense>
+              </ErrorBoundary>
             </h2>
             <div className="flex items-center gap-2 shrink-0">
               {cullNav && cullNav.keys.length > 1 ? (
@@ -502,12 +356,11 @@ export function ImageDetailModal({
               }
             >
               <ImageDetailModalBody
-                imageType={imageType}
-                imageKey={imageKey}
-                initialImage={initialImage}
+                {...source}
                 primaryScoreSource={primaryScoreSource}
-                scorePerspectiveSlug={scorePerspectiveSlug}
                 showCullSection={showCullSection}
+                tab={tab}
+                onTabChange={setTab}
               />
             </Suspense>
           </ErrorBoundary>

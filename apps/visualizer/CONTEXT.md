@@ -107,6 +107,31 @@ Paths are relative to `apps/visualizer/backend/src/`.
 
 The server emits `job_created` on job creation (`POST /jobs`); `useJobSocket` owns the resulting `jobs.list` invalidation. No component hand-bubbles a job-list-refresh callback (e.g. an `onJobEnqueued` prop) outside `useJobSocket` — refresh-on-enqueue is driven by the server's `job_created` event. No component subscribes to job socket events (`job_created` / `job_updated` / `jobs_recovered`) outside `useJobSocket`. Per-job `subscribe_job` / `unsubscribe_job` emits are the one allowed exception (job-instance scoped, not fan-out).
 
+### Image detail modal
+
+`ImageDetailModal` (`src/components/image-view/`) is the only way to look at one photo. The photo and its badges sit on the left: the culling verdict (in culling views), a held-back frame, stars, Pick, Posted and the score. Everything else is in one of five tabs on the right, in `image-view/tabs/`:
+
+| Tab | Shows | Shown when |
+|---|---|---|
+| **Culling** | Verdict, frame substance, profile readings, Score forecast | In culling views, or when frame substance has something to say |
+| **AI** | Description and perspective scores | Always |
+| **Lightroom** | Stars, flag and keywords in Lightroom Classic, including what the app wrote | Always |
+| **File** | Filename, date, path, dimensions, caption, Posted | Always |
+| **Stack** | The burst stack's members | The photo is in a stack of 2 or more |
+
+The modal opens on Culling in culling views, on File from the catalog grid and on AI elsewhere (`initialTab`). When the photo does not have that tab, it opens on the first tab it has. The chosen tab stays while you step through photos with Prev / Next.
+
+A tab is built only from the blocks in `image-view/detail-blocks.tsx`; a new section picks one of them and does not style its own:
+
+| Block | For | Looks like |
+|---|---|---|
+| `StatusBlock` | A decision about this photo (culling verdict, frame substance) | Bordered; coloured dot and one line, then what it rests on |
+| `FactsBlock` + `Fact` | Label/value rows read from the catalog or the file | No box; a `Fact` without a value is not shown |
+| `GeneratedBlock` | What a model wrote (description, scores) | Grey surface; progress and errors of its job inside |
+| `ToolBlock` | Something whose actions reach beyond this photo (the stack) | Dashed border; its actions always confirm |
+
+Blocks are read-only. Every button of a tab is in its `ActionArea`, which comes last: one `ActionRow` per thing it acts on, naming it, then its controls. The AI tab's two regenerate buttons share one model choice.
+
 ## Architectural constraints
 
 - **Frontend and backend are one unit**: changes to API shape must be reflected in both the backend route group and the frontend service layer.

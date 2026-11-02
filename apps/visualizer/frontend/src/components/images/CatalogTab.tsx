@@ -463,6 +463,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
               : undefined
           }
           showCullSection={cullCatalog}
+          initialTab={cullCatalog ? 'culling' : 'file'}
           cullNav={
             cullCatalog
               ? {
