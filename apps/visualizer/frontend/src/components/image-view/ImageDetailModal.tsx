@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { ImageView } from '../../services/api'
 import { CullAPI, ImagesAPI } from '../../services/api'
 import { useBodyScrollLock, useFocusTrap } from '../../hooks'
@@ -95,12 +96,26 @@ function LoadedTitle(props: DetailSource) {
 
 function PhotoView({ imageType, imageKey, alt }: { imageType: 'catalog'; imageKey: string; alt: string }) {
   return (
-    <div className="aspect-square overflow-hidden rounded-base bg-surface">
+    <div className="h-[34dvh] overflow-hidden rounded-base bg-surface md:h-auto md:min-h-0 md:flex-1">
       <img
         src={`/api/images/${imageType}/${encodeURIComponent(imageKey)}/thumbnail`}
         alt={alt}
         className="h-full w-full object-contain"
       />
+    </div>
+  )
+}
+
+/**
+ * Photo column and tab column. On mobile the photo stays pinned on top and the
+ * tabs scroll under it; from `md` the two sit side by side at the dialog's full
+ * height and only the tab content scrolls.
+ */
+function DetailLayout({ photo, panel }: { photo: ReactNode; panel: ReactNode }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col md:grid md:grid-cols-[3fr_2fr] md:grid-rows-[minmax(0,1fr)] md:gap-6 md:p-6">
+      <div className="flex flex-none flex-col gap-3 px-4 pb-3 pt-4 md:min-h-0 md:p-0">{photo}</div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4 pb-4 md:p-0">{panel}</div>
     </div>
   )
 }
@@ -124,17 +139,21 @@ function ImageDetailModalFallback({
   primaryScoreSource: PrimaryScoreSource
 }) {
   return (
-    <div className="grid gap-6 p-6 md:grid-cols-2">
-      <div className="space-y-4">
-        <PhotoView imageType={imageType} imageKey={imageKey} alt={initialImage?.filename ?? imageKey} />
-        {initialImage ? (
-          <ImageMetadataBadges image={initialImage} primaryScoreSource={primaryScoreSource} />
-        ) : null}
-      </div>
-      <p className="text-sm text-text-tertiary" role="status" aria-live="polite">
-        Loading image details…
-      </p>
-    </div>
+    <DetailLayout
+      photo={
+        <>
+          <PhotoView imageType={imageType} imageKey={imageKey} alt={initialImage?.filename ?? imageKey} />
+          {initialImage ? (
+            <ImageMetadataBadges image={initialImage} primaryScoreSource={primaryScoreSource} />
+          ) : null}
+        </>
+      }
+      panel={
+        <p className="text-sm text-text-tertiary" role="status" aria-live="polite">
+          Loading image details…
+        </p>
+      }
+    />
   )
 }
 
@@ -194,34 +213,41 @@ function ImageDetailModalBody({
   }
 
   return (
-    <div className="grid gap-6 p-6 md:grid-cols-2">
-      <div className="space-y-4">
-        <PhotoView imageType={imageType} imageKey={imageKey} alt={image.filename ?? imageKey} />
-        <div className="flex flex-wrap items-center gap-2">
-          {showCullSection ? (
-            <ErrorBoundary resetKeys={[imageKey]} fallback={() => null}>
-              <Suspense fallback={null}>
-                <CullVerdictBadge imageKey={imageKey} />
-              </Suspense>
-            </ErrorBoundary>
-          ) : null}
-          {frameHeldBack(frame) ? <Badge variant="warning">{FRAME_SUBSTANCE_CHIP(frame.verdict)}</Badge> : null}
-          <ImageMetadataBadges image={displayImage} primaryScoreSource={primaryScoreSource} />
-        </div>
-      </div>
-
-      <div className="min-w-0">
-        <TabNav tabs={tabs} activeTab={active} onTabChange={(id) => onTabChange(id as ImageDetailTab)} />
-        <div role="tabpanel" aria-labelledby={`tab-${active}`} className="mt-4 space-y-4">
-          <ErrorBoundary
-            resetKeys={[active, imageKey]}
-            fallback={({ error, reset }) => <ErrorState error={error} reset={reset} />}
+    <DetailLayout
+      photo={
+        <>
+          <PhotoView imageType={imageType} imageKey={imageKey} alt={image.filename ?? imageKey} />
+          <div className="flex flex-none flex-wrap items-center gap-2">
+            {showCullSection ? (
+              <ErrorBoundary resetKeys={[imageKey]} fallback={() => null}>
+                <Suspense fallback={null}>
+                  <CullVerdictBadge imageKey={imageKey} />
+                </Suspense>
+              </ErrorBoundary>
+            ) : null}
+            {frameHeldBack(frame) ? <Badge variant="warning">{FRAME_SUBSTANCE_CHIP(frame.verdict)}</Badge> : null}
+            <ImageMetadataBadges image={displayImage} primaryScoreSource={primaryScoreSource} />
+          </div>
+        </>
+      }
+      panel={
+        <>
+          <TabNav tabs={tabs} activeTab={active} onTabChange={(id) => onTabChange(id as ImageDetailTab)} />
+          <div
+            role="tabpanel"
+            aria-labelledby={`tab-${active}`}
+            className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto"
           >
-            <Suspense fallback={<p className="text-sm text-text-tertiary">Loading…</p>}>{panel[active]()}</Suspense>
-          </ErrorBoundary>
-        </div>
-      </div>
-    </div>
+            <ErrorBoundary
+              resetKeys={[active, imageKey]}
+              fallback={({ error, reset }) => <ErrorState error={error} reset={reset} />}
+            >
+              <Suspense fallback={<p className="text-sm text-text-tertiary">Loading…</p>}>{panel[active]()}</Suspense>
+            </ErrorBoundary>
+          </div>
+        </>
+      }
+    />
   )
 }
 
@@ -235,7 +261,9 @@ function ImageDetailModalBody({
  *
  * Responsive (CONTEXT Q4):
  *   - `<md` (<768px): full-screen sheet at `100dvh`.
- *   - `>=md`: centered card, `max-h-[min(90vh,900px)]`.
+ *   - `>=md`: centered card at a fixed `92vh` × `min(1400px, 94vw)`, so switching
+ *     tabs never resizes it.
+ *   - Only the tab content scrolls; the header and the photo stay in place.
  *
  * Accessibility (CONTEXT):
  *   - `role="dialog" aria-modal="true"` + `aria-labelledby`.
@@ -271,7 +299,7 @@ export function ImageDetailModal({
     return () => window.removeEventListener('keydown', handleEsc)
   }, [onClose])
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 backdrop-blur-sm md:flex md:items-center md:justify-center md:p-4"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.75)' }}
@@ -283,89 +311,87 @@ export function ImageDetailModal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden bg-bg shadow-deep md:h-auto md:max-h-[min(90vh,900px)] md:max-w-4xl md:rounded-card"
+        className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-bg shadow-deep md:h-[92vh] md:w-[min(1400px,94vw)] md:rounded-card"
         style={{ backgroundColor: 'var(--color-background)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div
-            className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-bg px-6 py-4 md:rounded-t-card"
-            style={{ backgroundColor: 'var(--color-background)' }}
-          >
-            <h2 id={titleId} className="text-card-title text-text truncate">
-              <ErrorBoundary
-                resetKeys={[imageKey]}
-                fallback={() => <TitleText image={initialImage} imageKey={imageKey} />}
-              >
-                <Suspense fallback={<TitleText image={initialImage} imageKey={imageKey} />}>
-                  <LoadedTitle {...source} />
-                </Suspense>
-              </ErrorBoundary>
-            </h2>
-            <div className="flex items-center gap-2 shrink-0">
-              {cullNav && cullNav.keys.length > 1 ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={cullNav.index <= 0}
-                    onClick={() => cullNav.onIndexChange(cullNav.index - 1)}
-                  >
-                    ‹ {CULL_MODAL_PREV}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={cullNav.index >= cullNav.keys.length - 1}
-                    onClick={() => cullNav.onIndexChange(cullNav.index + 1)}
-                  >
-                    {CULL_MODAL_NEXT} ›
-                  </Button>
-                </>
-              ) : null}
-              <ModalCloseButton onClick={onClose} />
-            </div>
-          </div>
-
-          {contextSlot ? <div className="border-b border-border px-6 py-4">{contextSlot}</div> : null}
-
-          <ErrorBoundary
-            resetKeys={[imageType, imageKey, scorePerspectiveSlug ?? '']}
-            fallback={({ error, reset }) => (
-              <div className="p-6">
-                <ErrorState
-                  error={error}
-                  reset={() => {
-                    invalidateAll(['images.detail', imageType, imageKey])
-                    reset()
-                  }}
-                />
-              </div>
-            )}
-          >
-            <Suspense
-              fallback={
-                <ImageDetailModalFallback
-                  initialImage={initialImage}
-                  imageKey={imageKey}
-                  imageType={imageType}
-                  primaryScoreSource={primaryScoreSource}
-                />
-              }
+        <div className="flex flex-none items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6 md:py-4">
+          <h2 id={titleId} className="text-card-title text-text truncate">
+            <ErrorBoundary
+              resetKeys={[imageKey]}
+              fallback={() => <TitleText image={initialImage} imageKey={imageKey} />}
             >
-              <ImageDetailModalBody
-                {...source}
-                primaryScoreSource={primaryScoreSource}
-                showCullSection={showCullSection}
-                tab={tab}
-                onTabChange={setTab}
-              />
-            </Suspense>
-          </ErrorBoundary>
+              <Suspense fallback={<TitleText image={initialImage} imageKey={imageKey} />}>
+                <LoadedTitle {...source} />
+              </Suspense>
+            </ErrorBoundary>
+          </h2>
+          <div className="flex items-center gap-2 shrink-0">
+            {cullNav && cullNav.keys.length > 1 ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={cullNav.index <= 0}
+                  onClick={() => cullNav.onIndexChange(cullNav.index - 1)}
+                >
+                  ‹ {CULL_MODAL_PREV}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={cullNav.index >= cullNav.keys.length - 1}
+                  onClick={() => cullNav.onIndexChange(cullNav.index + 1)}
+                >
+                  {CULL_MODAL_NEXT} ›
+                </Button>
+              </>
+            ) : null}
+            <ModalCloseButton onClick={onClose} />
+          </div>
         </div>
+
+        {contextSlot ? (
+          <div className="flex-none border-b border-border px-4 py-3 md:px-6 md:py-4">{contextSlot}</div>
+        ) : null}
+
+        <ErrorBoundary
+          resetKeys={[imageType, imageKey, scorePerspectiveSlug ?? '']}
+          fallback={({ error, reset }) => (
+            <div className="p-6">
+              <ErrorState
+                error={error}
+                reset={() => {
+                  invalidateAll(['images.detail', imageType, imageKey])
+                  reset()
+                }}
+              />
+            </div>
+          )}
+        >
+          <Suspense
+            fallback={
+              <ImageDetailModalFallback
+                initialImage={initialImage}
+                imageKey={imageKey}
+                imageType={imageType}
+                primaryScoreSource={primaryScoreSource}
+              />
+            }
+          >
+            <ImageDetailModalBody
+              {...source}
+              primaryScoreSource={primaryScoreSource}
+              showCullSection={showCullSection}
+              tab={tab}
+              onTabChange={setTab}
+            />
+          </Suspense>
+        </ErrorBoundary>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

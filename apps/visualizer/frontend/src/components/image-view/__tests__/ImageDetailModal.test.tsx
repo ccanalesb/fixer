@@ -272,12 +272,21 @@ describe('ImageDetailModal', () => {
   it('backdrop click closes; inner click does not', async () => {
     vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail())
     const onClose = vi.fn()
-    const { container } = renderModal({ onClose })
-    fireEvent.click(container.querySelector('.fixed.inset-0') as HTMLElement)
+    renderModal({ onClose })
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(dialog.parentElement as HTMLElement)
     expect(onClose).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(await screen.findByRole('dialog'))
+    fireEvent.click(dialog)
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the backdrop on document.body so page layout cannot offset or clip it', async () => {
+    vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail())
+    const { container } = renderModal()
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.parentElement?.parentElement).toBe(document.body)
+    expect(container.contains(dialog)).toBe(false)
   })
 
   it('Close button triggers onClose', async () => {
@@ -297,13 +306,20 @@ describe('ImageDetailModal', () => {
     expect(document.body.style.overflow).toBe('auto')
   })
 
-  it('dialog container uses the responsive sheet classes (mobile full-height, md centered)', async () => {
+  it('dialog is a full-height sheet on mobile and a fixed-size large card from md', async () => {
     vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail())
     renderModal()
     const dialog = await screen.findByRole('dialog')
     expect(dialog.className).toContain('h-[100dvh]')
-    expect(dialog.className).toContain('md:h-auto')
-    expect(dialog.className).toContain('md:max-w-4xl')
+    expect(dialog.className).toContain('md:h-[92vh]')
+    expect(dialog.className).toContain('md:w-[min(1400px,94vw)]')
+  })
+
+  it('scrolls the tab content on its own so the photo stays in view', async () => {
+    vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail())
+    renderModal()
+    await screen.findByTestId('ai-tab')
+    expect(screen.getByRole('tabpanel').className).toContain('overflow-y-auto')
   })
 
   it('re-fetches when a tab reports data changed', async () => {
