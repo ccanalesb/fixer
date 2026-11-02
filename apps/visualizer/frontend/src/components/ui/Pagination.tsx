@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 interface PaginationProps {
   currentPage: number
   totalPages: number
@@ -23,7 +25,7 @@ export function Pagination({ currentPage, totalPages, onPageChange, disabled }: 
   }
 
   return (
-    <div className="flex items-center space-x-2">
+    <div className="flex w-full items-center gap-2 sm:w-auto">
       <button
         type="button"
         onClick={() => onPageChange(currentPage - 1)}
@@ -36,27 +38,36 @@ export function Pagination({ currentPage, totalPages, onPageChange, disabled }: 
         </svg>
       </button>
 
-      {visiblePages.map((page, index) =>
-        page === -1 ? (
-          <span key={`ellipsis-${index}`} className="px-3 py-2 text-text-tertiary">
-            ...
-          </span>
-        ) : (
-          <button
-            type="button"
-            key={page}
-            onClick={() => onPageChange(page)}
-            disabled={disabled}
-            className={`px-3 py-2 rounded-base border transition-all ${
-              page === currentPage
-                ? 'bg-accent-light text-accent border-accent font-medium'
-                : 'border-border bg-bg text-text-secondary hover:bg-surface hover:text-text'
-            }`}
-          >
-            {page}
-          </button>
-        )
-      )}
+      <div className="hidden items-center gap-2 sm:flex">
+        {visiblePages.map((page, index) =>
+          page === -1 ? (
+            <span key={`ellipsis-${index}`} className="px-3 py-2 text-text-tertiary">
+              ...
+            </span>
+          ) : (
+            <button
+              type="button"
+              key={page}
+              onClick={() => onPageChange(page)}
+              disabled={disabled}
+              className={`px-3 py-2 rounded-base border transition-all ${
+                page === currentPage
+                  ? 'bg-accent-light text-accent border-accent font-medium'
+                  : 'border-border bg-bg text-text-secondary hover:bg-surface hover:text-text'
+              }`}
+            >
+              {page}
+            </button>
+          )
+        )}
+      </div>
+
+      <PageField
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={onPageChange}
+        disabled={disabled}
+      />
 
       <button
         type="button"
@@ -70,5 +81,39 @@ export function Pagination({ currentPage, totalPages, onPageChange, disabled }: 
         </svg>
       </button>
     </div>
+  )
+}
+
+/** Phone-width stand-in for the page buttons: type a page and press Enter to jump there. */
+function PageField({ currentPage, totalPages, onPageChange, disabled }: PaginationProps) {
+  const [draft, setDraft] = useState(String(currentPage))
+  useEffect(() => setDraft(String(currentPage)), [currentPage])
+
+  const jump = () => {
+    const page = Number.parseInt(draft, 10)
+    if (Number.isNaN(page)) return setDraft(String(currentPage))
+    const target = Math.min(totalPages, Math.max(1, page))
+    setDraft(String(target))
+    if (target !== currentPage) onPageChange(target)
+  }
+
+  return (
+    <label className="flex flex-1 items-center justify-center gap-2 text-sm text-text-secondary sm:hidden">
+      Page
+      <input
+        type="text"
+        inputMode="numeric"
+        aria-label="Go to page"
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') jump()
+        }}
+        onBlur={() => setDraft(String(currentPage))}
+        className="w-16 rounded-base border border-border bg-bg px-2 py-2 text-center text-text disabled:opacity-50"
+      />
+      of {totalPages}
+    </label>
   )
 }
