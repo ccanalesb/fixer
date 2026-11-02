@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react'
+import { onDelete } from './cache'
 import { query } from './query'
 
 type UseQueryOptions<T> = {
@@ -26,6 +27,9 @@ export function useQuery<T>(
       unmountedRef.current = true
     }
   }, [])
+
+  const cacheKey = JSON.stringify(key)
+  useEffect(() => onDelete((k) => k === cacheKey && forceRender()), [cacheKey])
 
   try {
     const value = query(key, fetcher)
