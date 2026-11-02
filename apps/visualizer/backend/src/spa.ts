@@ -23,6 +23,14 @@ function isBackendPath(path: string): boolean {
   );
 }
 
+/**
+ * index.html names the hashed bundles of the installed version, so the webview must revalidate it
+ * on every load; otherwise an upgraded app keeps running the previous version's frontend.
+ * Set before serving: serveStatic builds its response before calling `onFound`.
+ */
+const REVALIDATE = 'no-cache';
+const HASHED_BUNDLE = 'public, max-age=31536000, immutable';
+
 /** History fallback for non-API paths when the packaged frontend is present. */
 export function registerPackagedSpa<E extends Env>(app: OpenAPIHono<E>): void {
   const root = packagedFrontendRoot();
@@ -30,11 +38,13 @@ export function registerPackagedSpa<E extends Env>(app: OpenAPIHono<E>): void {
 
   app.use('*', async (c, next) => {
     if (isBackendPath(c.req.path)) return next();
+    c.header('Cache-Control', c.req.path.startsWith('/assets/') ? HASHED_BUNDLE : REVALIDATE);
     return serveStatic({ root })(c, next);
   });
 
   app.get('*', async (c, next) => {
     if (isBackendPath(c.req.path)) return next();
+    c.header('Cache-Control', REVALIDATE);
     return serveStatic({ root, path: 'index.html' })(c, next);
   });
 }
