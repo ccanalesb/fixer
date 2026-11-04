@@ -5,10 +5,7 @@ on:
     tags:
       - 'v*.*.*'
       - 'v*.*.*-beta.*'
-  pull_request:
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/release.yml'
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
@@ -144,8 +141,8 @@ jobs:
           BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
-      - name: Build bundles and packaged smoke (pull request)
-        if: github.event_name == 'pull_request'
+      - name: Build bundles and packaged smoke (manual run)
+        if: github.event_name == 'workflow_dispatch'
         working-directory: apps/desktop
         shell: bash
         env:
@@ -155,8 +152,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bash scripts/release-tauri-build.sh
 
-      - name: Upload bundles (pull request)
-        if: github.event_name == 'pull_request'
+      - name: Upload bundles (manual run)
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: fixer-${{ matrix.triple }}
@@ -169,8 +166,8 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz
           if-no-files-found: warn
 
-      - name: Zip macOS app when DMG is absent (pull request)
-        if: github.event_name == 'pull_request' && matrix.runner == 'macos-latest'
+      - name: Zip macOS app when DMG is absent (manual run)
+        if: github.event_name == 'workflow_dispatch' && matrix.runner == 'macos-latest'
         shell: bash
         run: |
           shopt -s nullglob
@@ -182,8 +179,8 @@ jobs:
             fi
           fi
 
-      - name: Upload macOS app zip fallback (pull request)
-        if: github.event_name == 'pull_request' && matrix.runner == 'macos-latest'
+      - name: Upload macOS app zip fallback (manual run)
+        if: github.event_name == 'workflow_dispatch' && matrix.runner == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: fixer-${{ matrix.triple }}-app-zip

@@ -1,6 +1,6 @@
 # Release runbook
 
-This document describes how to cut a Fixer desktop release. CI builds unsigned installers for macOS arm64, Windows x64, and Linux x64 when a version tag is pushed.
+This document describes how to cut a Fixer desktop release. CI builds unsigned installers for macOS arm64, Windows x64, and Linux x64 when a version tag is pushed. Only a tag publishes; pull requests never build installers. To build installers from a branch without releasing, see [Test build without releasing](#test-build-without-releasing).
 
 ## Before the first public release (`v0.1.0`)
 
@@ -14,8 +14,17 @@ Do not publish a non-prerelease until all of the following are done:
 
 1. Bump the single app version in the root `package.json`. Backend and frontend package versions stay at `0.0.0`.
 2. Commit the bump on the release branch.
-3. Create and push an annotated tag whose name matches the version, with a `v` prefix (for example version `0.1.0-beta.1` → tag `v0.1.0-beta.1`).
+3. Once the bump is merged, create and push an annotated tag on `master` whose name matches the version, with a `v` prefix (for example version `0.1.0-beta.1` → tag `v0.1.0-beta.1`):
+
+   ```bash
+   git switch master && git pull --ff-only
+   git tag -a v0.1.0 -m "Fixer 0.1.0"
+   git push origin v0.1.0
+   ```
+
 4. CI fails the release workflow’s first job if the tag (without `v`) does not exactly match `package.json`.
+
+Do not create the tag from GitHub's **Draft a new release** page: it creates a release by hand alongside the draft the workflow creates.
 
 Prerelease tags matching `vX.Y.Z-beta.N` are published as GitHub **prereleases**. The updater never offers them because `releases/latest` skips prereleases.
 
@@ -56,3 +65,17 @@ Tell users: if Smart App Control blocks Fixer, they can turn Smart App Control o
 ## Cutting a `-beta.N` test build
 
 Use the same tag flow with a `-beta.N` suffix on both `package.json` and the tag. CI produces a prerelease draft suitable for owner testing on a fork or the main repo without advertising `latest`.
+
+## Test build without releasing
+
+Use this before merging a change that could break packaging: anything under `apps/desktop`, the release workflow, or the backend's runtime dependencies.
+
+1. Start the Release workflow on the branch: **Actions → Release → Run workflow**, choose the branch, or from a terminal:
+
+   ```bash
+   gh workflow run release.yml --ref <branch>
+   gh run watch
+   ```
+
+2. It runs the PR gate, then on every OS the backend tests, the Tauri build and the packaged smoke, the same as a tag push.
+3. Download the installers from the run's **Artifacts** (`fixer-<target triple>`). Nothing is published, no tag is needed, and `package.json` is not bumped.
