@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 describe('sent_by_hand from actions when verdict column is 0', () => {
-  it('counts as sent by hand for catalog, review, describe selection, resume decide, and write-back', async () => {
+  it('counts as sent by hand for catalog, review, describe selection, and write-back', async () => {
     const db = openLib();
     expect(isSentByHand(db, KEY)).toBe(true);
     expect(isCullCatalogPhoto(db, KEY)).toBe(true);

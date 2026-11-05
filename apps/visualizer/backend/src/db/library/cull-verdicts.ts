@@ -176,7 +176,7 @@ export function isPhotoFilteredAndNotSentByHand(db: Db, imageKey: string): boole
 export interface CullVerdictBrief {
   verdict: CullSummaryVerdict;
   filteredBy: StageKind | null;
-  /** On the summary or in the user-action history. */
+  /** From the user's actions. */
   sentByHand: boolean;
 }
 
