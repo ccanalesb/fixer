@@ -1,13 +1,6 @@
-import { countStrongDimensions, ratingFromStrongCount } from './writeback-stars.js';
 import type { WritebackKind } from './writeback-types.js';
-import { readCurrentStages } from '../cull/stages.js';
-import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
-import { getCullProfile } from '../db/library/cull-profiles.js';
-import { getCullVerdict, listDecidedCullImageKeys, type CullVerdictRow } from '../db/library/cull-verdicts.js';
-import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
-import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
+import { listDecidedCullImageKeys } from '../db/library/cull-verdicts.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
-import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import type { Db } from '../db/connection.js';
 import {
   AUTO_REJECT_KEYWORD,
@@ -68,43 +61,6 @@ export function userChangedAfterWrite(kind: WritebackKind, live: LivePickRating,
   return !liveMatchesWritten(kind, live, row);
 }
 
-/**
- * Reject when the culling profile's rule says filtered, whatever decided the photo, or the frame is void.
- * Nothing is rejected while the culling profile is off.
- */
-export function desiredReject(
-  db: Db,
-  settings: LrWritebackSettings,
-  verdict: CullVerdictRow | null,
-  voidFrame: boolean,
-): boolean {
-  if (!settings.write_reject || !verdict) return false;
-  if (verdict.sent_by_hand) return false;
-  if (!getCurrentPipelineSetting(db).config.culling_profiles_enabled) return false;
-  return verdict.culling_profile_verdict === 'filtered' || voidFrame;
-}
-
-function stagesForStarsProfile(db: Db, starsSlug: string) {
-  return readCurrentStages(db).stages.filter((s) => s.profileSlug === starsSlug && s.kind === 'culling_profile');
-}
-
-export function desiredStarsRating(
-  db: Db,
-  settings: LrWritebackSettings,
-  imageKey: string,
-  starsSlug: string | null,
-): number | null {
-  if (!settings.write_stars || !starsSlug) return null;
-  if (!getCurrentPipelineSetting(db).config.culling_profiles_enabled) return null;
-  if (isFrameSubstanceVoid(db, imageKey)) return null;
-  const profile = getCullProfile(db, starsSlug);
-  if (!profile) return null;
-  const stages = stagesForStarsProfile(db, starsSlug);
-  const answersByStage = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
-  const count = countStrongDimensions(profile.definition, profile.rule, answersByStage, starsSlug);
-  return ratingFromStrongCount(count);
-}
-
 export function catalogHasAppReject(conn: import('../db/connection.js').Db, imageKey: string): boolean {
   const live = readPickRating(conn, imageKey);
   if (!live || live.pick !== -1) return false;
@@ -126,7 +82,7 @@ export function syncWrittenFromLiveCatalog(
   kind: WritebackKind,
   imageKey: string,
   desiredRating: number | null,
-  desiredReject: boolean,
+  wantReject: boolean,
   live: LivePickRating,
   starsProfileVersionId: number | null = null,
   beforePick: number | null = null,
@@ -146,7 +102,7 @@ export function syncWrittenFromLiveCatalog(
       written_at: nowIsoUtc(),
     };
   }
-  if (kind === 'reject' && desiredReject && live.pick === -1) {
+  if (kind === 'reject' && wantReject && live.pick === -1) {
     if (!imageHasKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD)) return null;
     return {
       image_key: imageKey,

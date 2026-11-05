@@ -13,7 +13,6 @@ import { nowIsoUtc } from '../utils/datetime.js';
 import {
   adoptWrittenStarsState,
   catalogHasAppStars,
-  desiredStarsRating,
   liveMatchesWritten,
   notFoundState,
   syncWrittenFromLiveCatalog,
@@ -21,6 +20,7 @@ import {
   type ReconcileRunTally,
   type WritebackTrigger,
 } from './writeback-shared.js';
+import { decideWriteback } from './writeback-decision.js';
 
 export function planStarsPhoto(
   db: Db,
@@ -35,7 +35,7 @@ export function planStarsPhoto(
   tally: ReconcileRunTally,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
   const row = getWritebackState(db, imageKey, 'stars');
-  const rating = desiredStarsRating(db, settings, imageKey, starsSlug);
+  const rating = decideWriteback(db, settings, imageKey, starsSlug).stars.rating;
 
   if (conn && live === null) {
     return notFoundState(imageKey, 'stars', row, tally);

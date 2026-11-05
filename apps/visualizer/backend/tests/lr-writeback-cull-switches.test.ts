@@ -6,7 +6,6 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isFrameSubstanceVoid } from '../src/db/library/frame-substance.js';
 import { cullPhoto } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import type { StageAnswerer } from '../src/cull/stage-models.js';
@@ -19,7 +18,7 @@ import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/
 import { getCullVerdict, insertCullRun, upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
 import { nowIsoUtc } from '../src/utils/datetime.js';
 import { getLrWritebackSettings, patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
-import { desiredReject, desiredStarsRating } from '../src/lightroom/writeback-shared.js';
+import { decideWriteback } from '../src/lightroom/writeback-decision.js';
 import { seedCullingStagesOn } from './helpers/culling-stages.js';
 
 const DIMS = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'];
@@ -78,9 +77,8 @@ async function cull(imageKey: string, answerer: StageAnswerer, change?: (cfg: Pi
 }
 
 const settings = () => getLrWritebackSettings(db);
-const reject = (key: string) =>
-  desiredReject(db, settings(), getCullVerdict(db, key), isFrameSubstanceVoid(db, key));
-const stars = (key: string) => desiredStarsRating(db, settings(), key, 'default');
+const reject = (key: string) => decideWriteback(db, settings(), key, 'default').reject.want;
+const stars = (key: string) => decideWriteback(db, settings(), key, 'default').stars.rating;
 
 describe('Lightroom write-back under the switches', () => {
   it('everything on: reject where the rule filters, stars where the profile is strong', async () => {
