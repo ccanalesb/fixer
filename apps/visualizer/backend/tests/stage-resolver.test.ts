@@ -10,6 +10,7 @@ import { cullingStageErrorForProblem, resolveStage } from '../src/cull/stage-res
 import { ProviderRegistry } from '../src/providers/registry.js';
 import { providerIdFromCullingUrl } from '../src/providers/culling-provider-id.js';
 import { THIS_APP_ENDPOINT } from '../src/systemone/client.js';
+import { setupErrorMessage } from '../src/app-models/files.js';
 import { fakeModelState } from './helpers/fake-app-models.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 
@@ -172,6 +173,41 @@ describe('resolveStage', () => {
       registry: registry(),
     });
     expect(r.problem).toBeNull();
+  });
+
+  it('this app: a ready model builds its systemOne endpoint', async () => {
+    const r = await resolveStage('culling_profile', {
+      on: true,
+      cfg: thisApp('culling-model'),
+      appModels: [{ name: 'culling-model', source: null, revision: null, status: 'ready', job_id: 'j' }],
+      questionCount: 0,
+      registry: registry(),
+    });
+    expect(r.systemOne).toMatchObject({ id: THIS_APP_ENDPOINT, label: 'this app' });
+  });
+
+  it('this app: a Score forecast with no questions cannot run', async () => {
+    const r = await resolveStage('score_forecast', {
+      on: true,
+      cfg: thisApp('forecast-model'),
+      appModels: [{ name: 'forecast-model', source: null, revision: null, status: 'ready', job_id: 'j' }],
+      questionCount: 0,
+      registry: registry(),
+    });
+    expect(r.problem).toBe('no_questions');
+  });
+
+  it('this app: a chosen model not installed fails naming the model and the setup step', async () => {
+    const r = await resolveStage('culling_profile', {
+      on: true,
+      cfg: thisApp('missing-model'),
+      appModels: [],
+      questionCount: 0,
+      registry: registry(),
+    });
+    const err = cullingStageErrorForProblem('culling_profile', 'no_model', r);
+    expect(err.failure).toBe('not_listed');
+    expect(err.message).toBe(`Culling profile: ${setupErrorMessage('missing-model is not listed by this app')}`);
   });
 
   it('a parked provider is reported without calling the endpoint', async () => {

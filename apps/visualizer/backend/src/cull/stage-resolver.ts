@@ -5,6 +5,7 @@
  */
 import type { CullingModelConfig } from '../config.js';
 import type { AppModelStatus } from '../app-models/install.js';
+import { setupErrorMessage } from '../app-models/files.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { systemOneEndpoint, THIS_APP_ENDPOINT, type SystemOneEndpoint } from '../systemone/client.js';
 import type { StageKind } from './types.js';
@@ -96,6 +97,13 @@ export async function resolveStage(kind: StageKind, input: ResolveStageInput): P
 export function cullingStageErrorForProblem(kind: StageKind, problem: StageProblem, result: ResolveStageResult): CullingStageError {
   switch (problem) {
     case 'no_model':
+      if (result.model) {
+        return new CullingStageError(
+          kind,
+          'not_listed',
+          named(kind, setupErrorMessage(`${result.model} is not listed by ${result.systemOne?.label ?? 'this app'}`)),
+        );
+      }
       return new CullingStageError(
         kind,
         'no_model',

@@ -20,6 +20,7 @@ import { listAppModels } from '../../app-models/install.js';
 import { initJobsDb } from '../../db/jobs/jobs.js';
 import { config } from '../../config.js';
 import { ProviderRegistry } from '../../providers/registry.js';
+import { THIS_APP_ENDPOINT } from '../../systemone/client.js';
 import { stringFlag } from '../parse.js';
 import type { CommandContext } from '../registry.js';
 
@@ -53,9 +54,6 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
       resolveStage('culling_profile', stageInput('culling_profile')),
       resolveStage('score_forecast', stageInput('score_forecast')),
     ]);
-    const skip = new Set<StageProblem>(['no_questions']);
-    throwIfStageProblem('culling_profile', profileResolved, { skip });
-    throwIfStageProblem('score_forecast', forecastResolved, { skip });
     const models = stageModelsFromConfig(ctx.config.cullingModels, {
       thisAppFetch,
       registry,
@@ -68,9 +66,12 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
       const m = models[kind];
       ctx.out(`${STAGE_NAMES[kind]}: ${m.model || 'no model'} on ${m.endpoint.label}`);
     }
-    if (KINDS.some((k) => ctx.config.cullingModels[k].endpoint === 'this_app')) {
+    if (KINDS.some((k) => models[k].endpoint.id === THIS_APP_ENDPOINT)) {
       ctx.out(`This app's models: ${ctx.config.appModelsDir}`);
     }
+    const skip = new Set<StageProblem>(['no_questions']);
+    throwIfStageProblem('culling_profile', profileResolved, { skip });
+    throwIfStageProblem('score_forecast', forecastResolved, { skip });
     const ids = await resolveStageModelIds(
       models,
       on,
