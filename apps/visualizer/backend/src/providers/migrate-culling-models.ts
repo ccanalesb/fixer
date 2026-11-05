@@ -125,9 +125,10 @@ export function migrateCullingModelsIfNeeded(
       apiKey: str('api_key', ''),
     };
   };
+  const configOf = ({ endpoint, model }: LegacyStage): CullingModelConfig => ({ endpoint, model });
   const current: CullingModelsConfig = {
-    culling_profile: { endpoint: stageFromYaml('culling_profile').endpoint, model: stageFromYaml('culling_profile').model },
-    score_forecast: { endpoint: stageFromYaml('score_forecast').endpoint, model: stageFromYaml('score_forecast').model },
+    culling_profile: configOf(stageFromYaml('culling_profile')),
+    score_forecast: configOf(stageFromYaml('score_forecast')),
   };
   const registry = readRegistry(providersPath);
   const takenIds = new Set(Object.keys(registry.providers ?? {}));
