@@ -23,7 +23,7 @@ type Run = { jobId: string | null; busy: boolean; error: string | null }
 const IDLE: Run = { jobId: null, busy: false, error: null }
 
 /** The photo's description and perspective scores, and the jobs that rewrite them. */
-export function AiTab({ imageKey }: { imageKey: string; onDataChanged?: () => void }) {
+export function AiTab({ imageKey }: { imageKey: string }) {
   const defaults = useQuery(keys.providers.defaults(), () => ProvidersAPI.getDefaults())
   const perspectives = useQuery(keys.perspectives.active(), () =>
     PerspectivesAPI.list({ active_only: true }),
