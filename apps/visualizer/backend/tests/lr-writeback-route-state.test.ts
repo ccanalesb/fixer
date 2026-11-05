@@ -494,6 +494,18 @@ describe('switch job stars state', () => {
     expect(stateOf(starsKey, 'reject')).toBeUndefined();
   });
 
+  it('the photo detail says no stars when the culling profile is off', async () => {
+    const db = openLibraryDb(fx.dbPath);
+    createPipelineSettingVersion(db, {
+      ...getCurrentPipelineSetting(db).config,
+      culling_profiles_enabled: false,
+    });
+    db.close();
+    const res = await app.request(`/api/cull/lightroom-writeback/photos/${starsKey}`);
+    const body = (await res.json()) as { strong_dimensions_line: string | null };
+    expect(body.strong_dimensions_line).toBe('No stars: the culling profile is off');
+  });
+
   it('the photo detail says a void frame gets no stars, and gives the count again once overridden', async () => {
     const line = async () =>
       ((await (await app.request(`/api/cull/lightroom-writeback/photos/${starsKey}`)).json()) as {

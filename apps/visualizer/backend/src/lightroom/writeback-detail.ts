@@ -1,11 +1,9 @@
-import { countStrongDimensions, ratingFromStrongCount } from './writeback-stars.js';
-import { readCurrentStages } from '../cull/stages.js';
+import { ratingFromStrongCount } from './writeback-stars.js';
+import { decideWriteback } from './writeback-decision.js';
 import type { Db } from '../db/connection.js';
-import { getCullProfile } from '../db/library/cull-profiles.js';
-import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
-import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { getWritebackState } from '../db/library/lr-writeback-state.js';
 import { resolveStarsProfileSlug, type LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
+import { liveMatchesWritten, userChangedAfterWrite } from './writeback-shared.js';
 import {
   AUTO_REJECT_KEYWORD,
   AUTO_STARS_KEYWORD,
@@ -13,6 +11,23 @@ import {
   imageHasKeywordByKey,
   readPickRating,
 } from './writer.js';
+
+function strongDimensionsLine(decision: ReturnType<typeof decideWriteback>['stars']): string | null {
+  switch (decision.why) {
+    case 'no_profile':
+      return null;
+    case 'void_frame':
+      return 'No stars: void frame';
+    case 'profile_off':
+      return 'No stars: the culling profile is off';
+    case 'none':
+      return `Strong dimensions (${decision.profileName}): none`;
+    case 'strong': {
+      const rating = decision.rating ?? ratingFromStrongCount(decision.strong);
+      return `Strong dimensions (${decision.profileName}): ${decision.strong} strong → ${'★'.repeat(rating ?? 0)}`;
+    }
+  }
+}
 
 export function buildWritebackPhotoDetail(
   db: Db,
@@ -23,6 +38,7 @@ export function buildWritebackPhotoDetail(
   const starsSlug = resolveStarsProfileSlug(db, settings);
   const starsRow = getWritebackState(db, imageKey, 'stars');
   const rejectRow = getWritebackState(db, imageKey, 'reject');
+  const decision = decideWriteback(db, settings, imageKey, starsSlug);
 
   const conn = connectCatalog(catalogPath, db);
   let live = null as ReturnType<typeof readPickRating>;
@@ -35,28 +51,8 @@ export function buildWritebackPhotoDetail(
     conn.close();
   }
 
-  let strongLine: string | null = null;
-  if (starsSlug && isFrameSubstanceVoid(db, imageKey)) {
-    strongLine = 'No stars: void frame';
-  } else if (starsSlug) {
-    const profile = getCullProfile(db, starsSlug);
-    if (profile) {
-      const stages = readCurrentStages(db).stages.filter(
-        (s) => s.profileSlug === starsSlug && s.kind === 'culling_profile',
-      );
-      const answers = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
-      const count = countStrongDimensions(profile.definition, profile.rule, answers, starsSlug);
-      const rating = ratingFromStrongCount(count);
-      strongLine =
-        rating === null
-          ? `Strong dimensions (${profile.name}): none`
-          : `Strong dimensions (${profile.name}): ${count} strong → ${'★'.repeat(rating)}`;
-    }
-  }
-
-  const ratingUserChanged =
-    starsRow?.status === 'written' && live !== null && live.rating !== starsRow.written_rating;
-  const flagUserChanged = rejectRow?.status === 'written' && live !== null && live.pick !== rejectRow.written_pick;
+  const ratingUserChanged = starsRow && live && userChangedAfterWrite('stars', live, starsRow);
+  const flagUserChanged = rejectRow && live && userChangedAfterWrite('reject', live, rejectRow);
 
   return {
     image_key: imageKey,
@@ -67,7 +63,7 @@ export function buildWritebackPhotoDetail(
       undo_available:
         starsRow?.status === 'written' &&
         live !== null &&
-        live.rating === starsRow.written_rating &&
+        liveMatchesWritten('stars', live, starsRow) &&
         !ratingUserChanged,
       user_changed: Boolean(ratingUserChanged),
     },
@@ -75,10 +71,13 @@ export function buildWritebackPhotoDetail(
       live_pick: live?.pick ?? null,
       app_wrote_reject: rejectRow?.status === 'written',
       undo_available:
-        rejectRow?.status === 'written' && live !== null && live.pick === rejectRow.written_pick && !flagUserChanged,
+        rejectRow?.status === 'written' &&
+        live !== null &&
+        liveMatchesWritten('reject', live, rejectRow) &&
+        !flagUserChanged,
       user_changed: Boolean(flagUserChanged),
     },
     keywords,
-    strong_dimensions_line: strongLine,
+    strong_dimensions_line: strongDimensionsLine(decision.stars),
   };
 }
