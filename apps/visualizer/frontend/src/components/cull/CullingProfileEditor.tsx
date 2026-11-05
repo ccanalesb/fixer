@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import type { CullProfileDetail } from '../../services/api'
 import { ApiRequestError, CullingProfilesAPI } from '../../services/api'
 import { Button } from '../ui/Button'
+import { PipelineSavedNote } from './PipelineSavedNote'
 import {
   CULL_DUPLICATE,
   CULL_NOT_MEASURED,
@@ -26,10 +26,6 @@ import {
   CULL_SAVE_AND_QUEUE,
   CULL_SAVE_ONLY,
   CULL_SAVED_NO_JOB,
-  CULLING_MODELS_SAVED,
-  CULLING_MODELS_SAVED_JOB_WAITING,
-  CULLING_MODELS_VIEW_QUEUE,
-  PROCESSING_JOB_QUEUE_ROUTE,
 } from '../../constants/strings'
 import { CullingProfileDimensionsFields } from './CullingProfileDimensionsFields'
 import { CullingProfileLevelsFields } from './CullingProfileLevelsFields'
@@ -109,14 +105,7 @@ export function CullingProfileEditor({
     if (redecided.pipeline_setting_version === null) {
       return <p className="text-sm text-success">{CULL_SAVED_NO_JOB}</p>
     }
-    return (
-      <p className="text-sm text-success">
-        {redecided.redecide_job_id ? CULLING_MODELS_SAVED : CULLING_MODELS_SAVED_JOB_WAITING}{' '}
-        <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-accent underline">
-          {CULLING_MODELS_VIEW_QUEUE}
-        </Link>
-      </p>
-    )
+    return <PipelineSavedNote jobId={redecided.redecide_job_id} />
   }
 
   const saveDefinitionBody = () => ({

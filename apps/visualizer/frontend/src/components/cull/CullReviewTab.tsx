@@ -35,8 +35,7 @@ import { turnStageOff } from './pipelineStageSwitch'
 import { useCullingGate } from './useCullingGate'
 import { CullReviewRowView } from './CullReviewRow'
 import { bulkSendButtonLabel } from './sendLabel'
-import { ImageDetailModal } from '../image-view/ImageDetailModal'
-import { modalPropsFor } from '../image-view/modalView'
+import { ImageDetailModal, modalPropsFor, useListNav } from '../image-view'
 
 const LIMIT = 50
 type TabId = 'all' | 'culling_profile' | 'score_forecast'
@@ -44,12 +43,31 @@ type TabId = 'all' | 'culling_profile' | 'score_forecast'
 const SETTINGS_LINK =
   'inline-flex items-center rounded-base border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover'
 
-function PageNote({ text, sub, actions }: { text: string; sub?: string; actions?: ReactNode }) {
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+function PageNote({
+  text,
+  sub,
+  actions,
+  error,
+}: {
+  text: string
+  sub?: string
+  actions?: ReactNode
+  error?: string | null
+}) {
   return (
     <div className="py-12 text-center">
       <p className="text-sm text-text-secondary">{text}</p>
       {sub && <p className="mt-1 text-xs text-text-tertiary">{sub}</p>}
       {actions && <div className="mt-3 flex flex-wrap justify-center gap-2">{actions}</div>}
+      {error && (
+        <p className="mt-2 text-sm text-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -58,6 +76,7 @@ function PageNote({ text, sub, actions }: { text: string; sub?: string; actions?
 export function CullReviewTab() {
   const [usable, setUsable] = useState<CullingModelsUsable | 'unknown' | null>(null)
   const [turningOff, setTurningOff] = useState(false)
+  const [turnOffError, setTurnOffError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     CullingModelsAPI.usable().then(setUsable, () => setUsable('unknown'))
@@ -66,9 +85,12 @@ export function CullReviewTab() {
 
   const turnOff = async (stage: CullingStageKind) => {
     setTurningOff(true)
+    setTurnOffError(null)
     try {
       await turnStageOff(stage)
       load()
+    } catch (e) {
+      setTurnOffError(errorText(e))
     } finally {
       setTurningOff(false)
     }
@@ -112,7 +134,7 @@ export function CullReviewTab() {
           {turnOffButton('culling_profile')}
         </>
       )
-    return <PageNote text={text} sub={sub} actions={actions} />
+    return <PageNote text={text} sub={sub} actions={actions} error={turnOffError} />
   }
 
   const forecast = usable.score_forecast
@@ -131,6 +153,7 @@ export function CullReviewTab() {
             )}
             {turnOffButton('score_forecast')}
           </div>
+          {turnOffError && <p className="mt-2 text-sm text-error">{turnOffError}</p>}
         </div>
       )}
       <CullReviewList onStageOff={load} />
@@ -143,8 +166,7 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
   const [tab, setTab] = useState<TabId>('all')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [sendError, setSendError] = useState<string | null>(null)
-  const [modalIndex, setModalIndex] = useState<number | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
   const summary = useQuery(keys.cull.summary(), () => CullAPI.summary())
@@ -156,6 +178,7 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
   const rows = useMemo(() => list?.data ?? [], [list])
   const total = list?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / LIMIT))
+  const listNav = useListNav(rows.map((r) => r.image_key))
   const tabCounts = summary.tab_counts ?? { all: 0, culling_profile: 0, score_forecast: 0 }
 
   const selectedRows = useMemo(
@@ -173,18 +196,23 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
   const sendSelected = async () => {
     const keys = selectedRows.filter((r) => r.needs_send_work).map((r) => r.image_key)
     if (keys.length === 0) return
-    setSendError(null)
+    setActionError(null)
     const result = await runCullingGate('send', () => CullAPI.sendPhotos(keys))
     if (result.status === 'started') {
       setSelected(new Set())
     } else if (result.status === 'failed') {
-      setSendError(result.error instanceof Error ? result.error.message : String(result.error))
+      setActionError(errorText(result.error))
     }
   }
 
   const agreeSelected = async () => {
-    await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_filter')))
-    setSelected(new Set())
+    setActionError(null)
+    try {
+      await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_filter')))
+      setSelected(new Set())
+    } catch (e) {
+      setActionError(errorText(e))
+    }
   }
 
   const tabs: { id: TabId; label: string }[] = [
@@ -232,7 +260,7 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
       </button>
 
       <div className="border border-border rounded-base overflow-hidden">
-        {rows.map((row: CullReviewRow, idx) => (
+        {rows.map((row: CullReviewRow) => (
           <CullReviewRowView
             key={row.image_key}
             row={row}
@@ -245,7 +273,7 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
                 return next
               })
             }}
-            onOpen={() => setModalIndex(idx)}
+            onOpen={() => listNav.open(row.image_key)}
           />
         ))}
       </div>
@@ -256,24 +284,20 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
         onPageChange={(p) => startTransition(() => setPage(p))}
       />
 
-      {modalIndex !== null && rows[modalIndex] ? (
+      {listNav.openKey ? (
         <ImageDetailModal
-          imageKey={rows[modalIndex]!.image_key}
+          imageKey={listNav.openKey}
           {...modalPropsFor('culling')}
-          nav={{
-            keys: rows.map((r) => r.image_key),
-            index: modalIndex,
-            onIndexChange: setModalIndex,
-          }}
-          onClose={() => setModalIndex(null)}
+          nav={listNav.nav}
+          onClose={listNav.close}
         />
       ) : null}
 
       {selected.size > 0 && (
         <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-bg p-4 flex flex-wrap gap-2 items-center justify-center shadow-lg z-30">
-          {sendError && (
+          {actionError && (
             <p className="w-full text-center text-sm text-error" role="alert">
-              {sendError}
+              {actionError}
             </p>
           )}
           {sendLabel && (

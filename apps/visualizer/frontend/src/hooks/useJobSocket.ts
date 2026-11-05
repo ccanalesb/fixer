@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { invalidateAll, keys, patchMatching, prefixOf } from '../data'
+import { invalidateAll, keys, patchMatching } from '../data'
 import { useSocketStore } from '../stores/socketStore'
 import type { Job } from '../types/job'
 
@@ -20,7 +20,7 @@ export function useJobSocket({
   const [jobListRevision, setJobListRevision] = useState(0)
 
   const refreshJobList = useCallback(() => {
-    invalidateAll(prefixOf(keys.jobs.list(), 1))
+    invalidateAll(keys.jobs.listAll())
     setJobListRevision((n) => n + 1)
   }, [])
 
@@ -31,10 +31,10 @@ export function useJobSocket({
   useEffect(() => {
     if (!socket || !connected) return
 
-    const jobsListPrefix = JSON.stringify(prefixOf(keys.jobs.list(), 1)).slice(0, -1)
+    const jobsListPrefix = JSON.stringify(keys.jobs.listAll()).slice(0, -1)
 
     const handleJobCreated = (job: Job) => {
-      invalidateAll(prefixOf(keys.jobs.list(), 1))
+      invalidateAll(keys.jobs.listAll())
       setJobListRevision((n) => n + 1)
       onJobCreated?.(job)
     }
@@ -57,7 +57,7 @@ export function useJobSocket({
     }
 
     const handleJobsRecovered = (payload: { job_ids: string[] }) => {
-      invalidateAll(prefixOf(keys.jobs.list(), 1))
+      invalidateAll(keys.jobs.listAll())
       setJobListRevision((n) => n + 1)
       onJobsRecovered?.(payload)
     }

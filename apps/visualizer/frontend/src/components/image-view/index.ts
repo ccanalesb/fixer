@@ -1,6 +1,6 @@
 export { fromBestPhotoRow, fromCatalogListRow } from './adapters'
 export { modalPropsFor } from './modalView'
-export type { ImageDetailModalView, ModalPropsForView } from './modalView'
+export { useListNav } from './useListNav'
 export { ImageMetadataBadges } from './ImageMetadataBadges'
 export { PrimaryScorePill } from './PrimaryScorePill'
 export type { PrimaryScoreSource } from './PrimaryScorePill'

@@ -4,7 +4,14 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { deleteMatching } from '../../../../data/cache'
 import { useQuery } from '../../../../data'
 import { keys } from '../../../../data/keys'
-import type { FrameSubstanceResponse } from '../../../../services/api'
+import { MemoryRouter } from 'react-router-dom'
+import {
+  CullAPI,
+  CullingModelsAPI,
+  type CullingModelsUsable,
+  type CullingStageUsability,
+  type FrameSubstanceResponse,
+} from '../../../../services/api'
 import { CullingTab } from '../CullingTab'
 
 const mockGet = vi.fn()
@@ -191,5 +198,78 @@ describe('CullingTab — frame substance', () => {
     await waitFor(() => expect(mockCreateOverride).toHaveBeenCalledWith(KEY))
     await waitFor(() => expect(mockDashboard).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(mockIdentity).toHaveBeenCalledTimes(2))
+  })
+})
+
+const stageOk = (model: string): CullingStageUsability => ({
+  on: true,
+  problem: null,
+  model,
+  endpoint: 'this_app',
+  job_id: null,
+  provider_name: null,
+})
+
+const allStagesOk = (u: Partial<CullingModelsUsable> = {}): CullingModelsUsable => ({
+  culling_profile: stageOk('culling-model'),
+  score_forecast: stageOk('forecast-model'),
+  culling_profile_filter: true,
+  ...u,
+})
+
+describe('CullingTab — send through the culling gate', () => {
+  beforeEach(() => {
+    deleteMatching(() => true)
+    mockGet.mockReset()
+    mockGet.mockResolvedValue(frame({ verdict: 'ok', flagged: false, restore_tier: null, instrument: null }))
+    vi.spyOn(CullAPI, 'photoDetail').mockResolvedValue({
+      image_key: KEY,
+      filename: 'filtered-one.jpg',
+      verdict: 'filtered',
+      sent_by_hand: false,
+      completion: 'none',
+      needs_send_work: true,
+      score_forecast: [],
+      profile: { slug: '', name: '', level_sets: [] },
+      user_actions: [],
+      filtered_by: 'culling_profile',
+      score_forecast_p8: null,
+    })
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    deleteMatching(() => true)
+  })
+
+  function renderWithVerdict() {
+    return render(
+      <MemoryRouter>
+        <Suspense fallback={null}>
+          <CullingTab imageKey={KEY} showVerdict />
+        </Suspense>
+      </MemoryRouter>,
+    )
+  }
+
+  it('sends the photo when every stage that is on can run', async () => {
+    vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue(allStagesOk())
+    const send = vi.spyOn(CullAPI, 'sendPhotos').mockResolvedValue({ sent_by_hand: [KEY], job_id: 'j', skipped_complete: 0 })
+    renderWithVerdict()
+    fireEvent.click(await screen.findByRole('button', { name: 'Send to scoring' }))
+    await waitFor(() => expect(send).toHaveBeenCalledWith([KEY]))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('opens the gate dialog and does not send when a stage that is on cannot run', async () => {
+    vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue(
+      allStagesOk({ score_forecast: { ...stageOk('forecast-model'), problem: 'no_model' } }),
+    )
+    const send = vi.spyOn(CullAPI, 'sendPhotos')
+    renderWithVerdict()
+    fireEvent.click(await screen.findByRole('button', { name: 'Send to scoring' }))
+    expect(await screen.findByRole('dialog', { name: 'Score forecast has no model' })).toBeInTheDocument()
+    expect(send).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { keys, useQuery } from '../data'
+import { keys, providersChanged, useQuery } from '../data'
 import { ProvidersAPI, type Provider, type ProviderModel } from '../services/api'
 
 const EMPTY_PROVIDER_BUNDLE: { providers: Provider[]; fallbackOrder: string[] } = {
@@ -24,7 +24,7 @@ export function useProviders() {
   })
 
   const refresh = useCallback(() => {
-    ProvidersAPI.refreshQueries()
+    providersChanged()
   }, [])
 
   const updateFallbackOrder = useCallback(async (order: string[]) => {

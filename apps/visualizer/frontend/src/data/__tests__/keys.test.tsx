@@ -3,7 +3,15 @@ import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { deleteMatching } from '../cache'
 import { useQuery } from '../useQuery'
-import { cullingChanged, cullingProfilesChanged, keys, lightroomWritten, stacksChanged } from '../keys'
+import {
+  cullingChanged,
+  cullingProfilesChanged,
+  imageDetailChanged,
+  keys,
+  lightroomWritten,
+  providersChanged,
+  stacksChanged,
+} from '../keys'
 
 type Deferred<T> = {
   promise: Promise<T>
@@ -377,5 +385,124 @@ describe('lightroomWritten', () => {
     for (const id of LR_WRITEBACK_PROBE_IDS) {
       expect(callCounts[id]).toBe(2)
     }
+  })
+})
+
+function ProvidersProbes({
+  fetches,
+}: {
+  fetches: Record<(typeof PROVIDERS_PROBE_IDS)[number], () => Promise<unknown>>
+}) {
+  const hookBundle = useQuery(keys.providers.hookBundle(), fetches.hookBundle)
+  const tabBundle = useQuery(keys.providers.tabBundle(), fetches.tabBundle)
+  const models = useQuery(keys.providers.models('probe-provider'), fetches.models)
+  const defaults = useQuery(keys.providers.defaults(), fetches.defaults)
+  return (
+    <div>
+      {String(hookBundle)}
+      {String(tabBundle)}
+      {String(models)}
+      {String(defaults)}
+    </div>
+  )
+}
+
+const PROVIDERS_PROBE_IDS = ['hookBundle', 'tabBundle', 'models', 'defaults'] as const
+
+describe('providersChanged', () => {
+  it('refetches every query the group covers, a provider\'s models included', async () => {
+    const pending = Object.fromEntries(
+      PROVIDERS_PROBE_IDS.map((id) => [id, deferred<unknown>()]),
+    ) as Record<(typeof PROVIDERS_PROBE_IDS)[number], Deferred<unknown>>
+    const callCounts = Object.fromEntries(PROVIDERS_PROBE_IDS.map((id) => [id, 0])) as Record<
+      (typeof PROVIDERS_PROBE_IDS)[number],
+      number
+    >
+    const fetches = Object.fromEntries(
+      PROVIDERS_PROBE_IDS.map((id) => [
+        id,
+        () => {
+          callCounts[id] += 1
+          return pending[id].promise
+        },
+      ]),
+    ) as Record<(typeof PROVIDERS_PROBE_IDS)[number], () => Promise<unknown>>
+
+    render(
+      <Suspense fallback={<div>loading</div>}>
+        <ProvidersProbes fetches={fetches} />
+      </Suspense>,
+    )
+    expect(screen.getByText('loading')).toBeInTheDocument()
+
+    await act(async () => {
+      for (const id of PROVIDERS_PROBE_IDS) {
+        pending[id].resolve(id)
+        await pending[id].promise
+      }
+    })
+
+    for (const id of PROVIDERS_PROBE_IDS) {
+      expect(callCounts[id]).toBe(1)
+      pending[id] = deferred<unknown>()
+    }
+
+    act(() => {
+      providersChanged()
+    })
+
+    await act(async () => {
+      for (const id of PROVIDERS_PROBE_IDS) {
+        pending[id].resolve(`${id}-2`)
+        await pending[id].promise
+      }
+    })
+
+    for (const id of PROVIDERS_PROBE_IDS) {
+      expect(callCounts[id]).toBe(2)
+    }
+  })
+})
+
+function ImageDetailProbes({
+  fetches,
+}: {
+  fetches: Record<'plain' | 'scored' | 'other', () => Promise<unknown>>
+}) {
+  const plain = useQuery(keys.images.detail('catalog', 'probe.jpg', ''), fetches.plain)
+  const scored = useQuery(keys.images.detail('catalog', 'probe.jpg', 'street'), fetches.scored)
+  const other = useQuery(keys.images.detail('catalog', 'other.jpg', ''), fetches.other)
+  return (
+    <div>
+      {String(plain)}
+      {String(scored)}
+      {String(other)}
+    </div>
+  )
+}
+
+describe('imageDetailChanged', () => {
+  it('refetches that photo\'s detail under every perspective and leaves other photos cached', async () => {
+    const counts = { plain: 0, scored: 0, other: 0 }
+    const fetches = {
+      plain: async () => ++counts.plain,
+      scored: async () => ++counts.scored,
+      other: async () => ++counts.other,
+    }
+
+    await act(async () => {
+      render(
+        <Suspense fallback={<div>loading</div>}>
+          <ImageDetailProbes fetches={fetches} />
+        </Suspense>,
+      )
+    })
+    expect(counts).toEqual({ plain: 1, scored: 1, other: 1 })
+
+    await act(async () => {
+      imageDetailChanged('probe.jpg')
+    })
+
+    expect(counts).toEqual({ plain: 2, scored: 2, other: 1 })
   })
 })

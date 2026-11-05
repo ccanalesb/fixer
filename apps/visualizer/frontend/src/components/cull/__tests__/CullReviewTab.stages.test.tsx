@@ -129,6 +129,15 @@ describe('CullReviewTab: culling stages that cannot run', () => {
     expect(save).toHaveBeenCalledWith({ enabled: false })
   })
 
+  it('shows why "Turn culling profile off" failed and keeps the note', async () => {
+    vi.spyOn(CullingProfilesAPI, 'saveCullingProfileSwitches').mockRejectedValue(new Error('switch not saved'))
+    usableSpy.mockResolvedValue(usable({ culling_profile: broken('no_model') }))
+    renderTab()
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn culling profile off' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('switch not saved')
+    expect(screen.getByRole('button', { name: 'Turn culling profile off' })).toBeEnabled()
+  })
+
   it.each([
     ['no_model', 'Score forecast is on but has no model.'],
     ['converting', 'Score forecast is on but its model is still converting.'],
@@ -168,5 +177,16 @@ describe('CullReviewTab: culling stages that cannot run', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Turn Score forecast off' }))
     await waitFor(() => expect(screen.queryByText('Score forecast is on but has no model.')).not.toBeInTheDocument())
     expect(save).toHaveBeenCalledWith({ enabled: false })
+  })
+
+  it('shows why "Turn Score forecast off" failed inside the warning', async () => {
+    vi.spyOn(CullingProfilesAPI, 'saveScoreForecast').mockRejectedValue(new Error('forecast switch not saved'))
+    usableSpy.mockResolvedValue(usable({ score_forecast: broken('no_model') }))
+    renderTab()
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn Score forecast off' }))
+    const warning = (await screen.findByText('Score forecast is on but has no model.')).closest(
+      '[role="alert"]',
+    ) as HTMLElement
+    expect(await within(warning).findByText('forecast switch not saved')).toBeInTheDocument()
   })
 })

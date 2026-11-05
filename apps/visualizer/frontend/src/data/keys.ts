@@ -7,6 +7,7 @@ export function prefixOf<T extends readonly unknown[]>(key: T, length: number): 
 export const keys = {
   cull: {
     summary: () => ['cull.summary'] as const,
+    photosAll: () => ['cull.photos'] as const,
     photos: (tab: string, page: number) => ['cull.photos', tab, page] as const,
     detail: (imageKey: string) => ['cull.detail', imageKey] as const,
   },
@@ -15,6 +16,8 @@ export const keys = {
     catalogList: (params: unknown) => ['images.catalog', 'list', params] as const,
     detail: (imageType: 'catalog', imageKey: string, perspectiveSlug?: string) =>
       ['images.detail', imageType, imageKey, perspectiveSlug ?? ''] as const,
+    /** Every perspective's detail of one catalog photo. */
+    detailOfImage: (imageKey: string) => ['images.detail', 'catalog', imageKey] as const,
     stackMembers: (stackId: number) => ['images.stack-members', stackId] as const,
   },
   stacks: {
@@ -31,12 +34,14 @@ export const keys = {
   dashboard: () => ['dashboard'] as const,
   identity: {
     mirror: () => ['identity', 'mirror'] as const,
+    postNextAll: () => ['identity', 'post-next'] as const,
     postNext: (sortParam: string | null) => ['identity', 'post-next', sortParam] as const,
   },
   lrWriteback: {
     photo: (imageKey: string) => ['lr-writeback.photo', imageKey] as const,
   },
   jobs: {
+    listAll: () => ['jobs.list'] as const,
     list: (params?: { status?: string; limit?: number; offset?: number }) =>
       ['jobs.list', params ?? {}] as const,
     active: () => ['jobs.active'] as const,
@@ -45,9 +50,11 @@ export const keys = {
     detail: (id: string) => ['jobs.detail', id] as const,
   },
   providers: {
+    listAll: () => ['providers.list'] as const,
     hookBundle: () => ['providers.list', 'hook'] as const,
     tabBundle: () => ['providers.list', 'tab'] as const,
     defaults: () => ['providers.defaults'] as const,
+    modelsAll: () => ['providers.models'] as const,
     models: (providerId: string | null) => ['providers.models', providerId] as const,
   },
   perspectives: {
@@ -61,6 +68,7 @@ export const keys = {
       pipelineStatus: () => ['catalog.cache.pipeline-status'] as const,
     },
     similarity: {
+      groupsAll: () => ['catalog.similarity.groups'] as const,
       groups: (params: { limit: number; offset: number }) =>
         ['catalog.similarity.groups', params] as const,
     },
@@ -78,11 +86,17 @@ export const keys = {
   },
 } as const
 
-const PROVIDERS_LIST_PREFIX = prefixOf(keys.providers.hookBundle(), 1)
+const PROVIDERS_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
+  keys.providers.listAll(),
+  keys.providers.modelsAll(),
+  keys.providers.defaults(),
+]
 
-/** Invalidate cached provider bundles (tab, hook, and related defaults). */
+/** Invalidate every provider query: the tab and hook bundles, each provider's models, and the defaults. */
 export function providersChanged(): void {
-  invalidateAll(PROVIDERS_LIST_PREFIX)
+  for (const prefix of PROVIDERS_CHANGED_PREFIXES) {
+    invalidateAll(prefix)
+  }
 }
 
 const PERSPECTIVES_PREFIX = prefixOf(keys.perspectives.list(), 1)
@@ -93,7 +107,7 @@ export function perspectivesChanged(): void {
 }
 
 /** Invalidate catalog cache stats and pipeline status queries. */
-export function refreshCatalogCacheQueries(): void {
+export function catalogCacheChanged(): void {
   invalidateAll(keys.catalog.cache.stats())
   invalidateAll(prefixOf(keys.catalog.cache.pipelineStatus(), 1))
 }
@@ -111,19 +125,7 @@ export function clipModelChanged(): void {
 }
 
 export function retryJobsList(): void {
-  invalidateAll(prefixOf(keys.jobs.list(), 1))
-}
-
-export function retryProvidersTab(): void {
-  providersChanged()
-}
-
-export function retryPerspectivesTab(): void {
-  perspectivesChanged()
-}
-
-export function retryCatalogCacheTab(): void {
-  refreshCatalogCacheQueries()
+  invalidateAll(keys.jobs.listAll())
 }
 
 export function retryCatalogImagesTab(): void {
@@ -140,20 +142,17 @@ export function retryIdentityMirror(): void {
 }
 
 export function retryIdentityAdvisor(): void {
-  invalidateAll(prefixOf(keys.identity.postNext(null), 2))
+  invalidateAll(keys.identity.postNextAll())
 }
 
-export function retryImageDetail(
-  imageType: 'catalog',
-  imageKey: string,
-  scorePerspectiveSlug?: string,
-): void {
-  invalidateAll(prefixOf(keys.images.detail(imageType, imageKey, scorePerspectiveSlug ?? ''), 3))
+/** Invalidate one photo's detail under every perspective. */
+export function imageDetailChanged(imageKey: string): void {
+  invalidateAll(keys.images.detailOfImage(imageKey))
 }
 
 const CULLING_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
   keys.cull.summary(),
-  prefixOf(keys.cull.photos('', 0), 1),
+  keys.cull.photosAll(),
   prefixOf(keys.cull.detail(''), 1),
   prefixOf(keys.images.catalogMonths(), 1),
   prefixOf(keys.images.detail('catalog', '', ''), 1),
@@ -210,7 +209,7 @@ const LIGHTROOM_WRITTEN_PREFIXES: readonly (readonly unknown[])[] = [
   prefixOf(keys.images.catalogMonths(), 1),
   prefixOf(keys.images.detail('catalog', '', ''), 1),
   keys.cull.summary(),
-  prefixOf(keys.cull.photos('', 0), 1),
+  keys.cull.photosAll(),
   prefixOf(keys.cull.detail(''), 1),
 ]
 

@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
   CullingModelsAPI,
-  CullingProfilesAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
   type PipelineChangeResponse,
@@ -19,18 +18,14 @@ import {
   CULLING_MODELS_LOADING,
   CULLING_MODELS_NOT_SAVED,
   CULLING_MODELS_SAVE,
-  CULLING_MODELS_SAVED,
-  CULLING_MODELS_SAVED_JOB_WAITING,
   CULLING_MODELS_SECTION,
   CULLING_MODELS_SECTION_LEAD,
-  CULLING_MODELS_VIEW_QUEUE,
   CULLING_PROFILE_FILTER,
   CULLING_PROFILE_FILTER_OFF,
   CULLING_PROFILE_FILTER_ON,
   CULLING_PROFILE_FILTER_UNAVAILABLE,
   CULLING_PROFILE_STAGE,
   CULLING_PROFILE_STAGE_HELP,
-  PROCESSING_JOB_QUEUE_ROUTE,
   PROCESSING_PROVIDERS_ROUTE,
   PROCESSING_PROVIDERS_STAGE_ROUTE,
   SCORE_FORECAST_CREATE_FROM_PERSPECTIVES,
@@ -51,6 +46,8 @@ import {
   SCORE_FORECAST_WRITE_THEM,
 } from '../../constants/strings'
 import { applyPipelineStageChange } from '../cull/pipelineStageSwitch'
+import { PipelineSavedNote } from '../cull/PipelineSavedNote'
+import { useOptimisticPipeline } from '../cull/useOptimisticPipeline'
 import { Button } from '../ui/Button'
 import { SettingRow } from './SettingRow'
 import { endpointLabel, type StageView } from '../providers/stageModelView'
@@ -115,11 +112,9 @@ function ModelSummaryLine({ stage, view }: { stage: Stage; view: StageView }) {
 
 /** Processing → Settings → Culling: stage switches, filter, and Score forecast level, threshold and questions. */
 function CullingModelsSectionInner() {
-  const pipeline = useQuery(keys.cullingProfiles.pipeline(), () => CullingProfilesAPI.getPipeline())
+  const { config, savedConfig, pending, show: showConfig } = useOptimisticPipeline()
   const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
   const stageModels = useQuery(keys.cullingModels(), () => CullingModelsAPI.get())
-  const [optimisticConfig, setOptimisticConfig] = useState<Config | null>(null)
-  const config = optimisticConfig ?? pipeline.config
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<{ stage: Stage; jobId: string | null } | null>(null)
   const [threshold, setThreshold] = useState(() => String(config.score_forecast.threshold))
@@ -128,10 +123,10 @@ function CullingModelsSectionInner() {
   const [created, setCreated] = useState<{ skipped: string[] } | null>(null)
 
   useEffect(() => {
-    if (optimisticConfig === null) {
-      setThreshold(String(pipeline.config.score_forecast.threshold))
+    if (!pending) {
+      setThreshold(String(savedConfig.score_forecast.threshold))
     }
-  }, [pipeline.config.score_forecast.threshold, optimisticConfig])
+  }, [savedConfig.score_forecast.threshold, pending])
 
   useEffect(() => {
     void AppModelsAPI.list()
@@ -145,31 +140,17 @@ function CullingModelsSectionInner() {
   }, [hash, stageModels])
 
   const save = async (stage: Stage, shown: Config, call: () => Promise<PipelineChangeResponse>) => {
-    setOptimisticConfig(shown)
+    showConfig(shown)
     setSaved(null)
     setError(null)
     try {
       const { redecide_job_id } = await call()
       setSaved({ stage, jobId: redecide_job_id })
     } catch (e) {
-      setOptimisticConfig(null)
+      showConfig(null)
       setError(e instanceof Error ? e.message : 'Save failed')
     }
   }
-
-  useEffect(() => {
-    if (!optimisticConfig) return
-    const p = pipeline.config
-    if (
-      p.culling_profiles_enabled === optimisticConfig.culling_profiles_enabled &&
-      p.culling_profiles_filter_enabled === optimisticConfig.culling_profiles_filter_enabled &&
-      p.score_forecast.enabled === optimisticConfig.score_forecast.enabled &&
-      p.score_forecast.threshold === optimisticConfig.score_forecast.threshold &&
-      p.score_forecast.high_from_level === optimisticConfig.score_forecast.high_from_level
-    ) {
-      setOptimisticConfig(null)
-    }
-  }, [pipeline, optimisticConfig])
 
   const questionCount = questions.questions.length
 
@@ -250,17 +231,8 @@ function CullingModelsSectionInner() {
     )
   }
 
-  const savedNote = (stage: Stage): ReactNode => {
-    if (saved?.stage !== stage) return null
-    return (
-      <p className="text-sm text-success">
-        {saved.jobId ? CULLING_MODELS_SAVED : CULLING_MODELS_SAVED_JOB_WAITING}{' '}
-        <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-accent underline">
-          {CULLING_MODELS_VIEW_QUEUE}
-        </Link>
-      </p>
-    )
-  }
+  const savedNote = (stage: Stage): ReactNode =>
+    saved?.stage === stage ? <PipelineSavedNote jobId={saved.jobId} /> : null
 
   return (
     <div className="divide-y divide-border rounded-base border border-border bg-bg">
