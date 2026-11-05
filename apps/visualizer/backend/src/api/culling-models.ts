@@ -5,7 +5,7 @@
 import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig, updateConfigYamlCullingModel, type CullingModelConfig } from '../config.js';
 import { stagesOn } from '../cull/stage-models.js';
-import { stageUsability } from '../cull/stage-usable.js';
+import { resolveStage } from '../cull/stage-resolver.js';
 import type { StageKind } from '../cull/types.js';
 import type { Db } from '../db/connection.js';
 import { initJobsDb } from '../db/jobs/jobs.js';
@@ -187,13 +187,21 @@ cullingModelsRoutes.openapi(usableRoute, async (c) => {
     registry,
   });
   const [cullingProfile, scoreForecast] = await Promise.all([
-    stageUsability('culling_profile', input('culling_profile')),
-    stageUsability('score_forecast', input('score_forecast')),
+    resolveStage('culling_profile', input('culling_profile')),
+    resolveStage('score_forecast', input('score_forecast')),
   ]);
+  const usable = (r: Awaited<ReturnType<typeof resolveStage>>) => ({
+    on: r.on,
+    problem: r.problem,
+    model: r.model,
+    endpoint: r.endpoint,
+    job_id: r.job_id,
+    provider_name: r.provider_name,
+  });
   return c.json(
     {
-      culling_profile: cullingProfile,
-      score_forecast: scoreForecast,
+      culling_profile: usable(cullingProfile),
+      score_forecast: usable(scoreForecast),
       culling_profile_filter: pipeline.culling_profiles_filter_enabled,
     },
     200,

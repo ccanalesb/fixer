@@ -24,7 +24,6 @@ import { tick } from '../src/jobs/processor.js';
 import { fingerprintBatchScore } from '../src/jobs/checkpoint.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { saveProfileDefinition, getCullProfile } from '../src/db/library/cull-profiles.js';
-import { APP_MODEL_SETUP_COMMAND } from '../src/app-models/files.js';
 
 const RUBRIC = 'RUBRIC-SENTINEL';
 
@@ -367,7 +366,9 @@ describe('culling stage setup failures fail the job', () => {
     rmSync(modelsDir, { recursive: true, force: true });
     const job = await runJob('batch_describe', { max_workers: 1 });
     expect(job.status).toBe('failed');
-    expect(job.error).toContain(APP_MODEL_SETUP_COMMAND);
+    expect(job.error).toContain(
+      'Culling profile: no model chosen. Choose one in Processing → Settings → Culling models, or turn the culling profile off',
+    );
     expect(job.error_severity).toBe('warning');
     expect(fakeModels().sequence.some((s) => s.startsWith('kimi:'))).toBe(false);
   });

@@ -8,7 +8,7 @@
 import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
-import type { CullingModelConfig, CullingModelsConfig } from '../config.js';
+import type { CullingModelsConfig } from '../config.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { setupErrorMessage } from '../app-models/files.js';
 import type { SystemOneQuestion } from '../systemone/question.js';
@@ -41,7 +41,7 @@ export class CullingStageError extends Error {
   override readonly name = 'CullingStageError';
   constructor(
     readonly stage: StageKind,
-    readonly failure: SystemOneFailure | 'no_model' | 'no_questions' | 'parked' | 'removed',
+    readonly failure: SystemOneFailure | 'no_model' | 'no_questions' | 'parked' | 'removed' | 'converting',
     message: string,
   ) {
     super(message);
@@ -69,11 +69,21 @@ export type StageModels = Record<StageKind, StageModel>;
 
 export function stageModelsFromConfig(
   cfg: CullingModelsConfig,
-  opts: { thisAppFetch?: typeof fetch; registry?: ProviderRegistry } = {},
+  opts: {
+    thisAppFetch?: typeof fetch;
+    registry?: ProviderRegistry;
+    /** Endpoints from `resolveStage`; null falls back to `systemOneEndpoint`. */
+    systemOne?: Partial<Record<StageKind, SystemOneEndpoint | null>>;
+  } = {},
 ): StageModels {
+  const endpointFor = (kind: StageKind, stageCfg: (typeof cfg)['culling_profile']): SystemOneEndpoint => {
+    const resolved = opts.systemOne?.[kind];
+    if (resolved) return resolved;
+    return systemOneEndpoint(stageCfg, opts);
+  };
   return {
-    culling_profile: { endpoint: systemOneEndpoint(cfg.culling_profile, opts), model: cfg.culling_profile.model },
-    score_forecast: { endpoint: systemOneEndpoint(cfg.score_forecast, opts), model: cfg.score_forecast.model },
+    culling_profile: { endpoint: endpointFor('culling_profile', cfg.culling_profile), model: cfg.culling_profile.model },
+    score_forecast: { endpoint: endpointFor('score_forecast', cfg.score_forecast), model: cfg.score_forecast.model },
   };
 }
 
@@ -87,62 +97,24 @@ export function stagesOn(cfg: PipelineSettingConfig): Record<StageKind, boolean>
 
 const named = (kind: StageKind, message: string) => `${STAGE_NAMES[kind]}: ${message}`;
 
-const TURN_OFF: Record<StageKind, string> = { culling_profile: 'the culling profile', score_forecast: 'the Score forecast' };
-
-const noModelMessage = (kind: StageKind) =>
-  named(kind, `no model chosen. Choose one in Processing → Settings → Culling models, or turn ${TURN_OFF[kind]} off`);
-
-function parkedMessage(kind: StageKind, providerName: string): string {
-  return named(
-    kind,
-    `${providerName} is parked. Turn it back on in Processing → Providers, or turn ${TURN_OFF[kind]} off`,
-  );
-}
-
-function removedMessage(kind: StageKind): string {
-  return named(kind, `its endpoint was removed. Choose one in Processing → Providers, or turn ${TURN_OFF[kind]} off`);
-}
-
-/** A stage on whose endpoint is a parked or removed System One provider cannot start. */
-function assertStageEndpointReady(
-  kind: StageKind,
-  cfg: CullingModelConfig,
-  registry: ProviderRegistry,
-): void {
-  if (cfg.endpoint === THIS_APP_ENDPOINT) return;
-  if (!cfg.endpoint.trim()) throw new CullingStageError(kind, 'removed', removedMessage(kind));
-  const pcfg = registry.hasProvider(cfg.endpoint) ? registry.providerConfig(cfg.endpoint) : null;
-  if (!pcfg || pcfg.protocol !== 'system_one') throw new CullingStageError(kind, 'removed', removedMessage(kind));
-  if (pcfg.enabled === false) throw new CullingStageError(kind, 'parked', parkedMessage(kind, pcfg.name));
-}
-
-function notListedMessage(kind: StageKind, m: StageModel, converting: ReadonlySet<string> = new Set()): string {
+function notListedMessage(kind: StageKind, m: StageModel): string {
   if (m.endpoint.id !== THIS_APP_ENDPOINT) return named(kind, `${m.model} is not listed by ${m.endpoint.label}`);
-  if (converting.has(m.model)) {
-    return named(kind, `${m.model} is still converting. It can be used once its conversion job finishes`);
-  }
   return named(kind, setupErrorMessage(`${m.model} is not listed by ${m.endpoint.label}`));
 }
 
 /**
  * The model identity each stage's versions hash: from its endpoint while the stage is on, else what its
  * current versions were made with, so turning a stage off never touches its versions.
- * `converting` names this app's models a conversion job is still installing.
  */
 export async function resolveStageModelIds(
   models: StageModels,
   on: Record<StageKind, boolean>,
   stored: StageModelIds,
-  converting: ReadonlySet<string> = new Set(),
-  endpoints?: { cfg: CullingModelsConfig; registry?: ProviderRegistry },
 ): Promise<StageModelIds> {
   const ids: StageModelIds = { ...stored };
-  const registry = endpoints ? (endpoints.registry ?? new ProviderRegistry()) : null;
   for (const kind of KINDS) {
     if (!on[kind]) continue;
     const m = models[kind];
-    if (!m.model) throw new CullingStageError(kind, 'no_model', noModelMessage(kind));
-    if (endpoints && registry) assertStageEndpointReady(kind, endpoints.cfg[kind], registry);
     let listed;
     try {
       listed = await listSystemOneModels(m.endpoint);
@@ -151,20 +123,10 @@ export async function resolveStageModelIds(
       throw e;
     }
     const entry = listed.find((x) => x.name === m.model);
-    if (!entry) throw new CullingStageError(kind, 'not_listed', notListedMessage(kind, m, converting));
+    if (!entry) throw new CullingStageError(kind, 'not_listed', notListedMessage(kind, m));
     ids[kind] = modelIdentity(m.endpoint, entry);
   }
   return ids;
-}
-
-/** The Score forecast on with no Score forecast questions cannot run. */
-export function assertForecastHasQuestions(on: Record<StageKind, boolean>, questionCount: number): void {
-  if (!on.score_forecast || questionCount > 0) return;
-  throw new CullingStageError(
-    'score_forecast',
-    'no_questions',
-    named('score_forecast', 'no questions yet. Create them in Perspectives → Score forecast questions, or turn the Score forecast off'),
-  );
 }
 
 /** Question ids sent to a model: prefixed with the stage key, since two profiles may share a level set. */

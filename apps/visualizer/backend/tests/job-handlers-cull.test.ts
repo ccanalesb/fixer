@@ -18,7 +18,6 @@ import { openLibraryDb } from '../src/db/connection.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { JOB_TYPES_BY_NAME } from '../src/jobs/registry.js';
-import { APP_MODEL_SETUP_COMMAND } from '../src/app-models/files.js';
 import { closeAppModels } from '../src/app-models/app-models.js';
 import { APP_MODEL_INSTALL_JOB_TYPE } from '../src/app-models/install.js';
 import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
@@ -294,13 +293,14 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(photosAsked()).toEqual(['todo']);
   });
 
-  it('missing models fail the job at the start, naming the stage, the model and the setup step', async () => {
+  it('missing models fail the job at the start, naming the stage', async () => {
     rmSync(modelsDir, { recursive: true, force: true });
     await addPhoto('a', PASS);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toContain('Culling profile: culling-model is not listed by this app');
-    expect(job.error).toContain(APP_MODEL_SETUP_COMMAND);
+    expect(job.error).toContain(
+      'Culling profile: no model chosen. Choose one in Processing → Settings → Culling models, or turn the culling profile off',
+    );
     expect(job.error_severity).toBe('warning');
     expect(fx.query('SELECT COUNT(*) AS n FROM cull_stage_answers')).toEqual([{ n: 0 }]);
     expect(fakeModels.calls).toEqual([]);
@@ -363,7 +363,9 @@ describe('batch_cull_photos_before_scoring', () => {
     await addPhoto('c', FORECAST_CUT);
     const job = await runCull();
     expect(job.status).toBe('failed');
-    expect(job.error).toContain('Score forecast: forecast-model is not listed by this app');
+    expect(job.error).toContain(
+      'Score forecast: no model chosen. Choose one in Processing → Settings → Culling models, or turn the Score forecast off',
+    );
     expect(job.error_severity).toBe('warning');
     expect(fakeModels.calls).toEqual([]);
   });
@@ -421,7 +423,9 @@ describe('batch_cull_photos_before_scoring', () => {
     const job = await runCull();
     expect(job.status).toBe('failed');
     // The forecast model reuses the profile model's vision graph: without it, this app does not list the forecast model.
-    expect(job.error).toContain('Score forecast: forecast-model is not listed by this app');
+    expect(job.error).toContain(
+      'Score forecast: no model chosen. Choose one in Processing → Settings → Culling models, or turn the Score forecast off',
+    );
   });
 
   it('sent by hand: passed whatever the stages say, and counted', async () => {

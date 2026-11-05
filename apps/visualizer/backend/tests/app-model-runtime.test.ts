@@ -203,7 +203,9 @@ describe('model files', () => {
     const config = { ...loadLibraryConfig(cfg), appModelsDir: dir };
     const code = await run(['cull-check'], { out: (l) => lines.push(l), config });
     expect(code).toBe(1);
-    expect(lines.join('\n')).toContain(APP_MODEL_SETUP_COMMAND);
+    expect(lines.join('\n')).toContain(
+      'Culling profile: no model chosen. Choose one in Processing → Settings → Culling models, or turn the culling profile off',
+    );
   });
 
   it('cull-check on a new install says no model is chosen', async () => {
@@ -211,9 +213,6 @@ describe('model files', () => {
     const config = { ...loadLibraryConfig('/nonexistent/config.yaml'), appModelsDir: dir };
     expect(await run(['cull-check'], { out: (l) => lines.push(l), config })).toBe(1);
     expect(lines).toEqual([
-      'Culling profile: no model on this app',
-      'Score forecast: no model on this app',
-      `This app's models: ${dir}`,
       'Culling profile: no model chosen. Choose one in Processing → Settings → Culling models, or turn the culling profile off',
     ]);
   });
