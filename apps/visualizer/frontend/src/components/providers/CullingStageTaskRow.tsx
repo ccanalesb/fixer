@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import type { AppModel, CullingModelsResponse, CullingStageKind, CullingSystemOneProvider } from '../../services/api'
+import type { AppModel, CullingModelsResponse, CullingStageKind, CullingStageProblem, CullingSystemOneProvider } from '../../services/api'
 import {
   CULLING_MODELS_VIEW_QUEUE,
   CULLING_PROFILE_STAGE,
@@ -20,7 +20,7 @@ import {
 import { Badge } from '../ui/badges'
 import { Button } from '../ui/Button'
 import { StageModelFields } from './StageModelFields'
-import { stageDescription, stageProblem, shownModel, type StageView } from './stageModelView'
+import { stageDescription, shownModel, type StageView } from './stageModelView'
 
 type Stage = CullingStageKind
 
@@ -84,11 +84,15 @@ export function CullingStageTaskRow({
     ...(stage === 'score_forecast' && questionCount !== undefined ? { questionCount } : {}),
   }
 
-  const problem = stageOn ? stageProblem(view) : null
+  const problem: CullingStageProblem | null = stageOn ? stageModels[stage].usable.problem : null
   const showRedRow =
     stageOn &&
     problem &&
-    (problem === 'parked' || problem === 'removed' || problem === 'nomodel' || problem === 'converting')
+    (problem === 'parked' ||
+      problem === 'removed' ||
+      problem === 'no_model' ||
+      problem === 'converting' ||
+      problem === 'no_questions')
 
   const modelChangeNote = (): ReactNode => {
     if (queued === stage) {
@@ -102,7 +106,7 @@ export function CullingStageTaskRow({
       )
     }
     const model = shownModel(view)
-    if (suggest !== stage || !stageOn || !model || stageProblem(view)) return null
+    if (suggest !== stage || !stageOn || !model || stageModels[stage].usable.problem) return null
     const answered = stageModels[stage].answered
     return (
       <div className="rounded-base border border-accent/25 bg-accent-light px-4 py-3 text-sm">

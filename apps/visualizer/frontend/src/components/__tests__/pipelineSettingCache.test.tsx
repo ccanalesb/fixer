@@ -29,6 +29,7 @@ const stage = (over: Partial<CullingStageModel> = {}): CullingStageModel => ({
   endpoint: 'this_app',
   model: null,
   answered: { photos: 0, model: null },
+  usable: { problem: 'no_model', job_id: null, provider_name: null },
   ...over,
 })
 const ready = (name: string): AppModel => ({ name, source: null, revision: null, status: 'ready', job_id: null })

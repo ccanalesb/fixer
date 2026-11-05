@@ -5,6 +5,7 @@ export {
   catalogCacheBuildSignalsChanged,
   clipModelChanged,
   cullingChanged,
+  cullingModelsChanged,
   cullingProfilesChanged,
   keys,
   lightroomWritten,

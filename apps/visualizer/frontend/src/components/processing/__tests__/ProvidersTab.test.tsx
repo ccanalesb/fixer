@@ -98,8 +98,18 @@ describe('ProvidersTab', () => {
     mocks.getFallbackOrder.mockResolvedValue({ order: ['ollama'] });
     mocks.getDefaults.mockResolvedValue({ description: { provider: 'ollama', model: null } });
     mocks.cullingGet.mockResolvedValue({
-      culling_profile: { endpoint: 'studio', model: 'm1', answered: { photos: 0, model: null } },
-      score_forecast: { endpoint: 'this_app', model: null, answered: { photos: 0, model: null } },
+      culling_profile: {
+        endpoint: 'studio',
+        model: 'm1',
+        answered: { photos: 0, model: null },
+        usable: { problem: null, job_id: null, provider_name: null },
+      },
+      score_forecast: {
+        endpoint: 'this_app',
+        model: null,
+        answered: { photos: 0, model: null },
+        usable: { problem: 'no_model', job_id: null, provider_name: null },
+      },
       total_photos: 0,
       system_one_providers: [],
     });
