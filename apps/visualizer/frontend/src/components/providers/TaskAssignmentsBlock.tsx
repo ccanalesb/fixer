@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
@@ -62,7 +62,6 @@ function TaskAssignmentsBlockInner({
   const pipeline = useQuery(keys.cullingProfiles.pipeline(), () => CullingProfilesAPI.getPipeline())
   const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
   const stageModels = useQuery(keys.cullingModels(), () => CullingModelsAPI.get())
-  const [, rerenderStageModels] = useReducer((n: number) => n + 1, 0)
   const [optimisticOn, setOptimisticOn] = useState<Partial<Record<Stage, boolean>> | null>(null)
   const pipelineOn = {
     culling_profile: optimisticOn?.culling_profile ?? pipeline.config.culling_profiles_enabled,
@@ -169,7 +168,6 @@ function TaskAssignmentsBlockInner({
     setError(null)
     try {
       const next = await CullingModelsAPI.save(stage, body)
-      rerenderStageModels()
       if (body.endpoint !== undefined) void loadProviderModels(stage, next.endpoint)
       return next
     } catch (e) {

@@ -100,7 +100,7 @@ async function resolveContext(db: Db) {
     questionCount,
     registry,
   });
-  return { cfg, input };
+  return { cfg, input, pipeline, registry };
 }
 
 async function stageState(
@@ -129,9 +129,8 @@ const getRoute = createRoute({
 
 cullingModelsRoutes.openapi(getRoute, async (c) => {
   const db = c.get('libraryDb');
-  const { cfg, input } = await resolveContext(db);
+  const { cfg, input, registry } = await resolveContext(db);
   const stored = readStoredStageModelIds(db);
-  const registry = new ProviderRegistry();
   const [cullingProfile, scoreForecast] = await Promise.all([
     resolveStage('culling_profile', input('culling_profile')),
     resolveStage('score_forecast', input('score_forecast')),
@@ -202,19 +201,7 @@ const usableRoute = createRoute({
 
 cullingModelsRoutes.openapi(usableRoute, async (c) => {
   const libDb = c.get('libraryDb');
-  const { config: pipeline } = getCurrentPipelineSetting(libDb);
-  const questionCount = getForecastQuestions(libDb).questions.length;
-  const on = stagesOn(pipeline);
-  const cfg = stagesConfig();
-  const registry = new ProviderRegistry();
-  const appModels = withJobsDb((db) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir, db));
-  const input = (kind: StageKind) => ({
-    on: on[kind],
-    cfg: cfg[kind],
-    appModels,
-    questionCount,
-    registry,
-  });
+  const { input, pipeline } = await resolveContext(libDb);
   const [cullingProfile, scoreForecast] = await Promise.all([
     resolveStage('culling_profile', input('culling_profile')),
     resolveStage('score_forecast', input('score_forecast')),

@@ -1181,10 +1181,7 @@ export const CullingModelsAPI = {
       method: 'PUT',
       body: JSON.stringify(body),
     })
-    patchMatching(
-      (k) => k === JSON.stringify(keys.cullingModels()),
-      (v) => ({ ...(v as CullingModelsResponse), [stage]: result }),
-    )
+    cullingModelsChanged()
     providersChanged()
     return result
   },
