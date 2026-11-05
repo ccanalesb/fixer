@@ -2,17 +2,10 @@ import type { Db } from '../db/connection.js';
 import { getWritebackState, upsertWritebackState } from '../db/library/lr-writeback-state.js';
 import { libraryWrite } from '../db/library/write.js';
 import type { WritebackKind } from './writeback-types.js';
-import {
-  backupCatalogIfNeeded,
-  connectCatalog,
-  getImageLocalId,
-  raiseIfCatalogLocked,
-  readPickRating,
-  undoRejectFromCatalog,
-  undoStarsFromCatalog,
-} from './writer.js';
+import { backupCatalogIfNeeded, raiseIfCatalogLocked } from './writer.js';
 import { closeCloudDocstore, openCloudDocstore, pushPhotoToCloud } from './cloud-sync/docstore.js';
 import { liveMatchesWritten } from './writeback-shared.js';
+import { openWritebackCatalogWriter } from './writeback-catalog-writer.js';
 
 export function undoWritebackKind(
   db: Db,
@@ -24,22 +17,23 @@ export function undoWritebackKind(
   backupCatalogIfNeeded(catalogPath);
   const row = getWritebackState(db, imageKey, kind);
   if (!row || row.status !== 'written') return { ok: false, reason: 'Nothing to undo.' };
-  const conn = connectCatalog(catalogPath, db);
+  const session = openWritebackCatalogWriter(catalogPath, db);
   try {
-    const live = readPickRating(conn, imageKey);
-    if (!live || !liveMatchesWritten(kind, live, row)) {
+    const live = session.writer.readLive(imageKey);
+    const pickRating = live ? { pick: live.pick, rating: live.rating } : null;
+    if (!pickRating || !liveMatchesWritten(kind, pickRating, row)) {
       return { ok: false, reason: 'Lightroom Classic no longer holds what the app wrote.' };
     }
     if (kind === 'reject') {
-      undoRejectFromCatalog(conn, imageKey, row.before_pick);
+      session.writer.undoReject(imageKey, row.before_pick);
     } else {
-      undoStarsFromCatalog(conn, imageKey, row.before_rating);
+      session.writer.undoStars(imageKey, row.before_rating);
     }
-    const cloud = openCloudDocstore(conn, catalogPath);
-    const imageId = getImageLocalId(conn, imageKey);
+    const cloud = openCloudDocstore(session.catalogConn, catalogPath);
+    const imageId = session.writer.imageLocalId(imageKey);
     try {
       if (cloud && imageId !== null) {
-        pushPhotoToCloud(cloud, conn, imageId, { rating: kind === 'stars', flag: kind === 'reject' });
+        pushPhotoToCloud(cloud, session.catalogConn, imageId, { rating: kind === 'stars', flag: kind === 'reject' });
       }
     } finally {
       closeCloudDocstore(cloud);
@@ -55,6 +49,6 @@ export function undoWritebackKind(
     });
     return { ok: true };
   } finally {
-    conn.close();
+    session.close();
   }
 }

@@ -3,13 +3,7 @@ import type { Db } from '../db/connection.js';
 import { getWritebackState } from '../db/library/lr-writeback-state.js';
 import { resolveStarsProfileSlug, type LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import { liveMatchesWritten, userChangedAfterWrite } from './writeback-shared.js';
-import {
-  AUTO_REJECT_KEYWORD,
-  AUTO_STARS_KEYWORD,
-  connectCatalog,
-  imageHasKeywordByKey,
-  readPickRating,
-} from './writer.js';
+import { openWritebackCatalogWriter, AUTO_REJECT_KEYWORD, AUTO_STARS_KEYWORD } from './writeback-catalog-writer.js';
 
 function strongDimensionsLine(decision: ReturnType<typeof decideWriteback>['stars']): string | null {
   switch (decision.why) {
@@ -37,40 +31,41 @@ export function buildWritebackPhotoDetail(
   const rejectRow = getWritebackState(db, imageKey, 'reject');
   const decision = decideWriteback(db, settings, imageKey, starsSlug);
 
-  const conn = connectCatalog(catalogPath, db);
-  let live = null as ReturnType<typeof readPickRating>;
+  const session = openWritebackCatalogWriter(catalogPath, db);
+  let live = null as ReturnType<typeof session.writer.readLive>;
   const keywords: string[] = [];
   try {
-    live = readPickRating(conn, imageKey);
-    if (imageHasKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD)) keywords.push(AUTO_STARS_KEYWORD);
-    if (imageHasKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD)) keywords.push(AUTO_REJECT_KEYWORD);
+    live = session.writer.readLive(imageKey);
+    if (live?.auto_stars_keyword) keywords.push(AUTO_STARS_KEYWORD);
+    if (live?.auto_reject_keyword) keywords.push(AUTO_REJECT_KEYWORD);
   } finally {
-    conn.close();
+    session.close();
   }
 
-  const ratingUserChanged = starsRow && live && userChangedAfterWrite('stars', live, starsRow);
-  const flagUserChanged = rejectRow && live && userChangedAfterWrite('reject', live, rejectRow);
+  const pickRating = live ? { pick: live.pick, rating: live.rating } : null;
+  const ratingUserChanged = starsRow && pickRating && userChangedAfterWrite('stars', pickRating, starsRow);
+  const flagUserChanged = rejectRow && pickRating && userChangedAfterWrite('reject', pickRating, rejectRow);
 
   return {
     image_key: imageKey,
     rating: {
-      live: live?.rating ?? null,
+      live: pickRating?.rating ?? null,
       app_wrote: starsRow?.status === 'written',
       before_label: starsRow?.before_rating === null ? 'before: no rating' : null,
       undo_available:
         starsRow?.status === 'written' &&
-        live !== null &&
-        liveMatchesWritten('stars', live, starsRow) &&
+        pickRating !== null &&
+        liveMatchesWritten('stars', pickRating, starsRow) &&
         !ratingUserChanged,
       user_changed: Boolean(ratingUserChanged),
     },
     flag: {
-      live_pick: live?.pick ?? null,
+      live_pick: pickRating?.pick ?? null,
       app_wrote_reject: rejectRow?.status === 'written',
       undo_available:
         rejectRow?.status === 'written' &&
-        live !== null &&
-        liveMatchesWritten('reject', live, rejectRow) &&
+        pickRating !== null &&
+        liveMatchesWritten('reject', pickRating, rejectRow) &&
         !flagUserChanged,
       user_changed: Boolean(flagUserChanged),
     },
