@@ -1,5 +1,5 @@
 import { act, Suspense } from 'react'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteMatching } from '../../../../data/cache'
 import { LrWritebackAPI, type LrWritebackPhotoDetailResponse } from '../../../../services/api'
@@ -76,13 +76,23 @@ describe('LightroomTab', () => {
     expect(screen.queryByRole('button', { name: LR_WRITEBACK_UNDO })).toBeNull()
   })
 
-  it('undoes the app’s stars from the action area', async () => {
-    vi.spyOn(LrWritebackAPI, 'getPhoto').mockResolvedValue(detail({ undo_available: true }))
-    const undo = vi.spyOn(LrWritebackAPI, 'undo').mockResolvedValue({ ok: true } as never)
+  it('undoes the app’s stars from the action area and shows the stars from before', async () => {
+    let live = 4
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockImplementation(async () =>
+      live === 4 ? detail({ undo_available: true }, live) : detail({ app_wrote: false }, live),
+    )
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      live = 2
+      return { ok: true, json: async () => ({ ok: true }) } as Response
+    })
     renderTab({ image_type: 'catalog', key: 'k' })
     expect(await screen.findByText(LR_WRITEBACK_UNDO_STARS_ROW)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: LR_WRITEBACK_UNDO }))
-    await waitFor(() => expect(undo).toHaveBeenCalledWith('k', 'stars'))
+    expect(await screen.findByText('2★')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/cull/lightroom-writeback/photos/k/undo'),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ kind: 'stars' }) }),
+    )
   })
 
   it('falls back to the catalog rating and keywords when nothing was written back', async () => {

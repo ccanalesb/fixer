@@ -98,22 +98,25 @@ describe('useBackendSocket', () => {
     expect(fetchSummary).toHaveBeenCalledTimes(1)
   })
 
-  it('refetches lr write-back photo detail when an lr_writeback job finishes', async () => {
-    let n = 0
-    const fetchPhoto = vi.fn().mockImplementation(() => Promise.resolve({ rating: { live: ++n } }))
+  it.each(['completed', 'failed'] as const)(
+    'refetches lr write-back photo detail when an lr_writeback job finishes (%s)',
+    async (status) => {
+      let n = 0
+      const fetchPhoto = vi.fn().mockImplementation(() => Promise.resolve({ rating: { live: ++n } }))
 
-    render(
-      <BackendSocketShell>
-        <Suspense fallback={null}>
-          <LrPhotoProbe fetchPhoto={fetchPhoto} />
-        </Suspense>
-      </BackendSocketShell>,
-    )
-    await waitFor(() => expect(fetchPhoto).toHaveBeenCalledTimes(1))
+      render(
+        <BackendSocketShell>
+          <Suspense fallback={null}>
+            <LrPhotoProbe fetchPhoto={fetchPhoto} />
+          </Suspense>
+        </BackendSocketShell>,
+      )
+      await waitFor(() => expect(fetchPhoto).toHaveBeenCalledTimes(1))
 
-    await act(async () => {
-      handlers.job_updated!({ id: 'j', type: 'lr_writeback', status: 'completed' })
-    })
-    await waitFor(() => expect(fetchPhoto).toHaveBeenCalledTimes(2))
-  })
+      await act(async () => {
+        handlers.job_updated!({ id: 'j', type: 'lr_writeback', status })
+      })
+      await waitFor(() => expect(fetchPhoto).toHaveBeenCalledTimes(2))
+    },
+  )
 })
