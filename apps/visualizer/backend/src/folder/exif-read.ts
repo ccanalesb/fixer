@@ -121,7 +121,3 @@ export function buildFolderCatalogRecords(
   }
   return [...byKey.values()];
 }
-
-export async function endExiftoolPool(): Promise<void> {
-  await exiftool.end();
-}

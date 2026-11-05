@@ -224,8 +224,6 @@ export const FIRST_RUN_STAGE_READ_CATALOG = 'Reading the catalog'
 export const FIRST_RUN_STAGE_EMBEDDINGS = 'Computing image embeddings'
 export const FIRST_RUN_STAGE_BURST_STACKS = 'Detecting burst stacks'
 export const FIRST_RUN_STAGE_NEAR_DUPLICATES = 'Grouping near-duplicates'
-/** @deprecated Use FIRST_RUN_IMPORT_PHOTOS with a count. Kept for tests that mock the old label. */
-export const FIRST_RUN_IMPORT_CATALOG = 'Import catalog'
 export const FIRST_RUN_LIBRARY_EMPTY_TITLE = 'Your library is empty'
 export const FIRST_RUN_GO_TO_SETUP = 'Go to setup'
 export const FIRST_RUN_IMAGES_EMPTY_HINT =

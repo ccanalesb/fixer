@@ -64,7 +64,6 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
     showImagesEmpty: true,
     showImagesReadingCatalog: false,
     showImagesImportBanner: false,
-    pickAndSaveCatalog: vi.fn(),
     pickAndSaveFolder: vi.fn(),
     pickAndSaveLrcat: vi.fn(),
     saveCatalogPath: vi.fn(),

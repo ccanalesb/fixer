@@ -142,8 +142,6 @@ export function useFirstRunSetup() {
     await saveCatalogPath(chosen)
   }, [catalog, saveCatalogPath])
 
-  const pickAndSaveCatalog = pickAndSaveLrcat
-
   const runImportJob = useCallback(async () => {
     if (!catalogSavedAndValid || importRunning) return
     setImportStarting(true)
@@ -194,7 +192,6 @@ export function useFirstRunSetup() {
     showImagesEmpty,
     showImagesReadingCatalog,
     showImagesImportBanner,
-    pickAndSaveCatalog,
     pickAndSaveFolder,
     pickAndSaveLrcat,
     saveCatalogPath,
