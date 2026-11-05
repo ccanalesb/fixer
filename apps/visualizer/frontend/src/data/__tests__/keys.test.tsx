@@ -3,7 +3,7 @@ import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { deleteMatching } from '../cache'
 import { useQuery } from '../useQuery'
-import { cullingChanged, keys, stacksChanged } from '../keys'
+import { cullingChanged, cullingProfilesChanged, keys, stacksChanged } from '../keys'
 
 type Deferred<T> = {
   promise: Promise<T>
@@ -209,6 +209,82 @@ describe('stacksChanged', () => {
     })
 
     for (const id of STACK_PROBE_IDS) {
+      expect(callCounts[id]).toBe(2)
+    }
+  })
+})
+
+function CullingProfilesProbes({
+  fetches,
+}: {
+  fetches: Record<(typeof CULLING_PROFILES_PROBE_IDS)[number], () => Promise<unknown>>
+}) {
+  const list = useQuery(keys.cullingProfiles.list(), fetches.list)
+  const detail = useQuery(keys.cullingProfiles.detail('probe-slug'), fetches.detail)
+  const pipeline = useQuery(keys.cullingProfiles.pipeline(), fetches.pipeline)
+  const questions = useQuery(keys.scoreForecastQuestions(), fetches.questions)
+  return (
+    <div>
+      {String(list)}
+      {String(detail)}
+      {String(pipeline)}
+      {String(questions)}
+    </div>
+  )
+}
+
+const CULLING_PROFILES_PROBE_IDS = ['list', 'detail', 'pipeline', 'questions'] as const
+
+describe('cullingProfilesChanged', () => {
+  it('refetches every query the group covers', async () => {
+    const pending = Object.fromEntries(
+      CULLING_PROFILES_PROBE_IDS.map((id) => [id, deferred<unknown>()]),
+    ) as Record<(typeof CULLING_PROFILES_PROBE_IDS)[number], Deferred<unknown>>
+    const callCounts = Object.fromEntries(CULLING_PROFILES_PROBE_IDS.map((id) => [id, 0])) as Record<
+      (typeof CULLING_PROFILES_PROBE_IDS)[number],
+      number
+    >
+    const fetches = Object.fromEntries(
+      CULLING_PROFILES_PROBE_IDS.map((id) => [
+        id,
+        () => {
+          callCounts[id] += 1
+          return pending[id].promise
+        },
+      ]),
+    ) as Record<(typeof CULLING_PROFILES_PROBE_IDS)[number], () => Promise<unknown>>
+
+    render(
+      <Suspense fallback={<div>loading</div>}>
+        <CullingProfilesProbes fetches={fetches} />
+      </Suspense>,
+    )
+    expect(screen.getByText('loading')).toBeInTheDocument()
+
+    await act(async () => {
+      for (const id of CULLING_PROFILES_PROBE_IDS) {
+        pending[id].resolve(id)
+        await pending[id].promise
+      }
+    })
+
+    for (const id of CULLING_PROFILES_PROBE_IDS) {
+      expect(callCounts[id]).toBe(1)
+      pending[id] = deferred<unknown>()
+    }
+
+    act(() => {
+      cullingProfilesChanged()
+    })
+
+    await act(async () => {
+      for (const id of CULLING_PROFILES_PROBE_IDS) {
+        pending[id].resolve(`${id}-2`)
+        await pending[id].promise
+      }
+    })
+
+    for (const id of CULLING_PROFILES_PROBE_IDS) {
       expect(callCounts[id]).toBe(2)
     }
   })

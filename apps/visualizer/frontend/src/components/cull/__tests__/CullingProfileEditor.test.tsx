@@ -98,7 +98,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('enables Save only once the text changes and shows the hours impact', async () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     expect(screen.getByRole('button', { name: CULL_SAVE_ONLY })).toBeDisabled()
     editQuestion()
     await act(async () => {
@@ -111,7 +111,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('the Rule tab has no Score forecast threshold: it lives in Settings → Culling models', () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     openRule()
     expect(screen.getByRole('combobox', { name: CULL_RULE_SUBJECT_ARIA })).toBeInTheDocument()
     expect(screen.queryByText(/score forecast/i)).not.toBeInTheDocument()
@@ -120,7 +120,7 @@ describe('CullingProfileEditor', () => {
 
   it('surfaces validation_errors on fields', async () => {
     saveDefinition.mockRejectedValue(new ApiRequestError('bad', [{ field: '5|impact', message: 'Too short' }]))
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     editQuestion()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_ONLY }))
@@ -131,7 +131,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('adds a level only when every dimension has text, then saves it for all dimensions', async () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     openLevels()
     fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_TOP }))
     const add = screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL })
@@ -155,7 +155,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('creates a level set named by its count and saves its bands with the definition', async () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     openLevels()
     fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_SET_BUTTON }))
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Levels' }), { target: { value: '5' } })
@@ -177,7 +177,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('blocks saving while a new set has empty levels', () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     openLevels()
     fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_SET_BUTTON }))
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Levels' }), { target: { value: '2' } })
@@ -187,7 +187,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('asks before removing a level set and keeps the last one', () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     openLevels()
     expect(screen.getByRole('button', { name: CULL_PROFILE_REMOVE_SET('5') })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: CULL_PROFILE_ADD_LEVEL_SET_BUTTON }))
@@ -203,7 +203,7 @@ describe('CullingProfileEditor', () => {
   const renderInRouter = () =>
     render(
       <MemoryRouter>
-        <CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />
+        <CullingProfileEditor profile={baseProfile} />
       </MemoryRouter>,
     )
   const dialog = () => screen.getByRole('dialog')
@@ -246,7 +246,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('offers Save and apply on the Rule tab only, and the text saves on the others', () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     expect(screen.queryByRole('button', { name: CULL_SAVE })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: CULL_SAVE_AND_QUEUE })).toBeInTheDocument()
     openRule()
@@ -282,7 +282,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('shows and moves where high starts even when the rule does not use it', () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     openRule()
     expect(screen.getByRole('button', { name: CULL_RULE_LEVEL_ARIA(4, 5, 'high') })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: CULL_RULE_LEVEL_ARIA(5, 5, 'high') }))
@@ -290,7 +290,7 @@ describe('CullingProfileEditor', () => {
   })
 
   it('keeps low and high out of the Levels tab', () => {
-    render(<CullingProfileEditor profile={baseProfile} onRefresh={() => {}} />)
+    render(<CullingProfileEditor profile={baseProfile} />)
     openLevels()
     expect(screen.queryByRole('spinbutton', { name: /fails|strong/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: CULL_RULE_LEVEL_ARIA(1, 5, 'low') })).not.toBeInTheDocument()

@@ -43,6 +43,8 @@ import {
   STAGE_NO_QUESTIONS,
 } from '../../../constants/strings'
 import type { Job } from '../../../types/job'
+import { deleteMatching } from '../../../data/cache'
+import { cullingProfilesChanged } from '../../../data'
 
 const socket = vi.hoisted(() => ({ onJobUpdated: null as null | ((job: Job) => void) }))
 vi.mock('../../../hooks/useJobSocket', () => ({
@@ -114,6 +116,7 @@ const questionsResponse = () => ({
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  deleteMatching(() => true)
   socket.onJobUpdated = null
   pipeline()
   usable = { culling_profile: usableStage(), score_forecast: usableStage({ model: 'forecast-model' }), culling_profile_filter: true }
@@ -160,10 +163,12 @@ beforeEach(() => {
   vi.spyOn(CullingProfilesAPI, 'saveCullingProfileSwitches').mockImplementation(async (body) => {
     if (body.enabled !== undefined) stored = { ...stored, culling_profiles_enabled: body.enabled }
     if (body.filter_enabled !== undefined) stored = { ...stored, culling_profiles_filter_enabled: body.filter_enabled }
+    cullingProfilesChanged()
     return saved
   })
   vi.spyOn(CullingProfilesAPI, 'saveScoreForecast').mockImplementation(async (body) => {
     stored = { ...stored, score_forecast: { ...stored.score_forecast, ...body } }
+    cullingProfilesChanged()
     return saved
   })
 })
@@ -343,6 +348,7 @@ describe('CullingModelsSection — Score forecast questions', () => {
     questionCount = 0
     vi.spyOn(ScoreForecastQuestionsAPI, 'fromPerspectives').mockImplementation(async () => {
       questionCount = 5
+      cullingProfilesChanged()
       return { ...questionsResponse(), skipped: ['Street'] }
     })
     renderSection()

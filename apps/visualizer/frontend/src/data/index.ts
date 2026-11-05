@@ -1,7 +1,14 @@
 export { query } from './query'
 export { useQuery } from './useQuery'
 export { invalidate, invalidateAll } from './invalidate'
-export { cullingChanged, keys, lrWritebackFinishedPrefixes, prefixOf, stacksChanged } from './keys'
+export {
+  cullingChanged,
+  cullingProfilesChanged,
+  keys,
+  lrWritebackFinishedPrefixes,
+  prefixOf,
+  stacksChanged,
+} from './keys'
 export { patchMatching } from './cache'
 export { ErrorBoundary } from './ErrorBoundary'
 export { ErrorState } from './ErrorState'

@@ -8,8 +8,7 @@ import {
   type CullingStageKind,
   type CullReviewRow,
 } from '../../services/api'
-import { invalidateAll, useQuery } from '../../data'
-import { keys } from '../../data/keys'
+import { keys, useQuery } from '../../data'
 import { Button } from '../ui/Button'
 import { Pagination } from '../ui/Pagination'
 import {
@@ -73,8 +72,6 @@ export function CullReviewTab() {
     setTurningOff(true)
     try {
       await turnStageOff(stage)
-      invalidateAll(['cull.summary'])
-      invalidateAll(['cull.photos'])
       load()
     } finally {
       setTurningOff(false)

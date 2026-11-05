@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
@@ -13,7 +13,7 @@ import {
   type Provider,
   type ProviderModel,
 } from '../../services/api'
-import { invalidateAll } from '../../data'
+import { keys, useQuery } from '../../data'
 import { useJobSocket } from '../../hooks/useJobSocket'
 import type { Job } from '../../types/job'
 import {
@@ -44,7 +44,15 @@ interface TaskAssignmentsBlockProps {
   onRefreshBundle: () => void
 }
 
-export function TaskAssignmentsBlock({
+export function TaskAssignmentsBlock(props: TaskAssignmentsBlockProps) {
+  return (
+    <Suspense fallback={null}>
+      <TaskAssignmentsBlockInner {...props} />
+    </Suspense>
+  )
+}
+
+function TaskAssignmentsBlockInner({
   openAiProviders,
   fallbackOrder,
   modelCache,
@@ -52,11 +60,18 @@ export function TaskAssignmentsBlock({
   defaultsNotice,
   onRefreshBundle,
 }: TaskAssignmentsBlockProps) {
+  const pipeline = useQuery(keys.cullingProfiles.pipeline(), () => CullingProfilesAPI.getPipeline())
+  const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
+  const [optimisticOn, setOptimisticOn] = useState<Partial<Record<Stage, boolean>> | null>(null)
+  const pipelineOn = {
+    culling_profile: optimisticOn?.culling_profile ?? pipeline.config.culling_profiles_enabled,
+    score_forecast: optimisticOn?.score_forecast ?? pipeline.config.score_forecast.enabled,
+  }
+  const questionCount = questions.questions.length
   const [descriptionProvider, setDescriptionProvider] = useState<string | null>(null)
   const [descriptionModel, setDescriptionModel] = useState<string | null>(null)
   const [defaultsSaveMsg, setDefaultsSaveMsg] = useState<string | null>(null)
 
-  const [pipelineOn, setPipelineOn] = useState<{ culling_profile: boolean; score_forecast: boolean } | null>(null)
   const [stageModels, setStageModels] = useState<CullingModelsResponse | null>(null)
   const [appModels, setAppModels] = useState<AppModel[]>([])
   const [providerModels, setProviderModels] = useState<Record<Stage, string[] | null>>({
@@ -67,7 +82,6 @@ export function TaskAssignmentsBlock({
   const [suggest, setSuggest] = useState<Stage | null>(null)
   const [queued, setQueued] = useState<Stage | null>(null)
   const [queueing, setQueueing] = useState(false)
-  const [questionCount, setQuestionCount] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<{ stage: Stage; jobId: string | null } | null>(null)
   const [turningOn, setTurningOn] = useState<Stage | null>(null)
@@ -78,7 +92,7 @@ export function TaskAssignmentsBlock({
   appModelsRef.current = appModels
 
   const { hash } = useLocation()
-  const loaded = pipelineOn !== null && stageModels !== null
+  const loaded = stageModels !== null
 
   useEffect(() => {
     const block = defaults.description
@@ -129,11 +143,7 @@ export function TaskAssignmentsBlock({
 
   const load = useCallback(async () => {
     try {
-      const [{ config }, next] = await Promise.all([CullingProfilesAPI.getPipeline(), CullingModelsAPI.get()])
-      setPipelineOn({
-        culling_profile: config.culling_profiles_enabled,
-        score_forecast: config.score_forecast.enabled,
-      })
+      const next = await CullingModelsAPI.get()
       setStageModels(next)
       for (const stage of STAGES) void loadProviderModels(stage, next[stage].endpoint)
     } catch (e) {
@@ -144,9 +154,6 @@ export function TaskAssignmentsBlock({
   useEffect(() => {
     void load()
     void refreshAppModels()
-    ScoreForecastQuestionsAPI.get()
-      .then((r) => setQuestionCount(r.questions.length))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [load, refreshAppModels])
 
   useEffect(() => {
@@ -156,7 +163,7 @@ export function TaskAssignmentsBlock({
     }
   }, [loaded, hash])
 
-  const { run: runCullingGate, dialog: cullingDialog } = useCullingGate({ onStageOff: () => void load() })
+  const { run: runCullingGate, dialog: cullingDialog } = useCullingGate()
 
   const onJobUpdated = useCallback(
     (job: Job) => {
@@ -228,18 +235,30 @@ export function TaskAssignmentsBlock({
     setTurningOn(stage)
     setSaved(null)
     setError(null)
-    setPipelineOn((p) => (p ? { ...p, [stage]: true } : p))
+    setOptimisticOn({ [stage]: true })
     try {
       const { redecide_job_id } = await applyPipelineStageChange(stage, { enabled: true })
       setSaved({ stage, jobId: redecide_job_id })
-      invalidateAll(['culling-profiles.pipeline'])
     } catch (e) {
+      setOptimisticOn(null)
       setError(e instanceof Error ? e.message : 'Save failed')
     } finally {
       setTurningOn(null)
     }
-    await load()
   }
+
+  useEffect(() => {
+    if (!optimisticOn) return
+    const p = pipeline.config
+    const matches = STAGES.every((stage) => {
+      const want = optimisticOn[stage]
+      if (want === undefined) return true
+      return stage === 'culling_profile'
+        ? p.culling_profiles_enabled === want
+        : p.score_forecast.enabled === want
+    })
+    if (matches) setOptimisticOn(null)
+  }, [pipeline, optimisticOn])
 
   const savedNote = (stage: Stage): ReactNode => {
     if (saved?.stage !== stage) return null
@@ -285,7 +304,7 @@ export function TaskAssignmentsBlock({
       .catch(console.error)
   }
 
-  if (!pipelineOn || !stageModels) {
+  if (!stageModels) {
     return error ? <p className="text-sm text-error">{error}</p> : null
   }
 
@@ -328,7 +347,7 @@ export function TaskAssignmentsBlock({
           suggest={suggest}
           queued={queued}
           queueing={queueing}
-          questionCount={stage === 'score_forecast' && questionCount !== null ? questionCount : undefined}
+          questionCount={stage === 'score_forecast' ? questionCount : undefined}
           onEndpoint={(endpoint) => void onEndpoint(stage, endpoint)}
           onModel={(model) => void onModel(stage, model)}
           onAddModel={scrollToThisApp}

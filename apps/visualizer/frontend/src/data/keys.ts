@@ -20,6 +20,12 @@ export const keys = {
   stacks: {
     suggestions: () => ['stacks.suggestions'] as const,
   },
+  cullingProfiles: {
+    list: () => ['culling-profiles.list'] as const,
+    detail: (slug: string) => ['culling-profiles.detail', slug] as const,
+    pipeline: () => ['culling-profiles.pipeline'] as const,
+  },
+  scoreForecastQuestions: () => ['score-forecast-questions'] as const,
   frameSubstance: (imageKey: string) => ['frameSubstance', imageKey] as const,
   dashboard: () => ['dashboard'] as const,
   identity: {
@@ -58,6 +64,20 @@ const STACKS_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
 /** Invalidate every query whose data changes when stack membership or suggestions do. */
 export function stacksChanged(): void {
   for (const prefix of STACKS_CHANGED_PREFIXES) {
+    invalidateAll(prefix)
+  }
+}
+
+const CULLING_PROFILES_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
+  keys.cullingProfiles.list(),
+  prefixOf(keys.cullingProfiles.detail(''), 1),
+  keys.cullingProfiles.pipeline(),
+  keys.scoreForecastQuestions(),
+]
+
+/** Invalidate every query whose data changes when culling profiles, pipeline settings, or score-forecast questions do. */
+export function cullingProfilesChanged(): void {
+  for (const prefix of CULLING_PROFILES_CHANGED_PREFIXES) {
     invalidateAll(prefix)
   }
 }

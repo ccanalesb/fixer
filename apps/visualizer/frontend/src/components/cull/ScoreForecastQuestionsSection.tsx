@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ScoreForecastQuestionsAPI } from '../../services/api'
-import { useQuery, invalidateAll } from '../../data'
+import { keys, useQuery } from '../../data'
 import { FoldingCard } from '../ui/Card'
 import {
   CULL_PROFILE_TEXT_SAVE_IMPACT,
@@ -11,12 +11,9 @@ import {
 } from '../../constants/strings'
 import { ScoreForecastQuestionsEditor } from './ScoreForecastQuestionsEditor'
 
-export const SCORE_FORECAST_QUESTIONS_KEY = ['score-forecast-questions'] as const
-
 /** Perspectives → Score forecast questions: what the Score forecast's model answers. */
 export function ScoreForecastQuestionsSection() {
-  const [rev, setRev] = useState(0)
-  const current = useQuery([...SCORE_FORECAST_QUESTIONS_KEY, rev], () => ScoreForecastQuestionsAPI.get())
+  const current = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
   const [impact, setImpact] = useState<{ photos: number; hours_estimate: number } | null>(null)
 
   const summary = SFQ_SUMMARY(
@@ -39,8 +36,6 @@ export function ScoreForecastQuestionsSection() {
           current={current}
           onSaved={(res) => {
             setImpact(res.impact)
-            invalidateAll(SCORE_FORECAST_QUESTIONS_KEY)
-            setRev((n) => n + 1)
           }}
         />
         {impact ? (

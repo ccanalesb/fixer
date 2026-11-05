@@ -1,4 +1,11 @@
-import { cullingChanged, invalidate, invalidateAll, patchMatching, stacksChanged } from '../data'
+import {
+  cullingChanged,
+  cullingProfilesChanged,
+  invalidate,
+  invalidateAll,
+  patchMatching,
+  stacksChanged,
+} from '../data'
 import type {
   CatalogImage,
   CatalogImageInput,
@@ -1001,65 +1008,101 @@ export type ScoreForecastQuestionsFromPerspectivesResponse =
 
 export const ScoreForecastQuestionsAPI = {
   get: () => request<ScoreForecastQuestionsResponse>('/score-forecast-questions'),
-  save: (questions: ScoreForecastQuestion[], mode: 'save_only' | 'save_and_queue_cull') =>
-    request<SaveScoreForecastQuestionsResponse>('/score-forecast-questions', {
+  save: async (questions: ScoreForecastQuestion[], mode: 'save_only' | 'save_and_queue_cull') => {
+    const result = await request<SaveScoreForecastQuestionsResponse>('/score-forecast-questions', {
       method: 'PUT',
       body: JSON.stringify({ questions, mode }),
-    }),
-  fromPerspectives: () =>
-    request<ScoreForecastQuestionsFromPerspectivesResponse>('/score-forecast-questions/from-perspectives', {
-      method: 'POST',
-    }),
+    })
+    cullingProfilesChanged()
+    return result
+  },
+  fromPerspectives: async () => {
+    const result = await request<ScoreForecastQuestionsFromPerspectivesResponse>(
+      '/score-forecast-questions/from-perspectives',
+      { method: 'POST' },
+    )
+    cullingProfilesChanged()
+    return result
+  },
 }
 
 export const CullingProfilesAPI = {
   list: () => request<{ profiles: CullProfileSummary[] }>('/culling-profiles/'),
   get: (slug: string) => request<CullProfileDetail>(`/culling-profiles/${encodeURIComponent(slug)}`),
-  create: (body: unknown) =>
-    request<CullProfileDetail>('/culling-profiles/', { method: 'POST', body: JSON.stringify(body) }),
-  duplicate: (slug: string, body: { new_slug: string; new_name?: string }) =>
-    request<CullProfileDetail>(`/culling-profiles/${encodeURIComponent(slug)}/duplicate`, {
+  create: async (body: unknown) => {
+    const result = await request<CullProfileDetail>('/culling-profiles/', {
       method: 'POST',
       body: JSON.stringify(body),
-    }),
-  saveDefinition: (
+    })
+    cullingProfilesChanged()
+    return result
+  },
+  duplicate: async (slug: string, body: { new_slug: string; new_name?: string }) => {
+    const result = await request<CullProfileDetail>(
+      `/culling-profiles/${encodeURIComponent(slug)}/duplicate`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+    cullingProfilesChanged()
+    return result
+  },
+  saveDefinition: async (
     slug: string,
     body: { definition: unknown; rule?: unknown; mode: 'save_only' | 'save_and_queue_cull' },
-  ) =>
-    request<{
+  ) => {
+    const result = await request<{
       profile: CullProfileDetail
       version: number
       created: boolean
       impact: { photos: number; hours_estimate: number }
       cull_job_id: string | null
-    }>(
-      `/culling-profiles/${encodeURIComponent(slug)}/definition`,
-      { method: 'PUT', body: JSON.stringify(body) },
-    ),
-  saveRule: (slug: string, rule: unknown) =>
-    request<{ profile: CullProfileDetail; pipeline_setting_version: number | null; redecide_job_id: string | null }>(
-      `/culling-profiles/${encodeURIComponent(slug)}/rule`,
-      { method: 'PUT', body: JSON.stringify({ rule }) },
-    ),
-  patch: (slug: string, body: { name?: string; model?: string; active?: boolean }) =>
-    request<{ profile: CullProfileDetail; pipeline_setting_version: number | null; redecide_job_id: string | null }>(
-      `/culling-profiles/${encodeURIComponent(slug)}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      },
-    ),
+    }>(`/culling-profiles/${encodeURIComponent(slug)}/definition`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+    cullingProfilesChanged()
+    return result
+  },
+  saveRule: async (slug: string, rule: unknown) => {
+    const result = await request<{
+      profile: CullProfileDetail
+      pipeline_setting_version: number | null
+      redecide_job_id: string | null
+    }>(`/culling-profiles/${encodeURIComponent(slug)}/rule`, {
+      method: 'PUT',
+      body: JSON.stringify({ rule }),
+    })
+    cullingProfilesChanged()
+    return result
+  },
+  patch: async (slug: string, body: { name?: string; model?: string; active?: boolean }) => {
+    const result = await request<{
+      profile: CullProfileDetail
+      pipeline_setting_version: number | null
+      redecide_job_id: string | null
+    }>(`/culling-profiles/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+    cullingProfilesChanged()
+    return result
+  },
   getPipeline: () => request<PipelineSettingResponse>('/culling-profiles/pipeline'),
-  saveCullingProfileSwitches: (body: { enabled?: boolean; filter_enabled?: boolean }) =>
-    request<PipelineChangeResponse>('/culling-profiles/pipeline/culling-profiles', {
+  saveCullingProfileSwitches: async (body: { enabled?: boolean; filter_enabled?: boolean }) => {
+    const result = await request<PipelineChangeResponse>('/culling-profiles/pipeline/culling-profiles', {
       method: 'PUT',
       body: JSON.stringify(body),
-    }),
-  saveScoreForecast: (body: { enabled?: boolean; threshold?: number; high_from_level?: number }) =>
-    request<PipelineChangeResponse>('/culling-profiles/pipeline/score-forecast', {
+    })
+    cullingProfilesChanged()
+    return result
+  },
+  saveScoreForecast: async (body: { enabled?: boolean; threshold?: number; high_from_level?: number }) => {
+    const result = await request<PipelineChangeResponse>('/culling-profiles/pipeline/score-forecast', {
       method: 'PUT',
       body: JSON.stringify(body),
-    }),
+    })
+    cullingProfilesChanged()
+    return result
+  },
 }
 
 export type AppModel = components['schemas']['AppModel']

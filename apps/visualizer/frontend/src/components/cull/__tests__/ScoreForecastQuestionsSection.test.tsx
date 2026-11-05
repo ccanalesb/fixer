@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ScoreForecastQuestionsSection } from '../ScoreForecastQuestionsSection'
 import { deleteMatching } from '../../../data/cache'
+import { cullingProfilesChanged } from '../../../data'
 import {
   ApiRequestError,
   ScoreForecastQuestionsAPI,
@@ -68,6 +69,7 @@ beforeEach(() => {
   vi.spyOn(ScoreForecastQuestionsAPI, 'get').mockImplementation(async () => current)
   vi.spyOn(ScoreForecastQuestionsAPI, 'save').mockImplementation(async (questions) => {
     current = { ...current, questions, version: current.version + 1 }
+    cullingProfilesChanged()
     return { ...current, created: true, impact, cull_job_id: null }
   })
 })

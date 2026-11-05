@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
@@ -10,7 +10,7 @@ import {
   type PipelineChangeResponse,
   type PipelineSettingResponse,
 } from '../../services/api'
-import { invalidateAll } from '../../data'
+import { keys, useQuery } from '../../data'
 import {
   CULLING_CHANGE_IN_PROVIDERS,
   CULLING_FIX_IN_PROVIDERS_LINK,
@@ -115,67 +115,76 @@ function ModelSummaryLine({ stage, view }: { stage: Stage; view: StageView }) {
 }
 
 /** Processing → Settings → Culling: stage switches, filter, and Score forecast level, threshold and questions. */
-export function CullingModelsSection() {
-  const [config, setConfig] = useState<Config | null>(null)
+function CullingModelsSectionInner() {
+  const pipeline = useQuery(keys.cullingProfiles.pipeline(), () => CullingProfilesAPI.getPipeline())
+  const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
+  const [optimisticConfig, setOptimisticConfig] = useState<Config | null>(null)
+  const config = optimisticConfig ?? pipeline.config
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<{ stage: Stage; jobId: string | null } | null>(null)
-  const [threshold, setThreshold] = useState('')
+  const [threshold, setThreshold] = useState(() => String(config.score_forecast.threshold))
   const [stageModels, setStageModels] = useState<CullingModelsResponse | null>(null)
   const [appModels, setAppModels] = useState<AppModel[]>([])
-  const [questionCount, setQuestionCount] = useState<number | null>(null)
   const [explain, setExplain] = useState(false)
   const [created, setCreated] = useState<{ skipped: string[] } | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      const { config: next } = await CullingProfilesAPI.getPipeline()
-      setConfig(next)
-      setThreshold(String(next.score_forecast.threshold))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load the pipeline setting')
+  useEffect(() => {
+    if (optimisticConfig === null) {
+      setThreshold(String(pipeline.config.score_forecast.threshold))
     }
-  }, [])
+  }, [pipeline.config.score_forecast.threshold, optimisticConfig])
 
   useEffect(() => {
-    void load()
     void AppModelsAPI.list()
       .then(({ models }) => setAppModels(models))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-    ScoreForecastQuestionsAPI.get()
-      .then((r) => setQuestionCount(r.questions.length))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
     void CullingModelsAPI.get()
       .then(setStageModels)
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load culling models'))
-  }, [load])
+  }, [])
 
   const { hash } = useLocation()
-  const loaded = config !== null && stageModels !== null
+  const loaded = stageModels !== null
   useEffect(() => {
     if (loaded && hash.startsWith('#stage-')) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [loaded, hash])
 
   const save = async (stage: Stage, shown: Config, call: () => Promise<PipelineChangeResponse>) => {
-    setConfig(shown)
+    setOptimisticConfig(shown)
     setSaved(null)
     setError(null)
     try {
       const { redecide_job_id } = await call()
       setSaved({ stage, jobId: redecide_job_id })
-      invalidateAll(['culling-profiles.pipeline'])
     } catch (e) {
+      setOptimisticConfig(null)
       setError(e instanceof Error ? e.message : 'Save failed')
     }
-    await load()
   }
 
-  if (!config || !stageModels) {
+  useEffect(() => {
+    if (!optimisticConfig) return
+    const p = pipeline.config
+    if (
+      p.culling_profiles_enabled === optimisticConfig.culling_profiles_enabled &&
+      p.culling_profiles_filter_enabled === optimisticConfig.culling_profiles_filter_enabled &&
+      p.score_forecast.enabled === optimisticConfig.score_forecast.enabled &&
+      p.score_forecast.threshold === optimisticConfig.score_forecast.threshold &&
+      p.score_forecast.high_from_level === optimisticConfig.score_forecast.high_from_level
+    ) {
+      setOptimisticConfig(null)
+    }
+  }, [pipeline, optimisticConfig])
+
+  if (!stageModels) {
     return error ? (
       <p className="text-sm text-error">{error}</p>
     ) : (
       <p className="text-sm text-text-secondary">{CULLING_MODELS_LOADING}</p>
     )
   }
+
+  const questionCount = questions.questions.length
 
   const forecast = config.score_forecast
   const cullingProfileOn = config.culling_profiles_enabled
@@ -187,7 +196,7 @@ export function CullingModelsSection() {
     providerModels: null,
     appModels,
     providers: stageModels.system_one_providers,
-    ...(stage === 'score_forecast' && questionCount !== null ? { questionCount } : {}),
+    ...(stage === 'score_forecast' ? { questionCount } : {}),
   })
 
   const thresholdChanged = threshold.trim() !== String(forecast.threshold)
@@ -218,16 +227,13 @@ export function CullingModelsSection() {
     setError(null)
     try {
       const res = await ScoreForecastQuestionsAPI.fromPerspectives()
-      setQuestionCount(res.questions.length)
       setCreated({ skipped: res.skipped })
-      invalidateAll(['score-forecast-questions'])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }
 
   const forecastExplain = (): ReactNode => {
-    if (questionCount === null) return null
     const line =
       questionCount > 0 ? (
         <p className="text-sm text-text-secondary">
@@ -391,5 +397,13 @@ export function CullingModelsSection() {
         />
       </div>
     </div>
+  )
+}
+
+export function CullingModelsSection() {
+  return (
+    <Suspense fallback={<p className="text-sm text-text-secondary">{CULLING_MODELS_LOADING}</p>}>
+      <CullingModelsSectionInner />
+    </Suspense>
   )
 }

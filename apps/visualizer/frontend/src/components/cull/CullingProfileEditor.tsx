@@ -47,10 +47,8 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 export function CullingProfileEditor({
   profile,
-  onRefresh,
 }: {
   profile: CullProfileDetail
-  onRefresh: () => void
 }) {
   const [draft, setDraft] = useState(() => structuredClone(profile) as Draft)
   const [tab, setTab] = useState<Tab>('dimensions')
@@ -84,7 +82,6 @@ export function CullingProfileEditor({
 
   const saveMeta = async () => {
     await CullingProfilesAPI.patch(draft.slug, { name: draft.name })
-    onRefresh()
   }
 
   const applyRedecideChange = async (change: RedecideChange) => {
@@ -100,7 +97,6 @@ export function CullingProfileEditor({
         setDraft((d) => ({ ...d, active: res.profile.active }))
         setRedecided(res)
       }
-      onRefresh()
     } catch (e) {
       showErrors(e)
     }
@@ -131,7 +127,6 @@ export function CullingProfileEditor({
         mode,
       })
       setImpact(res.impact)
-      onRefresh()
     } catch (e) {
       showErrors(e)
     }
@@ -236,7 +231,7 @@ export function CullingProfileEditor({
           variant="secondary"
           onClick={() => {
             const newSlug = `${draft.slug}-copy`
-            void CullingProfilesAPI.duplicate(draft.slug, { new_slug: newSlug }).then(onRefresh)
+            void CullingProfilesAPI.duplicate(draft.slug, { new_slug: newSlug })
           }}
         >
           {CULL_DUPLICATE}
