@@ -12,6 +12,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { resolveOpenLibraryPaths } from './open-library.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** Monorepo root — `apps/visualizer/backend/src` → four levels up. */
@@ -346,14 +347,8 @@ export function resolveLibraryDbLocation(): { path: string; source: LibraryDbSou
     return { path: resolvePath(envValue, pathBase()), source: 'env' };
   }
 
-  const configPath = defaultConfigYamlPath();
-  const cfg = loadLibraryConfig(configPath);
-  if (cfg.dbPath) {
-    return { path: cfg.dbPath, source: 'config' };
-  }
-
   return {
-    path: resolveDataPath('library.db', 'library.db'),
+    path: resolveOpenLibraryPaths().libraryDbPath,
     source: 'default',
   };
 }
@@ -368,13 +363,9 @@ export function describeLibraryDb(): LibraryDbStatus {
     exists,
     reason: exists
       ? null
-      : location.source === 'env'
+        : location.source === 'env'
         ? `LIBRARY_DB is set to '${location.path}' but that file does not exist.`
-        : location.source === 'config'
-          ? `config.yaml db_path is '${location.path}' but that file does not exist. ` +
-            'Run the catalog import to create it, or set LIBRARY_DB to override.'
-          : 'No LIBRARY_DB env var, no db_path in config.yaml, and no library.db under the ' +
-            'data folder. Set LIBRARY_DB or configure db_path in config.yaml.',
+        : 'No library for the configured catalog yet. Set catalog_path in config.yaml.',
   };
 }
 

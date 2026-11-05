@@ -4,6 +4,7 @@
 import { existsSync } from 'node:fs';
 import { openLibraryDb, type Db } from '../db/connection.js';
 import { initLibraryDb, upgradeLibrarySchema } from '../db/library/bootstrap.js';
+import { config } from '../config.js';
 import { resolveOpenLibraryPathsForCli } from '../open-library.js';
 import type { CommandContext } from './registry.js';
 import { stringFlag } from './parse.js';
@@ -13,11 +14,12 @@ const MISSING_DB_PATH_MSG = 'No database path provided. Use --db or config.yaml'
 /** A failure the user can read and act on; printed without a stack trace. */
 export class CliError extends Error {}
 
-/** `--db` if given, else `db_path` from `config.yaml`. */
+/** `--db` if given, else the library the catalog lookup finds. */
 export function resolveLibraryDbPath(ctx: CommandContext, opts: { mustExist: boolean }): string {
   const { libraryDbPath: dbPath } = resolveOpenLibraryPathsForCli(
     ctx.config,
     stringFlag(ctx.args, 'db') ?? undefined,
+    config.LT_CONFIG_YAML,
   );
   if (!dbPath) throw new CliError(MISSING_DB_PATH_MSG);
   if (opts.mustExist && !existsSync(dbPath)) {

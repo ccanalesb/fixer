@@ -27,7 +27,6 @@ const catalogStatus = {
   resolved_path: '/old.lrcat',
   exists: true,
   picker_available: true,
-  needs_catalog_sync: false,
 }
 
 describe('useCatalogPicker pick', () => {

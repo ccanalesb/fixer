@@ -26,12 +26,6 @@ export interface CatalogStatus {
    * of nobody and hold the request until it times out.
    */
   pickerUsable: boolean
-  /**
-   * `library.db` mirrors a catalog other than the configured one, so what the app
-   * shows is from the old catalog until a sync runs. Stays true across the save —
-   * saving is what causes it, not what settles it.
-   */
-  needsSync: boolean
 }
 
 /**
@@ -83,7 +77,6 @@ export function useCatalogPicker() {
         pickerUsable:
           isTauri() ||
           (data.picker_available && browserIsOnBackendHost(window.location.hostname)),
-        needsSync: data.needs_catalog_sync,
       })
       setDraft(data.catalog_path)
     } catch (e) {

@@ -32,7 +32,6 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
         resolvedPath: '/tmp/cat.lrcat',
         exists: true,
         pickerUsable: true,
-        needsSync: false,
       },
       changesCatalog: false,
       error: null,

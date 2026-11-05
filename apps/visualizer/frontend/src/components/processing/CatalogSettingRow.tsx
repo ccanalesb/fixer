@@ -113,21 +113,12 @@ export function CatalogSettingRow() {
       }
       under={
         <>
-          {/* Two warnings, because saving does not end the problem: the draft one
-              says a sync will be needed, and `needsSync` says it still is. */}
           {changesCatalog ? (
             <p className="mb-3 text-sm text-warning">
-              A different catalog than the library database was built from. Run a catalog sync after
-              saving, or what you see stays out of date.
+              Saving points the app at a different catalog. Run a catalog sync after saving, or
+              what you see stays out of date.
             </p>
-          ) : (
-            status.needsSync && (
-              <p className="mb-3 text-sm text-warning">
-                The library database was built from a different catalog. Run a catalog sync, or what
-                you see stays out of date.
-              </p>
-            )
-          )}
+          ) : null}
           {error && <p className="mb-3 text-sm text-error">{error}</p>}
           <details open={manual} className="group">
             <summary

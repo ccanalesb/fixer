@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import { createApp } from '../src/app.js';
 
@@ -187,7 +187,7 @@ describe('GET /api/cache/status', () => {
     expect(body.missing).toBe(3);
     // `cache1.jpg` was never created, so it contributes nothing rather than throwing.
     expect(body.cache_size_mb).toBe(0.5);
-    expect(body.cache_dir).toBe(join(tmp, 'vc'));
+    expect(body.cache_dir).toBe(join(dirname(dbPath), 'vision-cache'));
 
     delete process.env.LT_CONFIG_YAML;
   });

@@ -47,8 +47,6 @@ describe('DashboardPage', () => {
       resolved_path: '/tmp/test.lrcat',
       exists: true,
       picker_available: false,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
     vi.spyOn(SystemAPI, 'clipModel').mockResolvedValue({
@@ -137,8 +135,6 @@ describe('DashboardPage first-run setup', () => {
       resolved_path: '',
       exists: false,
       picker_available: true,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue({
       catalog_sync: null,

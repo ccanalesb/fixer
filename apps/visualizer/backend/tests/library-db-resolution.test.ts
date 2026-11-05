@@ -8,10 +8,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { REPO_ROOT, resolveLibraryDbLocation } from '../src/config.js';
 import { describeLibraryDb } from '../src/jobs/library-db.js';
 import { resolveOpenLibraryPaths } from '../src/open-library.js';
+import {
+  createCatalogLibrary,
+  invalidateOpenLibraryCache,
+  resetCatalogLibraryModuleStateForTests,
+} from '../src/catalog-library.js';
 
 let dir: string;
 const saved = {
@@ -24,6 +29,9 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-libdb-'));
   delete process.env.LIBRARY_DB;
   process.env.LT_DATA_DIR = dir;
+  process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
+  invalidateOpenLibraryCache();
+  resetCatalogLibraryModuleStateForTests();
 });
 
 afterEach(() => {
@@ -35,17 +43,23 @@ afterEach(() => {
 });
 
 describe('describeLibraryDb', () => {
-  it('reads db_path from LT_CONFIG_YAML, not the repo config.yaml', () => {
-    const db = join(dir, 'library.db');
-    writeFileSync(db, '');
-    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
-    writeFileSync(process.env.LT_CONFIG_YAML, `db_path: ${db}\n`);
+  it('finds the library under catalogs/ for the configured catalog', () => {
+    const lrcat = join(dir, 'cat.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(process.env.LT_CONFIG_YAML!, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    const created = createCatalogLibrary(lrcat);
+    invalidateOpenLibraryCache();
 
-    expect(describeLibraryDb()).toMatchObject({ path: db, source: 'config', exists: true });
+    expect(describeLibraryDb()).toMatchObject({
+      path: created.libraryDbPath,
+      source: 'default',
+      exists: true,
+    });
   });
 
-  it('falls back to library.db in the data folder when the config file is missing', () => {
-    process.env.LT_CONFIG_YAML = join(dir, 'missing.yaml');
+  it('falls back to library.db in the data folder when no catalog is configured', () => {
+    writeFileSync(process.env.LT_CONFIG_YAML!, 'workers: 4\n');
+    invalidateOpenLibraryCache();
 
     expect(describeLibraryDb()).toMatchObject({
       path: join(dir, 'library.db'),
@@ -55,10 +69,10 @@ describe('describeLibraryDb', () => {
   });
 
   it('falls back to the repo-root library.db when no data folder is set', () => {
-    process.env.LT_CONFIG_YAML = join(dir, 'missing.yaml');
+    writeFileSync(process.env.LT_CONFIG_YAML!, 'workers: 4\n');
     delete process.env.LT_DATA_DIR;
+    invalidateOpenLibraryCache();
 
-    // The location only: describing it would stat the developer's real library.db.
     expect(resolveLibraryDbLocation()).toEqual({
       path: join(REPO_ROOT, 'library.db'),
       source: 'default',
@@ -67,22 +81,25 @@ describe('describeLibraryDb', () => {
 });
 
 describe('resolveOpenLibraryPaths', () => {
-  it('pairs library.db resolution with vision_cache_dir from the same config file', () => {
-    const db = join(dir, 'library.db');
-    writeFileSync(db, '');
-    const cache = join(dir, 'my-vision-cache');
-    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
-    writeFileSync(process.env.LT_CONFIG_YAML, `db_path: ${db}\nvision_cache_dir: ${cache}\n`);
+  it('pairs the catalog library with vision-cache/ beside it', () => {
+    const lrcat = join(dir, 'cat.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(process.env.LT_CONFIG_YAML!, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    invalidateOpenLibraryCache();
 
-    expect(resolveOpenLibraryPaths()).toEqual({ libraryDbPath: db, visionCacheDir: cache });
+    const paths = resolveOpenLibraryPaths();
+    expect(paths.visionCacheDir).toBe(join(dirname(paths.libraryDbPath), 'vision-cache'));
+    expect(paths.libraryDbPath).toContain('catalogs');
   });
 
-  it('uses the vision cache default when vision_cache_dir is omitted', () => {
-    process.env.LT_DATA_DIR = dir;
-    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
-    writeFileSync(process.env.LT_CONFIG_YAML, 'catalog_path: /x.lrcat\n');
+  it('uses vision-cache beside the library when catalog_path is set', () => {
+    const lrcat = join(dir, 'x.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(process.env.LT_CONFIG_YAML!, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    invalidateOpenLibraryCache();
 
-    expect(resolveOpenLibraryPaths().visionCacheDir).toBe(join(dir, 'vision-cache'));
-    expect(resolveOpenLibraryPaths().libraryDbPath).toBe(join(dir, 'library.db'));
+    expect(resolveOpenLibraryPaths().visionCacheDir).toBe(
+      join(dirname(resolveOpenLibraryPaths().libraryDbPath), 'vision-cache'),
+    );
   });
 });

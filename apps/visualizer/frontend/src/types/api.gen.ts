@@ -6334,8 +6334,6 @@ export interface components {
             resolved_path: string;
             exists: boolean;
             picker_available: boolean;
-            synced_catalog_path: string | null;
-            needs_catalog_sync: boolean;
         };
         ConfigCatalogPickResponse: {
             catalog_path: string | null;

@@ -39,8 +39,6 @@ describe('ImagesPage first-run states', () => {
       resolved_path: '',
       exists: false,
       picker_available: false,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(EMPTY_PIPELINE)
     vi.spyOn(SystemAPI, 'insightsSummary').mockResolvedValue({

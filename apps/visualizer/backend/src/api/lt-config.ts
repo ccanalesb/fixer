@@ -2,14 +2,17 @@
  * Read and write the repo-level `config.yaml`.
  *
  * These routes edit the user's own config file, so there is no library-DB
- * middleware here. The one exception is `GET /config/catalog`, which reads a
- * single `library_meta` key to answer whether `library.db` still mirrors the
- * configured catalog — opened by hand, read-only, and closed before returning,
- * because a missing or unreadable library is a normal answer here rather than
- * the 404 the middleware would raise.
+ * middleware here.
  */
 import { createRoute } from '@hono/zod-openapi';
 import { existsSync, statSync } from 'node:fs';
+import {
+  absoluteCatalogPath,
+  invalidateOpenLibraryCache,
+  isLibraryDbPinned,
+  pinnedLibraryCatalogPath,
+  updatePinnedLibraryCatalogPath,
+} from '../catalog-library.js';
 import {
   config,
   expandUserPath,
@@ -17,9 +20,6 @@ import {
   updateConfigYamlCatalogPath,
   updateConfigYamlStackBurstDeltaMs,
 } from '../config.js';
-import { resolveOpenLibraryPaths } from '../open-library.js';
-import { openLibraryDb, type Db } from '../db/connection.js';
-import { getLibraryMeta, SYNCED_CATALOG_META_KEY } from '../db/library/bootstrap.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
 import {
@@ -49,23 +49,18 @@ function isFile(path: string): boolean {
   }
 }
 
-/**
- * The catalog `library.db` was last synced from, or `null` when that is unknown —
- * no library yet, or one built before the key existed. `null` means "cannot say",
- * not "out of sync", so the UI stays quiet rather than warning on a guess.
- */
-function syncedCatalogPath(): string | null {
-  const { libraryDbPath } = resolveOpenLibraryPaths();
-  if (!existsSync(libraryDbPath)) return null;
-  let db: Db | undefined;
+function isDirectory(path: string): boolean {
   try {
-    db = openLibraryDb(libraryDbPath, { readonly: true });
-    return getLibraryMeta(db, SYNCED_CATALOG_META_KEY);
+    return statSync(path).isDirectory();
   } catch {
-    return null;
-  } finally {
-    db?.close();
+    return false;
   }
+}
+
+function catalogExists(resolved: string): boolean {
+  if (!resolved) return false;
+  if (resolved.toLowerCase().endsWith('.lrcat')) return isFile(resolved);
+  return isDirectory(resolved);
 }
 
 // --- catalog ----------------------------------------------------------------
@@ -81,21 +76,14 @@ const getCatalogRoute = createRoute({
 
 ltConfigRoutes.openapi(getCatalogRoute, (c) => {
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
-  // The RAW value is echoed back, not the resolved one: the UI edits what the user
-  // typed (which may contain `~`), and `resolved_path` is shown alongside it.
   const raw = cfg.catalogPathRaw || '';
   const resolved = raw ? expandUserPath(raw) : '';
-  // `cfg.catalogPath`, not `resolved`: the sync records the path the config loader
-  // produced, so comparing anything else would read a relative path as a mismatch.
-  const synced = syncedCatalogPath();
   return c.json(
     {
       catalog_path: raw,
       resolved_path: resolved,
-      exists: Boolean(resolved && isFile(resolved)),
+      exists: Boolean(resolved && catalogExists(resolved)),
       picker_available: nativeFileDialogAvailable(),
-      synced_catalog_path: synced,
-      needs_catalog_sync: synced !== null && synced !== cfg.catalogPath,
     },
     200,
   );
@@ -113,8 +101,6 @@ const pickCatalogRoute = createRoute({
   }),
 });
 
-// Blocks until the user answers the dialog, which is the point: the response is
-// their answer. It does not save — the path still goes through PUT's validation.
 ltConfigRoutes.openapi(pickCatalogRoute, async (c) => {
   try {
     const result = await chooseFile('Select your Lightroom Classic catalog', 'lrcat');
@@ -137,9 +123,6 @@ const putCatalogRoute = createRoute({
   }),
 });
 
-// Presence and type are the schema's job and answer 422 before this runs. What is
-// left is the two checks Zod cannot make: the extension, and whether the file is
-// really there.
 ltConfigRoutes.openapi(putCatalogRoute, (c) => {
   const { catalog_path: value } = c.req.valid('json');
   if (!value.toLowerCase().endsWith('.lrcat')) {
@@ -149,7 +132,24 @@ ltConfigRoutes.openapi(putCatalogRoute, (c) => {
     return c.json({ error: 'catalog_path must be an existing file' }, 400);
   }
 
+  if (isLibraryDbPinned()) {
+    const recorded = pinnedLibraryCatalogPath();
+    if (recorded) {
+      const recordedAbs = absoluteCatalogPath(recorded);
+      const newAbs = absoluteCatalogPath(value);
+      const recordedBase = recordedAbs.split('/').pop() ?? '';
+      const newBase = newAbs.split('/').pop() ?? '';
+      if (recordedBase.toLowerCase() !== newBase.toLowerCase()) {
+        return c.json({ error: 'library pinned by LIBRARY_DB' }, 400);
+      }
+      if (recordedAbs !== newAbs) {
+        updatePinnedLibraryCatalogPath(newAbs);
+      }
+    }
+  }
+
   updateConfigYamlCatalogPath(config.LT_CONFIG_YAML, value);
+  invalidateOpenLibraryCache();
   return c.json({ catalog_path: value.trim(), ok: true }, 200);
 });
 
@@ -183,8 +183,6 @@ const putStackDetectionRoute = createRoute({
   }),
 });
 
-// `z.int()` already rejects a missing field, a fractional number, a numeric string
-// and a boolean with 422. The floor is the one rule left to enforce.
 ltConfigRoutes.openapi(putStackDetectionRoute, (c) => {
   const { stack_burst_delta_ms: value } = c.req.valid('json');
   if (value < 1) {

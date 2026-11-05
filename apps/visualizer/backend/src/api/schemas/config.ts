@@ -8,10 +8,6 @@ export const ConfigCatalogGetResponse = z
     exists: z.boolean(),
     /** Whether this host can open a native file dialog; macOS only for now. */
     picker_available: z.boolean(),
-    /** The catalog `library.db` was last synced from; `null` when unknown. */
-    synced_catalog_path: z.string().nullable(),
-    /** `library.db` mirrors a different catalog than the one configured now. */
-    needs_catalog_sync: z.boolean(),
   })
   .strict()
   .openapi('ConfigCatalogGetResponse');

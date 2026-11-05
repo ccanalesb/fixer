@@ -14,6 +14,7 @@
 import type { Env, MiddlewareHandler } from 'hono';
 import { existsSync } from 'node:fs';
 import { resolveOpenLibraryPaths } from '../open-library.js';
+import { CatalogLibraryConflictError } from '../catalog-library.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openLibraryDb, type Db } from '../db/connection.js';
 import { libraryNeedsUpgrade, upgradeLibrarySchema } from '../db/library/bootstrap.js';
@@ -73,7 +74,15 @@ export interface LibraryDbOptions {
  */
 export function libraryDb(opts: LibraryDbOptions = {}): MiddlewareHandler<LibraryEnv> {
   return async (c, next) => {
-    const { libraryDbPath: dbPath } = resolveOpenLibraryPaths();
+    let dbPath: string;
+    try {
+      ({ libraryDbPath: dbPath } = resolveOpenLibraryPaths());
+    } catch (e) {
+      if (e instanceof CatalogLibraryConflictError) {
+        return c.json({ error: e.message }, 500);
+      }
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
 
     if (opts.requireExists !== false && !existsSync(dbPath)) {
       return c.json({ error: ERROR_DB_NOT_FOUND }, 404);
@@ -90,6 +99,9 @@ export function libraryDb(opts: LibraryDbOptions = {}): MiddlewareHandler<Librar
       await next();
       return;
     } catch (e) {
+      if (e instanceof CatalogLibraryConflictError) {
+        return c.json({ error: e.message }, 500);
+      }
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     } finally {
       db?.close();

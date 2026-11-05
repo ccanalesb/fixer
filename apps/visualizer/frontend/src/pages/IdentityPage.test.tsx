@@ -44,8 +44,6 @@ describe('IdentityPage', () => {
       resolved_path: '/tmp/test.lrcat',
       exists: true,
       picker_available: false,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
     vi.spyOn(SystemAPI, 'insightsSummary').mockResolvedValue({

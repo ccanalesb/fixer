@@ -2,36 +2,46 @@
  * Where the running app finds the open library's `library.db` and its vision cache
  * folder — one resolution chain for the server, jobs, routes and CLI.
  */
-import { config, loadLibraryConfig, resolveLibraryDbLocation, type LibraryConfig } from './config.js';
+import { dirname, join } from 'node:path';
+import { config, type LibraryConfig } from './config.js';
+import {
+  resolveCatalogLibraryPaths,
+  runLegacyUpgradeOnce,
+  type CatalogLibraryPaths,
+} from './catalog-library.js';
 
 export interface OpenLibraryPaths {
   libraryDbPath: string;
   visionCacheDir: string;
 }
 
-/**
- * Server, API middleware, job handlers, and startup: `LIBRARY_DB`, then
- * `db_path`, then the data-folder default; vision cache from `vision_cache_dir`
- * or its default.
- */
-export function resolveOpenLibraryPaths(): OpenLibraryPaths {
-  return {
-    libraryDbPath: resolveLibraryDbLocation().path,
-    visionCacheDir: loadLibraryConfig(config.LT_CONFIG_YAML).visionCacheDir,
-  };
+function toOpenLibrary(paths: CatalogLibraryPaths): OpenLibraryPaths {
+  return { libraryDbPath: paths.libraryDbPath, visionCacheDir: paths.visionCacheDir };
 }
 
 /**
- * CLI commands that open the library: `--db` when given, else `db_path` from the
- * loaded config (no `LIBRARY_DB` env or data-folder default). Vision cache matches
- * that same config file.
+ * Server, API middleware, job handlers, and startup: `LIBRARY_DB` when set, else
+ * the library under `catalogs/` whose `library_meta` matches `catalog_path`.
+ */
+export function resolveOpenLibraryPaths(): OpenLibraryPaths {
+  return toOpenLibrary(resolveCatalogLibraryPaths(config.LT_CONFIG_YAML));
+}
+
+/**
+ * CLI commands that open the library: `--db` when given, else the same catalog
+ * lookup the server uses (including legacy upgrade on first open).
  */
 export function resolveOpenLibraryPathsForCli(
-  libraryConfig: LibraryConfig,
+  _libraryConfig: LibraryConfig,
   cliDbFlag: string | undefined,
+  configPath = config.LT_CONFIG_YAML,
 ): OpenLibraryPaths {
-  return {
-    libraryDbPath: cliDbFlag ?? libraryConfig.dbPath ?? '',
-    visionCacheDir: libraryConfig.visionCacheDir,
-  };
+  if (cliDbFlag) {
+    return {
+      libraryDbPath: cliDbFlag,
+      visionCacheDir: join(dirname(cliDbFlag), 'vision-cache'),
+    };
+  }
+  runLegacyUpgradeOnce(configPath);
+  return toOpenLibrary(resolveCatalogLibraryPaths(configPath));
 }

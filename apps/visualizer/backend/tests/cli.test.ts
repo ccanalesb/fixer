@@ -21,6 +21,11 @@ import { LIBRARY_SCHEMA_VERSION } from '../src/db/library/bootstrap.js';
 import { parseArgv, UsageError } from '../src/cli/parse.js';
 import { COMMANDS } from '../src/cli/registry.js';
 import { run } from '../src/cli/main.js';
+import {
+  invalidateOpenLibraryCache,
+  maybeUpgradeLegacyCatalogLayout,
+  resetCatalogLibraryModuleStateForTests,
+} from '../src/catalog-library.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
@@ -104,10 +109,10 @@ describe('run', () => {
     for (const command of COMMANDS) expect(command.handler).toBeTypeOf('function');
   });
 
-  it('refuses a command with no database path anywhere', async () => {
+  it('refuses a command when the resolved library database is absent', async () => {
     const r = await cli(['stats']);
     expect(r.code).toBe(1);
-    expect(r.text).toBe('Error: No database path provided. Use --db or config.yaml');
+    expect(r.text).toMatch(/^Error: Database not found: /);
   });
 
   it.each(['search', 'export', 'stats', 'enrich-catalog'])(
@@ -212,9 +217,20 @@ describe('read-only commands', () => {
     expect(r.lines[0]).toBe('Found 3 images');
   });
 
-  it('falls back to db_path from config.yaml', async () => {
-    const config = { ...EMPTY_CONFIG(), dbPath: fixture.dbPath };
-    expect((await cli(['search'], config)).lines[0]).toBe('Found 3 images');
+  it('falls back to the library the catalog lookup finds', async () => {
+    const lrcat = join(fixture.dir, 'catalog.lrcat');
+    writeFileSync(lrcat, '');
+    process.env.LT_DATA_DIR = fixture.dir;
+    process.env.LT_CONFIG_YAML = join(fixture.dir, 'config.yaml');
+    writeFileSync(
+      process.env.LT_CONFIG_YAML,
+      stringifyYaml({ catalog_path: lrcat, db_path: fixture.dbPath }),
+    );
+    delete process.env.LIBRARY_DB;
+    resetCatalogLibraryModuleStateForTests();
+    maybeUpgradeLegacyCatalogLayout();
+    invalidateOpenLibraryCache();
+    expect((await cli(['search'])).lines[0]).toBe('Found 3 images');
   });
 
   it('reports counts and a rating histogram for stats', async () => {
