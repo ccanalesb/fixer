@@ -14,11 +14,10 @@ export interface OpenLibraryPaths {
  * `db_path`, then the data-folder default; vision cache from `vision_cache_dir`
  * or its default.
  */
-export function resolveOpenLibraryPaths(configPath?: string): OpenLibraryPaths {
-  const cfgPath = configPath ?? config.LT_CONFIG_YAML;
+export function resolveOpenLibraryPaths(): OpenLibraryPaths {
   return {
     libraryDbPath: resolveLibraryDbLocation().path,
-    visionCacheDir: loadLibraryConfig(cfgPath).visionCacheDir,
+    visionCacheDir: loadLibraryConfig(config.LT_CONFIG_YAML).visionCacheDir,
   };
 }
 

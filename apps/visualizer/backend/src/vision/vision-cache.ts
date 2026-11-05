@@ -155,11 +155,11 @@ export async function getOrCreateCachedImage(
   originalPath: string,
 ): Promise<string | null> {
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
-  const { visionCacheDir: cacheDir } = resolveOpenLibraryPaths();
   const orientation = getImageOrientation(db, catalogKey);
   // Cache disabled: compress on the fly and hand back a temp file.
   if (!cfg.visionCacheEnabled) return compressImage(originalPath, { orientation });
 
+  const { visionCacheDir: cacheDir } = resolveOpenLibraryPaths();
   await mkdir(cacheDir, { recursive: true });
 
   if (await isVisionCacheValid(db, catalogKey, originalPath)) {
