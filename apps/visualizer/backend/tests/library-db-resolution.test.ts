@@ -6,7 +6,7 @@
  * real `library.db` at the repo root.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { REPO_ROOT, resolveLibraryDbLocation } from '../src/config.js';
@@ -77,6 +77,20 @@ describe('describeLibraryDb', () => {
       path: join(REPO_ROOT, 'library.db'),
       source: 'default',
     });
+  });
+
+  it('reports a conflict instead of throwing', () => {
+    const lrcat = join(dir, 'dup.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(process.env.LT_CONFIG_YAML!, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    const first = createCatalogLibrary(lrcat);
+    cpSync(first.catalogFolder!, join(dir, 'catalogs', 'dup-zzzz'), { recursive: true });
+    invalidateOpenLibraryCache();
+
+    const status = describeLibraryDb();
+    expect(status.exists).toBe(false);
+    expect(status.reason).toContain(first.catalogFolder!);
+    expect(status.reason).toContain('dup-zzzz');
   });
 });
 

@@ -12,6 +12,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { CatalogLibraryConflictError } from './catalog-library.js';
 import { resolveOpenLibraryPaths } from './open-library.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -355,7 +356,20 @@ export function resolveLibraryDbLocation(): { path: string; source: LibraryDbSou
 
 /** Resolve the library DB path and report whether it exists. */
 export function describeLibraryDb(): LibraryDbStatus {
-  const location = resolveLibraryDbLocation();
+  let location: { path: string; source: LibraryDbSource };
+  try {
+    location = resolveLibraryDbLocation();
+  } catch (e) {
+    if (e instanceof CatalogLibraryConflictError) {
+      return {
+        path: '',
+        source: 'default',
+        exists: false,
+        reason: e.message,
+      };
+    }
+    throw e;
+  }
   const exists = libraryDbIsFile(location.path);
   return {
     path: location.path,

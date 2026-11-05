@@ -22,9 +22,11 @@ import {
   createCatalogLibrary,
   findCatalogLibrariesForPath,
   invalidateOpenLibraryCache,
+  moveLibraryDbSidecarsIfPresent,
   maybeUpgradeLegacyCatalogLayout,
   resetCatalogLibraryModuleStateForTests,
   resolveCatalogLibraryPaths,
+  runLegacyUpgradeOnce,
 } from '../src/catalog-library.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { getLibraryMeta, initLibraryDb } from '../src/db/library/bootstrap.js';
@@ -154,6 +156,45 @@ describe('maybeUpgradeLegacyCatalogLayout', () => {
     } finally {
       upgraded.close();
     }
+  });
+
+  it('moves library.db-wal and library.db-shm from the legacy location after checkpoint', () => {
+    const legacyDb = join(dir, 'sidecar.db');
+    const destDb = join(dir, 'dest', 'library.db');
+    mkdirSync(dirname(destDb), { recursive: true });
+    writeFileSync(legacyDb, 'sqlite');
+    writeFileSync(`${legacyDb}-wal`, 'wal-bytes');
+    writeFileSync(`${legacyDb}-shm`, 'shm-bytes');
+
+    moveLibraryDbSidecarsIfPresent(legacyDb, destDb);
+
+    expect(existsSync(`${legacyDb}-wal`)).toBe(false);
+    expect(existsSync(`${legacyDb}-shm`)).toBe(false);
+    expect(readFileSync(`${destDb}-wal`, 'utf8')).toBe('wal-bytes');
+    expect(readFileSync(`${destDb}-shm`, 'utf8')).toBe('shm-bytes');
+  });
+});
+
+describe('runLegacyUpgradeOnce', () => {
+  it('retries after a failed upgrade and is a no-op after success', () => {
+    const lrcat = join(dir, 'retry.lrcat');
+    writeFileSync(lrcat, '');
+    const legacyDb = join(dir, 'library.db');
+    writeFileSync(
+      cfgPath,
+      stringifyYaml({ catalog_path: lrcat, db_path: legacyDb, vision_cache_dir: join(dir, 'c') }),
+    );
+    initLibraryDb(legacyDb).close();
+    mkdirSync(join(dir, 'c'), { recursive: true });
+    writeFileSync(join(dir, 'catalogs'), 'block');
+
+    invalidateOpenLibraryCache();
+    expect(() => runLegacyUpgradeOnce()).toThrow();
+    rmSync(join(dir, 'catalogs'));
+    mkdirSync(join(dir, 'catalogs'), { recursive: true });
+
+    expect(runLegacyUpgradeOnce()).not.toBeNull();
+    expect(runLegacyUpgradeOnce()).toBeNull();
   });
 });
 

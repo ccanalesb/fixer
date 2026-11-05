@@ -5,6 +5,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clipCacheDir, config } from '../config.js';
+import { CatalogLibraryConflictError } from '../catalog-library.js';
 import { resolveOpenLibraryPaths } from '../open-library.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openDb, openLibraryDb } from '../db/connection.js';
@@ -73,7 +74,15 @@ systemRoutes.openapi(thirdPartyNoticesRoute, (c) => {
 });
 
 systemRoutes.openapi(healthRoute, (c) => {
-  const { libraryDbPath: dbPath } = resolveOpenLibraryPaths();
+  let dbPath: string;
+  try {
+    ({ libraryDbPath: dbPath } = resolveOpenLibraryPaths());
+  } catch (e) {
+    if (e instanceof CatalogLibraryConflictError) {
+      return c.json({ error: e.message }, 503);
+    }
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 503);
+  }
   if (!existsSync(dbPath)) {
     return c.json({ error: 'Library database is not available.' }, 503);
   }

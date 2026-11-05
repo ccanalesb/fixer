@@ -14,6 +14,12 @@ import * as processor from '../src/jobs/processor.js';
 import { createApp } from '../src/app.js';
 import { assertLoopbackSocketHandshake, isAllowedHost } from '../src/middleware/loopback.js';
 import { runGracefulShutdown } from '../src/lifecycle/shutdown.js';
+import {
+  createCatalogLibrary,
+  invalidateOpenLibraryCache,
+  resetCatalogLibraryModuleStateForTests,
+} from '../src/catalog-library.js';
+import { cpSync, writeFileSync as writeFile } from 'node:fs';
 
 const BACKEND_ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -103,6 +109,26 @@ describe('GET /api/health', () => {
     const app = createApp();
     const res = await req(app, '/api/health');
     expect(res.status).toBe(503);
+  });
+
+  it('returns 503 with the conflict message when two libraries claim one catalog', async () => {
+    process.env.LT_DATA_DIR = dataDir;
+    process.env.LT_CONFIG_YAML = join(dataDir, 'config.yaml');
+    const lrcat = join(dataDir, 'dup.lrcat');
+    writeFile(lrcat, '');
+    writeFile(join(dataDir, 'config.yaml'), `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    invalidateOpenLibraryCache();
+    resetCatalogLibraryModuleStateForTests();
+    const first = createCatalogLibrary(lrcat);
+    cpSync(first.catalogFolder!, join(dataDir, 'catalogs', 'dup-cccc'), { recursive: true });
+    invalidateOpenLibraryCache();
+
+    const app = createApp();
+    const res = await req(app, '/api/health');
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain(first.catalogFolder!);
+    expect(body.error).toContain('dup-cccc');
   });
 });
 

@@ -226,6 +226,14 @@ function movePathCrossVolume(src: string, dest: string): void {
   }
 }
 
+/** After `library.db` moves, move `-wal` / `-shm` siblings when present. */
+export function moveLibraryDbSidecarsIfPresent(fromLibrary: string, toLibrary: string): void {
+  for (const suffix of ['-wal', '-shm'] as const) {
+    const sidecar = `${fromLibrary}${suffix}`;
+    if (existsSync(sidecar)) movePathCrossVolume(sidecar, `${toLibrary}${suffix}`);
+  }
+}
+
 function moveDirectoryCrossVolume(src: string, dest: string): void {
   if (!existsSync(src)) {
     mkdirSync(dest, { recursive: true });
@@ -313,6 +321,7 @@ export function maybeUpgradeLegacyCatalogLayout(
   mkdirSync(catalogFolder, { recursive: true });
   checkpointWal(fromLibrary);
   movePathCrossVolume(fromLibrary, libraryDbPath);
+  moveLibraryDbSidecarsIfPresent(fromLibrary, libraryDbPath);
   moveDirectoryCrossVolume(fromVisionCache, visionCacheDir);
 
   const db = openLibraryDb(libraryDbPath);
@@ -340,8 +349,14 @@ export function maybeUpgradeLegacyCatalogLayout(
 
 export function runLegacyUpgradeOnce(configPath = config.LT_CONFIG_YAML): LegacyUpgradeResult | null {
   if (legacyUpgradeDone) return null;
-  legacyUpgradeDone = true;
-  return maybeUpgradeLegacyCatalogLayout(configPath);
+  try {
+    const result = maybeUpgradeLegacyCatalogLayout(configPath);
+    legacyUpgradeDone = true;
+    return result;
+  } catch (e) {
+    legacyUpgradeDone = false;
+    throw e;
+  }
 }
 
 /** Create `catalogs/<name>/` with a new library for a catalog that has none yet. */
