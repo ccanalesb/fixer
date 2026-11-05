@@ -30,9 +30,25 @@ function LrPhotoProbe({ fetchPhoto }: { fetchPhoto: () => Promise<unknown> }) {
   return <div data-testid="lr-photo">{String((value as { rating?: { live?: number } }).rating?.live)}</div>
 }
 
+function KeyProbe({ queryKey, fetch }: { queryKey: readonly unknown[]; fetch: () => Promise<unknown> }) {
+  const value = useQuery(queryKey, fetch, { initialValue: null })
+  return <div>{String(value)}</div>
+}
+
+function renderProbe(queryKey: readonly unknown[], fetch: () => Promise<unknown>) {
+  render(
+    <BackendSocketShell>
+      <Suspense fallback={null}>
+        <KeyProbe queryKey={queryKey} fetch={fetch} />
+      </Suspense>
+    </BackendSocketShell>,
+  )
+}
+
 beforeEach(() => {
   deleteMatching(() => true)
   delete handlers.job_updated
+  delete handlers.job_created
   useSocketStore.setState({ socket: socket as never, connected: true, connect: () => {} })
 })
 
@@ -119,4 +135,50 @@ describe('useBackendSocket', () => {
       await waitFor(() => expect(fetchPhoto).toHaveBeenCalledTimes(2))
     },
   )
+
+  it('refreshes the first-run signals when a catalog import is queued, once its sync is done, and when it ends, not while it syncs', async () => {
+    let n = 0
+    const fetchSignals = vi.fn().mockImplementation(() => Promise.resolve(++n))
+    renderProbe(keys.firstRun.signals(), fetchSignals)
+    await waitFor(() => expect(fetchSignals).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      handlers.job_updated!({ id: 'j', type: 'catalog_cache_build', status: 'running', progress: 10 })
+      handlers.job_updated!({ id: 'j', type: 'catalog_cache_build', status: 'running', progress: 20 })
+    })
+    expect(fetchSignals).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      handlers.job_updated!({ id: 'j', type: 'catalog_cache_build', status: 'running', progress: 30 })
+    })
+    await waitFor(() => expect(fetchSignals).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      handlers.job_updated!({ id: 'j', type: 'catalog_cache_build', status: 'completed', progress: 100 })
+    })
+    await waitFor(() => expect(fetchSignals).toHaveBeenCalledTimes(3))
+
+    await act(async () => {
+      handlers.job_created!({ id: 'k', type: 'catalog_cache_build', status: 'pending', progress: 0 })
+    })
+    await waitFor(() => expect(fetchSignals).toHaveBeenCalledTimes(4))
+  })
+
+  it('refreshes a photo\'s description when its describe job completes', async () => {
+    let n = 0
+    const fetchDescription = vi.fn().mockImplementation(() => Promise.resolve(++n))
+    renderProbe(keys.descriptions('k'), fetchDescription)
+    await waitFor(() => expect(fetchDescription).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      handlers.job_updated!({ id: 'j', type: 'single_describe', status: 'running', metadata: { image_key: 'k' } })
+      handlers.job_updated!({ id: 'j2', type: 'single_describe', status: 'completed', metadata: { image_key: 'other' } })
+    })
+    expect(fetchDescription).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      handlers.job_updated!({ id: 'j', type: 'single_describe', status: 'completed', metadata: { image_key: 'k' } })
+    })
+    await waitFor(() => expect(fetchDescription).toHaveBeenCalledTimes(2))
+  })
 })

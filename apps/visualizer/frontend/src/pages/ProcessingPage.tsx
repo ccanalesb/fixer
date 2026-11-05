@@ -91,7 +91,7 @@ export function ProcessingPage() {
     onJobsRecovered: () => setJobsRecoveredBanner(JOBS_RECOVERED_BANNER),
   });
   // jobListRevision drives ProcessingPage re-renders so JobQueueTabWithData
-  // re-renders after invalidateAll(['jobs.list']) clears the cache.
+  // re-renders after the jobs list cache is cleared.
   void jobListRevision;
 
   const openJobQueueTab = useCallback(() => {
