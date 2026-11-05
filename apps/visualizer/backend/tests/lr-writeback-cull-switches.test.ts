@@ -142,7 +142,9 @@ describe('Lightroom write-back under the switches', () => {
 
   it('a photo sent by hand is never rejected', async () => {
     await cull('a', fakeModels(PROFILE_FILTERS));
-    db.prepare("UPDATE cull_verdicts SET sent_by_hand = 1 WHERE image_key = 'a'").run();
+    const { recordCullUserAction } = await import('../src/db/library/cull-user-actions.js');
+    recordCullUserAction(db, 'a', 'sent_by_hand');
+    db.prepare("UPDATE cull_verdicts SET sent_by_hand = 0 WHERE image_key = 'a'").run();
     expect(reject('a')).toBe(false);
   });
 });

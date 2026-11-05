@@ -523,13 +523,14 @@ describe('batch_cull_photos_before_scoring', () => {
     expect(job.metadata.checkpoint).toMatchObject({ total_at_start: 7, failed_keys: ['a', 'b'] });
   });
 
-  it('a photo skipped on resume counts as sent by hand past a filter, from what is stored', async () => {
+  it('a photo skipped on resume counts as sent by hand past a filter, from the user’s actions', async () => {
     await addPhoto('b', PROFILE_CUT);
     await runCull();
     const lib = openLibraryDb(fx.dbPath);
     recordCullUserAction(lib, 'b', 'sent_by_hand');
     createPipelineSettingVersion(lib, getCurrentPipelineSetting(lib).config);
     lib.close();
+    fx.exec("UPDATE cull_verdicts SET sent_by_hand = 0 WHERE image_key = 'b'");
     fakeModels.calls = [];
     const job = await runCull({ checkpoint: await cullCheckpoint(['b'], 1, 2) });
     expect(fakeModels.calls).toEqual([]);

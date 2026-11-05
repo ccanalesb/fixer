@@ -24,7 +24,8 @@ import {
   readStoredStageModelIds,
   upsertStageAnswer,
 } from '../src/db/library/cull-stages.js';
-import { isSentByHand, listCullUserActions, recordCullUserAction } from '../src/db/library/cull-user-actions.js';
+import { listCullUserActions, recordCullUserAction } from '../src/db/library/cull-user-actions.js';
+import { isSentByHand } from '../src/db/library/sent-by-hand.js';
 import {
   getCullVerdict,
   insertCullRun,

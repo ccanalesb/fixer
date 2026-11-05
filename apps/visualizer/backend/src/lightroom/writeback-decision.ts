@@ -3,6 +3,7 @@ import { readCurrentStages } from '../cull/stages.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
+import { isSentByHand } from '../db/library/sent-by-hand.js';
 import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
 import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
@@ -36,7 +37,7 @@ function decideReject(
   if (!settings.write_reject) return { want: false, why: 'setting_off' };
   const verdict = getCullVerdict(db, imageKey);
   if (!verdict) return { want: false, why: 'no_verdict' };
-  if (verdict.sent_by_hand) return { want: false, why: 'sent_by_hand' };
+  if (isSentByHand(db, imageKey)) return { want: false, why: 'sent_by_hand' };
   if (!getCurrentPipelineSetting(db).config.culling_profiles_enabled) return { want: false, why: 'profile_off' };
   if (verdict.culling_profile_verdict === 'filtered') return { want: true, why: 'filtered' };
   if (isFrameSubstanceVoid(db, imageKey)) return { want: true, why: 'void_frame' };

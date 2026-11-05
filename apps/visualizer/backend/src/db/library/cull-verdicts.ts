@@ -4,6 +4,7 @@
 import type { CullSummaryVerdict, CullVerdict, StageKind } from '../../cull/types.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import type { Db } from '../connection.js';
+import { isSentByHand, sentByHandSql } from './sent-by-hand.js';
 
 export interface CullVerdictInput {
   imageKey: string;
@@ -40,6 +41,7 @@ export interface CullVerdictRow {
 }
 
 export function upsertCullVerdict(db: Db, v: CullVerdictInput): void {
+  // `sent_by_hand` column is written but not read; use `sent-by-hand.ts` for readers.
   db.prepare(
     `INSERT INTO cull_verdicts
        (image_key, verdict, filtered_by, filtered_by_stage_key, sent_by_hand, pending_stages, pending_reason,
@@ -73,7 +75,6 @@ export function upsertCullVerdict(db: Db, v: CullVerdictInput): void {
 }
 
 interface RawVerdictRow extends Omit<CullVerdictRow, 'sent_by_hand' | 'pending_stages' | 'score_forecast_off' | 'stage_version_ids'> {
-  sent_by_hand: number;
   pending_stages: string;
   score_forecast_off: number;
   stage_version_ids: string;
@@ -93,7 +94,7 @@ export function getCullVerdict(db: Db, imageKey: string): CullVerdictRow | null 
   if (!r) return null;
   return {
     ...r,
-    sent_by_hand: r.sent_by_hand === 1,
+    sent_by_hand: isSentByHand(db, imageKey),
     pending_stages: JSON.parse(r.pending_stages) as string[],
     score_forecast_off: r.score_forecast_off === 1,
     stage_version_ids: JSON.parse(r.stage_version_ids) as number[],
@@ -160,10 +161,6 @@ export function finishCullRun(db: Db, runId: number, detail: Record<string, unkn
 /** Photos per query: well under SQLite's bound-parameter limit. */
 const KEYS_PER_QUERY = 500;
 
-/** A sent-by-hand action, read inline: `cull-user-actions.ts` imports this module. */
-const SENT_BY_HAND_SQL =
-  "(v.sent_by_hand = 1 OR EXISTS (SELECT 1 FROM cull_user_actions u WHERE u.image_key = v.image_key AND u.action = 'sent_by_hand'))";
-
 /**
  * Filtered, and the user never sent it on: the last check before a photo is described or scored. Only a
  * filtered photo is refused — a pending or never-culled photo passes (the batch jobs hold those back themselves).
@@ -171,7 +168,7 @@ const SENT_BY_HAND_SQL =
 export function isPhotoFilteredAndNotSentByHand(db: Db, imageKey: string): boolean {
   return (
     db
-      .prepare(`SELECT 1 FROM cull_verdicts v WHERE v.image_key = ? AND v.verdict = 'filtered' AND NOT ${SENT_BY_HAND_SQL}`)
+      .prepare(`SELECT 1 FROM cull_verdicts v WHERE v.image_key = ? AND v.verdict = 'filtered' AND NOT ${sentByHandSql('v')}`)
       .get(imageKey) !== undefined
   );
 }
@@ -179,7 +176,7 @@ export function isPhotoFilteredAndNotSentByHand(db: Db, imageKey: string): boole
 export interface CullVerdictBrief {
   verdict: CullSummaryVerdict;
   filteredBy: StageKind | null;
-  /** On the summary or in the user-action history. */
+  /** From the user's actions. */
   sentByHand: boolean;
 }
 
@@ -190,7 +187,7 @@ export function loadCullVerdictsForKeys(db: Db, imageKeys: readonly string[]): M
     const chunk = imageKeys.slice(i, i + KEYS_PER_QUERY);
     const rows = db
       .prepare(
-        `SELECT v.image_key, v.verdict, v.filtered_by, ${SENT_BY_HAND_SQL} AS by_hand FROM cull_verdicts v
+        `SELECT v.image_key, v.verdict, v.filtered_by, ${sentByHandSql('v')} AS by_hand FROM cull_verdicts v
          WHERE v.image_key IN (${chunk.map(() => '?').join(',')})`,
       )
       .all(...chunk) as { image_key: string; verdict: CullSummaryVerdict; filtered_by: StageKind | null; by_hand: number }[];

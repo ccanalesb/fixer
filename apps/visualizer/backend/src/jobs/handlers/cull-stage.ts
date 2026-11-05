@@ -3,7 +3,6 @@
  */
 import { performance } from 'node:perf_hooks';
 import type { Db } from '../../db/connection.js';
-import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
 import type { JobRunner } from '../runner.js';
 import {
   dropFilteredPhotosFromDescribeAndScoringSelection,
@@ -105,13 +104,12 @@ export async function runCullStageBeforeDescribeAndScore(
   const candidateKeys = [...new Set(candidates.map(([k]) => k))];
 
   runner.setCurrentStep(jobId, CULL_STEP_LABEL);
-  const sentByHand = listSentByHandKeys(db);
   const passedOnlyByHand = new Set<string>();
   const cullStep =
     (await runCullPass(runner, jobId, metadata, db, ctx, {
       // Forced, the whole window is culled again, not only the photos this job will describe or score.
       imageKeys: opts.forceCull ? undefined : candidateKeys,
-      skipModelsFor: sentByHand,
+      askModelsForSentByHand: false,
       force: opts.forceCull,
       onDecision: (key, decision) => {
         if (decision.sentByHandOverride) passedOnlyByHand.add(key);

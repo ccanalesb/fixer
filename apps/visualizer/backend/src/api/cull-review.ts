@@ -22,6 +22,7 @@ import {
   recordCullUserAction,
   withdrawShouldHaveBeenFiltered,
 } from '../db/library/cull-user-actions.js';
+import { isSentByHand } from '../db/library/sent-by-hand.js';
 import { initJobsDb, createJob, getJob } from '../db/jobs/jobs.js';
 import { batchKeysWithSendWork } from '../jobs/handlers/work-keys.js';
 import { emitJobEvent } from '../websocket/events.js';
@@ -222,7 +223,7 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
     : { slug: '', name: '', level_sets: [] };
   const sfAnswers = answers[SCORE_FORECAST_STAGE_KEY] ?? {};
   const actions = listCullUserActions(db, imageKey).map((a) => ({ action: a.action, acted_at: a.acted_at }));
-  const sentByHand = v.sent_by_hand || actions.some((a) => a.action === 'sent_by_hand');
+  const sentByHand = isSentByHand(db, imageKey);
   const needs_send_work = batchKeysWithSendWork(db, [imageKey]).has(imageKey);
   return c.json(
     {
