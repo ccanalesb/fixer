@@ -9,7 +9,7 @@ import {
 import { useQuery } from '../../data'
 import { keys } from '../../data/keys'
 import { Card, CardContent } from '../ui/Card'
-import { ImageDetailModal, fromMirrorExemplar } from '../image-view'
+import { ImageDetailModal, modalPropsFor } from '../image-view'
 import {
   IDENTITY_MIRROR_EMPTY,
   IDENTITY_MIRROR_INTRO,
@@ -249,10 +249,8 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
 
       {modal ? (
         <ImageDetailModal
-          imageType="catalog"
           imageKey={modal.exemplar.image_key}
-          initialImage={fromMirrorExemplar(modal.exemplar)}
-          primaryScoreSource="identity"
+          {...modalPropsFor('identity')}
           scorePerspectiveSlug={modal.section.perspective_slug}
           contextSlot={contextSlot}
           onClose={() => setModal(null)}

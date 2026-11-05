@@ -11,6 +11,7 @@ import {
   type ImageDetailResponse,
 } from '../../../services/api'
 import { ImageDetailModal } from '../../image-view/ImageDetailModal'
+import { modalPropsFor } from '../../image-view/modalView'
 import {
   CULL_AGREE,
   CULL_SENT_BY_HAND_NOTE,
@@ -94,10 +95,8 @@ describe('Cull catalog modal cull section', () => {
 
     render(
       <ImageDetailModal
-        imageType="catalog"
         imageKey={KEY}
-        primaryScoreSource="catalog"
-        showCullSection
+        {...modalPropsFor('culling')}
         onClose={() => {}}
       />,
     )
@@ -141,10 +140,8 @@ describe('Cull catalog modal cull section', () => {
 
     render(
       <ImageDetailModal
-        imageType="catalog"
         imageKey={KEY}
-        primaryScoreSource="catalog"
-        showCullSection
+        {...modalPropsFor('culling')}
         onClose={() => {}}
       />,
     )
@@ -179,10 +176,8 @@ describe('Cull catalog modal cull section', () => {
 
     render(
       <ImageDetailModal
-        imageType="catalog"
         imageKey={KEY}
-        primaryScoreSource="catalog"
-        showCullSection
+        {...modalPropsFor('culling')}
         onClose={() => {}}
       />,
     )
@@ -214,10 +209,8 @@ describe('Cull catalog modal cull section', () => {
 
     render(
       <ImageDetailModal
-        imageType="catalog"
         imageKey={KEY}
-        primaryScoreSource="catalog"
-        showCullSection
+        {...modalPropsFor('culling')}
         onClose={() => {}}
       />,
     )

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { IdentityBestPhotoItem } from '../../services/api'
-import { ImageDetailModal, ImageTile, fromBestPhotoRow } from '../image-view'
+import { ImageDetailModal, ImageTile, fromBestPhotoRow, modalPropsFor } from '../image-view'
 import { PerspectiveBadge } from '../ui/badges'
 import { pickDominantPerspective } from '../identity/pickDominantPerspective'
 import { MSG_LOADING } from '../../constants/strings'
@@ -72,10 +72,8 @@ export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhoto
       </div>
       {selected ? (
         <ImageDetailModal
-          imageType="catalog"
           imageKey={selected.image_key}
-          initialImage={fromBestPhotoRow(selected)}
-          primaryScoreSource="identity"
+          {...modalPropsFor('identity')}
           onClose={() => setSelected(null)}
         />
       ) : null}

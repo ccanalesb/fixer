@@ -6,8 +6,8 @@ import {
   useTransition,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ImagesAPI, PerspectivesAPI, type CatalogImage } from '../../services/api';
-import { ImageDetailModal, ImageTile, fromCatalogListRow } from '../image-view';
+import { ImagesAPI, PerspectivesAPI } from '../../services/api';
+import { ImageDetailModal, ImageTile, fromCatalogListRow, modalPropsFor } from '../image-view';
 import { Pagination } from '../ui/Pagination';
 import { TileGrid } from '../ui/TileGrid';
 import { useQuery } from '../../data';
@@ -62,12 +62,9 @@ import { stableSerializeRecord } from '../../utils/stableQueryKey';
 
 const LIMIT = 50;
 
-/** Row-data we need to open the consolidated modal — only type + key are
- *  required (detail endpoint fills the rest); the full row is kept so the
- *  header can render instantly while the detail request is in flight. */
+/** Row key used to open the consolidated modal — detail endpoint fills the rest. */
 type SelectedCatalogEntry = {
   key: string;
-  initial?: CatalogImage;
 };
 
 type CatalogTabProps = {
@@ -427,7 +424,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
                   }
                   onClick={() => {
                     setCullNavIndex(idx);
-                    setSelected({ key: image.key, initial: image });
+                    setSelected({ key: image.key });
                   }}
                 />
               ))}
@@ -446,26 +443,16 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
 
       {selected && (
         <ImageDetailModal
-          imageType="catalog"
           imageKey={
             cullCatalog ? (images[cullNavIndex]?.key ?? selected.key) : selected.key
           }
-          initialImage={
-            cullCatalog
-              ? fromCatalogListRow(images[cullNavIndex] ?? selected.initial ?? { key: selected.key })
-              : selected.initial
-                ? fromCatalogListRow(selected.initial)
-                : undefined
-          }
-          primaryScoreSource="catalog"
+          {...modalPropsFor(cullCatalog ? 'culling' : 'catalog')}
           scorePerspectiveSlug={
             typeof filterValues.scorePerspective === 'string' && filterValues.scorePerspective
               ? filterValues.scorePerspective
               : undefined
           }
-          showCullSection={cullCatalog}
-          initialTab={cullCatalog ? 'culling' : 'file'}
-          cullNav={
+          nav={
             cullCatalog
               ? {
                   keys: images.map((im) => im.key),

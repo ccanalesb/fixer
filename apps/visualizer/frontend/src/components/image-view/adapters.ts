@@ -14,13 +14,7 @@
  *     directly. List adapters below omit identity fields.
  */
 
-import type {
-  CatalogImageInput,
-  ImageView,
-  IdentityBestPhotoItem,
-  MirrorExemplar,
-  PostNextCandidate,
-} from '../../services/api'
+import type { CatalogImageInput, ImageView, IdentityBestPhotoItem } from '../../services/api'
 
 export function fromCatalogListRow(row: CatalogImageInput): ImageView {
   return {
@@ -72,30 +66,3 @@ export function fromBestPhotoRow(row: IdentityBestPhotoItem): ImageView {
   }
 }
 
-export function fromPostNextRow(row: PostNextCandidate): ImageView {
-  return {
-    image_type: 'catalog',
-    key: row.image_key,
-    filename: row.filename,
-    date_taken: row.date_taken,
-    rating: row.rating,
-    // Identity fields are authoritative on this endpoint.
-    identity_peak_percentile: row.peak_percentile,
-    identity_perspectives_covered: row.perspectives_covered,
-    identity_per_perspective: row.per_perspective,
-  }
-}
-
-export function fromMirrorExemplar(row: MirrorExemplar): ImageView {
-  return {
-    image_type: 'catalog',
-    key: row.image_key,
-    filename: row.filename,
-    date_taken: row.date_taken,
-    rating: row.rating,
-    instagram_posted: row.instagram_posted,
-    stack_id: row.stack_id,
-    stack_member_count: row.stack_size,
-    is_stack_representative: row.stack_id != null && (row.stack_size ?? 0) > 1 ? true : null,
-  }
-}

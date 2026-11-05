@@ -36,6 +36,7 @@ import { useCullingGate } from './useCullingGate'
 import { CullReviewRowView } from './CullReviewRow'
 import { bulkSendButtonLabel } from './sendLabel'
 import { ImageDetailModal } from '../image-view/ImageDetailModal'
+import { modalPropsFor } from '../image-view/modalView'
 
 const LIMIT = 50
 type TabId = 'all' | 'culling_profile' | 'score_forecast'
@@ -258,11 +259,9 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
 
       {modalIndex !== null && rows[modalIndex] ? (
         <ImageDetailModal
-          imageType="catalog"
           imageKey={rows[modalIndex]!.image_key}
-          primaryScoreSource="catalog"
-          showCullSection
-          cullNav={{
+          {...modalPropsFor('culling')}
+          nav={{
             keys: rows.map((r) => r.image_key),
             index: modalIndex,
             onIndexChange: setModalIndex,
