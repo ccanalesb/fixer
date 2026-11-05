@@ -12,6 +12,9 @@ import type { Db } from '../src/db/connection.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { getCullProfile, saveProfileDefinition } from '../src/db/library/cull-profiles.js';
+import { duplicateCullProfile, setCullProfilePipelineActive } from '../src/db/library/cull-profiles-mutations.js';
+import { countPhotosAnsweredByCurrentStage, upsertStageAnswer } from '../src/db/library/cull-stages.js';
+import { insertCullRun } from '../src/db/library/cull-verdicts.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import type { ProfileDefinition } from '../src/cull/types.js';
 
@@ -114,5 +117,51 @@ describe('stage versions become current at save, before any read', () => {
     // The text and model did not change, so the same versions stay current — the write did not read.
     expect(currentVersionId('culling_profile:default:7')).toBe(before7);
     expect(currentVersionId('culling_profile:default:10')).toBe(before10);
+  });
+
+  it('the answers stored under an earlier text count again once that text is saved back', () => {
+    const original = getCullProfile(db, 'default')!.definition;
+    const run = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
+    upsertStageAnswer(db, {
+      imageKey: 'a',
+      stageVersionId: currentVersionId('culling_profile:default:7')!,
+      answers: { connotation: [1, 0, 0, 0, 0, 0, 0] },
+      verdict: 'passed',
+      decision: {},
+      pipelineSettingVersion: 1,
+      source: 'job',
+      runId: run,
+    });
+    expect(countPhotosAnsweredByCurrentStage(db, 'culling_profile')).toBe(1);
+
+    saveProfileDefinition(db, 'default', editLevels('7', (l) => [...l, 'beyond words']));
+    saveProfileDefinition(db, 'default', editLevels('10', (l) => [...l, 'beyond words']));
+    expect(countPhotosAnsweredByCurrentStage(db, 'culling_profile')).toBe(0);
+
+    saveProfileDefinition(db, 'default', original);
+    expect(countPhotosAnsweredByCurrentStage(db, 'culling_profile')).toBe(1);
+  });
+
+  it('adding a profile to the pipeline setting leaves a current version for each of its level sets', () => {
+    duplicateCullProfile(db, 'default', 'second');
+    expect(currentVersionId('culling_profile:second:7')).toBeUndefined();
+
+    setCullProfilePipelineActive(db, 'second', true);
+    expect(currentVersionId('culling_profile:second:7')).toBeDefined();
+    expect(currentVersionId('culling_profile:second:10')).toBeDefined();
+  });
+
+  it('a level set added or removed together with its bands saves in one step', () => {
+    const profile = getCullProfile(db, 'default')!;
+    const added = structuredClone(profile.definition);
+    const src = added.level_sets[0]!;
+    added.level_sets.push({ id: '5', levels: Object.fromEntries(Object.entries(src.levels).map(([k, v]) => [k, v.slice(0, 5)])) });
+    const withFive = { ...profile.rule, level_sets: { ...profile.rule.level_sets, '5': { fails_at_most: 2, strong_at_least: 4 } } };
+
+    saveProfileDefinition(db, 'default', added, withFive);
+    expect(currentVersionId('culling_profile:default:5')).toBeDefined();
+
+    saveProfileDefinition(db, 'default', profile.definition, profile.rule);
+    expect(getCullProfile(db, 'default')!.definition.level_sets.map((s) => s.id)).not.toContain('5');
   });
 });

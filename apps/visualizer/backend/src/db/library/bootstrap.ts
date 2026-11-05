@@ -14,8 +14,7 @@ import { openLibraryDb, type Db } from '../connection.js';
 import { resourcesRoot } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { upgradeDefaultProfileSlug } from './cull-default-profile-v18.js';
-import { syncCurrentStages } from './cull-sync-stages.js';
-import { readStoredStageModelIds } from './cull-stages.js';
+import { syncCurrentStagesAfterLibraryWrite } from './cull-sync-stages.js';
 import { seedCullingDefaults } from './cull-profiles.js';
 import { markdownMarksOptional } from './scores.js';
 import { SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
@@ -592,11 +591,7 @@ export function initLibraryDb(path: string): Db {
     createLibrarySchema(db);
     seedPerspectivesFromPromptsDir(db);
     seedCullingDefaults(db);
-    try {
-      syncCurrentStages(db, readStoredStageModelIds(db));
-    } catch {
-      // No pipeline setting yet — seed will run again on next open.
-    }
+    libraryWrite(db, () => syncCurrentStagesAfterLibraryWrite(db));
   } catch (e) {
     db.close();
     throw e;

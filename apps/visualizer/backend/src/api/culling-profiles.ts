@@ -338,8 +338,8 @@ cullingProfilesRoutes.openapi(definitionRoute, (c) => {
   if (shape.length) return c.json(validationFailed(shape), 400);
   const v = validateProfileDefinition(definition);
   if (!v.ok) return c.json(validationFailed(v.errors), 400);
-  const saved = saveProfileDefinition(db, slug, definition);
-  const ruleVersion = rule ? setProfileRule(db, slug, rule) : null;
+  const saved = saveProfileDefinition(db, slug, definition, rule);
+  const ruleVersion = saved.pipelineVersion;
   const photos = countCatalogPhotosForCullEstimate(db);
   const hours_estimate = (photos * 2) / 3600;
   let jobId: string | null = null;

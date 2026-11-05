@@ -84,45 +84,56 @@ export function createCullProfile(db: Db, r: NewCullProfile): CullProfile {
 }
 
 /**
- * Save a profile's text. A new version only when the text changed; text a past version already had
- * makes that version current again, so its stored answers are current again too.
+ * Save a profile's text, and its rule when given, in one transaction. A new version only when the text
+ * changed; text a past version already had makes that version current again, so its stored answers are
+ * current again too. The stages sync once both are saved: a level set added or removed with its bands
+ * matches the rule only then. `pipelineVersion` is what `setProfileRule` returned, null without a rule.
  */
 export function saveProfileDefinition(
   db: Db,
   slug: string,
   definition: ProfileDefinition,
-): { versionId: number; version: number; created: boolean } {
+  rule?: ProfileRule,
+): { versionId: number; version: number; created: boolean; pipelineVersion: number | null } {
   return libraryWrite(db, () => {
-    const profile = getCullProfile(db, slug);
-    if (!profile) throw new Error(`no culling profile ${slug}`);
-    const hash = definitionHash(definition);
-    if (hash === definitionHash(profile.definition)) {
-      syncCurrentStagesAfterLibraryWrite(db);
-      return { versionId: profile.versionId, version: profile.version, created: false };
-    }
-    const now = nowIsoUtc();
-    db.prepare('UPDATE cull_profile_versions SET is_current = 0 WHERE profile_id = ?').run(profile.id);
-    const past = db
-      .prepare('SELECT id, version FROM cull_profile_versions WHERE profile_id = ? AND content_hash = ?')
-      .get(profile.id, hash) as { id: number; version: number } | undefined;
-    db.prepare('UPDATE cull_profiles SET updated_at = ? WHERE id = ?').run(now, profile.id);
-    if (past) {
-      db.prepare('UPDATE cull_profile_versions SET is_current = 1 WHERE id = ?').run(past.id);
-      syncCurrentStagesAfterLibraryWrite(db);
-      return { versionId: past.id, version: past.version, created: false };
-    }
-    const { next } = db
-      .prepare('SELECT COALESCE(MAX(version), 0) + 1 AS next FROM cull_profile_versions WHERE profile_id = ?')
-      .get(profile.id) as { next: number };
-    const info = db
-      .prepare(
-        `INSERT INTO cull_profile_versions (profile_id, version, definition_json, content_hash, is_current, created_at)
-         VALUES (?, ?, ?, ?, 1, ?)`,
-      )
-      .run(profile.id, next, JSON.stringify(definition), hash, now);
+    const saved = writeProfileDefinition(db, slug, definition);
+    const pipelineVersion = rule ? setProfileRule(db, slug, rule) : null;
     syncCurrentStagesAfterLibraryWrite(db);
-    return { versionId: Number(info.lastInsertRowid), version: next, created: true };
+    return { ...saved, pipelineVersion };
   });
+}
+
+function writeProfileDefinition(
+  db: Db,
+  slug: string,
+  definition: ProfileDefinition,
+): { versionId: number; version: number; created: boolean } {
+  const profile = getCullProfile(db, slug);
+  if (!profile) throw new Error(`no culling profile ${slug}`);
+  const hash = definitionHash(definition);
+  if (hash === definitionHash(profile.definition)) {
+    return { versionId: profile.versionId, version: profile.version, created: false };
+  }
+  const now = nowIsoUtc();
+  db.prepare('UPDATE cull_profile_versions SET is_current = 0 WHERE profile_id = ?').run(profile.id);
+  const past = db
+    .prepare('SELECT id, version FROM cull_profile_versions WHERE profile_id = ? AND content_hash = ?')
+    .get(profile.id, hash) as { id: number; version: number } | undefined;
+  db.prepare('UPDATE cull_profiles SET updated_at = ? WHERE id = ?').run(now, profile.id);
+  if (past) {
+    db.prepare('UPDATE cull_profile_versions SET is_current = 1 WHERE id = ?').run(past.id);
+    return { versionId: past.id, version: past.version, created: false };
+  }
+  const { next } = db
+    .prepare('SELECT COALESCE(MAX(version), 0) + 1 AS next FROM cull_profile_versions WHERE profile_id = ?')
+    .get(profile.id) as { next: number };
+  const info = db
+    .prepare(
+      `INSERT INTO cull_profile_versions (profile_id, version, definition_json, content_hash, is_current, created_at)
+       VALUES (?, ?, ?, ?, 1, ?)`,
+    )
+    .run(profile.id, next, JSON.stringify(definition), hash, now);
+  return { versionId: Number(info.lastInsertRowid), version: next, created: true };
 }
 
 /**

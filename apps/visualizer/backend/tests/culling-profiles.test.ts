@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
+import { syncCurrentStages } from '../src/cull/stages.js';
 import { getJob, getPendingJobs, initJobsDb } from '../src/db/jobs/jobs.js';
 import { BATCH_CULL_JOB_TYPE } from '../src/jobs/handlers/cull.js';
 import { BATCH_REDECIDE_JOB_TYPE } from '../src/jobs/handlers/redecide.js';
@@ -211,6 +212,20 @@ describe('PUT /api/culling-profiles/{slug}/definition', () => {
     const redecide = getPendingJobs(jobsDb).filter((j) => j.type === BATCH_REDECIDE_JOB_TYPE);
     jobsDb.close();
     expect(redecide.length).toBe(1);
+  });
+
+  it('saves a new level set with its bands once a model has answered the culling profile', async () => {
+    fx.withDb((db) => syncCurrentStages(db, { culling_profile: 'owner/vision@abc', score_forecast: null }));
+    const profile = await json<Profile>(await app.request('/api/culling-profiles/default'));
+    const def = structuredClone(profile.definition);
+    const src = def.level_sets[0]!;
+    def.level_sets.push({ id: '5', levels: Object.fromEntries(Object.entries(src.levels).map(([k, v]) => [k, v.slice(0, 5)])) });
+    const rule = { ...profile.rule, level_sets: { ...profile.rule.level_sets, '5': { fails_at_most: 2, strong_at_least: 4 } } };
+
+    const res = await putDefinition({ definition: def, rule, mode: 'save_only' });
+    expect(res.status).toBe(200);
+    const current = fx.query<{ stage_key: string }>('SELECT stage_key FROM cull_stage_versions WHERE is_current = 1');
+    expect(current.map((r) => r.stage_key)).toContain('culling_profile:default:5');
   });
 });
 
