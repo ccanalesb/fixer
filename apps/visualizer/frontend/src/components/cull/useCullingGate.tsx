@@ -106,9 +106,7 @@ export function useCullingGate(opts: { onStageOff?: () => void } = {}): {
   )
 
   const failInDialog = (e: unknown) => {
-    const msg = e instanceof Error ? e.message : String(e)
-    setError(msg)
-    pendingRef.current?.settle({ status: 'failed', error: e })
+    setError(e instanceof Error ? e.message : String(e))
   }
 
   const turnOff = async () => {

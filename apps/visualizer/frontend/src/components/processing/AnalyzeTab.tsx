@@ -222,7 +222,7 @@ export function AnalyzeTab() {
   // Shared submission core: guards against double-submission (both from React's
   // async state and from cross-button clicks), runs the POST, shows an inline
   // status banner, and always clears its in-flight flag so the UI can't get
-  // stuck "disabled forever" if something throws.
+  // stuck "disabled forever".
   const runSubmit = useCallback(
     async (
       jobType: 'batch_analyze' | 'batch_describe' | 'batch_score' | typeof CULLING_JOB_TYPE,

@@ -175,7 +175,7 @@ describe('useCullingGate', () => {
     )
   })
 
-  it('turn-off failure resolves failed', async () => {
+  it('a turn-off failure shows in the dialog only; retrying then starts', async () => {
     vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue(usable({ score_forecast: broken('no_model') }))
     mockTurnStageOff.mockRejectedValueOnce(new Error('save failed'))
     const onResult = vi.fn()
@@ -183,10 +183,27 @@ describe('useCullingGate', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go' }))
     const dialog = await screen.findByRole('dialog', { name: 'Score forecast has no model' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Turn off and start' }))
-    await waitFor(() =>
-      expect(onResult).toHaveBeenCalledWith({ status: 'failed', error: expect.objectContaining({ message: 'save failed' }) }),
+    expect(await within(dialog).findByText('save failed')).toBeInTheDocument()
+    expect(onResult).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Turn off and start' }))
+    await waitFor(() => expect(onResult).toHaveBeenCalledWith({ status: 'started', value: 'done' }))
+    expect(onResult).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failure switching a provider back on shows in the dialog only; cancel then resolves cancelled', async () => {
+    vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue(
+      usable({ culling_profile: broken('parked', { endpoint: 'studio_gpu', provider_name: 'Studio GPU' }) }),
     )
-    expect(within(dialog).getByText('save failed')).toBeInTheDocument()
+    vi.mocked(ProvidersAPI.update).mockRejectedValueOnce(new Error('provider save failed'))
+    const onResult = vi.fn()
+    renderGate(<GateHarness onResult={onResult} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Go' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Studio GPU is parked' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Turn it back on' }))
+    expect(await within(dialog).findByText('provider save failed')).toBeInTheDocument()
+    expect(onResult).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(onResult).toHaveBeenCalledWith({ status: 'cancelled' }))
   })
 
   it('enqueue failure resolves failed', async () => {
