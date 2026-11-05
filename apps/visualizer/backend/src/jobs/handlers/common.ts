@@ -5,7 +5,7 @@ import { openLibraryDb, type Db } from '../../db/connection.js';
 import type { JobLogLevel } from '../../db/jobs/jobs.js';
 import { upgradeLibrarySchema } from '../../db/library/bootstrap.js';
 import { loadCullVerdictsForKeys } from '../../db/library/cull-verdicts.js';
-import type { VerdictTally } from '../../cull/verdict-tally.js';
+import { addDecision, emptyVerdictTally, type VerdictTally } from '../../cull/verdict-tally.js';
 import { CullingStageError } from '../../cull/stage-models.js';
 import { AuthenticationError, InvalidRequestError } from '../../providers/errors.js';
 import type { AnalyzeStage } from '../checkpoint.js';
@@ -194,17 +194,17 @@ export function dropFilteredPhotosFromDescribeAndScoringSelection<T extends read
   selection: readonly T[],
 ): { kept: T[]; heldBack: CullHeldBack } {
   const verdicts = loadCullVerdictsForKeys(db, [...new Set(selection.map(([k]) => k))]);
-  const heldBack: CullHeldBack = { filtered_by_culling_profile: 0, filtered_by_score_forecast: 0, pending: 0, no_verdict: 0 };
+  const tally = emptyVerdictTally();
+  let noVerdict = 0;
   const kept: T[] = [];
   for (const pair of selection) {
     const v = verdicts.get(pair[0]);
     if (v?.sentByHand || v?.verdict === 'passed') kept.push(pair);
-    else if (v === undefined) heldBack.no_verdict += 1;
-    else if (v.verdict === 'pending') heldBack.pending += 1;
-    else if (v.filteredBy === 'score_forecast') heldBack.filtered_by_score_forecast += 1;
-    else heldBack.filtered_by_culling_profile += 1;
+    else if (v === undefined) noVerdict += 1;
+    else addDecision(tally, { verdict: v.verdict, filteredBy: v.filteredBy, sentByHandOverride: false });
   }
-  return { kept, heldBack };
+  const { filtered_by_culling_profile, filtered_by_score_forecast, pending } = tally;
+  return { kept, heldBack: { filtered_by_culling_profile, filtered_by_score_forecast, pending, no_verdict: noVerdict } };
 }
 
 /**

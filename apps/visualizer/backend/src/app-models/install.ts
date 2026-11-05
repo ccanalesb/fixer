@@ -113,11 +113,6 @@ function installJobs(activeJobs: readonly JobRow[]): (JobRow & { metadata: Parti
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-/** The models a conversion job is still installing, from the jobs pending or running. */
-export function convertingModelNames(activeJobs: readonly JobRow[]): Set<string> {
-  return new Set(installJobs(activeJobs).flatMap((j) => (j.metadata.name ? [j.metadata.name] : [])));
-}
-
 /** Installed models, then the ones still converting, in the order they were added. */
 export function listAppModels(modelsDir: string, jobsDb: Db): AppModelStatus[] {
   const ready: AppModelStatus[] = installedModels(modelsDir).map((m) => ({

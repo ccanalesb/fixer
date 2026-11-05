@@ -1,7 +1,6 @@
 import type { WritebackKind } from './writeback-types.js';
 import { listDecidedCullImageKeys } from '../db/library/cull-verdicts.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
-import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import type { Db } from '../db/connection.js';
 import type { WritebackDecision } from './writeback-decision.js';
 import {
@@ -51,8 +50,6 @@ export function emptyRunTally(): ReconcileRunTally {
 export interface WritebackPlanRun {
   db: Db;
   conn: Db | null;
-  settings: LrWritebackSettings;
-  trigger: WritebackTrigger;
   tally: ReconcileRunTally;
   starsVersionId: number | null;
 }

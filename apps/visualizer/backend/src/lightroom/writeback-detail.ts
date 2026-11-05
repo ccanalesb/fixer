@@ -1,4 +1,3 @@
-import { ratingFromStrongCount } from './writeback-stars.js';
 import { decideWriteback } from './writeback-decision.js';
 import type { Db } from '../db/connection.js';
 import { getWritebackState } from '../db/library/lr-writeback-state.js';
@@ -22,10 +21,8 @@ function strongDimensionsLine(decision: ReturnType<typeof decideWriteback>['star
       return 'No stars: the culling profile is off';
     case 'none':
       return `Strong dimensions (${decision.profileName}): none`;
-    case 'strong': {
-      const rating = decision.rating ?? ratingFromStrongCount(decision.strong);
-      return `Strong dimensions (${decision.profileName}): ${decision.strong} strong → ${'★'.repeat(rating ?? 0)}`;
-    }
+    case 'strong':
+      return `Strong dimensions (${decision.profileName}): ${decision.strong} strong → ${'★'.repeat(decision.earnedRating ?? 0)}`;
   }
 }
 

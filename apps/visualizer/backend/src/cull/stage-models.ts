@@ -8,15 +8,12 @@
 import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
-import type { CullingModelsConfig } from '../config.js';
-import { ProviderRegistry } from '../providers/registry.js';
 import { setupErrorMessage } from '../app-models/files.js';
 import type { SystemOneQuestion } from '../systemone/question.js';
 import {
   askSystemOne,
   listSystemOneModels,
   modelIdentity,
-  placeholderSystemOneEndpoint,
   SystemOneError,
   THIS_APP_ENDPOINT,
   type SystemOneAnswers,
@@ -24,8 +21,8 @@ import {
   type SystemOneFailure,
   type SystemOneImageEncoding,
 } from '../systemone/client.js';
-import { stageEndpoint } from './stage-resolver.js';
-import type { PipelineSettingConfig, ResolvedStage, StageAnswers, StageKind } from './types.js';
+import { cullingStageErrorForProblem, type ResolvedStages } from './stage-resolver.js';
+import type { PipelineSettingConfig, ResolvedStage, StageAnswers, StageKind, StageProblem } from './types.js';
 
 export const STAGE_NAMES: Record<StageKind, string> = {
   culling_profile: 'Culling profile',
@@ -42,7 +39,7 @@ export class CullingStageError extends Error {
   override readonly name = 'CullingStageError';
   constructor(
     readonly stage: StageKind,
-    readonly failure: SystemOneFailure | 'no_model' | 'no_questions' | 'parked' | 'removed' | 'converting',
+    readonly failure: SystemOneFailure | StageProblem,
     message: string,
   ) {
     super(message);
@@ -62,34 +59,25 @@ export class StageCallError extends Error {
 }
 
 export interface StageModel {
-  endpoint: SystemOneEndpoint;
+  /** Null when the stage's endpoint is removed: a stage that is on never gets this far. */
+  endpoint: SystemOneEndpoint | null;
   model: string;
 }
 
 export type StageModels = Record<StageKind, StageModel>;
 
-export function stageModelsFromConfig(
-  cfg: CullingModelsConfig,
-  opts: {
-    thisAppFetch?: typeof fetch;
-    registry?: ProviderRegistry;
-    /** Endpoints from `resolveStage`; null means removed or unresolved. */
-    systemOne?: Partial<Record<StageKind, SystemOneEndpoint | null>>;
-  } = {},
-): StageModels {
-  const registry = opts.registry ?? new ProviderRegistry();
-  const endpointFor = (kind: StageKind, stageCfg: (typeof cfg)['culling_profile']): SystemOneEndpoint => {
-    if (opts.systemOne && kind in opts.systemOne) {
-      const resolved = opts.systemOne[kind];
-      if (resolved) return resolved;
-      return placeholderSystemOneEndpoint(stageCfg.endpoint);
-    }
-    return stageEndpoint(stageCfg, registry, opts) ?? placeholderSystemOneEndpoint(stageCfg.endpoint);
-  };
+/** Each stage's endpoint and model, as the stage resolver found them. */
+export function stageModelsFrom(stages: ResolvedStages): StageModels {
   return {
-    culling_profile: { endpoint: endpointFor('culling_profile', cfg.culling_profile), model: cfg.culling_profile.model },
-    score_forecast: { endpoint: endpointFor('score_forecast', cfg.score_forecast), model: cfg.score_forecast.model },
+    culling_profile: { endpoint: stages.culling_profile.systemOne, model: stages.culling_profile.model ?? '' },
+    score_forecast: { endpoint: stages.score_forecast.systemOne, model: stages.score_forecast.model ?? '' },
   };
+}
+
+/** A stage's endpoint, to call it; a removed one fails as the stage resolver says. */
+function endpointOf(kind: StageKind, m: StageModel): SystemOneEndpoint {
+  if (m.endpoint) return m.endpoint;
+  throw cullingStageErrorForProblem(kind, 'removed', { model: m.model || null, provider_name: null, systemOne: null });
 }
 
 /** Which stages the pipeline setting has on. */
@@ -103,8 +91,9 @@ export function stagesOn(cfg: PipelineSettingConfig): Record<StageKind, boolean>
 const named = (kind: StageKind, message: string) => `${STAGE_NAMES[kind]}: ${message}`;
 
 function notListedMessage(kind: StageKind, m: StageModel): string {
-  if (m.endpoint.id !== THIS_APP_ENDPOINT) return named(kind, `${m.model} is not listed by ${m.endpoint.label}`);
-  return named(kind, setupErrorMessage(`${m.model} is not listed by ${m.endpoint.label}`));
+  const ep = endpointOf(kind, m);
+  if (ep.id !== THIS_APP_ENDPOINT) return named(kind, `${m.model} is not listed by ${ep.label}`);
+  return named(kind, setupErrorMessage(`${m.model} is not listed by ${ep.label}`));
 }
 
 /**
@@ -120,16 +109,17 @@ export async function resolveStageModelIds(
   for (const kind of KINDS) {
     if (!on[kind]) continue;
     const m = models[kind];
+    const ep = endpointOf(kind, m);
     let listed;
     try {
-      listed = await listSystemOneModels(m.endpoint);
+      listed = await listSystemOneModels(ep);
     } catch (e) {
       if (e instanceof SystemOneError) throw new CullingStageError(kind, e.failure, named(kind, e.message));
       throw e;
     }
     const entry = listed.find((x) => x.name === m.model);
     if (!entry) throw new CullingStageError(kind, 'not_listed', notListedMessage(kind, m));
-    ids[kind] = modelIdentity(m.endpoint, entry);
+    ids[kind] = modelIdentity(ep, entry);
   }
   return ids;
 }
@@ -214,7 +204,7 @@ export class CullingModels implements StageAnswerer {
 
   private async ask(kind: StageKind, image: Uint8Array, stages: readonly ResolvedStage[]): Promise<SystemOneAnswers> {
     const m = this.models[kind];
-    return askSystemOne(m.endpoint, { model: m.model, image, questions: stageQuestions(stages), encoding: this.encoding[kind] });
+    return askSystemOne(endpointOf(kind, m), { model: m.model, image, questions: stageQuestions(stages), encoding: this.encoding[kind] });
   }
 
   /** The start check's call: a 400 to the data URL is asked once more in raw base64, kept if it works. */
@@ -275,7 +265,7 @@ export class CullingModels implements StageAnswerer {
       }
       out.seconds[kind] = (performance.now() - t0) / 1000;
       Object.assign(out.answers, stageAnswersFromModel(own, answers));
-      for (const s of own) out.producedBy[s.stageKey] = this.models[kind].endpoint.id;
+      for (const s of own) out.producedBy[s.stageKey] = endpointOf(kind, this.models[kind]).id;
     }
     return out;
   }

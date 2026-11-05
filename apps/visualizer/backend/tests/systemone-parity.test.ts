@@ -15,7 +15,7 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { afterAll, describe, expect, it } from 'vitest';
 import { closeAppModels } from '../src/app-models/app-models.js';
 import { FACTORY_QUESTIONS } from '../src/app-models/factory-questions.js';
-import { askSystemOne, listSystemOneModels, modelIdentity, systemOneEndpoint } from '../src/systemone/client.js';
+import { askSystemOne, listSystemOneModels, modelIdentity, findSystemOneEndpoint } from '../src/systemone/client.js';
 
 const dumpPath = process.env.LT_SYSTEMONE_PARITY ?? '';
 const enabled = dumpPath !== '' && existsSync(dumpPath);
@@ -28,7 +28,7 @@ interface Dump {
 
 describeMaybe("this app's System One endpoint vs the direct model calls", () => {
   const dump = enabled ? (JSON.parse(readFileSync(dumpPath, 'utf8')) as Dump) : { model_ids: { base: '', new: null }, answers: {} };
-  const ep = systemOneEndpoint({ endpoint: 'this_app', model: '' });
+  const ep = findSystemOneEndpoint('this_app')!;
   afterAll(() => closeAppModels());
 
   it('lists both models under the ids stage versions already hash', async () => {

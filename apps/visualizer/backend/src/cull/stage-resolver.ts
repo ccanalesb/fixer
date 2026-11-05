@@ -3,15 +3,19 @@
  * calling an endpoint. Jobs, the CLI and `/api/culling-models/usable` share this; remote checks stay in
  * `resolveStageModelIds`.
  */
-import type { CullingModelConfig } from '../config.js';
-import type { AppModelStatus } from '../app-models/install.js';
+import { config, loadLibraryConfig, type CullingModelConfig, type CullingModelsConfig } from '../config.js';
+import { listAppModels, type AppModelStatus } from '../app-models/install.js';
 import { setupErrorMessage } from '../app-models/files.js';
+import type { Db } from '../db/connection.js';
+import { initJobsDb } from '../db/jobs/jobs.js';
+import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
+import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
 import { ProviderRegistry } from '../providers/registry.js';
-import { systemOneEndpoint, THIS_APP_ENDPOINT, type SystemOneEndpoint } from '../systemone/client.js';
-import type { StageKind } from './types.js';
-import { CullingStageError, STAGE_NAMES } from './stage-models.js';
+import { findSystemOneEndpoint, THIS_APP_ENDPOINT, type SystemOneEndpoint } from '../systemone/client.js';
+import type { StageKind, StageProblem } from './types.js';
+import { CullingStageError, STAGE_NAMES, stagesOn } from './stage-models.js';
 
-export type StageProblem = 'no_model' | 'converting' | 'parked' | 'removed' | 'no_questions';
+export type { StageProblem } from './types.js';
 
 export interface ResolveStageResult {
   on: boolean;
@@ -27,12 +31,14 @@ export interface ResolveStageResult {
   systemOne: SystemOneEndpoint | null;
 }
 
-export interface ResolveStageInput {
-  on: boolean;
-  cfg: CullingModelConfig;
+export type ResolvedStages = Record<StageKind, ResolveStageResult>;
+
+export interface ResolveStagesInput {
+  on: Record<StageKind, boolean>;
+  cfg: CullingModelsConfig;
   /** This app's models, the converting ones included. */
   appModels: readonly AppModelStatus[];
-  /** The Score forecast's questions; ignored for the culling profile. */
+  /** The Score forecast's questions. */
   questionCount: number;
   registry?: ProviderRegistry;
   thisAppFetch?: typeof fetch;
@@ -42,28 +48,16 @@ const TURN_OFF: Record<StageKind, string> = { culling_profile: 'the culling prof
 
 const named = (kind: StageKind, message: string) => `${STAGE_NAMES[kind]}: ${message}`;
 
-/** This app, a System One provider's endpoint, or null when the stage's endpoint is removed. */
-export function stageEndpoint(
+function resolveStage(
+  kind: StageKind,
   cfg: CullingModelConfig,
+  input: ResolveStagesInput,
   registry: ProviderRegistry,
-  opts: { thisAppFetch?: typeof fetch } = {},
-): SystemOneEndpoint | null {
-  if (cfg.endpoint === THIS_APP_ENDPOINT) {
-    return systemOneEndpoint(cfg, { registry, thisAppFetch: opts.thisAppFetch });
-  }
-  const pcfg = registry.hasProvider(cfg.endpoint) ? registry.providerConfig(cfg.endpoint) : null;
-  if (pcfg?.protocol === 'system_one') {
-    return systemOneEndpoint(cfg, { registry, thisAppFetch: opts.thisAppFetch });
-  }
-  return null;
-}
-
-export async function resolveStage(kind: StageKind, input: ResolveStageInput): Promise<ResolveStageResult> {
-  const { cfg } = input;
-  const registry = input.registry ?? new ProviderRegistry();
-  const systemOne = stageEndpoint(cfg, registry, { thisAppFetch: input.thisAppFetch });
+): ResolveStageResult {
+  const on = input.on[kind];
+  const systemOne = findSystemOneEndpoint(cfg.endpoint, { registry, thisAppFetch: input.thisAppFetch });
   const base: ResolveStageResult = {
-    on: input.on,
+    on,
     problem: null,
     model: cfg.model || null,
     endpoint: cfg.endpoint,
@@ -71,7 +65,7 @@ export async function resolveStage(kind: StageKind, input: ResolveStageInput): P
     provider_name: null,
     systemOne,
   };
-  if (!input.on) return base;
+  if (!on) return base;
   if (!cfg.model) return { ...base, problem: 'no_model' };
 
   if (cfg.endpoint === THIS_APP_ENDPOINT) {
@@ -79,8 +73,8 @@ export async function resolveStage(kind: StageKind, input: ResolveStageInput): P
     if (converting) return { ...base, problem: 'converting', job_id: converting.job_id };
     const ready = input.appModels.some((m) => m.name === cfg.model && m.status === 'ready');
     if (!ready) return { ...base, problem: 'no_model' };
-  } else if (!cfg.endpoint.trim() || systemOne === null) {
-    return { ...base, problem: 'removed', systemOne: null };
+  } else if (systemOne === null) {
+    return { ...base, problem: 'removed' };
   } else {
     const pcfg = registry.providerConfig(cfg.endpoint)!;
     if (pcfg.enabled === false) {
@@ -92,7 +86,42 @@ export async function resolveStage(kind: StageKind, input: ResolveStageInput): P
   return base;
 }
 
-export function cullingStageErrorForProblem(kind: StageKind, problem: StageProblem, result: ResolveStageResult): CullingStageError {
+/** Both stages, from what the caller already has. */
+export function resolveStages(input: ResolveStagesInput): ResolvedStages {
+  const registry = input.registry ?? new ProviderRegistry();
+  return {
+    culling_profile: resolveStage('culling_profile', input.cfg.culling_profile, input, registry),
+    score_forecast: resolveStage('score_forecast', input.cfg.score_forecast, input, registry),
+  };
+}
+
+/**
+ * Both stages as the library has them: which are on in its pipeline setting, its Score forecast
+ * questions, `config.yaml`'s culling models, and this app's models with the ones still converting.
+ */
+export function resolveLibraryStages(db: Db, opts: { registry?: ProviderRegistry } = {}): ResolvedStages {
+  const libraryConfig = loadLibraryConfig(config.LT_CONFIG_YAML);
+  const jobsDb = initJobsDb(config.VISUALIZER_DB);
+  let appModels: AppModelStatus[];
+  try {
+    appModels = listAppModels(libraryConfig.appModelsDir, jobsDb);
+  } finally {
+    jobsDb.close();
+  }
+  return resolveStages({
+    on: stagesOn(getCurrentPipelineSetting(db).config),
+    cfg: libraryConfig.cullingModels,
+    appModels,
+    questionCount: getForecastQuestions(db).questions.length,
+    registry: opts.registry,
+  });
+}
+
+export function cullingStageErrorForProblem(
+  kind: StageKind,
+  problem: StageProblem,
+  result: Pick<ResolveStageResult, 'model' | 'provider_name' | 'systemOne'>,
+): CullingStageError {
   switch (problem) {
     case 'no_model':
       if (result.model) {
@@ -140,13 +169,11 @@ export function cullingStageErrorForProblem(kind: StageKind, problem: StageProbl
   }
 }
 
-/** Throws when the stage is on with a local problem; optional `skip` ignores listed problems (CLI: no_questions). */
-export function throwIfStageProblem(
-  kind: StageKind,
-  result: ResolveStageResult,
-  opts: { skip?: ReadonlySet<StageProblem> } = {},
-): void {
-  if (!result.on || !result.problem) return;
-  if (opts.skip?.has(result.problem)) return;
-  throw cullingStageErrorForProblem(kind, result.problem, result);
+/** Throws for the first stage that is on with a local problem; `skip` ignores listed problems (CLI: no_questions). */
+export function throwIfStageProblem(stages: ResolvedStages, opts: { skip?: ReadonlySet<StageProblem> } = {}): void {
+  for (const kind of ['culling_profile', 'score_forecast'] as const) {
+    const result = stages[kind];
+    if (!result.on || !result.problem || opts.skip?.has(result.problem)) continue;
+    throw cullingStageErrorForProblem(kind, result.problem, result);
+  }
 }

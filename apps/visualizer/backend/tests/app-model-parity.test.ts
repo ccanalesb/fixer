@@ -18,7 +18,7 @@ import { closeAppModels } from '../src/app-models/app-models.js';
 import { FACTORY_QUESTIONS } from '../src/app-models/factory-questions.js';
 import type { SystemOneQuestion } from '../src/systemone/question.js';
 import { buildModelRows, loadPixelValues } from '../src/app-models/sessions.js';
-import { askSystemOne, systemOneEndpoint } from '../src/systemone/client.js';
+import { askSystemOne, findSystemOneEndpoint } from '../src/systemone/client.js';
 
 const modelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir;
 const models = process.env.LT_MODEL_PARITY === '1' ? installedModels(modelsDir) : [];
@@ -67,7 +67,7 @@ describeMaybe('parity with the PyTorch reference', () => {
 
   it('answers in a worker thread, within 0.01 of PyTorch, without holding the main event loop', async () => {
     const lag = monitorEventLoopDelay({ resolution: 5 });
-    const ep = systemOneEndpoint({ endpoint: 'this_app', model: '' });
+    const ep = findSystemOneEndpoint('this_app')!;
     // One window for every call, the worker's start included: a histogram enabled twice counts the gap.
     lag.enable();
     for (const m of models) {

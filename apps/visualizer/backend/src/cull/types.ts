@@ -11,6 +11,10 @@ export type CullVerdict = 'filtered' | 'passed';
 export type CullSummaryVerdict = CullVerdict | 'pending';
 export type StageKind = 'culling_profile' | 'score_forecast';
 
+/** Why a culling stage that is on cannot run, known locally (`stage-resolver.ts`). */
+export const STAGE_PROBLEMS = ['no_model', 'converting', 'parked', 'removed', 'no_questions'] as const;
+export type StageProblem = (typeof STAGE_PROBLEMS)[number];
+
 /** The text a culling profile's model is asked: versioned, so a change makes a new stage version. */
 export interface ProfileDefinition {
   dimensions: { slug: string; name: string; question: string }[];

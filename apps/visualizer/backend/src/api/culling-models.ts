@@ -4,18 +4,19 @@
  */
 import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig, updateConfigYamlCullingModel, type CullingModelConfig } from '../config.js';
-import { stagesOn } from '../cull/stage-models.js';
-import { resolveStage, stageEndpoint, type ResolveStageResult } from '../cull/stage-resolver.js';
+import { resolveLibraryStages, type ResolveStageResult } from '../cull/stage-resolver.js';
 import type { StageKind } from '../cull/types.js';
 import type { Db } from '../db/connection.js';
-import { initJobsDb } from '../db/jobs/jobs.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { countCatalogPhotosForCullEstimate } from '../db/library/cull-profiles-mutations.js';
 import { countPhotosAnsweredByCurrentStage, readStoredStageModelIds } from '../db/library/cull-stages.js';
-import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
-import { listAppModels } from '../app-models/install.js';
 import { ProviderRegistry } from '../providers/registry.js';
-import { listSystemOneModels, SystemOneError, systemOneEndpoint, THIS_APP_ENDPOINT } from '../systemone/client.js';
+import {
+  findSystemOneEndpoint,
+  listSystemOneModels,
+  SystemOneError,
+  THIS_APP_ENDPOINT,
+} from '../systemone/client.js';
 import { errorBadRequest } from '../utils/responses.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
 import { createOpenApiApp } from './openapi.js';
@@ -39,15 +40,6 @@ cullingModelsRoutes.use('/culling-models/:stage', libraryDb());
 
 const stagesConfig = () => loadLibraryConfig(config.LT_CONFIG_YAML).cullingModels;
 
-function withJobsDb<T>(fn: (db: Db) => T): T {
-  const db = initJobsDb(config.VISUALIZER_DB);
-  try {
-    return fn(db);
-  } finally {
-    db.close();
-  }
-}
-
 function listSystemOneProviders(registry: ProviderRegistry): z.infer<typeof CullingSystemOneProvider>[] {
   return Object.entries(registry.providerConfigs())
     .filter(([, cfg]) => cfg.protocol === 'system_one')
@@ -61,18 +53,17 @@ function listSystemOneProviders(registry: ProviderRegistry): z.infer<typeof Cull
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** The endpoint as saved: this app or a System One provider id; null for anything else. */
 function normalizeEndpoint(raw: string, registry: ProviderRegistry): string | null {
   const text = raw.trim();
-  if (!text) return null;
-  const cfg: CullingModelConfig = { endpoint: text, model: '' };
-  return stageEndpoint(cfg, registry) ? text : null;
+  return findSystemOneEndpoint(text, { registry }) ? text : null;
 }
 
 /** What a model identity is called: this app's model by its name, `<name>@<url>` as "name on url". */
 async function modelName(identity: string | null): Promise<string | null> {
   if (identity === null) return null;
   try {
-    const own = await listSystemOneModels(systemOneEndpoint({ endpoint: THIS_APP_ENDPOINT, model: '' }));
+    const own = await listSystemOneModels(findSystemOneEndpoint(THIS_APP_ENDPOINT)!);
     const mine = own.find((m) => m.modelId === identity);
     if (mine) return mine.name;
   } catch {
@@ -82,39 +73,23 @@ async function modelName(identity: string | null): Promise<string | null> {
   return at > 0 ? `${identity.slice(0, at)} on ${identity.slice(at + 1)}` : identity;
 }
 
-function stageUsable(resolved: ResolveStageResult): z.infer<typeof CullingStageModel>['usable'] {
-  return { problem: resolved.problem, job_id: resolved.job_id, provider_name: resolved.provider_name };
-}
-
-async function resolveContext(db: Db) {
-  const { config: pipeline } = getCurrentPipelineSetting(db);
-  const questionCount = getForecastQuestions(db).questions.length;
-  const on = stagesOn(pipeline);
-  const cfg = stagesConfig();
-  const registry = new ProviderRegistry();
-  const appModels = withJobsDb((jobsDb) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir, jobsDb));
-  const input = (kind: StageKind) => ({
-    on: on[kind],
-    cfg: cfg[kind],
-    appModels,
-    questionCount,
-    registry,
-  });
-  return { cfg, input, pipeline, registry };
+/** Whether the stage can run, as `/usable` and each stage's `usable` say it. */
+function stageUsable({ on, problem, model, endpoint, job_id, provider_name }: ResolveStageResult) {
+  return { on, problem, model, endpoint, job_id, provider_name };
 }
 
 async function stageState(
   db: Db,
   kind: StageKind,
-  cfg: CullingModelConfig,
   storedModelId: string | null,
   resolved: ResolveStageResult,
 ): Promise<z.infer<typeof CullingStageModel>> {
+  const { problem, job_id, provider_name } = stageUsable(resolved);
   return {
-    endpoint: cfg.endpoint,
-    model: cfg.model || null,
+    endpoint: resolved.endpoint,
+    model: resolved.model,
     answered: { photos: countPhotosAnsweredByCurrentStage(db, kind), model: await modelName(storedModelId) },
-    usable: stageUsable(resolved),
+    usable: { problem, job_id, provider_name },
   };
 }
 
@@ -129,16 +104,13 @@ const getRoute = createRoute({
 
 cullingModelsRoutes.openapi(getRoute, async (c) => {
   const db = c.get('libraryDb');
-  const { cfg, input, registry } = await resolveContext(db);
+  const registry = new ProviderRegistry();
+  const resolved = resolveLibraryStages(db, { registry });
   const stored = readStoredStageModelIds(db);
-  const [cullingProfile, scoreForecast] = await Promise.all([
-    resolveStage('culling_profile', input('culling_profile')),
-    resolveStage('score_forecast', input('score_forecast')),
-  ]);
   return c.json(
     {
-      culling_profile: await stageState(db, 'culling_profile', cfg.culling_profile, stored.culling_profile, cullingProfile),
-      score_forecast: await stageState(db, 'score_forecast', cfg.score_forecast, stored.score_forecast, scoreForecast),
+      culling_profile: await stageState(db, 'culling_profile', stored.culling_profile, resolved.culling_profile),
+      score_forecast: await stageState(db, 'score_forecast', stored.score_forecast, resolved.score_forecast),
       total_photos: countCatalogPhotosForCullEstimate(db),
       system_one_providers: listSystemOneProviders(registry),
     },
@@ -175,9 +147,8 @@ cullingModelsRoutes.openapi(putRoute, async (c) => {
   };
   updateConfigYamlCullingModel(config.LT_CONFIG_YAML, stage, next);
   const db = c.get('libraryDb');
-  const { input } = await resolveContext(db);
-  const resolved = await resolveStage(stage, input(stage));
-  return c.json(await stageState(db, stage, next, readStoredStageModelIds(db)[stage], resolved), 200);
+  const resolved = resolveLibraryStages(db, { registry })[stage];
+  return c.json(await stageState(db, stage, readStoredStageModelIds(db)[stage], resolved), 200);
 });
 
 const modelsRoute = createRoute({
@@ -200,25 +171,13 @@ const usableRoute = createRoute({
 });
 
 cullingModelsRoutes.openapi(usableRoute, async (c) => {
-  const libDb = c.get('libraryDb');
-  const { input, pipeline } = await resolveContext(libDb);
-  const [cullingProfile, scoreForecast] = await Promise.all([
-    resolveStage('culling_profile', input('culling_profile')),
-    resolveStage('score_forecast', input('score_forecast')),
-  ]);
-  const usable = (r: Awaited<ReturnType<typeof resolveStage>>) => ({
-    on: r.on,
-    problem: r.problem,
-    model: r.model,
-    endpoint: r.endpoint,
-    job_id: r.job_id,
-    provider_name: r.provider_name,
-  });
+  const db = c.get('libraryDb');
+  const resolved = resolveLibraryStages(db);
   return c.json(
     {
-      culling_profile: usable(cullingProfile),
-      score_forecast: usable(scoreForecast),
-      culling_profile_filter: pipeline.culling_profiles_filter_enabled,
+      culling_profile: stageUsable(resolved.culling_profile),
+      score_forecast: stageUsable(resolved.score_forecast),
+      culling_profile_filter: getCurrentPipelineSetting(db).config.culling_profiles_filter_enabled,
     },
     200,
   );
@@ -228,7 +187,7 @@ cullingModelsRoutes.openapi(modelsRoute, async (c) => {
   const { stage } = c.req.valid('param');
   const cfg = stagesConfig()[stage];
   const registry = new ProviderRegistry();
-  const ep = stageEndpoint(cfg, registry);
+  const ep = findSystemOneEndpoint(cfg.endpoint, { registry });
   if (cfg.endpoint === THIS_APP_ENDPOINT) {
     try {
       const listed = await listSystemOneModels(ep!);

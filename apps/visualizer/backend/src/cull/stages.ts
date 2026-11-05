@@ -7,15 +7,11 @@
  */
 import type { Db } from '../db/connection.js';
 import { stageSpecsForPipeline } from '../db/library/cull-sync-stages.js';
-import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
 import { getCurrentPipelineSetting, type PipelineSetting } from '../db/library/cull-pipeline.js';
 import { readCurrentStageVersion, readStoredStageModelIds } from '../db/library/cull-stages.js';
-import type { SystemOneQuestion } from '../systemone/question.js';
 import { stagesOn, type StageModelIds } from './stage-models.js';
-import { forecastStageQuestions } from './forecast-questions.js';
 import type { ResolvedStage, StageKind } from './types.js';
 
-export { SCORE_FORECAST_STAGE_KEY, profileStageKey } from './stage-specs.js';
 export { syncCurrentStages } from '../db/library/cull-sync-stages.js';
 
 export interface ReadCurrentStagesResult {
@@ -38,7 +34,3 @@ export function readCurrentStages(db: Db): ReadCurrentStagesResult {
   return { pipeline, on, modelIds, stages };
 }
 
-/** What the Score forecast's model is asked now: the current Score forecast questions. */
-export function currentForecastStageQuestions(db: Db): Record<string, SystemOneQuestion> {
-  return forecastStageQuestions(getForecastQuestions(db).questions);
-}

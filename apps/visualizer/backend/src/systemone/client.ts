@@ -7,7 +7,6 @@
  * through the app's own `fetch`, in-process.
  */
 import { z } from 'zod';
-import type { CullingModelConfig } from '../config.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import type { SystemOneQuestion } from '../systemone/question.js';
 
@@ -56,11 +55,15 @@ const thisAppFetch: typeof fetch = async (input, init) => {
   return systemOneRoutes.request(input instanceof URL ? input.href : input, init);
 };
 
-export function systemOneEndpoint(
-  cfg: CullingModelConfig,
+/**
+ * The one reading of a culling stage's endpoint value: this app, or a System One provider by id. Any
+ * other value (empty, a raw URL, an unknown or non-System One provider) is removed: null.
+ */
+export function findSystemOneEndpoint(
+  endpoint: string,
   opts: { registry?: ProviderRegistry; thisAppFetch?: typeof fetch } = {},
-): SystemOneEndpoint {
-  if (cfg.endpoint === THIS_APP_ENDPOINT) {
+): SystemOneEndpoint | null {
+  if (endpoint === THIS_APP_ENDPOINT) {
     return {
       id: THIS_APP_ENDPOINT,
       label: 'this app',
@@ -70,23 +73,16 @@ export function systemOneEndpoint(
     };
   }
   const registry = opts.registry ?? new ProviderRegistry();
-  const pcfg = registry.providerConfig(cfg.endpoint);
-  if (pcfg?.protocol === 'system_one') {
-    const url = registry.resolveSystemOneBaseUrl(pcfg);
-    return {
-      id: url,
-      label: pcfg.name || url,
-      url,
-      apiKey: registry.resolveApiKey(pcfg),
-      fetch: globalThis.fetch.bind(globalThis),
-    };
-  }
-  throw new Error(`Unknown culling endpoint: ${cfg.endpoint}`);
-}
-
-/** Placeholder when a stage's endpoint is removed; callers must not call the endpoint. */
-export function placeholderSystemOneEndpoint(label: string): SystemOneEndpoint {
-  return { id: label, label, url: label, apiKey: '', fetch: globalThis.fetch.bind(globalThis) };
+  const pcfg = registry.hasProvider(endpoint) ? registry.providerConfig(endpoint) : null;
+  if (pcfg?.protocol !== 'system_one') return null;
+  const url = registry.resolveSystemOneBaseUrl(pcfg);
+  return {
+    id: url,
+    label: pcfg.name || url,
+    url,
+    apiKey: registry.resolveApiKey(pcfg),
+    fetch: globalThis.fetch.bind(globalThis),
+  };
 }
 
 /** The identity stage versions hash: the endpoint's own, or the model's name on that endpoint. */
