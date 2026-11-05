@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { openLibraryDb } from '../src/db/connection.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
+import { seedCullingStagesOn } from './helpers/culling-stages.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
 import { closeCloudDocstore, openCloudDocstore, pushPhotoToCloud } from '../src/lightroom/cloud-sync/docstore.js';
@@ -233,7 +233,7 @@ describe('write-back carries stars and flags to the cloud', () => {
     makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
     const mcat = addCloudSync(lrcatPath, [{ imageId: IMAGE, ozAssetId: ASSET }]);
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_reject: true });
     filteredByProfile(db, '2024-06-01_filtered-photo');
 
@@ -252,7 +252,7 @@ describe('write-back carries stars and flags to the cloud', () => {
     conn.close();
     const mcat = addCloudSync(lrcatPath, [{ imageId: IMAGE, ozAssetId: ASSET }]);
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_reject: true });
     filteredByProfile(db, '2024-06-01_filtered-photo');
     upsertWritebackState(db, {
@@ -282,7 +282,7 @@ describe('write-back carries stars and flags to the cloud', () => {
     const mcat = addCloudSync(lrcatPath, [{ imageId: IMAGE, ozAssetId: ASSET }]);
     writeFileSync(join(dir, 'Test.lrcat-lock'), '');
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_reject: true });
     filteredByProfile(db, '2024-06-01_filtered-photo');
 

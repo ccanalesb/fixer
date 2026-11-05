@@ -35,7 +35,7 @@ export function planRejectPhoto(
   tally: ReconcileRunTally,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
   const row = getWritebackState(db, imageKey, 'reject');
-  const want = desiredReject(settings, verdict, isFrameSubstanceVoid(db, imageKey));
+  const want = desiredReject(db, settings, verdict, isFrameSubstanceVoid(db, imageKey));
 
   if (conn && live === null) {
     return notFoundState(imageKey, 'reject', row, tally);

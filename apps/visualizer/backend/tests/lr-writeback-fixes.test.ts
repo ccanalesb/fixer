@@ -12,7 +12,7 @@ import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { getWritebackState, upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
+import { seedCullingStagesOn } from './helpers/culling-stages.js';
 import { reconcileLrWriteback, undoWritebackKind } from '../src/lightroom/writeback.js';
 import {
   AUTO_STARS_KEYWORD,
@@ -141,7 +141,7 @@ describe('finding the catalog photo for an image key', () => {
     ]);
     fx.addImage({ key: '2024-06-01_pair', id: '2' });
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_reject: true });
     upsertCullVerdict(db, {
       imageKey: '2024-06-01_pair',
@@ -199,7 +199,7 @@ describe('stars clear updates state', () => {
     conn.prepare('UPDATE Adobe_images SET rating = 3 WHERE id_local = 900001').run();
     conn.close();
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_stars: true });
     upsertWritebackState(db, {
       image_key: '2024-06-01_filtered-photo',
@@ -258,7 +258,7 @@ describe('sent_by_hand reconcile errors', () => {
     makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 's', pick: -1 }]);
     writeFileSync(join(dir, 'Test.lrcat-lock'), '');
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_reject: true });
     upsertCullVerdict(db, {
       imageKey: '2024-06-01_s',
@@ -289,7 +289,7 @@ describe('image_not_found', () => {
   it('marks skipped and counts when photo missing from lrcat', async () => {
     makeFakeCatalog(lrcatPath, []);
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_reject: true });
     upsertCullVerdict(db, {
       imageKey: '2024-06-01_missing',
@@ -320,7 +320,7 @@ describe('per-photo lock stops run', () => {
       { id: 2, baseName: 'b', pick: 0 },
     ]);
     const db = openLibraryDb(fx.dbPath);
-    seedCullingDefaults(db);
+    seedCullingStagesOn(db);
     patchLrWritebackSettings(db, { write_reject: true });
     for (const key of ['2024-06-01_a', '2024-06-01_b']) {
       upsertCullVerdict(db, {

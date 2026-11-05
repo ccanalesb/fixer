@@ -13,7 +13,7 @@ import { AUTO_REJECT_KEYWORD } from '../src/lightroom/writer.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { getWritebackState } from '../src/db/library/lr-writeback-state.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
+import { seedCullingStagesOn } from './helpers/culling-stages.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
 
@@ -31,7 +31,7 @@ beforeEach(() => {
   writeFileSync(cfgPath, stringifyYaml({ workers: 4, catalog_path: lrcatPath }));
   makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'filtered-photo', pick: 0, rating: null }]);
   const db = openLibraryDb(fx.dbPath);
-  seedCullingDefaults(db);
+  seedCullingStagesOn(db);
   patchLrWritebackSettings(db, { write_reject: true });
   upsertCullVerdict(db, {
     imageKey: '2024-06-01_filtered-photo',
