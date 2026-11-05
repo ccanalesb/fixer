@@ -32,11 +32,7 @@ import { ErrorBoundary, ErrorState, keys, retryImageDetail, stacksChanged, useQu
 export type ImageDetailTab = 'culling' | 'ai' | 'lightroom' | 'file' | 'stack'
 
 interface ImageDetailModalProps {
-  imageType: 'catalog'
   imageKey: string
-  /** Optional list-row data shown instantly while the detail call is in
-   *  flight; once the detail payload arrives it overrides this. */
-  initialImage?: ImageView
   /** Header primary-score source (CONTEXT Q3). */
   primaryScoreSource: PrimaryScoreSource
   /** When set, catalog detail calls request `?score_perspective=<slug>`
@@ -49,7 +45,7 @@ interface ImageDetailModalProps {
   /** Tab to open on; falls back to the first tab the photo has. Defaults to Culling in culling views, else AI. */
   initialTab?: ImageDetailTab
   /** Prev / next within a cull review or catalog list. */
-  cullNav?: {
+  nav?: {
     keys: string[]
     index: number
     onIndexChange: (index: number) => void
@@ -57,23 +53,19 @@ interface ImageDetailModalProps {
   onClose: () => void
 }
 
-type DetailSource = Pick<ImageDetailModalProps, 'imageType' | 'imageKey' | 'scorePerspectiveSlug' | 'initialImage'>
+type DetailSource = Pick<ImageDetailModalProps, 'imageKey' | 'scorePerspectiveSlug'>
 
-const detailKeyOf = ({ imageType, imageKey, scorePerspectiveSlug }: DetailSource) =>
-  keys.images.detail(imageType, imageKey, scorePerspectiveSlug)
+const detailKeyOf = ({ imageKey, scorePerspectiveSlug }: DetailSource) =>
+  keys.images.detail('catalog', imageKey, scorePerspectiveSlug)
 
-function useImageDetail({ imageType, imageKey, scorePerspectiveSlug, initialImage }: DetailSource) {
-  return useQuery(detailKeyOf({ imageType, imageKey, scorePerspectiveSlug }), () => {
-    if (imageType !== 'catalog') {
-      if (!initialImage) throw new Error('Instagram image detail is no longer available')
-      return Promise.resolve(initialImage)
-    }
-    return ImagesAPI.getImageDetail(
-      imageType,
+function useImageDetail({ imageKey, scorePerspectiveSlug }: DetailSource) {
+  return useQuery(detailKeyOf({ imageKey, scorePerspectiveSlug }), () =>
+    ImagesAPI.getImageDetail(
+      'catalog',
       imageKey,
       scorePerspectiveSlug ? { score_perspective: scorePerspectiveSlug } : undefined,
-    )
-  })
+    ),
+  )
 }
 
 function TitleText({ image, imageKey }: { image?: ImageView; imageKey: string }) {
@@ -94,11 +86,11 @@ function LoadedTitle(props: DetailSource) {
   return <TitleText image={image} imageKey={props.imageKey} />
 }
 
-function PhotoView({ imageType, imageKey, alt }: { imageType: 'catalog'; imageKey: string; alt: string }) {
+function PhotoView({ imageKey, alt }: { imageKey: string; alt: string }) {
   return (
     <div className="h-[34dvh] overflow-hidden rounded-base bg-surface md:h-auto md:min-h-0 md:flex-1">
       <img
-        src={`/api/images/${imageType}/${encodeURIComponent(imageKey)}/thumbnail`}
+        src={`/api/images/catalog/${encodeURIComponent(imageKey)}/thumbnail`}
         alt={alt}
         className="h-full w-full object-contain"
       />
@@ -127,27 +119,10 @@ function CullVerdictBadge({ imageKey }: { imageKey: string }) {
   return <Badge variant="warning">{CULL_FILTERED}</Badge>
 }
 
-function ImageDetailModalFallback({
-  initialImage,
-  imageKey,
-  imageType,
-  primaryScoreSource,
-}: {
-  initialImage?: ImageView
-  imageKey: string
-  imageType: 'catalog'
-  primaryScoreSource: PrimaryScoreSource
-}) {
+function ImageDetailModalFallback({ imageKey }: { imageKey: string }) {
   return (
     <DetailLayout
-      photo={
-        <>
-          <PhotoView imageType={imageType} imageKey={imageKey} alt={initialImage?.filename ?? imageKey} />
-          {initialImage ? (
-            <ImageMetadataBadges image={initialImage} primaryScoreSource={primaryScoreSource} />
-          ) : null}
-        </>
-      }
+      photo={<PhotoView imageKey={imageKey} alt={imageKey} />}
       panel={
         <p className="text-sm text-text-tertiary" role="status" aria-live="polite">
           Loading image details…
@@ -158,11 +133,9 @@ function ImageDetailModalFallback({
 }
 
 function ImageDetailModalBody({
-  imageType,
   imageKey,
   primaryScoreSource,
   scorePerspectiveSlug,
-  initialImage,
   showCullSection = false,
   tab,
   onTabChange,
@@ -172,7 +145,7 @@ function ImageDetailModalBody({
   tab: ImageDetailTab
   onTabChange: (tab: ImageDetailTab) => void
 }) {
-  const image = useImageDetail({ imageType, imageKey, scorePerspectiveSlug, initialImage })
+  const image = useImageDetail({ imageKey, scorePerspectiveSlug })
   const frame = useQuery(...frameSubstanceQuery(imageKey))
 
   const [postedOverride, setPostedOverride] = useState<boolean | null>(null)
@@ -210,7 +183,7 @@ function ImageDetailModalBody({
     <DetailLayout
       photo={
         <>
-          <PhotoView imageType={imageType} imageKey={imageKey} alt={image.filename ?? imageKey} />
+          <PhotoView imageKey={imageKey} alt={image.filename ?? imageKey} />
           <div className="flex flex-none flex-wrap items-center gap-2">
             {showCullSection ? (
               <ErrorBoundary resetKeys={[imageKey]} fallback={() => null}>
@@ -255,8 +228,8 @@ function ImageDetailModalBody({
 
 /**
  * The single entry point for viewing any image in detail. Every tile in
- * the app opens this modal with just `{ imageType, imageKey }` so the
- * modal can re-fetch from the authoritative detail endpoint.
+ * the app opens this modal with just `{ imageKey }` so the modal can
+ * re-fetch from the authoritative detail endpoint.
  *
  * The photo and its badges stay on the left; everything else is a tab built
  * from the blocks in `detail-blocks.tsx` (see "Image detail modal" in CONTEXT.md).
@@ -274,21 +247,19 @@ function ImageDetailModalBody({
  *   - ESC closes; backdrop click closes.
  */
 export function ImageDetailModal({
-  imageType,
   imageKey,
-  initialImage,
   primaryScoreSource,
   scorePerspectiveSlug,
   contextSlot,
   showCullSection = false,
   initialTab,
-  cullNav,
+  nav,
   onClose,
 }: ImageDetailModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = `image-detail-modal-title-${imageKey.replace(/[^a-zA-Z0-9_-]/g, '_')}`
   const [tab, setTab] = useState<ImageDetailTab>(initialTab ?? (showCullSection ? 'culling' : 'ai'))
-  const source = { imageType, imageKey, scorePerspectiveSlug, initialImage }
+  const source = { imageKey, scorePerspectiveSlug }
 
   useBodyScrollLock(true)
   useFocusTrap(dialogRef, true)
@@ -319,24 +290,21 @@ export function ImageDetailModal({
       >
         <div className="flex flex-none items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6 md:py-4">
           <h2 id={titleId} className="text-card-title text-text truncate">
-            <ErrorBoundary
-              resetKeys={[imageKey]}
-              fallback={() => <TitleText image={initialImage} imageKey={imageKey} />}
-            >
-              <Suspense fallback={<TitleText image={initialImage} imageKey={imageKey} />}>
+            <ErrorBoundary resetKeys={[imageKey]} fallback={() => <TitleText imageKey={imageKey} />}>
+              <Suspense fallback={<TitleText imageKey={imageKey} />}>
                 <LoadedTitle {...source} />
               </Suspense>
             </ErrorBoundary>
           </h2>
           <div className="flex items-center gap-2 shrink-0">
-            {cullNav && cullNav.keys.length > 1 ? (
+            {nav && nav.keys.length > 1 ? (
               <>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={cullNav.index <= 0}
-                  onClick={() => cullNav.onIndexChange(cullNav.index - 1)}
+                  disabled={nav.index <= 0}
+                  onClick={() => nav.onIndexChange(nav.index - 1)}
                 >
                   ‹ {CULL_MODAL_PREV}
                 </Button>
@@ -344,8 +312,8 @@ export function ImageDetailModal({
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={cullNav.index >= cullNav.keys.length - 1}
-                  onClick={() => cullNav.onIndexChange(cullNav.index + 1)}
+                  disabled={nav.index >= nav.keys.length - 1}
+                  onClick={() => nav.onIndexChange(nav.index + 1)}
                 >
                   {CULL_MODAL_NEXT} ›
                 </Button>
@@ -360,29 +328,20 @@ export function ImageDetailModal({
         ) : null}
 
         <ErrorBoundary
-          resetKeys={[imageType, imageKey, scorePerspectiveSlug ?? '']}
+          resetKeys={[imageKey, scorePerspectiveSlug ?? '']}
           fallback={({ error, reset }) => (
             <div className="p-6">
               <ErrorState
                 error={error}
                 reset={() => {
-                  retryImageDetail(imageType, imageKey, scorePerspectiveSlug)
+                  retryImageDetail('catalog', imageKey, scorePerspectiveSlug)
                   reset()
                 }}
               />
             </div>
           )}
         >
-          <Suspense
-            fallback={
-              <ImageDetailModalFallback
-                initialImage={initialImage}
-                imageKey={imageKey}
-                imageType={imageType}
-                primaryScoreSource={primaryScoreSource}
-              />
-            }
-          >
+          <Suspense fallback={<ImageDetailModalFallback imageKey={imageKey} />}>
             <ImageDetailModalBody
               {...source}
               primaryScoreSource={primaryScoreSource}

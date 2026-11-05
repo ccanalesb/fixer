@@ -6,7 +6,7 @@ import {
 } from '../../services/api'
 import { useQuery } from '../../data'
 import { keys } from '../../data/keys'
-import { ImageDetailModal, fromPostNextRow } from '../image-view'
+import { ImageDetailModal, modalPropsFor } from '../image-view'
 import { Button } from '../ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
 import {
@@ -249,10 +249,8 @@ export function AdvisorPanel() {
 
       {selected ? (
         <ImageDetailModal
-          imageType="catalog"
           imageKey={selected.image_key}
-          initialImage={fromPostNextRow(selected)}
-          primaryScoreSource="identity"
+          {...modalPropsFor('identity')}
           onClose={() => setSelected(null)}
         />
       ) : null}

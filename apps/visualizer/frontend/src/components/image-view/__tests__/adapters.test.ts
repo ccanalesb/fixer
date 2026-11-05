@@ -1,14 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { NULLABLE_BEST_PHOTO_FIELDS } from '../../../__test-utils__/identityFixtures'
-import type {
-  CatalogImageInput,
-  IdentityBestPhotoItem,
-  PostNextCandidate,
-} from '../../../services/api'
+import type { CatalogImageInput, IdentityBestPhotoItem } from '../../../services/api'
 import {
   fromBestPhotoRow,
   fromCatalogListRow,
-  fromPostNextRow,
 } from '../adapters'
 
 describe('image-view adapters', () => {
@@ -72,28 +67,5 @@ describe('image-view adapters', () => {
     expect(out.identity_perspectives_covered).toBe(3)
     expect(out.identity_eligible).toBe(true)
     expect(out.identity_per_perspective).toHaveLength(1)
-  })
-
-  it('fromPostNextRow maps identity fields (no eligible flag on this row)', () => {
-    const row: PostNextCandidate = {
-      image_type: null,
-      image_key: 'pn',
-      filename: 'pn.jpg',
-      date_taken: '2024-04-04',
-      rating: 4,
-      peak_percentile: 0.71,
-      peak_perspective_slug: 'composition',
-      peak_perspective_display_name: 'Composition',
-      is_signature: true,
-      perspectives_covered: 2,
-      per_perspective: [],
-      reasons: ['x'],
-      reason_codes: ['high_score_unposted'],
-    }
-    const out = fromPostNextRow(row)
-    expect(out.identity_peak_percentile).toBe(0.71)
-    expect(out.identity_perspectives_covered).toBe(2)
-    expect(out.identity_per_perspective).toEqual([])
-    expect(out.identity_eligible).toBeUndefined()
   })
 })

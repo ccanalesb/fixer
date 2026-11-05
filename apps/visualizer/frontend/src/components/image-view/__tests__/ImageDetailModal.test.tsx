@@ -34,6 +34,7 @@ vi.mock('../tabs/CullingTab', () => ({
 }))
 
 import { ImageDetailModal } from '../ImageDetailModal'
+import { modalPropsFor } from '../modalView'
 import { CullAPI, FrameSubstanceAPI, ImagesAPI } from '../../../services/api'
 
 function buildDetail(overrides: Partial<ImageView> = {}): ImageDetailResponse {
@@ -91,9 +92,8 @@ const tabNames = () => screen.getAllByRole('tab').map((t) => t.textContent)
 function renderModal(props: Partial<Parameters<typeof ImageDetailModal>[0]> = {}) {
   return render(
     <ImageDetailModal
-      imageType="catalog"
       imageKey="k1"
-      primaryScoreSource="identity"
+      {...modalPropsFor('identity')}
       onClose={() => {}}
       {...props}
     />,
@@ -133,14 +133,14 @@ describe('ImageDetailModal', () => {
 
   it('does not expose on-demand visual similarity from the detail modal', async () => {
     vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail())
-    renderModal({ primaryScoreSource: 'catalog' })
+    renderModal()
     await screen.findByTestId('ai-tab')
     expect(screen.queryByRole('button', { name: /more like this/i })).toBeNull()
   })
 
   it('updates the Posted badge under the photo when the File tab toggles posted', async () => {
     vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail({ instagram_posted: false }))
-    renderModal({ initialTab: 'file' })
+    renderModal({ ...modalPropsFor('catalog'), initialTab: 'file' })
     await screen.findByTestId('file-tab')
     expect(screen.queryByText('Posted')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'mark-posted' }))
@@ -173,7 +173,7 @@ describe('ImageDetailModal', () => {
       filtered_by: 'culling_profile',
       score_forecast_p8: null,
     })
-    renderModal({ showCullSection: true })
+    renderModal({ ...modalPropsFor('culling') })
     expect(await screen.findByTestId('culling-tab')).toBeInTheDocument()
     expect(await screen.findByText(CULL_FILTERED)).toBeInTheDocument()
   })
@@ -199,7 +199,7 @@ describe('ImageDetailModal', () => {
       stack: { stack_id: 42, representative_key: 'k2', stack_member_count: 2, member_keys: ['k1', 'k2'] },
     })
 
-    renderModal({ primaryScoreSource: 'catalog', initialTab: 'stack' })
+    renderModal({ ...modalPropsFor('catalog'), initialTab: 'stack' })
 
     const other = await screen.findByRole('button', { name: IMAGE_DETAILS_STACK_MEMBER_ARIA('two.jpg') })
     expect(screen.queryByRole('button', { name: CATALOG_STACK_MAKE_REPRESENTATIVE })).toBeNull()
@@ -216,9 +216,9 @@ describe('ImageDetailModal', () => {
     const spy = vi
       .spyOn(ImagesAPI, 'getImageDetail')
       .mockResolvedValue(buildDetail({ catalog_perspective_score: 8 }))
-    renderModal({ primaryScoreSource: 'catalog', scorePerspectiveSlug: 'street' })
+    renderModal({ ...modalPropsFor('catalog'), scorePerspectiveSlug: 'street' })
     expect(spy).toHaveBeenCalledWith('catalog', 'k1', { score_perspective: 'street' })
-    await screen.findByTestId('ai-tab')
+    await screen.findByTestId('file-tab')
   })
 
   it('shows loading state while detail is in flight', () => {
@@ -231,24 +231,6 @@ describe('ImageDetailModal', () => {
     vi.spyOn(ImagesAPI, 'getImageDetail').mockRejectedValue(new Error('boom'))
     renderModal()
     expect(await screen.findByText('boom')).toBeInTheDocument()
-  })
-
-  it('uses initialImage so the badges render before detail resolves', async () => {
-    let resolveFn: (v: ImageDetailResponse) => void = () => {}
-    vi.spyOn(ImagesAPI, 'getImageDetail').mockReturnValue(
-      new Promise<ImageDetailResponse>((r) => {
-        resolveFn = r
-      }),
-    )
-    renderModal({
-      initialImage: { image_type: 'catalog', key: 'k1', filename: 'one.jpg', identity_aggregate_score: 9 },
-    })
-    expect(screen.getByLabelText('Aggregate score 9')).toBeInTheDocument()
-
-    resolveFn(buildDetail({ identity_aggregate_score: 7.2 }))
-    await waitFor(() => {
-      expect(screen.getByLabelText('Aggregate score 7.2')).toBeInTheDocument()
-    })
   })
 
   it('has dialog role with aria-modal and a labelled title', async () => {

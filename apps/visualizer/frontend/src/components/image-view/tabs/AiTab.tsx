@@ -113,7 +113,6 @@ export function AiTab({ imageKey }: { imageKey: string }) {
       >
         <ImageScoresPanel
           imageKey={imageKey}
-          imageType="catalog"
           reloadToken={scoresToken}
           perspectiveLabels={perspectiveLabels}
         />
