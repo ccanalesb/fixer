@@ -32,6 +32,9 @@ export const keys = {
     mirror: () => ['identity', 'mirror'] as const,
     postNext: (sortParam: string | null) => ['identity', 'post-next', sortParam] as const,
   },
+  lrWriteback: {
+    photo: (imageKey: string) => ['lr-writeback.photo', imageKey] as const,
+  },
 } as const
 
 const CULLING_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
@@ -82,12 +85,18 @@ export function cullingProfilesChanged(): void {
   }
 }
 
-/** Prefixes refreshed when a Lightroom write-back job finishes (until write-back owns a group). */
-export function lrWritebackFinishedPrefixes(): readonly (readonly unknown[])[] {
-  return [
-    prefixOf(keys.images.catalogMonths(), 1),
-    keys.cull.summary(),
-    prefixOf(keys.cull.photos('', 0), 1),
-    prefixOf(keys.cull.detail(''), 1),
-  ]
+const LIGHTROOM_WRITTEN_PREFIXES: readonly (readonly unknown[])[] = [
+  prefixOf(keys.lrWriteback.photo(''), 1),
+  prefixOf(keys.images.catalogMonths(), 1),
+  prefixOf(keys.images.detail('catalog', '', ''), 1),
+  keys.cull.summary(),
+  prefixOf(keys.cull.photos('', 0), 1),
+  prefixOf(keys.cull.detail(''), 1),
+]
+
+/** Invalidate every query whose data changes when Lightroom write-back runs or is undone. */
+export function lightroomWritten(): void {
+  for (const prefix of LIGHTROOM_WRITTEN_PREFIXES) {
+    invalidateAll(prefix)
+  }
 }

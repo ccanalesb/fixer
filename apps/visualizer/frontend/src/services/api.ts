@@ -3,6 +3,7 @@ import {
   cullingProfilesChanged,
   invalidate,
   invalidateAll,
+  lightroomWritten,
   patchMatching,
   stacksChanged,
 } from '../data'
@@ -1146,26 +1147,35 @@ export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackP
 
 export const LrWritebackAPI = {
   getSettings: () => request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings'),
-  patchSettings: (body: {
+  patchSettings: async (body: {
     write_stars?: boolean
     write_reject?: boolean
     stars_profile_slug?: string | null
-  }) =>
-    request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings', {
+  }) => {
+    const result = await request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings', {
       method: 'PATCH',
       body: JSON.stringify(body),
-    }),
-  write: () =>
-    request<{ job_id: string }>('/cull/lightroom-writeback/write', {
+    })
+    lightroomWritten()
+    return result
+  },
+  write: async () => {
+    const result = await request<{ job_id: string }>('/cull/lightroom-writeback/write', {
       method: 'POST',
-    }),
+    })
+    lightroomWritten()
+    return result
+  },
   getPhoto: (imageKey: string) =>
     request<LrWritebackPhotoDetailResponse>(
       `/cull/lightroom-writeback/photos/${encodeURIComponent(imageKey)}`,
     ),
-  undo: (imageKey: string, kind: 'stars' | 'reject') =>
-    request<{ ok: boolean; reason?: string }>(
+  undo: async (imageKey: string, kind: 'stars' | 'reject') => {
+    const result = await request<{ ok: boolean; reason?: string }>(
       `/cull/lightroom-writeback/photos/${encodeURIComponent(imageKey)}/undo`,
       { method: 'POST', body: JSON.stringify({ kind }) },
-    ),
+    )
+    lightroomWritten()
+    return result
+  },
 }

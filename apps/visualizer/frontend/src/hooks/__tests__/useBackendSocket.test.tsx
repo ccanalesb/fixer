@@ -25,6 +25,11 @@ function SummaryProbe({ fetchSummary }: { fetchSummary: () => Promise<unknown> }
   return <div>{String(value)}</div>
 }
 
+function LrPhotoProbe({ fetchPhoto }: { fetchPhoto: () => Promise<unknown> }) {
+  const value = useQuery(keys.lrWriteback.photo('k'), fetchPhoto, { initialValue: { rating: { live: 3 } } })
+  return <div data-testid="lr-photo">{String((value as { rating?: { live?: number } }).rating?.live)}</div>
+}
+
 beforeEach(() => {
   deleteMatching(() => true)
   delete handlers.job_updated
@@ -91,5 +96,24 @@ describe('useBackendSocket', () => {
       handlers.job_updated!({ id: 'k', type: 'batch_describe', status: 'completed' })
     })
     expect(fetchSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('refetches lr write-back photo detail when an lr_writeback job finishes', async () => {
+    let n = 0
+    const fetchPhoto = vi.fn().mockImplementation(() => Promise.resolve({ rating: { live: ++n } }))
+
+    render(
+      <BackendSocketShell>
+        <Suspense fallback={null}>
+          <LrPhotoProbe fetchPhoto={fetchPhoto} />
+        </Suspense>
+      </BackendSocketShell>,
+    )
+    await waitFor(() => expect(fetchPhoto).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      handlers.job_updated!({ id: 'j', type: 'lr_writeback', status: 'completed' })
+    })
+    await waitFor(() => expect(fetchPhoto).toHaveBeenCalledTimes(2))
   })
 })

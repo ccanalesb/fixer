@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
-import { cullingChanged, lrWritebackFinishedPrefixes } from '../data/keys'
-import { invalidateAll } from '../data'
+import { cullingChanged, lightroomWritten } from '../data/keys'
 import { useSocketStore } from '../stores/socketStore'
 import type { Job } from '../types/job'
 
@@ -36,7 +35,7 @@ export function useBackendSocket() {
         cullingChanged()
         return
       }
-      for (const prefix of lrWritebackFinishedPrefixes()) invalidateAll(prefix)
+      lightroomWritten()
     }
     socket.on('job_updated', onJobUpdated)
     return () => {
