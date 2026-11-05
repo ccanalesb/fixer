@@ -36,6 +36,7 @@ import {
   withIds,
   type DraftQuestion,
 } from './forecastQuestionsDraft'
+import { useCullingGate } from './useCullingGate'
 
 type Tab = 'questions' | 'levels'
 
@@ -53,6 +54,7 @@ export function ScoreForecastQuestionsEditor({
   const [levelsKey, setLevelsKey] = useState(draft[0]?.key ?? '')
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<{ field: string; message: string }[]>([])
+  const { run: runCullingGate, dialog: cullingDialog } = useCullingGate()
 
   const update = (key: string, change: Partial<DraftQuestion>) =>
     setDraft((d) => d.map((q) => (q.key === key ? { ...q, ...change } : q)))
@@ -64,16 +66,31 @@ export function ScoreForecastQuestionsEditor({
   const changed = draftChanged(draft, current.questions)
   const levelsQuestion = draft.find((q) => q.key === levelsKey) ?? draft[0]
 
+  const showSaveError = (e: unknown) => {
+    if (e instanceof ApiRequestError) setFieldErrors([...e.validationErrors])
+    setError(e instanceof Error ? e.message : String(e))
+  }
+
   const save = async (mode: 'save_only' | 'save_and_queue_cull') => {
     const next = withIds(draft)
     setDraft(next)
     setError(null)
     setFieldErrors([])
-    try {
-      onSaved(await ScoreForecastQuestionsAPI.save(toSaved(next), mode))
-    } catch (e) {
-      if (e instanceof ApiRequestError) setFieldErrors([...e.validationErrors])
-      setError(e instanceof Error ? e.message : String(e))
+    if (mode === 'save_only') {
+      try {
+        onSaved(await ScoreForecastQuestionsAPI.save(toSaved(next), mode))
+      } catch (e) {
+        showSaveError(e)
+      }
+      return
+    }
+    const result = await runCullingGate('cull', () =>
+      ScoreForecastQuestionsAPI.save(toSaved(next), 'save_and_queue_cull'),
+    )
+    if (result.status === 'started') {
+      onSaved(result.value)
+    } else if (result.status === 'failed') {
+      showSaveError(result.error)
     }
   }
 
@@ -229,6 +246,7 @@ export function ScoreForecastQuestionsEditor({
           {CULL_SAVE_AND_QUEUE}
         </Button>
       </div>
+      {cullingDialog}
     </div>
   )
 }

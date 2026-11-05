@@ -1,19 +1,24 @@
 import { Suspense } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ScoreForecastQuestionsSection } from '../ScoreForecastQuestionsSection'
 import { deleteMatching } from '../../../data/cache'
 import { cullingProfilesChanged } from '../../../data'
 import {
   ApiRequestError,
+  CullingModelsAPI,
   ScoreForecastQuestionsAPI,
   type ScoreForecastQuestion,
   type ScoreForecastQuestionsResponse,
+  type CullingModelsUsable,
+  type CullingStageUsability,
 } from '../../../services/api'
 import {
   CULL_PROFILE_TEXT_SAVE_IMPACT,
   CULL_SAVE_AND_QUEUE,
   CULL_SAVE_ONLY,
+  CULLING_CANCEL,
   SCORE_FORECAST_QUESTIONS_ID,
   SFQ_ADD,
   SFQ_APPLIES,
@@ -52,6 +57,26 @@ const CLEAN: ScoreForecastQuestion = {
 let current: ScoreForecastQuestionsResponse
 const impact = { photos: 120, hours_estimate: 0.07 }
 
+const ok = (model: string): CullingStageUsability => ({
+  on: true,
+  problem: null,
+  model,
+  endpoint: 'this_app',
+  job_id: null,
+  provider_name: null,
+})
+const broken = (problem: CullingStageUsability['problem'], extra: Partial<CullingStageUsability> = {}) => ({
+  ...ok('model-x'),
+  problem,
+  ...extra,
+})
+const usable = (u: Partial<CullingModelsUsable> = {}): CullingModelsUsable => ({
+  culling_profile: ok('culling-model'),
+  score_forecast: ok('forecast-model'),
+  culling_profile_filter: true,
+  ...u,
+})
+
 beforeEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
@@ -72,13 +97,16 @@ beforeEach(() => {
     cullingProfilesChanged()
     return { ...current, created: true, impact, cull_job_id: null }
   })
+  vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue(usable())
 })
 
 const renderSection = () =>
   render(
-    <Suspense fallback={null}>
-      <ScoreForecastQuestionsSection />
-    </Suspense>,
+    <MemoryRouter>
+      <Suspense fallback={null}>
+        <ScoreForecastQuestionsSection />
+      </Suspense>
+    </MemoryRouter>,
   )
 
 async function openSection() {
@@ -130,6 +158,18 @@ describe('ScoreForecastQuestionsSection', () => {
     await waitFor(() => expect(ScoreForecastQuestionsAPI.save).toHaveBeenCalledTimes(1))
     expect(vi.mocked(ScoreForecastQuestionsAPI.save).mock.calls[0]![1]).toBe('save_and_queue_cull')
     expect(savedQuestions()).toEqual([CLEAN])
+  })
+
+  it('Save and queue culling runs the gate; cancel sends no save', async () => {
+    vi.mocked(CullingModelsAPI.usable).mockResolvedValue(
+      usable({ score_forecast: broken('no_questions', { model: 'forecast-model' }) }),
+    )
+    await openSection()
+    fireEvent.click((await screen.findAllByRole('button', { name: SFQ_REMOVE }))[0]!)
+    fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_AND_QUEUE }))
+    const stageDialog = await screen.findByRole('dialog', { name: 'Score forecast has no questions' })
+    fireEvent.click(within(stageDialog).getByRole('button', { name: CULLING_CANCEL }))
+    expect(ScoreForecastQuestionsAPI.save).not.toHaveBeenCalled()
   })
 
   it('turning optional off sends no "applies?" text', async () => {

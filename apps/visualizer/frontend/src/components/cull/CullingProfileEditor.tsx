@@ -37,6 +37,7 @@ import { CullingProfileRuleFields } from './CullingProfileRuleFields'
 import { RedecideConfirmDialog } from './RedecideConfirmDialog'
 import { Segmented } from './Segmented'
 import { bandProblems, emptyLevelCount } from './profileDraft'
+import { useCullingGate } from './useCullingGate'
 
 type Draft = CullProfileDetail
 type Tab = 'dimensions' | 'levels' | 'rule'
@@ -57,6 +58,7 @@ export function CullingProfileEditor({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [confirming, setConfirming] = useState<RedecideChange | null>(null)
   const [redecided, setRedecided] = useState<Redecided | null>(null)
+  const { run: runCullingGate, dialog: cullingDialog } = useCullingGate()
 
   const setDefinition = (fn: (d: Draft['definition']) => Draft['definition']) => {
     setDraft((d) => ({ ...d, definition: fn(d.definition) }))
@@ -117,18 +119,30 @@ export function CullingProfileEditor({
     )
   }
 
+  const saveDefinitionBody = () => ({
+    definition: draft.definition,
+    ...(ruleChanged ? { rule: draft.rule } : {}),
+  })
+
   const saveDefinition = async (mode: 'save_only' | 'save_and_queue_cull') => {
     setError(null)
     setFieldErrors({})
-    try {
-      const res = await CullingProfilesAPI.saveDefinition(draft.slug, {
-        definition: draft.definition,
-        ...(ruleChanged ? { rule: draft.rule } : {}),
-        mode,
-      })
-      setImpact(res.impact)
-    } catch (e) {
-      showErrors(e)
+    if (mode === 'save_only') {
+      try {
+        const res = await CullingProfilesAPI.saveDefinition(draft.slug, { ...saveDefinitionBody(), mode })
+        setImpact(res.impact)
+      } catch (e) {
+        showErrors(e)
+      }
+      return
+    }
+    const result = await runCullingGate('cull', () =>
+      CullingProfilesAPI.saveDefinition(draft.slug, { ...saveDefinitionBody(), mode: 'save_and_queue_cull' }),
+    )
+    if (result.status === 'started') {
+      setImpact(result.value.impact)
+    } else if (result.status === 'failed') {
+      showErrors(result.error)
     }
   }
 
@@ -238,6 +252,7 @@ export function CullingProfileEditor({
         </Button>
       </div>
       {definitionChanged ? <p className="text-xs text-text-tertiary">{CULL_PROFILE_DEFINITION_CHANGED}</p> : null}
+      {cullingDialog}
       {confirming ? (
         <RedecideConfirmDialog
           title={
