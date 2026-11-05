@@ -3,13 +3,7 @@ import { listDecidedCullImageKeys } from '../db/library/cull-verdicts.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
 import type { Db } from '../db/connection.js';
 import type { WritebackDecision } from './writeback-decision.js';
-import {
-  AUTO_REJECT_KEYWORD,
-  AUTO_STARS_KEYWORD,
-  imageHasKeywordByKey,
-  readPickRating,
-  type LivePickRating,
-} from './writer.js';
+import type { LivePickRating, WritebackCatalogWriter } from './writeback-catalog-writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 
 export type WritebackTrigger =
@@ -49,7 +43,7 @@ export function emptyRunTally(): ReconcileRunTally {
 
 export interface WritebackPlanRun {
   db: Db;
-  conn: Db | null;
+  catalog: WritebackCatalogWriter | null;
   tally: ReconcileRunTally;
   starsVersionId: number | null;
 }
@@ -76,24 +70,16 @@ export function userChangedAfterWrite(kind: WritebackKind, live: LivePickRating,
   return !liveMatchesWritten(kind, live, row);
 }
 
-export function catalogHasAppReject(conn: import('../db/connection.js').Db, imageKey: string): boolean {
-  const live = readPickRating(conn, imageKey);
-  if (!live || live.pick !== -1) return false;
-  return imageHasKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+export function catalogHasAppReject(catalog: WritebackCatalogWriter, imageKey: string): boolean {
+  return catalog.hasAppReject(imageKey);
 }
 
-export function catalogHasAppStars(
-  conn: import('../db/connection.js').Db,
-  imageKey: string,
-  rating: number,
-): boolean {
-  const live = readPickRating(conn, imageKey);
-  if (!live || live.rating !== rating) return false;
-  return imageHasKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+export function catalogHasAppStars(catalog: WritebackCatalogWriter, imageKey: string, rating: number): boolean {
+  return catalog.hasAppStars(imageKey, rating);
 }
 
 export function syncWrittenFromLiveCatalog(
-  conn: import('../db/connection.js').Db,
+  catalog: WritebackCatalogWriter,
   kind: WritebackKind,
   imageKey: string,
   desiredRating: number | null,
@@ -104,7 +90,7 @@ export function syncWrittenFromLiveCatalog(
   beforeRating: number | null = null,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
   if (kind === 'stars' && desiredRating !== null && live.rating === desiredRating) {
-    if (!imageHasKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD)) return null;
+    if (!catalog.hasAppStars(imageKey, desiredRating)) return null;
     return {
       image_key: imageKey,
       kind: 'stars',
@@ -118,7 +104,7 @@ export function syncWrittenFromLiveCatalog(
     };
   }
   if (kind === 'reject' && wantReject && live.pick === -1) {
-    if (!imageHasKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD)) return null;
+    if (!catalog.hasAppReject(imageKey)) return null;
     return {
       image_key: imageKey,
       kind: 'reject',

@@ -17,12 +17,10 @@ import { createEventLoopYieldState, EVENT_LOOP_YIELD_BUDGET_MS, pollCancelAndYie
 import { describeLrCatalogWriteStatus } from '../utils/lr-catalog-write.js';
 import {
   backupCatalogIfNeeded,
-  connectCatalog,
-  getImageLocalId,
   isCatalogLocked,
   raiseIfCatalogLocked,
-  readPickRating,
 } from './writer.js';
+import { openWritebackCatalogWriter, type WritebackCatalogWriter } from './writeback-catalog-writer.js';
 import {
   closeCloudDocstore,
   openCloudDocstore,
@@ -77,7 +75,8 @@ function countsFromDb(db: Db, tally: ReconcileRunTally): Pick<WritebackReconcile
 function carryToCloud(
   db: Db,
   cloud: CloudDocstore,
-  conn: Db,
+  catalogConn: Db,
+  writer: WritebackCatalogWriter,
   imageKey: string,
   settings: LrWritebackSettings,
   counts: WritebackReconcileCounts['cloud'],
@@ -87,9 +86,9 @@ function carryToCloud(
     flag: settings.write_reject && getWritebackState(db, imageKey, 'reject') !== null,
   };
   if (!fields.rating && !fields.flag) return;
-  const imageId = getImageLocalId(conn, imageKey);
+  const imageId = writer.imageLocalId(imageKey);
   if (imageId === null) return;
-  const result = pushPhotoToCloud(cloud, conn, imageId, fields);
+  const result = pushPhotoToCloud(cloud, catalogConn, imageId, fields);
   if (result !== 'unchanged') counts[result] += 1;
 }
 
@@ -119,20 +118,20 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const yieldState = createEventLoopYieldState();
   const isCancelled = opts.isCancelled ?? (() => false);
 
-  let conn: ReturnType<typeof connectCatalog> | null = null;
+  let catalogSession: ReturnType<typeof openWritebackCatalogWriter> | null = null;
   let cloud: CloudDocstore | null = null;
   if (canWrite) {
     raiseIfCatalogLocked(catalogPath);
     backupCatalogIfNeeded(catalogPath);
-    conn = connectCatalog(catalogPath, db);
-    cloud = openCloudDocstore(conn, catalogPath);
+    catalogSession = openWritebackCatalogWriter(catalogPath, db);
+    cloud = openCloudDocstore(catalogSession.catalogConn, catalogPath);
   }
 
   let lockStopped = false;
 
   const run: WritebackPlanRun = {
     db,
-    conn,
+    catalog: catalogSession?.writer ?? null,
     tally,
     starsVersionId,
   };
@@ -154,8 +153,9 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
           break outer;
         }
         if (canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
-        const writeNow = canWrite && !lockStopped && conn !== null;
-        const live = conn ? readPickRating(conn, imageKey) : null;
+        const writeNow = canWrite && !lockStopped && catalogSession !== null;
+        const liveFull = catalogSession?.writer.readLive(imageKey) ?? null;
+        const live = liveFull ? { pick: liveFull.pick, rating: liveFull.rating } : null;
         const decision = decideWriteback(db, settings, imageKey, starsSlug);
         const photo = { imageKey, live, writeNow, decision };
 
@@ -171,12 +171,14 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
             libraryWrite(db, () => upsertWritebackState(db, row));
           }
         }
-        if (writeNow && cloud && conn) carryToCloud(db, cloud, conn, imageKey, settings, mutations.cloud);
+        if (writeNow && cloud && catalogSession) {
+          carryToCloud(db, cloud, catalogSession.catalogConn, catalogSession.writer, imageKey, settings, mutations.cloud);
+        }
       }
     }
   } finally {
     closeCloudDocstore(cloud);
-    conn?.close();
+    catalogSession?.close();
   }
 
   mutations.catalog_updated_stars = tally.catalog_updated_stars;

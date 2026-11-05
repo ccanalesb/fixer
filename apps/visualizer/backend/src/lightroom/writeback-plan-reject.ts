@@ -1,10 +1,4 @@
 import { getWritebackState, type LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
-import {
-  AUTO_REJECT_KEYWORD,
-  clearRejectFromCatalog,
-  removeKeywordByKey,
-  writeRejectToCatalog,
-} from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 import {
   adoptWrittenRejectState,
@@ -21,31 +15,31 @@ export function planRejectPhoto(
   run: WritebackPlanRun,
   photo: WritebackPlanPhoto,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
-  const { db, conn, tally } = run;
+  const { db, catalog, tally } = run;
   const { imageKey, live, writeNow, decision } = photo;
   const row = getWritebackState(db, imageKey, 'reject');
   const want = decision.reject.want;
 
-  if (conn && live === null) {
+  if (catalog && live === null) {
     return notFoundState(imageKey, 'reject', row, tally);
   }
 
   if (live && row && userChangedAfterWrite('reject', live, row)) {
     if ((live.pick ?? 0) !== 0) return { ...row, status: 'skipped' };
     // Unflagging the app's reject in Lightroom is an undo: never written again.
-    if (conn && writeNow) removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+    if (catalog && writeNow) catalog.removeAutoRejectKeyword(imageKey);
     return { ...row, status: 'undone', written_pick: null, written_at: null };
   }
 
   if (!want) {
-    if (conn && writeNow && catalogHasAppReject(conn, imageKey)) {
-      clearRejectFromCatalog(conn, imageKey);
+    if (catalog && writeNow && catalogHasAppReject(catalog, imageKey)) {
+      catalog.clearReject(imageKey);
       tally.catalog_cleared_reject += 1;
       if (row) return { ...row, status: 'pending', written_pick: null, written_at: null };
       return null;
     }
-    if (row?.status === 'written' && live && liveMatchesWritten('reject', live, row) && conn && writeNow) {
-      clearRejectFromCatalog(conn, imageKey);
+    if (row?.status === 'written' && live && liveMatchesWritten('reject', live, row) && catalog && writeNow) {
+      catalog.clearReject(imageKey);
       tally.catalog_cleared_reject += 1;
       return { ...row, status: 'pending', written_pick: null, written_at: null };
     }
@@ -57,9 +51,9 @@ export function planRejectPhoto(
 
   if (row?.status === 'undone') return null;
 
-  if (live && conn) {
+  if (live && catalog) {
     const synced = syncWrittenFromLiveCatalog(
-      conn,
+      catalog,
       'reject',
       imageKey,
       null,
@@ -86,7 +80,7 @@ export function planRejectPhoto(
   }
 
   if (live.pick !== null && live.pick !== 0) {
-    if (live.pick === -1 && conn && catalogHasAppReject(conn, imageKey) && want) {
+    if (live.pick === -1 && catalog && catalogHasAppReject(catalog, imageKey) && want) {
       return adoptWrittenRejectState(imageKey, row, row?.before_pick ?? 0);
     }
     return {
@@ -104,7 +98,7 @@ export function planRejectPhoto(
 
   if (row?.status === 'written' && liveMatchesWritten('reject', live, row)) return null;
 
-  if (!writeNow || !conn) {
+  if (!writeNow || !catalog) {
     return {
       image_key: imageKey,
       kind: 'reject',
@@ -119,10 +113,10 @@ export function planRejectPhoto(
   }
 
   const beforePick = live.pick ?? 0;
-  const result = writeRejectToCatalog(conn, imageKey);
+  const result = catalog.writeReject(imageKey);
   if (result === 'image_not_found') return notFoundState(imageKey, 'reject', row, tally);
   if (result !== 'updated') {
-    if (conn && catalogHasAppReject(conn, imageKey)) {
+    if (catalogHasAppReject(catalog, imageKey)) {
       return adoptWrittenRejectState(imageKey, row, beforePick);
     }
     return {
