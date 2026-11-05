@@ -6,7 +6,6 @@ import type { WritebackReconcileCounts } from './writeback-types.js';
 import { WRITE_CHUNK_SIZE } from './writeback-types.js';
 import type { Db } from '../db/connection.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
-import { getCullVerdict } from '../db/library/cull-verdicts.js';
 import { countWritebackByStatus, getWritebackState, upsertWritebackState } from '../db/library/lr-writeback-state.js';
 import {
   getLrWritebackSettings,
@@ -36,7 +35,9 @@ import {
   type ReconcileRunTally,
   type ReconcileOptions,
   type WritebackTrigger,
+  type WritebackPlanRun,
 } from './writeback-shared.js';
+import { decideWriteback } from './writeback-decision.js';
 import { planRejectPhoto } from './writeback-plan-reject.js';
 import { planStarsPhoto } from './writeback-plan-stars.js';
 
@@ -114,6 +115,7 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const keys = listVerdictImageKeys(db, opts.imageKeys);
   const starsSlug = resolveStarsProfileSlug(db, settings);
   const starsProfile = starsSlug ? getCullProfile(db, starsSlug) : null;
+  const starsVersionId = starsProfile?.versionId ?? null;
   const yieldState = createEventLoopYieldState();
   const isCancelled = opts.isCancelled ?? (() => false);
 
@@ -127,6 +129,15 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   }
 
   let lockStopped = false;
+
+  const run: WritebackPlanRun = {
+    db,
+    conn,
+    settings,
+    trigger: opts.trigger,
+    tally,
+    starsVersionId,
+  };
 
   try {
     outer: for (let i = 0; i < keys.length; i += WRITE_CHUNK_SIZE) {
@@ -147,37 +158,17 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
         if (canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
         const writeNow = canWrite && !lockStopped && conn !== null;
         const live = conn ? readPickRating(conn, imageKey) : null;
-        const verdict = getCullVerdict(db, imageKey);
+        const decision = decideWriteback(db, settings, imageKey, starsSlug);
+        const photo = { imageKey, live, writeNow, decision };
 
         if (settings.write_reject) {
-          const row = planRejectPhoto(
-            db,
-            settings,
-            verdict,
-            live,
-            imageKey,
-            opts.trigger,
-            writeNow,
-            conn,
-            tally,
-          );
+          const row = planRejectPhoto(run, photo);
           if (row) {
             libraryWrite(db, () => upsertWritebackState(db, row));
           }
         }
         if (settings.write_stars) {
-          const row = planStarsPhoto(
-            db,
-            settings,
-            starsSlug,
-            starsProfile?.versionId ?? null,
-            live,
-            imageKey,
-            opts.trigger,
-            writeNow,
-            conn,
-            tally,
-          );
+          const row = planStarsPhoto(run, photo);
           if (row) {
             libraryWrite(db, () => upsertWritebackState(db, row));
           }

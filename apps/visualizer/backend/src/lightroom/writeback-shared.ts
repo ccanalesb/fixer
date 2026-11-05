@@ -1,7 +1,9 @@
 import type { WritebackKind } from './writeback-types.js';
 import { listDecidedCullImageKeys } from '../db/library/cull-verdicts.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
+import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import type { Db } from '../db/connection.js';
+import type { WritebackDecision } from './writeback-decision.js';
 import {
   AUTO_REJECT_KEYWORD,
   AUTO_STARS_KEYWORD,
@@ -44,6 +46,22 @@ export function emptyRunTally(): ReconcileRunTally {
     image_not_found_stars: 0,
     image_not_found_reject: 0,
   };
+}
+
+export interface WritebackPlanRun {
+  db: Db;
+  conn: Db | null;
+  settings: LrWritebackSettings;
+  trigger: WritebackTrigger;
+  tally: ReconcileRunTally;
+  starsVersionId: number | null;
+}
+
+export interface WritebackPlanPhoto {
+  imageKey: string;
+  live: LivePickRating | null;
+  writeNow: boolean;
+  decision: WritebackDecision;
 }
 
 export function listVerdictImageKeys(db: Db, keys?: readonly string[]): string[] {

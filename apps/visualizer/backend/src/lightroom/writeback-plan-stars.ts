@@ -1,13 +1,10 @@
-import type { Db } from '../db/connection.js';
 import { getWritebackState, type LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
-import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import {
   AUTO_STARS_KEYWORD,
   clearStarsFromCatalog,
   removeKeywordByKey,
   replaceRatingIfMatches,
   writeStarsToCatalog,
-  type LivePickRating,
 } from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 import {
@@ -17,25 +14,18 @@ import {
   notFoundState,
   syncWrittenFromLiveCatalog,
   userChangedAfterWrite,
-  type ReconcileRunTally,
-  type WritebackTrigger,
+  type WritebackPlanPhoto,
+  type WritebackPlanRun,
 } from './writeback-shared.js';
-import { decideWriteback } from './writeback-decision.js';
 
 export function planStarsPhoto(
-  db: Db,
-  settings: LrWritebackSettings,
-  starsSlug: string | null,
-  starsVersionId: number | null,
-  live: LivePickRating | null,
-  imageKey: string,
-  trigger: WritebackTrigger,
-  canWrite: boolean,
-  conn: Db | null,
-  tally: ReconcileRunTally,
+  run: WritebackPlanRun,
+  photo: WritebackPlanPhoto,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
+  const { db, conn, tally, starsVersionId } = run;
+  const { imageKey, live, writeNow, decision } = photo;
   const row = getWritebackState(db, imageKey, 'stars');
-  const rating = decideWriteback(db, settings, imageKey, starsSlug).stars.rating;
+  const rating = decision.stars.rating;
 
   if (conn && live === null) {
     return notFoundState(imageKey, 'stars', row, tally);
@@ -44,7 +34,7 @@ export function planStarsPhoto(
   if (live && row && userChangedAfterWrite('stars', live, row)) {
     if (live.rating !== null) return { ...row, status: 'skipped' };
     // Clearing the app's stars in Lightroom is an undo: not written again until the profile changes.
-    if (conn && canWrite) removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+    if (conn && writeNow) removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
     return { ...row, status: 'undone', written_rating: null, written_at: null };
   }
 
@@ -53,7 +43,7 @@ export function planStarsPhoto(
   }
 
   if (rating === null) {
-    if (row?.status === 'written' && live && liveMatchesWritten('stars', live, row) && conn && canWrite) {
+    if (row?.status === 'written' && live && liveMatchesWritten('stars', live, row) && conn && writeNow) {
       clearStarsFromCatalog(conn, imageKey, row.written_rating!);
       tally.catalog_cleared_stars += 1;
       return { ...row, status: 'pending', written_rating: null, written_at: null };
@@ -100,7 +90,7 @@ export function planStarsPhoto(
   // Only stars the app put on an unrated photo are its own to replace; the user's stays theirs under the keyword.
   if (
     conn &&
-    canWrite &&
+    writeNow &&
     row?.before_rating === null &&
     row.written_rating !== null &&
     row.written_rating !== rating &&
@@ -142,7 +132,7 @@ export function planStarsPhoto(
     }
   }
 
-  if (!canWrite || !conn) {
+  if (!writeNow || !conn) {
     return {
       image_key: imageKey,
       kind: 'stars',
