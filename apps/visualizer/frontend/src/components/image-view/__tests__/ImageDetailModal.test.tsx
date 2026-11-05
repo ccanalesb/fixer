@@ -140,7 +140,7 @@ describe('ImageDetailModal', () => {
 
   it('updates the Posted badge under the photo when the File tab toggles posted', async () => {
     vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail({ instagram_posted: false }))
-    renderModal({ ...modalPropsFor('catalog'), initialTab: 'file' })
+    renderModal(modalPropsFor('catalog'))
     await screen.findByTestId('file-tab')
     expect(screen.queryByText('Posted')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'mark-posted' }))

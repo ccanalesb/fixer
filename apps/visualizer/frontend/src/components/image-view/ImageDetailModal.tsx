@@ -227,9 +227,9 @@ function ImageDetailModalBody({
 }
 
 /**
- * The single entry point for viewing any image in detail. Every tile in
- * the app opens this modal with just `{ imageKey }` so the modal can
- * re-fetch from the authoritative detail endpoint.
+ * The single entry point for viewing any image in detail. Callers pass the
+ * `imageKey` and spread `modalPropsFor(view)`; the modal fetches the photo
+ * from the detail endpoint.
  *
  * The photo and its badges stay on the left; everything else is a tab built
  * from the blocks in `detail-blocks.tsx` (see "Image detail modal" in CONTEXT.md).
