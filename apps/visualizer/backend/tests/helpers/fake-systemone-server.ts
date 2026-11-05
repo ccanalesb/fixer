@@ -29,6 +29,8 @@ export interface FakeSystemOneServer {
   failOn: string | null;
   /** Close the server when this photo is asked: the photo and every later call get no answer. */
   dieOn: string | null;
+  /** Called after each `/v1/systemone` request is recorded. */
+  onRequest?: (req: FakeSystemOneServer['requests'][number]) => void;
   close(): Promise<void>;
 }
 
@@ -85,6 +87,7 @@ export async function startFakeSystemOneServer(state: FakeModelState, models: st
         state: body.state,
         encoding,
       });
+      fake.onRequest?.(fake.requests[fake.requests.length - 1]!);
       if (!models.includes(body.model)) return send(404, { error: `model ${body.model} not found` });
       if (fake.badRequest) return send(400, { error: 'question too long' });
       if (fake.accepts !== 'both' && fake.accepts !== encoding) {
