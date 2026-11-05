@@ -157,6 +157,27 @@ describe('maybeUpgradeLegacyCatalogLayout', () => {
   });
 });
 
+describe('library routes under a conflict', () => {
+  it('answer 500 with an error naming both catalog folders', async () => {
+    const { createApp } = await import('../src/app.js');
+    const lrcat = join(dir, 'dup.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    const first = createCatalogLibrary(lrcat);
+    const firstFolder = first.catalogFolder!;
+    const second = join(dir, 'catalogs', 'dup-ffff');
+    cpSync(firstFolder, second, { recursive: true });
+    invalidateOpenLibraryCache();
+
+    const app = createApp();
+    const res = await app.request('/api/stats');
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain(firstFolder);
+    expect(body.error).toContain(second);
+  });
+});
+
 describe('resolveOpenLibraryPaths', () => {
   it('uses LIBRARY_DB and places vision cache beside it', () => {
     const pinned = join(dir, 'pinned', 'library.db');
