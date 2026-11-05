@@ -6,6 +6,7 @@ import { parsePipelineSetting } from '../../cull/default-pipeline.js';
 import type { PipelineSettingConfig } from '../../cull/types.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import type { Db } from '../connection.js';
+import { syncCurrentStagesAfterLibraryWrite } from './cull-sync-stages.js';
 import { libraryWrite } from './write.js';
 
 export interface PipelineSetting {
@@ -29,6 +30,7 @@ export function createPipelineSettingVersion(db: Db, config: PipelineSettingConf
     const info = db
       .prepare('INSERT INTO cull_pipeline_settings (config_json, is_current, created_at, note) VALUES (?, 1, ?, ?)')
       .run(JSON.stringify(config), nowIsoUtc(), note);
+    syncCurrentStagesAfterLibraryWrite(db);
     return Number(info.lastInsertRowid);
   });
 }

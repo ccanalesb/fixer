@@ -10,6 +10,7 @@ import { FACTORY_QUESTIONS } from '../../app-models/factory-questions.js';
 import { canonicalJson } from '../../utils/canonical-json.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import type { Db } from '../connection.js';
+import { syncCurrentStagesAfterLibraryWrite } from './cull-sync-stages.js';
 import { libraryWrite } from './write.js';
 
 export const SCORE_FORECAST_QUESTIONS_SQL = `
@@ -54,13 +55,17 @@ export function saveForecastQuestions(
   return libraryWrite(db, () => {
     const current = getForecastQuestions(db);
     const hash = hashOf(questions);
-    if (hash === hashOf(current.questions)) return { version: current.version, created: false };
+    if (hash === hashOf(current.questions)) {
+      syncCurrentStagesAfterLibraryWrite(db);
+      return { version: current.version, created: false };
+    }
     db.prepare('UPDATE score_forecast_question_versions SET is_current = 0').run();
     const past = db.prepare('SELECT id, version FROM score_forecast_question_versions WHERE content_hash = ?').get(hash) as
       | { id: number; version: number }
       | undefined;
     if (past) {
       db.prepare('UPDATE score_forecast_question_versions SET is_current = 1 WHERE id = ?').run(past.id);
+      syncCurrentStagesAfterLibraryWrite(db);
       return { version: past.version, created: false };
     }
     const { next } = db
@@ -70,6 +75,7 @@ export function saveForecastQuestions(
       `INSERT INTO score_forecast_question_versions (version, definition_json, content_hash, is_current, created_at)
        VALUES (?, ?, ?, 1, ?)`,
     ).run(next, JSON.stringify({ questions }), hash, nowIsoUtc());
+    syncCurrentStagesAfterLibraryWrite(db);
     return { version: next, created: true };
   });
 }
