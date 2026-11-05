@@ -53,7 +53,7 @@ Burst stacking depends on **monotonic capture times with sub-second discriminati
 
 | Aspect | Detail |
 | --- | --- |
-| **Formats** | **JPEG, PNG, HEIC/HEIF, AVIF, TIFF, IIQ** ([README format table](https://github.com/MikeKovarik/exifr/blob/master/README.md)). **No CR3, RAF, X3F, NEF-as-RAW-container**, etc. GitHub issues: **RAF unsupported** ([#unknown](https://github.com/MikeKovarik/exifr/issues)), **HEIC edge cases** (iOS adaptive HDR). |
+| **Formats** | **JPEG, PNG, HEIC/HEIF, AVIF, TIFF, IIQ** ([README format table](https://github.com/MikeKovarik/exifr/blob/master/README.md)). **No CR3, RAF, X3F, NEF-as-RAW-container**, etc. Open issues include **Fujifilm RAF** and **iOS HEIC** ([exifr issues](https://github.com/MikeKovarik/exifr/issues)). |
 | **I/O** | **Chunked** by default (`firstChunkSizeNode: 512`, 64 KiB chunks, limit 5) — stops early when picked tags found ([README options](https://github.com/MikeKovarik/exifr/blob/master/README.md)). `multiSegment: true` forces full file. |
 | **Native deps** | **None** (pure JS). ~73 KB full bundle ([README](https://github.com/MikeKovarik/exifr/blob/master/README.md)). |
 | **Maintenance** | Last npm publish **2022-05-01** ([npm `exifr`](https://www.npmjs.com/package/exifr)); GitHub still receives issues in 2024–2025. |
