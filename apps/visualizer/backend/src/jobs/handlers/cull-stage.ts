@@ -12,6 +12,7 @@ import {
 } from './common.js';
 import { runCullPass, type BatchCullResult } from './cull-pass.js';
 import { runFrameSubstanceDetection, type FrameSubstanceRunResult } from './frame-substance.js';
+import type { VerdictTally } from '../../cull/verdict-tally.js';
 
 export type JobResultCullSummary = Omit<
   BatchCullResult,
@@ -20,14 +21,13 @@ export type JobResultCullSummary = Omit<
 
 export const CULL_STEP_LABEL = 'Culling';
 
-export interface CullHeldBackCounts {
+export type CullHeldBackCounts = Pick<
+  VerdictTally,
+  'filtered_by_culling_profile' | 'filtered_by_score_forecast' | 'pending' | 'sent_by_hand_passed'
+> & {
   void: number;
-  filtered_by_culling_profile: number;
-  filtered_by_score_forecast: number;
-  pending: number;
   no_verdict: number;
-  sent_by_hand_passed: number;
-}
+};
 
 export interface CullStageDurations {
   frame_substance: number;
@@ -106,12 +106,16 @@ export async function runCullStageBeforeDescribeAndScore(
 
   runner.setCurrentStep(jobId, CULL_STEP_LABEL);
   const sentByHand = listSentByHandKeys(db);
+  const passedOnlyByHand = new Set<string>();
   const cullStep =
     (await runCullPass(runner, jobId, metadata, db, ctx, {
       // Forced, the whole window is culled again, not only the photos this job will describe or score.
       imageKeys: opts.forceCull ? undefined : candidateKeys,
       skipModelsFor: sentByHand,
       force: opts.forceCull,
+      onDecision: (key, decision) => {
+        if (decision.sentByHandOverride) passedOnlyByHand.add(key);
+      },
     })) ?? null;
   if (cullStep === null) return null;
 
@@ -147,7 +151,7 @@ export async function runCullStageBeforeDescribeAndScore(
     filtered_by_score_forecast: culled.heldBack.filtered_by_score_forecast,
     pending: culled.heldBack.pending,
     no_verdict: culled.heldBack.no_verdict,
-    sent_by_hand_passed: culled.sentByHandKept.length,
+    sent_by_hand_passed: [...keep].filter((k) => passedOnlyByHand.has(k)).length,
   };
 
   runner.log(
@@ -178,21 +182,9 @@ export function cullStageJobResultFields(
   durations_s: { frame_substance: number; cull: number; describe: number; score: number; total: number };
 } {
   const step = stage.cullStep;
+  const { total, durations_s, stage_seconds, stage_versions, ...cull } = step;
   return {
-    cull: {
-      culled: step.culled,
-      redecided: step.redecided,
-      failed: step.failed,
-      filtered_by_culling_profile: step.filtered_by_culling_profile,
-      filtered_by_score_forecast: step.filtered_by_score_forecast,
-      pending: step.pending,
-      passed: step.passed,
-      sent_by_hand_passed: step.sent_by_hand_passed,
-      score_forecast: step.score_forecast,
-      pipeline_setting_version: step.pipeline_setting_version,
-      seconds_per_photo: step.seconds_per_photo,
-      models_started: step.models_started,
-    },
+    cull,
     held_back: stage.heldBack,
     durations_s: {
       frame_substance: stage.durations.frame_substance,

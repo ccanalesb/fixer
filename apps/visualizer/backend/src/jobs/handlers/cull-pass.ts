@@ -16,7 +16,8 @@ import {
 } from '../../cull/stage-models.js';
 import { resolveStage, throwIfStageProblem } from '../../cull/stage-resolver.js';
 import { syncCurrentStages } from '../../cull/stages.js';
-import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
+import type { PhotoDecision, StageKind } from '../../cull/types.js';
+import { addDecision, emptyVerdictTally, type VerdictTally } from '../../cull/verdict-tally.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-profiles.js';
@@ -51,16 +52,11 @@ export const BATCH_CULL_CHECKPOINT_MISMATCH =
 
 const CHECKPOINT_EVERY = 20;
 
-export interface BatchCullResult {
+export interface BatchCullResult extends VerdictTally {
   total: number;
   culled: number;
   redecided: number;
   failed: number;
-  filtered_by_culling_profile: number;
-  filtered_by_score_forecast: number;
-  pending: number;
-  passed: number;
-  sent_by_hand_passed: number;
   score_forecast: 'on' | 'off';
   pipeline_setting_version: number;
   stage_versions: Record<string, number>;
@@ -83,7 +79,13 @@ export async function runCullPass(
   metadata: Record<string, unknown>,
   db: Db,
   ctx: PassContext,
-  opts: { imageKeys?: readonly string[]; skipModelsFor?: ReadonlySet<string>; force?: boolean } = {},
+  opts: {
+    imageKeys?: readonly string[];
+    skipModelsFor?: ReadonlySet<string>;
+    force?: boolean;
+    /** Called with each photo's decision as it is counted. */
+    onDecision?: (imageKey: string, decision: PhotoDecision) => void;
+  } = {},
 ): Promise<BatchCullResult | null> {
   const t0 = performance.now();
   const prefix = ctx.logPrefix;
@@ -202,22 +204,10 @@ export async function runCullPass(
   const sentByHand = listSentByHandKeys(db);
   const skipModels = opts.skipModelsFor ?? new Set<string>();
   const stageSec: Record<StageKind, number> = { culling_profile: 0, score_forecast: 0 };
-  const counts = {
-    culled: 0,
-    redecided: 0,
-    failed: 0,
-    filtered_by_culling_profile: 0,
-    filtered_by_score_forecast: 0,
-    pending: 0,
-    passed: 0,
-    sent_by_hand_passed: 0,
-  };
-  const tally = (verdict: CullSummaryVerdict, filteredBy: StageKind | null, sentByHandOverride: boolean): void => {
-    if (verdict === 'pending') counts.pending += 1;
-    else if (verdict === 'passed') counts.passed += 1;
-    else if (filteredBy === 'culling_profile') counts.filtered_by_culling_profile += 1;
-    else counts.filtered_by_score_forecast += 1;
-    if (sentByHandOverride) counts.sent_by_hand_passed += 1;
+  const counts = { culled: 0, redecided: 0, failed: 0, ...emptyVerdictTally() };
+  const tally = (imageKey: string, decision: PhotoDecision): void => {
+    addDecision(counts, decision);
+    opts.onDecision?.(imageKey, decision);
   };
 
   const skipped = candidates.filter((k) => resume.failed.has(k));
@@ -229,7 +219,7 @@ export async function runCullPass(
       sentByHand: byHand,
       scoreForecastAvailable: cullCtx.scoreForecastAvailable,
     });
-    tally(d.verdict, d.filteredBy, d.sentByHandOverride);
+    tally(key, d);
   }
 
   const tCull = performance.now();
@@ -273,7 +263,7 @@ export async function runCullPass(
         resume.failed.add(key);
         if (r.outcome === 'model_failed') log(`${key} left pending: ${r.error!.message}`, 'warning');
       }
-      tally(r.decision.verdict, r.decision.filteredBy, r.decision.sentByHandOverride);
+      tally(key, r.decision);
       if (r.outcome === 'endpoint_down') throw r.error!;
       if ((i + 1) % CHECKPOINT_EVERY === 0) persist();
       progress(3 + Math.trunc(((i + 1) / Math.max(work.length, 1)) * 97), `Culled ${i + 1}/${work.length}`);

@@ -10,18 +10,14 @@ import { finishCullRun, getCullVerdict, insertCullRun, listCulledImageKeys } fro
 import { libraryWrite } from '../db/library/write.js';
 import { createEventLoopYieldState, pollCancelAndYield, type EventLoopYieldState } from '../utils/yield.js';
 import { decideAndStorePhoto, type CullContext } from './persist.js';
+import { addDecision, emptyVerdictTally, type VerdictTally } from './verdict-tally.js';
 import { readCurrentStages } from './stages.js';
 
 const CHUNK = 500;
 
-export interface RedecideAllPhotosResult {
+export interface RedecideAllPhotosResult extends VerdictTally {
   total: number;
   changed: number;
-  filtered_by_culling_profile: number;
-  filtered_by_score_forecast: number;
-  pending: number;
-  passed: number;
-  sent_by_hand_passed: number;
   pipeline_setting_version: number;
   stage_versions: Record<string, number>;
   durations_s: { redecide: number; total: number };
@@ -42,11 +38,7 @@ export async function redecideAllPhotos(
     return {
       total: 0,
       changed: 0,
-      filtered_by_culling_profile: 0,
-      filtered_by_score_forecast: 0,
-      pending: 0,
-      passed: 0,
-      sent_by_hand_passed: 0,
+      ...emptyVerdictTally(),
       pipeline_setting_version: pipeline.version,
       stage_versions: {},
       durations_s: { redecide: 0, total: 0 },
@@ -62,14 +54,7 @@ export async function redecideAllPhotos(
     insertCullRun(db, { kind: 'redecide', jobId: null, pipelineSettingVersion: pipeline.version }),
   );
 
-  const counts = {
-    changed: 0,
-    filtered_by_culling_profile: 0,
-    filtered_by_score_forecast: 0,
-    pending: 0,
-    passed: 0,
-    sent_by_hand_passed: 0,
-  };
+  const counts = { changed: 0, ...emptyVerdictTally() };
   const yieldState = opts.yieldState ?? createEventLoopYieldState();
   const tRedecide = performance.now();
 
@@ -97,11 +82,7 @@ export async function redecideAllPhotos(
         ) {
           counts.changed += 1;
         }
-        if (decision.verdict === 'pending') counts.pending += 1;
-        else if (decision.verdict === 'passed') counts.passed += 1;
-        else if (decision.filteredBy === 'culling_profile') counts.filtered_by_culling_profile += 1;
-        else counts.filtered_by_score_forecast += 1;
-        if (decision.sentByHandOverride) counts.sent_by_hand_passed += 1;
+        addDecision(counts, decision);
       }
     });
     opts.onProgress?.(
