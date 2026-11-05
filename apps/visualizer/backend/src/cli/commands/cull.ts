@@ -16,9 +16,8 @@ import { syncCurrentStages } from '../../cull/stages.js';
 import type { StageKind } from '../../cull/types.js';
 import { initLibraryDb } from '../../db/library/bootstrap.js';
 import { AppModels } from '../../app-models/app-models.js';
-import { listAppModels } from '../../app-models/install.js';
-import { initJobsDb } from '../../db/jobs/jobs.js';
-import { config } from '../../config.js';
+import { installedModels } from '../../app-models/files.js';
+import type { AppModelStatus } from '../../app-models/install.js';
 import { ProviderRegistry } from '../../providers/registry.js';
 import { THIS_APP_ENDPOINT } from '../../systemone/client.js';
 import { stringFlag } from '../parse.js';
@@ -33,13 +32,13 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
   const thisAppFetch: typeof fetch = async (input, init) => app.request(input instanceof URL ? input.href : input, init);
   const registry = new ProviderRegistry();
   const on = { culling_profile: true, score_forecast: true };
-  const jobsDb = initJobsDb(config.VISUALIZER_DB);
-  let appModels;
-  try {
-    appModels = listAppModels(ctx.config.appModelsDir, jobsDb);
-  } finally {
-    jobsDb.close();
-  }
+  const appModels: AppModelStatus[] = installedModels(ctx.config.appModelsDir).map((m) => ({
+    name: m.name,
+    source: m.source,
+    revision: m.revision,
+    status: 'ready',
+    job_id: m.jobId,
+  }));
   const db = initLibraryDb(':memory:');
   try {
     const stageInput = (kind: StageKind) => ({
