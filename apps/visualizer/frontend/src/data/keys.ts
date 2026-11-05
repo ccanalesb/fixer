@@ -15,6 +15,10 @@ export const keys = {
     catalogList: (params: unknown) => ['images.catalog', 'list', params] as const,
     detail: (imageType: 'catalog', imageKey: string, perspectiveSlug?: string) =>
       ['images.detail', imageType, imageKey, perspectiveSlug ?? ''] as const,
+    stackMembers: (stackId: number) => ['images.stack-members', stackId] as const,
+  },
+  stacks: {
+    suggestions: () => ['stacks.suggestions'] as const,
   },
   frameSubstance: (imageKey: string) => ['frameSubstance', imageKey] as const,
   dashboard: () => ['dashboard'] as const,
@@ -38,6 +42,22 @@ const CULLING_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
 /** Invalidate every query whose data changes when culling verdicts or frame substance do. */
 export function cullingChanged(): void {
   for (const prefix of CULLING_CHANGED_PREFIXES) {
+    invalidateAll(prefix)
+  }
+}
+
+const STACKS_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
+  prefixOf(keys.images.catalogMonths(), 1),
+  prefixOf(keys.images.detail('catalog', '', ''), 1),
+  keys.stacks.suggestions(),
+  keys.dashboard(),
+  prefixOf(keys.identity.mirror(), 1),
+  prefixOf(keys.images.stackMembers(0), 1),
+]
+
+/** Invalidate every query whose data changes when stack membership or suggestions do. */
+export function stacksChanged(): void {
+  for (const prefix of STACKS_CHANGED_PREFIXES) {
     invalidateAll(prefix)
   }
 }

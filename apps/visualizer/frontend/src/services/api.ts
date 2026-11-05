@@ -1,4 +1,4 @@
-import { cullingChanged, invalidate, invalidateAll, patchMatching } from '../data'
+import { cullingChanged, invalidate, invalidateAll, patchMatching, stacksChanged } from '../data'
 import type {
   CatalogImage,
   CatalogImageInput,
@@ -572,11 +572,7 @@ export const ImagesAPI = {
         body: JSON.stringify({ image_key_a: imageKeyA, image_key_b: imageKeyB }),
       },
     )
-    invalidateAll(['stacks.suggestions'])
-    invalidateAll(['images.catalog'])
-    invalidateAll(['images.detail'])
-    invalidateAll(['dashboard'])
-    invalidateAll(['identity'])
+    stacksChanged()
     return result
   },
 
@@ -588,8 +584,7 @@ export const ImagesAPI = {
         body: JSON.stringify({ image_key_a: imageKeyA, image_key_b: imageKeyB }),
       },
     )
-    invalidateAll(['stacks.suggestions'])
-    invalidateAll(['dashboard'])
+    stacksChanged()
     return result
   },
 
@@ -604,10 +599,7 @@ export const ImagesAPI = {
         body: JSON.stringify({ image_key: imageKey }),
       },
     )
-    invalidateAll(['images.catalog'])
-    invalidateAll(['images.detail'])
-    invalidateAll(['dashboard'])
-    invalidateAll(['identity'])
+    stacksChanged()
     return result
   },
 
@@ -616,10 +608,7 @@ export const ImagesAPI = {
       method: 'POST',
       body: JSON.stringify({ source_stack_id: sourceStackId }),
     })
-    invalidateAll(['images.catalog'])
-    invalidateAll(['images.detail'])
-    invalidateAll(['dashboard'])
-    invalidateAll(['identity'])
+    stacksChanged()
     return result
   },
 
@@ -631,10 +620,7 @@ export const ImagesAPI = {
         body: JSON.stringify({ image_key: imageKey }),
       },
     )
-    invalidateAll(['images.catalog'])
-    invalidateAll(['images.detail'])
-    invalidateAll(['dashboard'])
-    invalidateAll(['identity'])
+    stacksChanged()
     return result
   },
 
@@ -669,10 +655,7 @@ export const ImagesAPI = {
         return raw
       },
     )
-    invalidateAll(['images.catalog'])
-    invalidateAll(['images.detail'])
-    invalidateAll(['dashboard'])
-    invalidateAll(['identity'])
+    stacksChanged()
     return result
   },
 }
