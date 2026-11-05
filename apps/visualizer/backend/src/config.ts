@@ -169,8 +169,6 @@ export interface LibraryConfig {
 export interface CullingModelConfig {
   endpoint: string;
   model: string;
-  /** Tests and unmigrated URLs only; config on disk never carries a key after migration. */
-  apiKey?: string;
 }
 
 export interface CullingModelsConfig {

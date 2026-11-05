@@ -62,8 +62,10 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
       },
     });
     for (const kind of KINDS) {
+      const resolved = kind === 'culling_profile' ? profileResolved : forecastResolved;
       const m = models[kind];
-      ctx.out(`${STAGE_NAMES[kind]}: ${m.model || 'no model'} on ${m.endpoint.label}`);
+      const label = resolved.systemOne?.label ?? ctx.config.cullingModels[kind].endpoint;
+      ctx.out(`${STAGE_NAMES[kind]}: ${m.model || 'no model'} on ${label}`);
     }
     if (KINDS.some((k) => models[k].endpoint.id === THIS_APP_ENDPOINT)) {
       ctx.out(`This app's models: ${ctx.config.appModelsDir}`);

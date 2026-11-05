@@ -661,6 +661,31 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     expect(server.requests).toEqual([]);
   });
 
+  it('a raw URL as a stage endpoint counts as removed, without calling it', async () => {
+    writeConfig({
+      culling_profile: `{endpoint: ${server.url}, model: clef-cull}`,
+      score_forecast: '{endpoint: this_app, model: forecast-model}',
+    });
+    await addPhoto('a', PASS);
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(
+      'Culling profile: its endpoint was removed. Choose one in Processing → Providers, or turn the culling profile off',
+    );
+    expect(server.requests).toEqual([]);
+  });
+
+  it('a raw URL on a stage that is off does not stop the job', async () => {
+    writeConfig({
+      culling_profile: '{endpoint: this_app, model: culling-model}',
+      score_forecast: `{endpoint: ${server.url}, model: clef-forecast}`,
+    });
+    changePipeline((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, enabled: false } }));
+    await addPhoto('a', PASS);
+    expect((await runCull()).status).toBe('completed');
+    expect(server.requests).toEqual([]);
+  });
+
   it('a parked provider on a stage that is off does not stop the job', async () => {
     writeConfig({
       culling_profile: '{endpoint: this_app, model: culling-model}',

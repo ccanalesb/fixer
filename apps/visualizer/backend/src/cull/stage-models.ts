@@ -16,14 +16,15 @@ import {
   askSystemOne,
   listSystemOneModels,
   modelIdentity,
+  placeholderSystemOneEndpoint,
   SystemOneError,
-  systemOneEndpoint,
   THIS_APP_ENDPOINT,
   type SystemOneAnswers,
   type SystemOneEndpoint,
   type SystemOneFailure,
   type SystemOneImageEncoding,
 } from '../systemone/client.js';
+import { stageEndpoint } from './stage-resolver.js';
 import type { PipelineSettingConfig, ResolvedStage, StageAnswers, StageKind } from './types.js';
 
 export const STAGE_NAMES: Record<StageKind, string> = {
@@ -72,14 +73,18 @@ export function stageModelsFromConfig(
   opts: {
     thisAppFetch?: typeof fetch;
     registry?: ProviderRegistry;
-    /** Endpoints from `resolveStage`; null falls back to `systemOneEndpoint`. */
+    /** Endpoints from `resolveStage`; null means removed or unresolved. */
     systemOne?: Partial<Record<StageKind, SystemOneEndpoint | null>>;
   } = {},
 ): StageModels {
+  const registry = opts.registry ?? new ProviderRegistry();
   const endpointFor = (kind: StageKind, stageCfg: (typeof cfg)['culling_profile']): SystemOneEndpoint => {
-    const resolved = opts.systemOne?.[kind];
-    if (resolved) return resolved;
-    return systemOneEndpoint(stageCfg, opts);
+    if (opts.systemOne && kind in opts.systemOne) {
+      const resolved = opts.systemOne[kind];
+      if (resolved) return resolved;
+      return placeholderSystemOneEndpoint(stageCfg.endpoint);
+    }
+    return stageEndpoint(stageCfg, registry, opts) ?? placeholderSystemOneEndpoint(stageCfg.endpoint);
   };
   return {
     culling_profile: { endpoint: endpointFor('culling_profile', cfg.culling_profile), model: cfg.culling_profile.model },

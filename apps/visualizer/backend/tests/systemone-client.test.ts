@@ -9,6 +9,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadLibraryConfig } from '../src/config.js';
+import { providerIdFromCullingUrl } from '../src/providers/culling-provider-id.js';
+import { ProviderRegistry } from '../src/providers/registry.js';
 import {
   askSystemOne,
   listSystemOneModels,
@@ -21,7 +23,13 @@ type Handler = (req: IncomingMessage, body: string, res: ServerResponse) => void
 
 let server: Server;
 let url: string;
+let baseUrl: string;
 let handler: Handler;
+let providersPath: string;
+let providerId: string;
+let noAuthProviderId: string;
+let badKeyProviderId: string;
+let deadProviderId: string;
 const seen: { method: string; path: string; auth: string | undefined; body: unknown }[] = [];
 
 const json = (res: ServerResponse, status: number, body: unknown) => {
@@ -40,11 +48,64 @@ beforeAll(async () => {
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  baseUrl = url.replace(/\/+$/, '');
+  const dir = mkdtempSync(join(tmpdir(), 'lt-s1-client-'));
+  providersPath = join(dir, 'providers.json');
+  providerId = providerIdFromCullingUrl(url);
+  noAuthProviderId = `${providerId}-noauth`;
+  badKeyProviderId = `${providerId}-badkey`;
+  deadProviderId = 'dead-host';
+  writeFileSync(
+    providersPath,
+    JSON.stringify(
+      {
+        providers: {
+          [providerId]: {
+            name: 'Host',
+            protocol: 'system_one',
+            enabled: true,
+            base_url: { from: 'literal', value: baseUrl },
+            auth: { mode: 'bearer', secret: { from: 'literal', value: 'k' } },
+          },
+          [noAuthProviderId]: {
+            name: 'Host no auth',
+            protocol: 'system_one',
+            enabled: true,
+            base_url: { from: 'literal', value: baseUrl },
+            auth: { mode: 'none' },
+          },
+          [badKeyProviderId]: {
+            name: 'Host bad key',
+            protocol: 'system_one',
+            enabled: true,
+            base_url: { from: 'literal', value: baseUrl },
+            auth: { mode: 'bearer', secret: { from: 'literal', value: 'bad' } },
+          },
+          [deadProviderId]: {
+            name: 'Dead',
+            protocol: 'system_one',
+            enabled: true,
+            base_url: { from: 'literal', value: 'http://127.0.0.1:1' },
+            auth: { mode: 'none' },
+          },
+        },
+        defaults: {},
+        fallback_order: [],
+      },
+      null,
+      2,
+    ),
+  );
+  process.env.LT_PROVIDERS_JSON = providersPath;
 });
 
 afterAll(async () => {
+  delete process.env.LT_PROVIDERS_JSON;
   await new Promise<void>((r) => server.close(() => r()));
 });
+
+const registry = () => new ProviderRegistry(providersPath);
+const stageEp = (model: string, id = providerId) => systemOneEndpoint({ endpoint: id, model }, { registry: registry() });
 
 beforeEach(() => {
   seen.length = 0;
@@ -66,7 +127,7 @@ describe('listSystemOneModels', () => {
           { name: 'jev-latest', description: 'y', release_date: '2026-10-14' },
         ],
       });
-    const ep = systemOneEndpoint({ endpoint: `${url}/`, model: 'culling-model', apiKey: 'k' });
+    const ep = systemOneEndpoint({ endpoint: providerId, model: 'culling-model' }, { registry: registry() });
     const models = await listSystemOneModels(ep);
     expect(models).toEqual([
       { name: 'culling-model', modelId: 'owner/vision-model@8b318c9' },
@@ -77,36 +138,38 @@ describe('listSystemOneModels', () => {
 
   it('reads the OpenAI shape Ollama and oMLX answer with', async () => {
     handler = (_q, _b, res) => json(res, 200, { object: 'list', data: [{ id: 'clef-flash:latest', object: 'model' }] });
-    const models = await listSystemOneModels(systemOneEndpoint({ endpoint: url, model: 'clef-flash:latest', apiKey: '' }));
+    const models = await listSystemOneModels(stageEp('clef-flash:latest', noAuthProviderId));
     expect(models).toEqual([{ name: 'clef-flash:latest', modelId: null }]);
     expect(seen[0]!.auth).toBeUndefined();
   });
 
   it('names a model by its endpoint when the endpoint gives no identity', () => {
-    const ep = systemOneEndpoint({ endpoint: `${url}/`, model: 'clef', apiKey: '' });
-    expect(modelIdentity(ep, { name: 'clef', modelId: null })).toBe(`clef@${url}`);
-    expect(modelIdentity(ep, { name: 'culling-model', modelId: 'owner/vision-model@8b318c9' })).toBe('owner/vision-model@8b318c9');
+    const endpoint = stageEp('clef', noAuthProviderId);
+    expect(modelIdentity(endpoint, { name: 'clef', modelId: null })).toBe(`clef@${baseUrl}`);
+    expect(modelIdentity(endpoint, { name: 'culling-model', modelId: 'owner/vision-model@8b318c9' })).toBe(
+      'owner/vision-model@8b318c9',
+    );
   });
 
   it('an endpoint that does not answer is down', async () => {
-    const ep = systemOneEndpoint({ endpoint: 'http://127.0.0.1:1', model: 'x', apiKey: '' });
-    const e = await listSystemOneModels(ep).catch((err: unknown) => err);
+    const endpoint = stageEp('x', deadProviderId);
+    const e = await listSystemOneModels(endpoint).catch((err: unknown) => err);
     expect(e).toBeInstanceOf(SystemOneError);
     expect(e).toMatchObject({ failure: 'down' });
-    expect((e as Error).message).toContain('http://127.0.0.1:1 does not answer');
+    expect((e as Error).message).toContain('does not answer');
   });
 
   it('a rejected API key is refused, and a list it cannot read is malformed', async () => {
     handler = (_q, _b, res) => json(res, 401, { error: { message: 'API key required' } });
-    const ep = systemOneEndpoint({ endpoint: url, model: 'x', apiKey: 'bad' });
-    await expect(listSystemOneModels(ep)).rejects.toMatchObject({ failure: 'refused' });
+    const endpoint = stageEp('x', badKeyProviderId);
+    await expect(listSystemOneModels(endpoint)).rejects.toMatchObject({ failure: 'refused' });
     handler = (_q, _b, res) => json(res, 200, { nothing: true });
-    await expect(listSystemOneModels(ep)).rejects.toMatchObject({ failure: 'malformed' });
+    await expect(listSystemOneModels(endpoint)).rejects.toMatchObject({ failure: 'malformed' });
   });
 });
 
 describe('askSystemOne', () => {
-  const ep = () => systemOneEndpoint({ endpoint: url, model: 'm', apiKey: 'k' });
+  const ep = () => stageEp('m');
 
   it('sends the model, an empty state, the image as a data URL and the questions', async () => {
     handler = (_q, _b, res) =>
@@ -238,5 +301,11 @@ describe('systemOneEndpoint', () => {
     expect(await listSystemOneModels(ep)).toEqual([{ name: 'culling-model', modelId: null }]);
     expect(calls).toEqual(['http://this-app/v1/models']);
     expect(modelIdentity(ep, { name: 'culling-model', modelId: null })).toBe('culling-model@this_app');
+  });
+
+  it('refuses a raw URL endpoint', () => {
+    expect(() => systemOneEndpoint({ endpoint: 'http://studio:8000', model: 'm' }, { registry: registry() })).toThrow(
+      /Unknown culling endpoint/,
+    );
   });
 });

@@ -19,6 +19,7 @@ import { providerIdFromCullingUrl } from '../src/providers/culling-provider-id.j
 import { FAKE_PROFILE_MODEL_ID, fakeModelState, writeFakeAppModels } from './helpers/fake-app-models.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
+import { registerSystemOneProvider } from './helpers/register-systemone-provider.js';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -55,26 +56,7 @@ function seedSystemOneProvider(
   id = providerIdFromCullingUrl(url),
 ): string {
   providersPath = join(dir, 'providers.json');
-  writeFileSync(
-    providersPath,
-    JSON.stringify(
-      {
-        providers: {
-          [id]: {
-            name: 'Test host',
-            protocol: 'system_one',
-            enabled: true,
-            base_url: { from: 'literal', value: url.replace(/\/+$/, '') },
-            auth: apiKey ? { mode: 'bearer', secret: { from: 'literal', value: apiKey } } : { mode: 'none' },
-          },
-        },
-        defaults: {},
-        fallback_order: [],
-      },
-      null,
-      2,
-    ),
-  );
+  registerSystemOneProvider({ providersPath, url, apiKey, id, name: 'Test host' });
   process.env.LT_PROVIDERS_JSON = providersPath;
   const db = initJobsDb(join(dir, 'visualizer.db'));
   for (const m of models) {
@@ -220,6 +202,18 @@ describe('GET /api/culling-models/{stage}/models', () => {
     });
   });
 
+  it('a legacy raw URL in config lists nothing', async () => {
+    writeFileSync(
+      configPath,
+      `app_models_dir: ${modelsDir}\ncatalog_path: /somewhere/catalog.lrcat\nculling_models:\n  culling_profile: {endpoint: http://127.0.0.1:59999, model: m}\n  score_forecast: {endpoint: this_app, model: ""}\n`,
+    );
+    expect(await json(await app.request('/api/culling-models/culling_profile/models'))).toEqual({
+      answers: false,
+      models: [],
+      error: 'Unknown provider',
+    });
+  });
+
   it('this app lists the models installed in it', async () => {
     writeFakeAppModels(modelsDir);
     expect(await json(await app.request('/api/culling-models/score_forecast/models'))).toEqual({
@@ -343,6 +337,20 @@ describe('GET /api/culling-models/usable', () => {
     delete stored.providers[id];
     writeFileSync(providersPath, JSON.stringify(stored, null, 2));
     expect((await usable()).culling_profile).toMatchObject({ problem: 'removed' });
+  });
+
+  it('a legacy raw URL in config is removed when the stage is on', async () => {
+    await stagesOn();
+    writeFileSync(
+      configPath,
+      `app_models_dir: ${modelsDir}\ncatalog_path: /somewhere/catalog.lrcat\nculling_models:\n  culling_profile: {endpoint: http://127.0.0.1:59999, model: clef-cull}\n  score_forecast: {endpoint: this_app, model: ""}\n`,
+    );
+    expect((await usable()).culling_profile).toMatchObject({
+      on: true,
+      problem: 'removed',
+      model: 'clef-cull',
+      endpoint: 'http://127.0.0.1:59999',
+    });
   });
 
   it('answers without HTTP even when the endpoint would fail', async () => {

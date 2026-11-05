@@ -23,7 +23,7 @@ const STAGES = ['culling_profile', 'score_forecast'] as const;
 
 type StageKey = (typeof STAGES)[number];
 
-interface LegacyStageYaml {
+interface LegacyCullingStageYaml {
   endpoint?: string;
   model?: string;
   api_key?: string;
@@ -75,9 +75,9 @@ function legacyStagesNeedMigration(raw: Record<string, unknown>): boolean {
   for (const key of STAGES) {
     const stage = (block as Record<string, unknown>)[key];
     if (!stage || typeof stage !== 'object') continue;
-    const endpoint = (stage as LegacyStageYaml).endpoint;
+    const endpoint = (stage as LegacyCullingStageYaml).endpoint;
     if (typeof endpoint === 'string' && isExternalCullingEndpoint(endpoint)) return true;
-    if (typeof (stage as LegacyStageYaml).api_key === 'string' && (stage as LegacyStageYaml).api_key !== '') {
+    if (typeof (stage as LegacyCullingStageYaml).api_key === 'string' && (stage as LegacyCullingStageYaml).api_key !== '') {
       return true;
     }
   }
@@ -111,12 +111,13 @@ export function migrateCullingModelsIfNeeded(
 
   const block =
     raw.culling_models && typeof raw.culling_models === 'object'
-      ? (raw.culling_models as Record<string, LegacyStageYaml>)
+      ? (raw.culling_models as Record<string, LegacyCullingStageYaml>)
       : {};
-  const stageFromYaml = (key: StageKey): CullingModelConfig & { apiKey: string } => {
+  type LegacyStage = CullingModelConfig & { apiKey: string };
+  const stageFromYaml = (key: StageKey): LegacyStage => {
     const v = block[key] ?? {};
     const d = CULLING_MODELS_DEFAULTS[key];
-    const str = (k: keyof LegacyStageYaml, fallback: string) =>
+    const str = (k: keyof LegacyCullingStageYaml, fallback: string) =>
       typeof v[k] === 'string' ? (v[k] as string) : fallback;
     return {
       endpoint: str('endpoint', d.endpoint),
@@ -124,9 +125,10 @@ export function migrateCullingModelsIfNeeded(
       apiKey: str('api_key', ''),
     };
   };
+  const configOf = ({ endpoint, model }: LegacyStage): CullingModelConfig => ({ endpoint, model });
   const current: CullingModelsConfig = {
-    culling_profile: stageFromYaml('culling_profile'),
-    score_forecast: stageFromYaml('score_forecast'),
+    culling_profile: configOf(stageFromYaml('culling_profile')),
+    score_forecast: configOf(stageFromYaml('score_forecast')),
   };
   const registry = readRegistry(providersPath);
   const takenIds = new Set(Object.keys(registry.providers ?? {}));
