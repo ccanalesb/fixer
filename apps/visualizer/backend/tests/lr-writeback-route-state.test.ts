@@ -11,7 +11,7 @@ import { createApp } from '../src/app.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
+import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
@@ -280,6 +280,9 @@ describe('switch job stars state', () => {
     }
     makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'star-photo', pick: 0, rating: null }]);
     const db = openLibraryDb(fx.dbPath);
+    db.prepare('DELETE FROM lr_writeback_state WHERE image_key = ?').run(starsKey);
+    db.prepare('DELETE FROM image_frame_substance WHERE image_key = ?').run(starsKey);
+    db.prepare('DELETE FROM frame_substance_overrides WHERE image_key = ?').run(starsKey);
     seedCullingDefaults(db);
     patchLrWritebackSettings(db, { write_stars: true });
     upsertCullVerdict(db, {
@@ -442,6 +445,53 @@ describe('switch job stars state', () => {
 
     expect(liveOf('star-photo')).toMatchObject({ pick: -1, rating: null });
     expect(stateOf(starsKey, 'reject')).toBe('written');
+  });
+
+  it('rejects a void frame while the culling profile is on, takes it back when off, then rejects again', async () => {
+    fx.addFrameSubstance(starsKey, 'void');
+    const db = openLibraryDb(fx.dbPath);
+    const wb = (extra?: { imageKeys?: string[] }) =>
+      reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath, imageKeys: [starsKey], ...extra });
+    await wb();
+    expect(liveOf('star-photo')).toMatchObject({ pick: -1, rating: null, keyword: true });
+    expect(stateOf(starsKey, 'reject')).toBe('written');
+
+    createPipelineSettingVersion(db, {
+      ...getCurrentPipelineSetting(db).config,
+      culling_profiles_enabled: false,
+    });
+    expect(liveOf('star-photo').pick).toBe(-1);
+    await wb();
+    expect(liveOf('star-photo')).toMatchObject({ pick: 0, rating: null, keyword: false });
+    expect(stateOf(starsKey, 'reject')).not.toBe('written');
+
+    createPipelineSettingVersion(db, {
+      ...getCurrentPipelineSetting(db).config,
+      culling_profiles_enabled: true,
+    });
+    await wb();
+    expect(liveOf('star-photo')).toMatchObject({ pick: -1, rating: null, keyword: true });
+    expect(stateOf(starsKey, 'reject')).toBe('written');
+    db.close();
+  });
+
+  it('leaves a void frame the user rejected in Lightroom when the culling profile goes off', async () => {
+    fx.addFrameSubstance(starsKey, 'void');
+    editCatalog('UPDATE Adobe_images SET pick = -1');
+    const db = openLibraryDb(fx.dbPath);
+    createPipelineSettingVersion(db, {
+      ...getCurrentPipelineSetting(db).config,
+      culling_profiles_enabled: false,
+    });
+    await reconcileLrWriteback(db, {
+      trigger: 'job',
+      catalogPath: lrcatPath,
+      imageKeys: [starsKey],
+    });
+    db.close();
+
+    expect(liveOf('star-photo')).toMatchObject({ pick: -1, rating: null, keyword: false });
+    expect(stateOf(starsKey, 'reject')).toBeUndefined();
   });
 
   it('the photo detail says a void frame gets no stars, and gives the count again once overridden', async () => {

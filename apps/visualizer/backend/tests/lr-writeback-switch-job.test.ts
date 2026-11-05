@@ -19,7 +19,7 @@ import {
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
-import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
+import { seedCullingStagesOn } from './helpers/culling-stages.js';
 import { connectCatalog } from '../src/lightroom/writer.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
@@ -44,7 +44,7 @@ beforeEach(() => {
   writeFileSync(cfgPath, stringifyYaml({ workers: 4, catalog_path: lrcatPath }));
   makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'x', pick: 0 }]);
   const db = openLibraryDb(fx.dbPath);
-  seedCullingDefaults(db);
+  seedCullingStagesOn(db);
   db.close();
 });
 

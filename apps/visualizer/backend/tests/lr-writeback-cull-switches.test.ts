@@ -16,7 +16,8 @@ import type { PipelineSettingConfig } from '../src/cull/types.js';
 import type { Db } from '../src/db/connection.js';
 import { initLibraryDb } from '../src/db/library/bootstrap.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
-import { getCullVerdict, insertCullRun } from '../src/db/library/cull-verdicts.js';
+import { getCullVerdict, insertCullRun, upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
+import { nowIsoUtc } from '../src/utils/datetime.js';
 import { getLrWritebackSettings, patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { desiredReject, desiredStarsRating } from '../src/lightroom/writeback-shared.js';
 import { seedCullingStagesOn } from './helpers/culling-stages.js';
@@ -76,7 +77,8 @@ async function cull(imageKey: string, answerer: StageAnswerer, change?: (cfg: Pi
 }
 
 const settings = () => getLrWritebackSettings(db);
-const reject = (key: string) => desiredReject(settings(), getCullVerdict(db, key), isFrameSubstanceVoid(db, key));
+const reject = (key: string) =>
+  desiredReject(db, settings(), getCullVerdict(db, key), isFrameSubstanceVoid(db, key));
 const stars = (key: string) => desiredStarsRating(db, settings(), key, 'default');
 
 describe('Lightroom write-back under the switches', () => {
@@ -109,6 +111,34 @@ describe('Lightroom write-back under the switches', () => {
     await cull('filtered', fakeModels(PROFILE_FILTERS), (cfg) => ({ ...cfg, culling_profiles_enabled: false }));
     expect(reject('filtered')).toBe(false);
     expect(stars('strong')).toBeNull();
+  });
+
+  it('the culling profile off: no reject on a void frame', async () => {
+    db.prepare(
+      `INSERT INTO image_frame_substance (image_key, verdict, detector_version, judged_at, run_id)
+       VALUES (?, 'void', 'test', ?, 1)`,
+    ).run('void', nowIsoUtc());
+    upsertCullVerdict(db, {
+      imageKey: 'void',
+      verdict: 'passed',
+      filteredBy: null,
+      filteredByStageKey: null,
+      cullingProfileVerdict: null,
+      sentByHand: false,
+      pendingStages: [],
+      pendingReason: '',
+      scoreForecastOff: false,
+      scoreForecastP8: null,
+      pipelineSettingVersion: getCurrentPipelineSetting(db).version,
+      stageVersionIds: [],
+      runId: null,
+    });
+    createPipelineSettingVersion(db, {
+      ...getCurrentPipelineSetting(db).config,
+      culling_profiles_enabled: false,
+    });
+    expect(reject('void')).toBe(false);
+    expect(stars('void')).toBeNull();
   });
 
   it('a photo sent by hand is never rejected', async () => {

@@ -70,12 +70,14 @@ export function userChangedAfterWrite(kind: WritebackKind, live: LivePickRating,
 
 /** Reject when the culling profile's rule says filtered, whatever decided the photo, or the frame is void. */
 export function desiredReject(
+  db: Db,
   settings: LrWritebackSettings,
   verdict: CullVerdictRow | null,
   voidFrame: boolean,
 ): boolean {
   if (!settings.write_reject || !verdict) return false;
   if (verdict.sent_by_hand) return false;
+  if (!getCurrentPipelineSetting(db).config.culling_profiles_enabled) return false;
   return verdict.culling_profile_verdict === 'filtered' || voidFrame;
 }
 
