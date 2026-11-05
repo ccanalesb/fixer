@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { CullingProfileEditor } from '../CullingProfileEditor'
 import { ApiRequestError } from '../../../services/api'
+import type { CullingModelsUsable, CullingStageUsability } from '../../../services/api'
 import {
   CULL_PROFILE_ADD_LEVEL,
   CULL_PROFILE_ADD_LEVEL_SET_BUTTON,
@@ -36,18 +37,42 @@ import {
 const saveDefinition = vi.fn()
 const saveRule = vi.fn()
 const patch = vi.fn()
+const mockUsable = vi.fn()
 
 vi.mock('../../../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/api')>()
   return {
     ...actual,
+    CullingModelsAPI: { ...actual.CullingModelsAPI, usable: () => mockUsable() },
     CullingProfilesAPI: {
       ...actual.CullingProfilesAPI,
       saveDefinition: (...args: unknown[]) => saveDefinition(...args),
       saveRule: (...args: unknown[]) => saveRule(...args),
       patch: (...args: unknown[]) => patch(...args),
+      saveCullingProfileSwitches: vi.fn().mockResolvedValue({ version: 2, redecide_job_id: null }),
+      saveScoreForecast: vi.fn().mockResolvedValue({ version: 2, redecide_job_id: null }),
     },
   }
+})
+
+const ok = (model: string): CullingStageUsability => ({
+  on: true,
+  problem: null,
+  model,
+  endpoint: 'this_app',
+  job_id: null,
+  provider_name: null,
+})
+const broken = (problem: CullingStageUsability['problem'], extra: Partial<CullingStageUsability> = {}) => ({
+  ...ok('model-x'),
+  problem,
+  ...extra,
+})
+const usable = (u: Partial<CullingModelsUsable> = {}): CullingModelsUsable => ({
+  culling_profile: ok('culling-model'),
+  score_forecast: ok('forecast-model'),
+  culling_profile_filter: true,
+  ...u,
 })
 
 const baseProfile = {
@@ -86,6 +111,7 @@ const openRule = () => fireEvent.click(screen.getByRole('tab', { name: CULL_PROF
 describe('CullingProfileEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUsable.mockResolvedValue(usable())
     patch.mockResolvedValue({ profile: baseProfile, pipeline_setting_version: 3, redecide_job_id: 'job-1' })
     saveRule.mockResolvedValue({ profile: baseProfile, pipeline_setting_version: 3, redecide_job_id: 'job-1' })
     saveDefinition.mockResolvedValue({
@@ -294,5 +320,25 @@ describe('CullingProfileEditor', () => {
     openLevels()
     expect(screen.queryByRole('spinbutton', { name: /fails|strong/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: CULL_RULE_LEVEL_ARIA(1, 5, 'low') })).not.toBeInTheDocument()
+  })
+
+  it('Save and queue culling runs the gate; cancel sends no save', async () => {
+    mockUsable.mockResolvedValue(usable({ culling_profile: broken('no_model', { model: null }) }))
+    renderInRouter()
+    editQuestion()
+    fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_AND_QUEUE }))
+    const stageDialog = await screen.findByRole('dialog', { name: 'Culling profile has no model' })
+    fireEvent.click(within(stageDialog).getByRole('button', { name: CULLING_CANCEL }))
+    expect(saveDefinition).not.toHaveBeenCalled()
+  })
+
+  it('Save and queue culling saves when every stage that is on can run', async () => {
+    renderInRouter()
+    editQuestion()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: CULL_SAVE_AND_QUEUE }))
+    })
+    await waitFor(() => expect(saveDefinition).toHaveBeenCalledTimes(1))
+    expect(saveDefinition.mock.calls[0]![1]).toMatchObject({ mode: 'save_and_queue_cull' })
   })
 })
