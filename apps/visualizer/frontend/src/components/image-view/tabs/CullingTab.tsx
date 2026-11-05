@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { CullAPI, FrameSubstanceAPI, type CullReviewDetail, type FrameSubstanceResponse } from '../../../services/api'
 import { useQuery } from '../../../data'
 import { keys } from '../../../data/keys'
@@ -130,29 +130,16 @@ function FrameStatus({ frame }: { frame: FrameSubstanceResponse }) {
   )
 }
 
-function CullingTabContent({
-  imageKey,
-  detail,
-  onDataChanged,
-}: {
-  imageKey: string
-  detail: CullReviewDetail | null
-  onDataChanged?: () => void
-}) {
+function CullingTabContent({ imageKey, detail }: { imageKey: string; detail: CullReviewDetail | null }) {
   const frame = useQuery(...frameSubstanceQuery(imageKey))
   const { run: runCullingGate, dialog: cullingDialog } = useCullingGate()
   const [frameBusy, setFrameBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const refreshVerdict = useCallback(() => {
-    onDataChanged?.()
-  }, [onDataChanged])
-
   const act = async (fn: () => Promise<unknown>) => {
     setError(null)
     try {
       await fn()
-      refreshVerdict()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -164,7 +151,6 @@ function CullingTabContent({
     try {
       if (frame.has_override) await FrameSubstanceAPI.deleteOverride(imageKey)
       else await FrameSubstanceAPI.createOverride(imageKey)
-      onDataChanged?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update override')
     } finally {
@@ -265,24 +251,16 @@ function CullingTabContent({
   )
 }
 
-function CullingTabWithVerdict(props: { imageKey: string; onDataChanged?: () => void }) {
+function CullingTabWithVerdict(props: { imageKey: string }) {
   const detail = useQuery(keys.cull.detail(props.imageKey), () => CullAPI.photoDetail(props.imageKey))
   return <CullingTabContent {...props} detail={detail} />
 }
 
 /** The culling verdict (in culling views) and the frame substance reading. */
-export function CullingTab({
-  imageKey,
-  showVerdict,
-  onDataChanged,
-}: {
-  imageKey: string
-  showVerdict: boolean
-  onDataChanged?: () => void
-}) {
+export function CullingTab({ imageKey, showVerdict }: { imageKey: string; showVerdict: boolean }) {
   return showVerdict ? (
-    <CullingTabWithVerdict imageKey={imageKey} onDataChanged={onDataChanged} />
+    <CullingTabWithVerdict imageKey={imageKey} />
   ) : (
-    <CullingTabContent imageKey={imageKey} detail={null} onDataChanged={onDataChanged} />
+    <CullingTabContent imageKey={imageKey} detail={null} />
   )
 }

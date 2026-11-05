@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useQuery } from '../../data';
+import { keys, useQuery } from '../../data';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { WorkerSlider } from '../ui/WorkerSlider';
@@ -150,11 +150,11 @@ export function AnalyzeTab() {
   >([]);
   const [selectedPerspectiveSlugs, setSelectedPerspectiveSlugs] = useState<string[]>([]);
 
-  const perspectives = useQuery(['perspectives', 'list', 'active'] as const, () =>
+  const perspectives = useQuery(keys.perspectives.active(), () =>
     PerspectivesAPI.list({ active_only: true }),
   );
 
-  const defaults = useQuery(['providers.defaults'] as const, () => ProvidersAPI.getDefaults());
+  const defaults = useQuery(keys.providers.defaults(), () => ProvidersAPI.getDefaults());
 
   useEffect(() => {
     const sorted = [...perspectives].sort((a, b) => a.slug.localeCompare(b.slug));

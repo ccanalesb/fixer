@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { deleteMatching } from '../../data/cache'
+import { keys } from '../../data/keys'
 import { query } from '../../data/query'
 import { JobsAPI, ImagesAPI, DescriptionsAPI } from '../api'
 import { API_REQUEST_TIMEOUT_MS } from '../fetchWithTimeout'
@@ -199,7 +200,7 @@ describe('mutation cache updates', () => {
       json: async () => getPayload,
     })
     const fetcher = () => DescriptionsAPI.get(imageKey)
-    const p1 = catchThrown(() => query(['descriptions', imageKey], fetcher)) as Promise<unknown>
+    const p1 = catchThrown(() => query(keys.descriptions(imageKey), fetcher)) as Promise<unknown>
     await p1
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
@@ -213,7 +214,7 @@ describe('mutation cache updates', () => {
       ok: true,
       json: async () => getPayload,
     })
-    const p2 = catchThrown(() => query(['descriptions', imageKey], fetcher)) as Promise<unknown>
+    const p2 = catchThrown(() => query(keys.descriptions(imageKey), fetcher)) as Promise<unknown>
     await p2
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })

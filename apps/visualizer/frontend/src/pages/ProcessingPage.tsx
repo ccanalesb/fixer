@@ -13,7 +13,7 @@ import { Button } from '../components/ui/Button';
 import { useJobSocket } from '../hooks/useJobSocket';
 import { usePageTab } from '../hooks/usePageTab';
 import { JobsAPI } from '../services/api';
-import { ErrorBoundary, ErrorState, cullingChanged, invalidateAll, useQuery } from '../data';
+import { ErrorBoundary, ErrorState, cullingChanged, keys, retryCatalogCacheTab, retryJobsList, retryPerspectivesTab, retryProvidersTab, useQuery } from '../data';
 import { AnalyzeOptionsProvider } from '../stores/analyzeOptionsContext';
 import { PROCESSING_TAB_IDS, usePageUiStore } from '../stores/pageUiStore';
 import {
@@ -49,7 +49,7 @@ function JobQueueTabWithData({
   const [jobsOffset, setJobsOffset] = useState(0);
   const [isPending, startTransition] = useTransition();
   const listResponse = useQuery(
-    ['jobs.list', { limit: PAGE_SIZE, offset: jobsOffset }] as const,
+    keys.jobs.list({ limit: PAGE_SIZE, offset: jobsOffset }),
     () => JobsAPI.list({ limit: PAGE_SIZE, offset: jobsOffset }),
   );
 
@@ -91,7 +91,7 @@ export function ProcessingPage() {
     onJobsRecovered: () => setJobsRecoveredBanner(JOBS_RECOVERED_BANNER),
   });
   // jobListRevision drives ProcessingPage re-renders so JobQueueTabWithData
-  // re-renders after invalidateAll(['jobs.list']) clears the cache.
+  // re-renders after the jobs list cache is cleared.
   void jobListRevision;
 
   const openJobQueueTab = useCallback(() => {
@@ -146,7 +146,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['perspectives']);
+                retryPerspectivesTab();
                 reset();
               }}
             />
@@ -167,7 +167,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['catalog.cache.stats']);
+                retryCatalogCacheTab();
                 reset();
               }}
             />
@@ -188,7 +188,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['jobs.list']);
+                retryJobsList();
                 reset();
               }}
             />
@@ -212,7 +212,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['providers.list']);
+                retryProvidersTab();
                 reset();
               }}
             />

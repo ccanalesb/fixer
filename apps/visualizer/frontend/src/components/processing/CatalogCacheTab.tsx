@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClipModelDownloadConfirm } from '../setup/ClipModelDownloadConfirm';
 import { useClipModelStatus } from '../../hooks/useClipModelStatus';
-import { invalidateAll, useQuery } from '../../data';
+import { keys, useQuery } from '../../data';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/badges';
@@ -96,14 +96,13 @@ export interface CatalogCacheTabProps {
 
 export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
   const [showPipeline, setShowPipeline] = useState(false);
-  const [listRev, setListRev] = useState(0);
-  const stats = useQuery(['catalog.cache.stats', listRev] as const, fetchCacheStats);
+  const stats = useQuery(keys.catalog.cache.stats(), fetchCacheStats);
   const catalogSimilarity = useQuery(
-    ['catalog.similarity.groups', { limit: 12, offset: 0 }] as const,
+    keys.catalog.similarity.groups({ limit: 12, offset: 0 }),
     () => ImagesAPI.listCatalogSimilarityGroups({ limit: 12, offset: 0 }),
   );
   const pipelineStatus = useQuery(
-    ['catalog.cache.pipeline-status', listRev] as const,
+    keys.catalog.cache.pipelineStatus(),
     () => SystemAPI.cachePipelineStatus(),
   );
 
@@ -120,9 +119,7 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
   const anyBusy = buildStarting || advancedBusy !== null;
 
   const refreshStats = useCallback(() => {
-    invalidateAll(['catalog.cache.stats']);
-    invalidateAll(['catalog.cache.pipeline-status']);
-    setListRev((n) => n + 1);
+    SystemAPI.refreshCatalogCacheQueries();
   }, []);
 
   const handleOpenJobQueue = useCallback(() => {
@@ -175,10 +172,6 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
       setPipelineQueuedMessage(null);
       try {
         await JobsAPI.create(type, metadata);
-        if (key === 'similarity') {
-          invalidateAll(['catalog.similarity.groups']);
-        }
-        invalidateAll(['catalog.cache.pipeline-status']);
         setPipelineQueuedMessage(pipelineQueuedMessageForKey(key));
       } catch (err) {
         const message = err instanceof Error ? err.message : MSG_FAILED_START_JOB;

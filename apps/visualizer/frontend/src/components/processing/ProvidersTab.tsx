@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useQuery } from '../../data';
+import { useQuery, keys } from '../../data';
 import {
   CullingModelsAPI,
   JobsAPI,
@@ -19,9 +19,8 @@ import type { ProviderEditValues } from '../providers/ProviderEditForm';
 import { THIS_APP_SECTION_ID } from '../../constants/strings';
 
 export function ProvidersTab() {
-  const [bundleRev, setBundleRev] = useState(0);
   const bundle = useQuery(
-    ['providers.list', bundleRev] as const,
+    keys.providers.tabBundle(),
     async () => {
       const [providerList, fallback, defaults, cullingModels] = await Promise.all([
         ProvidersAPI.list(),
@@ -38,7 +37,7 @@ export function ProvidersTab() {
     },
   );
 
-  const activeJobs = useQuery(['jobs.active'] as const, () => JobsAPI.getActive(), {
+  const activeJobs = useQuery(keys.jobs.active(), () => JobsAPI.getActive(), {
     initialValue: [],
   });
 
@@ -93,7 +92,7 @@ export function ProvidersTab() {
     if (hash === '#system-one-providers' || hash === `#${THIS_APP_SECTION_ID}`) {
       document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [hash, bundleRev]);
+  }, [hash, providers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,7 +116,7 @@ export function ProvidersTab() {
     return () => {
       cancelled = true;
     };
-  }, [systemOneProviders, bundleRev]);
+  }, [systemOneProviders]);
 
   useEffect(() => {
     for (const provider of providers) {
@@ -127,10 +126,6 @@ export function ProvidersTab() {
         .catch(console.error);
     }
   }, [providers, modelCache]);
-
-  const refreshBundle = useCallback(() => {
-    setBundleRev(n => n + 1);
-  }, []);
 
   const refreshModelsForProvider = useCallback(async (providerId: string) => {
     const models = await ProvidersAPI.listModels(providerId);
@@ -145,21 +140,19 @@ export function ProvidersTab() {
   const handleCreateOpenAi = useCallback(
     async (payload: CreateProviderPayload) => {
       const created = await ProvidersAPI.create(payload);
-      refreshBundle();
       setExpandedId(created.id);
       await refreshModelsForProvider(created.id);
     },
-    [refreshBundle, refreshModelsForProvider],
+    [refreshModelsForProvider],
   );
 
   const handleCreateSystemOne = useCallback(
     async (payload: CreateSystemOneProviderPayload) => {
       const created = await ProvidersAPI.create(payload);
-      refreshBundle();
       setExpandedId(created.id);
       await refreshModelsForProvider(created.id);
     },
-    [refreshBundle, refreshModelsForProvider],
+    [refreshModelsForProvider],
   );
 
   const handleSaveProvider = useCallback(
@@ -173,18 +166,16 @@ export function ProvidersTab() {
           key: values.key || undefined,
         },
       });
-      refreshBundle();
     },
-    [refreshBundle],
+    [],
   );
 
   const handleSetEnabled = useCallback(
     async (providerId: string, enabled: boolean) => {
       const result = await ProvidersAPI.update(providerId, { enabled });
       if (result.defaults_notice) setDefaultsNotice(result.defaults_notice);
-      refreshBundle();
     },
-    [refreshBundle],
+    [],
   );
 
   const handleConfirmRemove = useCallback(async () => {
@@ -195,25 +186,23 @@ export function ProvidersTab() {
       if (result.defaults_notice) setDefaultsNotice(result.defaults_notice);
       setRemoveTargetId(null);
       if (expandedId === removeTargetId) setExpandedId(null);
-      refreshBundle();
     } catch (e) {
       console.error(e);
     } finally {
       setRemoveBusy(false);
     }
-  }, [removeTargetId, expandedId, refreshBundle]);
+  }, [removeTargetId, expandedId]);
 
   const handleTestConnection = useCallback(
     async (providerId: string) => {
       setTestingId(providerId);
       try {
         await ProvidersAPI.probe(providerId);
-        refreshBundle();
       } finally {
         setTestingId(null);
       }
     },
-    [refreshBundle],
+    [],
   );
 
   const handleAddModel = useCallback(
@@ -288,7 +277,7 @@ export function ProvidersTab() {
         modelCache={modelCache}
         defaults={bundle.defaults}
         defaultsNotice={defaultsNotice}
-        onRefreshBundle={refreshBundle}
+        onRefreshBundle={() => ProvidersAPI.refreshQueries()}
       />
 
       <OpenAiProvidersGroup

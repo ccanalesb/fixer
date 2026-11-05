@@ -1,7 +1,7 @@
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
-import { Suspense, useCallback, useEffect, useState, useTransition } from 'react';
-import { ErrorBoundary, ErrorState, invalidateAll, useQuery } from '../../data';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { ErrorBoundary, ErrorState, keys, retryPerspectivesTab, useQuery } from '../../data';
 import { Modal } from '../modal/Modal';
 import { Badge } from '../ui/badges';
 import { Button } from '../ui/Button';
@@ -110,7 +110,7 @@ function PerspectiveEditorBody({
   saving: boolean;
   setSaving: (v: boolean) => void;
 }) {
-  const detail = useQuery(['perspectives.detail', slug] as const, () => PerspectivesAPI.get(slug));
+  const detail = useQuery(keys.perspectives.detail(slug), () => PerspectivesAPI.get(slug));
 
   const [displayName, setDisplayName] = useState(detail.display_name);
   const [description, setDescription] = useState(detail.description);
@@ -214,9 +214,7 @@ function PerspectiveEditorBody({
 }
 
 function PerspectivesTabInner() {
-  const [listRev, setListRev] = useState(0);
-  const [, startTransition] = useTransition();
-  const rows = useQuery(['perspectives.list', listRev] as const, () => PerspectivesAPI.list());
+  const rows = useQuery(keys.perspectives.list(), () => PerspectivesAPI.list());
 
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -227,15 +225,13 @@ function PerspectivesTabInner() {
   const [newBody, setNewBody] = useState(NEW_TEMPLATE);
 
   const refreshList = useCallback(() => {
-    invalidateAll(['perspectives.list']);
-    startTransition(() => setListRev((n) => n + 1));
-  }, [startTransition]);
+    PerspectivesAPI.refreshQueries();
+  }, []);
 
   async function handleToggleActive(row: PerspectiveSummary, next: boolean) {
     setError(null);
     try {
       await PerspectivesAPI.update(row.slug, { active: next });
-      startTransition(() => setListRev((n) => n + 1));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update active flag');
     }
@@ -262,7 +258,6 @@ function PerspectivesTabInner() {
       setNewSlug('');
       setNewDisplayName('');
       setNewBody(NEW_TEMPLATE);
-      setListRev((n) => n + 1);
       setSelectedSlug(slug);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Create failed');
@@ -304,7 +299,7 @@ function PerspectivesTabInner() {
                   <ErrorState
                     error={err}
                     reset={() => {
-                      invalidateAll(['perspectives.detail']);
+                      retryPerspectivesTab();
                       reset();
                     }}
                   />
@@ -315,7 +310,6 @@ function PerspectivesTabInner() {
                     slug={selectedSlug}
                     onDeleted={() => {
                       setSelectedSlug(null);
-                      setListRev((n) => n + 1);
                     }}
                     onError={setError}
                     saving={saving}
@@ -392,7 +386,7 @@ export function PerspectivesTab() {
         <ErrorState
           error={error}
           reset={() => {
-            invalidateAll(['perspectives']);
+            retryPerspectivesTab();
             reset();
           }}
         />

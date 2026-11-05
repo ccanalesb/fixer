@@ -90,7 +90,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   );
   const availableMonths = monthsPayload.months;
 
-  const perspectivesRows = useQuery(['perspectives', 'list', 'active'] as const, () =>
+  const perspectivesRows = useQuery(keys.perspectives.active(), () =>
     PerspectivesAPI.list({ active_only: true }),
   );
   const scorePerspectives = useMemo(() => {

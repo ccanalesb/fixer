@@ -4,8 +4,7 @@ import { Tabs, Tab } from '../components/ui/Tabs';
 import { CatalogTab } from '../components/images/CatalogTab';
 import { SkeletonGrid } from '../components/ui/page-states';
 import { LibraryEmptyPrompt } from '../components/setup/LibraryEmptyPrompt';
-import { ErrorBoundary, ErrorState, invalidateAll } from '../data';
-import { keys, prefixOf } from '../data/keys';
+import { ErrorBoundary, ErrorState, retryCatalogImagesTab, retryCullCatalogTab } from '../data';
 import { usePageTab } from '../hooks/usePageTab';
 import { useFirstRunSetup } from '../hooks/useFirstRunSetup';
 import { IMAGES_TAB_IDS, usePageUiStore } from '../stores/pageUiStore';
@@ -44,8 +43,7 @@ function ImagesPageBody() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(prefixOf(keys.images.catalogMonths(), 1));
-                invalidateAll(['perspectives']);
+                retryCatalogImagesTab();
                 reset();
               }}
             />
@@ -66,7 +64,7 @@ function ImagesPageBody() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(prefixOf(keys.images.catalogMonths(), 1));
+                retryCullCatalogTab();
                 reset();
               }}
             />

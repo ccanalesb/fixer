@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { invalidateAll, patchMatching } from '../data'
+import { invalidateAll, keys, patchMatching, prefixOf } from '../data'
 import { useSocketStore } from '../stores/socketStore'
 import type { Job } from '../types/job'
 
@@ -20,7 +20,7 @@ export function useJobSocket({
   const [jobListRevision, setJobListRevision] = useState(0)
 
   const refreshJobList = useCallback(() => {
-    invalidateAll(['jobs.list'])
+    invalidateAll(prefixOf(keys.jobs.list(), 1))
     setJobListRevision((n) => n + 1)
   }, [])
 
@@ -31,8 +31,10 @@ export function useJobSocket({
   useEffect(() => {
     if (!socket || !connected) return
 
+    const jobsListPrefix = JSON.stringify(prefixOf(keys.jobs.list(), 1)).slice(0, -1)
+
     const handleJobCreated = (job: Job) => {
-      invalidateAll(['jobs.list'])
+      invalidateAll(prefixOf(keys.jobs.list(), 1))
       setJobListRevision((n) => n + 1)
       onJobCreated?.(job)
     }
@@ -42,7 +44,6 @@ export function useJobSocket({
       // update an existing row; no rows are added or removed. This avoids
       // deleting the cache entry and triggering a Suspense flash in the job
       // list. A full refresh happens only on job_created / jobs_recovered.
-      const jobsListPrefix = JSON.stringify(['jobs.list']).slice(0, -1)
       patchMatching(
         (k) => k.startsWith(jobsListPrefix),
         (value) => {
@@ -56,7 +57,7 @@ export function useJobSocket({
     }
 
     const handleJobsRecovered = (payload: { job_ids: string[] }) => {
-      invalidateAll(['jobs.list'])
+      invalidateAll(prefixOf(keys.jobs.list(), 1))
       setJobListRevision((n) => n + 1)
       onJobsRecovered?.(payload)
     }

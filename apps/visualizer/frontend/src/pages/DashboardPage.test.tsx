@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { Suspense } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from './DashboardPage'
-import { invalidateAll } from '../data'
+import { deleteMatching } from '../data/cache'
 import {
   ConfigAPI,
   IdentityAPI,
@@ -41,8 +41,7 @@ const completedImportPipeline = {
 
 describe('DashboardPage', () => {
   beforeEach(() => {
-    invalidateAll(['dashboard'])
-    invalidateAll(['firstRun'])
+    deleteMatching(() => true)
     vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
       catalog_path: '/tmp/test.lrcat',
       resolved_path: '/tmp/test.lrcat',
@@ -132,8 +131,7 @@ describe('DashboardPage', () => {
 
 describe('DashboardPage first-run setup', () => {
   beforeEach(() => {
-    invalidateAll(['dashboard'])
-    invalidateAll(['firstRun'])
+    deleteMatching(() => true)
     vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
       catalog_path: '',
       resolved_path: '',

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { invalidateAll, useQuery } from '../data'
-import { keys, prefixOf } from '../data/keys'
+import { keys, useQuery } from '../data'
 import { ConfigAPI, JobsAPI, SystemAPI } from '../services/api'
 import { pickCatalogPath } from '../utils/nativeFilePickers'
 import type { Job } from '../types/job'
@@ -43,7 +42,7 @@ export function useFirstRunSetup() {
   const [importError, setImportError] = useState<string | null>(null)
   const [expectClipDownloadInRun, setExpectClipDownloadInRun] = useState(false)
 
-  const signals = useQuery(['firstRun', 'signals'] as const, fetchFirstRunSignals, {
+  const signals = useQuery(keys.firstRun.signals(), fetchFirstRunSignals, {
     initialValue: {
       pipeline: EMPTY_PIPELINE,
       catalogPhotoCount: 0,
@@ -54,13 +53,6 @@ export function useFirstRunSetup() {
   const buildRun = signals.pipeline?.catalog_cache_build ?? null
   const firstCatalogImportCompleted = signals.firstCatalogImportCompleted ?? false
   const catalogPhotoCount = signals.catalogPhotoCount ?? 0
-
-  const refreshSignals = useCallback(() => {
-    invalidateAll(['firstRun', 'signals'])
-    invalidateAll(keys.dashboard())
-    invalidateAll(['catalog.cache.stats'])
-    invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
-  }, [])
 
   const syncImportJobFromApi = useCallback(async () => {
     const run = buildRun
@@ -93,22 +85,10 @@ export function useFirstRunSetup() {
     onJobCreated: (job) => {
       if (job.type !== 'catalog_cache_build') return
       setImportJob(job)
-      refreshSignals()
     },
     onJobUpdated: (job) => {
       if (job.type !== 'catalog_cache_build') return
       setImportJob((prev) => (prev && prev.id !== job.id ? prev : job))
-      if (
-        job.status === 'completed' ||
-        job.status === 'failed' ||
-        job.status === 'cancelled' ||
-        catalogCacheBuildSyncComplete(job)
-      ) {
-        refreshSignals()
-      }
-      if (job.status === 'completed') {
-        invalidateAll(['system', 'clip-model'])
-      }
     },
   })
 
@@ -155,13 +135,12 @@ export function useFirstRunSetup() {
     try {
       const job = await JobsAPI.create('catalog_cache_build', {})
       setImportJob(job)
-      refreshSignals()
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e))
     } finally {
       setImportStarting(false)
     }
-  }, [catalogSavedAndValid, importRunning, refreshSignals])
+  }, [catalogSavedAndValid, importRunning])
 
   const startImport = useCallback(
     async (options?: { expectClipDownload?: boolean }) => {
@@ -201,6 +180,5 @@ export function useFirstRunSetup() {
     showImagesImportBanner,
     pickAndSaveCatalog,
     startImport,
-    refreshSignals,
   }
 }

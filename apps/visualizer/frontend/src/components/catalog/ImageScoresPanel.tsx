@@ -9,7 +9,7 @@ import {
 } from '../../constants/strings';
 import type { ImageScoreRow } from '../../services/api';
 import { ScoresAPI } from '../../services/api';
-import { ErrorBoundary, ErrorState, useQuery } from '../../data';
+import { ErrorBoundary, ErrorState, keys, useQuery } from '../../data';
 import { Badge } from '../ui/badges';
 
 export interface ImageScoresPanelProps {
@@ -46,7 +46,7 @@ function ImageScoresPanelLoaded({
   perspectiveLabels,
 }: ImageScoresPanelProps) {
   const payload = useQuery(
-    ['scores', 'current', imageKey, imageType, reloadToken] as const,
+    keys.scores.current(imageKey, imageType, reloadToken),
     () => ScoresAPI.getCurrent(imageKey, { image_type: imageType }),
   );
   const current = useMemo(() => payload.current ?? [], [payload]);

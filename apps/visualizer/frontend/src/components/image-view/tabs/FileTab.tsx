@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ImageView } from '../../../services/api'
 import { ImagesAPI } from '../../../services/api'
-import { invalidateAll } from '../../../data'
-import { keys, prefixOf } from '../../../data/keys'
 import {
   DATE_NO_DATE,
   IMAGE_DETAILS_FILE,
@@ -45,9 +43,6 @@ export function FileTab({
     setToggling(true)
     try {
       await ImagesAPI.setInstagramPosted(image.key, next)
-      // The Images grid can be filtered by `posted`, so a toggle changes which
-      // rows belong in each cached page, not just how one row renders.
-      invalidateAll(prefixOf(keys.images.catalogList(''), 2))
     } catch (e) {
       setPosted(prev)
       onPostedChange?.(prev)
