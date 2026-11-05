@@ -125,7 +125,8 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['cull.summary', 'cull.photos']);
+                invalidateAll(['cull.summary']);
+                invalidateAll(['cull.photos']);
                 reset();
               }}
             />

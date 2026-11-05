@@ -30,7 +30,9 @@ export function CullingProfilesSection() {
   }, [profiles, selectedSlug])
 
   const refresh = useCallback(() => {
-    invalidateAll(['culling-profiles.list', 'culling-profiles.pipeline', 'culling-profiles.detail'])
+    invalidateAll(['culling-profiles.list'])
+    invalidateAll(['culling-profiles.pipeline'])
+    invalidateAll(['culling-profiles.detail'])
   }, [])
 
   const onAdd = async () => {

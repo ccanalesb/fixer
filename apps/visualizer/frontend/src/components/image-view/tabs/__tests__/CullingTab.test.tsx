@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Suspense } from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { deleteMatching } from '../../../../data/cache'
+import { useQuery } from '../../../../data'
 import type { FrameSubstanceResponse } from '../../../../services/api'
 import { CullingTab } from '../CullingTab'
 
@@ -155,5 +156,30 @@ describe('CullingTab — frame substance', () => {
     renderTab()
     fireEvent.click(await screen.findByRole('button', { name: /Restore to ranking/i }))
     await waitFor(() => expect(mockCreateOverride).toHaveBeenCalledWith(KEY))
+  })
+
+  it('refetches dashboard and identity queries after a frame-substance override', async () => {
+    const mockDashboard = vi.fn().mockResolvedValue({ stats: null })
+    const mockIdentity = vi.fn().mockResolvedValue({ mirror: null })
+    mockGet.mockResolvedValue(frame())
+
+    function Harness() {
+      useQuery(['dashboard'] as const, () => mockDashboard())
+      useQuery(['identity', 'probe'] as const, () => mockIdentity())
+      return <CullingTab imageKey={KEY} showVerdict={false} />
+    }
+
+    render(
+      <Suspense fallback={null}>
+        <Harness />
+      </Suspense>,
+    )
+    await waitFor(() => expect(mockDashboard).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockIdentity).toHaveBeenCalledTimes(1))
+    mockCreateOverride.mockResolvedValue({ image_key: KEY, has_override: true })
+    fireEvent.click(await screen.findByRole('button', { name: /Restore to ranking/i }))
+    await waitFor(() => expect(mockCreateOverride).toHaveBeenCalledWith(KEY))
+    await waitFor(() => expect(mockDashboard).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockIdentity).toHaveBeenCalledTimes(2))
   })
 })

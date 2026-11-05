@@ -145,7 +145,8 @@ function CullingTabContent({
 
   const refreshVerdict = useCallback(() => {
     invalidate(['cull.detail', imageKey])
-    invalidateAll(['cull.summary', 'cull.photos'])
+    invalidateAll(['cull.summary'])
+    invalidateAll(['cull.photos'])
     invalidateAll(['images.catalog'])
     onDataChanged?.()
   }, [imageKey, onDataChanged])
@@ -167,7 +168,9 @@ function CullingTabContent({
       if (frame.has_override) await FrameSubstanceAPI.deleteOverride(imageKey)
       else await FrameSubstanceAPI.createOverride(imageKey)
       invalidate(['frameSubstance', imageKey])
-      invalidateAll(['images.catalog', 'list', 'dashboard', 'identity'])
+      invalidateAll(['images.catalog', 'list'])
+      invalidateAll(['dashboard'])
+      invalidateAll(['identity'])
       onDataChanged?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update override')
