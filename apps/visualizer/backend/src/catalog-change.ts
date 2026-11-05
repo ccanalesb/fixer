@@ -18,21 +18,13 @@ import {
 } from './catalog-library.js';
 import { config, expandUserPath, loadLibraryConfig, updateConfigYamlCatalogPath } from './config.js';
 import { openLibraryDb, type Db } from './db/connection.js';
-import {
-  createJob,
-  getActiveJobs,
-  getJob,
-  getJobLogStatsBulk,
-  initJobsDb,
-} from './db/jobs/jobs.js';
+import { createJob, getActiveJobs, initJobsDb } from './db/jobs/jobs.js';
 import { setLibraryMeta } from './db/library/bootstrap.js';
 import { getImageCount } from './db/library/statistics.js';
 import { libraryWrite } from './db/library/write.js';
 import { catalogRequiringJobTypes } from './jobs/registry.js';
 import { transitionCancel } from './jobs/transitions.js';
 import { signalCancel } from './jobs/processor.js';
-import { emitJobEvent } from './websocket/events.js';
-import { compactJobPayload, type Job } from './api/schemas/jobs.js';
 
 export type CatalogChangeMode = 'update_path' | 'switch';
 
@@ -151,20 +143,6 @@ function withJobsDb<T>(fn: (db: Db) => T): T {
   }
 }
 
-function emitJobCreated(jobsDb: Db, jobId: string): void {
-  const job = getJob(jobsDb, jobId);
-  if (!job) return;
-  const stats = getJobLogStatsBulk(jobsDb, [jobId]).get(jobId);
-  const payload = compactJobPayload({
-    ...job,
-    logs_total: stats?.logs_total ?? job.logs_total ?? 0,
-    warning_count: stats?.warning_count ?? job.warning_count ?? 0,
-    error_count: stats?.error_count ?? job.error_count ?? 0,
-    last_log_at: stats?.last_log_at ?? job.last_log_at ?? null,
-  } as Record<string, unknown>) as unknown as Job;
-  emitJobEvent('job_created', payload);
-}
-
 export function previewCatalogChange(
   newCatalogPathRaw: string,
   configPath = config.LT_CONFIG_YAML,
@@ -279,7 +257,6 @@ export function applyCatalogChange(
 
     return withJobsDb((jobsDb) => {
       const syncId = createJob(jobsDb, 'catalog_sync', {});
-      emitJobCreated(jobsDb, syncId);
       return {
         catalog_path: validated.trimmed,
         change: mode,
@@ -296,7 +273,6 @@ export function applyCatalogChange(
     updateConfigYamlCatalogPath(configPath, validated.trimmed);
     invalidateOpenLibraryCache();
     const syncId = createJob(jobsDb, 'catalog_sync', {});
-    emitJobCreated(jobsDb, syncId);
     return {
       catalog_path: validated.trimmed,
       change: mode,

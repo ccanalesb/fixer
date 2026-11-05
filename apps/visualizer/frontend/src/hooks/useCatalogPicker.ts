@@ -21,6 +21,12 @@ export interface CatalogStatus {
   catalogKind: 'lightroom' | 'folder'
   photoCount: number | null
   pickerUsable: boolean
+  /**
+   * Another device talking to the backend over the network: the catalog is
+   * read-only here, shown without buttons or a typed path. A backend-host
+   * browser with no native dialog is NOT read-only — it keeps the typed path.
+   */
+  readOnly: boolean
 }
 
 export function normalizeCatalogPath(raw: string): string {
@@ -63,6 +69,7 @@ export function useCatalogPicker() {
         pickerUsable:
           isTauri() ||
           (data.picker_available && browserIsOnBackendHost(window.location.hostname)),
+        readOnly: !isTauri() && !browserIsOnBackendHost(window.location.hostname),
       })
       setDraft(data.catalog_path)
     } catch (e) {

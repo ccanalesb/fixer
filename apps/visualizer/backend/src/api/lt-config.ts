@@ -22,8 +22,11 @@ import {
 } from '../config.js';
 import { openLibraryDb } from '../db/connection.js';
 import { getImageCount } from '../db/library/statistics.js';
+import { getJob, initJobsDb } from '../db/jobs/jobs.js';
+import { emitJobEvent } from '../websocket/events.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
+import { compactJobPayload } from './schemas/jobs.js';
 import {
   ConfigCatalogChangePreviewRequest,
   ConfigCatalogChangePreviewResponse,
@@ -196,8 +199,26 @@ ltConfigRoutes.openapi(putCatalogRoute, (c) => {
   const { catalog_path: value, change } = c.req.valid('json');
   const result = applyCatalogChange(value, change);
   if ('error' in result) return c.json({ error: result.error }, 400);
+  announceCatalogSyncJob(result.catalog_sync_job_id);
   return c.json({ ...result, ok: true }, 200);
 });
+
+/** Broadcast the freshly queued catalog sync so connected clients show it at once. */
+function announceCatalogSyncJob(jobId: string | null): void {
+  if (!jobId) return;
+  const jobsDb = initJobsDb(config.VISUALIZER_DB);
+  try {
+    const job = getJob(jobsDb, jobId);
+    if (job) {
+      emitJobEvent(
+        'job_created',
+        compactJobPayload(job as unknown as Record<string, unknown>) as never,
+      );
+    }
+  } finally {
+    jobsDb.close();
+  }
+}
 
 // --- stack detection --------------------------------------------------------
 

@@ -7,6 +7,8 @@ export type ConfigCatalogGetResponse =
   components['schemas']['ConfigCatalogGetResponse']
 export type ConfigCatalogPickResponse =
   components['schemas']['ConfigCatalogPickResponse']
+export type ConfigCatalogPickFolderResponse =
+  components['schemas']['ConfigCatalogPickFolderResponse']
 export type ConfigCatalogPutResponse =
   components['schemas']['ConfigCatalogPutResponse']
 export type ConfigStackDetectionGetResponse =

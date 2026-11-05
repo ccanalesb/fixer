@@ -27,6 +27,7 @@ import type {
 import type {
   ConfigCatalogChangePreviewResponse,
   ConfigCatalogGetResponse,
+  ConfigCatalogPickFolderResponse,
   ConfigCatalogPickResponse,
   ConfigCatalogPutResponse,
   ConfigStackDetectionGetResponse,
@@ -414,7 +415,7 @@ export const ConfigAPI = {
     ),
 
   pickFolderCatalog: () =>
-    request<ConfigCatalogPickResponse>(
+    request<ConfigCatalogPickFolderResponse>(
       '/config/catalog/pick-folder',
       { method: 'POST' },
       CATALOG_PICK_TIMEOUT_MS,

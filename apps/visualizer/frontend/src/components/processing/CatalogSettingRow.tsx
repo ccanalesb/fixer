@@ -123,7 +123,7 @@ export function CatalogSettingRow() {
     </span>
   )
 
-  if (!status.pickerUsable) {
+  if (status.readOnly) {
     return (
       <SettingRow
         name="Catalog"
@@ -144,26 +144,28 @@ export function CatalogSettingRow() {
         name="Catalog"
         description={description}
         control={
-          <>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => void handlePickFolder()}
-              disabled={manual || busy}
-            >
-              {pickingFolder ? 'Choosing…' : 'Choose folder…'}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => void handlePickLrcat()}
-              disabled={manual || busy}
-            >
-              {picking ? 'Choosing…' : 'Choose .lrcat…'}
-            </Button>
-          </>
+          status.pickerUsable ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void handlePickFolder()}
+                disabled={manual || busy}
+              >
+                {pickingFolder ? 'Choosing…' : 'Choose folder…'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void handlePickLrcat()}
+                disabled={manual || busy}
+              >
+                {picking ? 'Choosing…' : 'Choose .lrcat…'}
+              </Button>
+            </>
+          ) : null
         }
         under={
           <>

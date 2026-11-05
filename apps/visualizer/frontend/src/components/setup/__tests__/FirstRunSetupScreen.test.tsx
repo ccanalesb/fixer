@@ -34,6 +34,7 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
         catalogKind: 'lightroom',
         photoCount: 0,
         pickerUsable: true,
+        readOnly: false,
       },
       changesCatalog: false,
       error: null,
