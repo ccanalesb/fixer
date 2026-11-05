@@ -4,7 +4,8 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { clipCacheDir, config, loadLibraryConfig } from '../config.js';
+import { clipCacheDir, config } from '../config.js';
+import { resolveOpenLibraryPaths } from '../open-library.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openDb, openLibraryDb } from '../db/connection.js';
 import { getCachePipelineStatus } from '../db/jobs/pipeline-status.js';
@@ -72,7 +73,7 @@ systemRoutes.openapi(thirdPartyNoticesRoute, (c) => {
 });
 
 systemRoutes.openapi(healthRoute, (c) => {
-  const dbPath = config.LIBRARY_DB;
+  const { libraryDbPath: dbPath } = resolveOpenLibraryPaths();
   if (!existsSync(dbPath)) {
     return c.json({ error: 'Library database is not available.' }, 503);
   }
@@ -123,7 +124,7 @@ const statsRoute = createRoute({
 });
 
 systemRoutes.openapi(statsRoute, (c) => {
-  const dbPath = config.LIBRARY_DB;
+  const { libraryDbPath: dbPath } = resolveOpenLibraryPaths();
   if (!existsSync(dbPath)) {
     return c.json({ error: ERROR_DB_NOT_FOUND }, 404);
   }
@@ -157,7 +158,7 @@ const catalogStatusRoute = createRoute({
 });
 
 systemRoutes.openapi(catalogStatusRoute, (c) => {
-  const dbPath = config.LIBRARY_DB;
+  const { libraryDbPath: dbPath } = resolveOpenLibraryPaths();
   // A missing library DB is "not cached", not an error.
   if (!existsSync(dbPath)) return c.json({ cached: false }, 200);
 
@@ -193,7 +194,7 @@ const insightsSummaryRoute = createRoute({
 });
 
 systemRoutes.openapi(insightsSummaryRoute, (c) => {
-  const dbPath = config.LIBRARY_DB;
+  const { libraryDbPath: dbPath } = resolveOpenLibraryPaths();
   if (!existsSync(dbPath)) return c.json({ error: ERROR_DB_NOT_FOUND }, 404);
 
   const db = openLibraryDb(dbPath, { readonly: true });
@@ -218,12 +219,11 @@ const cacheStatusRoute = createRoute({
 });
 
 systemRoutes.openapi(cacheStatusRoute, (c) => {
-  const dbPath = config.LIBRARY_DB;
+  const { libraryDbPath: dbPath, visionCacheDir: cacheDir } = resolveOpenLibraryPaths();
   if (!existsSync(dbPath)) return c.json({ error: ERROR_DB_NOT_FOUND }, 404);
 
   const db = openLibraryDb(dbPath, { readonly: true });
   try {
-    const cacheDir = loadLibraryConfig(config.LT_CONFIG_YAML).visionCacheDir;
     const stats = getCacheStats(db, cacheDir);
     return c.json(
       {

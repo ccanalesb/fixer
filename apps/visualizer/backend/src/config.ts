@@ -289,6 +289,11 @@ export function updateConfigYamlCatalogPath(configFile: string, catalogPath: str
   updateConfigYaml(configFile, 'catalog_path', stripped);
 }
 
+/** The configured Lightroom catalog (`.lrcat`) path from `config.yaml`, if any. */
+export function resolveConfiguredCatalogPath(configPath = defaultConfigYamlPath()): string | null {
+  return loadLibraryConfig(configPath).catalogPath;
+}
+
 /** Write `stack_burst_delta_ms` into `config.yaml`, preserving other keys. */
 export function updateConfigYamlStackBurstDeltaMs(configFile: string, value: number): void {
   const intValue = Math.trunc(value);

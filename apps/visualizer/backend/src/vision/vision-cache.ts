@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { config, loadLibraryConfig } from '../config.js';
+import { resolveOpenLibraryPaths } from '../open-library.js';
 import type { Db } from '../db/connection.js';
 import { getCatalogImagesMissingCache, getImageOrientation } from '../db/library/catalog.js';
 import {
@@ -20,7 +21,7 @@ import {
 } from '../db/library/vision-cache.js';
 import { libraryWrite } from '../db/library/write.js';
 import { nowIsoLocal } from '../utils/datetime.js';
-import { resolveCatalogPath } from '../utils/path-resolve.js';
+import { resolveCatalogImageFilePath } from '../utils/path-resolve.js';
 import { compressImage, getViewablePathManaged, isRawPath, isVideoPath } from '../imaging/image-prep.js';
 import {
   normalizeOrientation,
@@ -154,11 +155,11 @@ export async function getOrCreateCachedImage(
   originalPath: string,
 ): Promise<string | null> {
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
+  const { visionCacheDir: cacheDir } = resolveOpenLibraryPaths();
   const orientation = getImageOrientation(db, catalogKey);
   // Cache disabled: compress on the fly and hand back a temp file.
   if (!cfg.visionCacheEnabled) return compressImage(originalPath, { orientation });
 
-  const cacheDir = cfg.visionCacheDir;
   await mkdir(cacheDir, { recursive: true });
 
   if (await isVisionCacheValid(db, catalogKey, originalPath)) {
@@ -312,7 +313,7 @@ export async function warmVisionCache(db: Db, limit?: number | null): Promise<Wa
     }
 
     const raw = record['filepath'];
-    const filepath = resolveCatalogPath(typeof raw === 'string' ? raw : '');
+    const filepath = resolveCatalogImageFilePath(typeof raw === 'string' ? raw : '');
     if (!filepath) {
       skipped += 1;
       continue;
@@ -332,9 +333,9 @@ export async function warmVisionCache(db: Db, limit?: number | null): Promise<Wa
 
 /** Write bytes into the cache directory directly. Used by the cache-build job. */
 export async function writeCacheFile(name: string, data: Buffer): Promise<string> {
-  const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
-  await mkdir(cfg.visionCacheDir, { recursive: true });
-  const path = isAbsolute(name) ? name : join(cfg.visionCacheDir, name);
+  const { visionCacheDir } = resolveOpenLibraryPaths();
+  await mkdir(visionCacheDir, { recursive: true });
+  const path = isAbsolute(name) ? name : join(visionCacheDir, name);
   await writeFile(path, data);
   return path;
 }

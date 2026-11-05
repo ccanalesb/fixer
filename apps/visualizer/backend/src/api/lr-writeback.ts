@@ -2,7 +2,7 @@
  * Lightroom Classic write-back settings and per-photo detail.
  */
 import { createRoute, z } from '@hono/zod-openapi';
-import { config, loadLibraryConfig } from '../config.js';
+import { config, loadLibraryConfig, resolveConfiguredCatalogPath } from '../config.js';
 import { buildWritebackPhotoDetail, undoWritebackKind } from '../lightroom/writeback.js';
 import type { WritebackKind } from '../lightroom/writeback-types.js';
 import { countWritebackByStatus } from '../db/library/lr-writeback-state.js';
@@ -179,8 +179,7 @@ lrWritebackRoutes.openapi(undoRoute, (c) => {
   if (!status.available || !status.path) {
     throw new HttpError(400, status.reason ?? 'Lightroom Classic catalog unavailable.');
   }
-  const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
-  const path = (cfg.catalogPath ?? '').trim();
+  const path = (resolveConfiguredCatalogPath(config.LT_CONFIG_YAML) ?? '').trim();
   const result = undoWritebackKind(db, path, imageKey, kind as WritebackKind);
   if (!result.ok) throw new HttpError(400, result.reason ?? 'Undo failed.');
   return c.json(result, 200);

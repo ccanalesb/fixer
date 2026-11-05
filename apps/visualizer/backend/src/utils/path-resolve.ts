@@ -87,13 +87,13 @@ export function resolveFilepath(path: string): string {
 }
 
 /**
- * Resolve a catalog path to something openable, or `''` when it cannot be reached.
+ * Resolve a stored catalog image filepath to something openable, or `''` when it cannot be reached.
  *
  * An existing path is returned as-is; otherwise UNC resolution is attempted and the
  * result is only accepted if it exists. The empty string is the "unreachable"
  * signal, which is why a caller must never pass this straight to a file API.
  */
-export function resolveCatalogPath(filepath: string): string {
+export function resolveCatalogImageFilePath(filepath: string): string {
   if (!filepath) return '';
   if (existsSync(filepath)) return filepath;
 

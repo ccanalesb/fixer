@@ -17,6 +17,7 @@ import {
   updateConfigYamlCatalogPath,
   updateConfigYamlStackBurstDeltaMs,
 } from '../config.js';
+import { resolveOpenLibraryPaths } from '../open-library.js';
 import { openLibraryDb, type Db } from '../db/connection.js';
 import { getLibraryMeta, SYNCED_CATALOG_META_KEY } from '../db/library/bootstrap.js';
 import { createOpenApiApp } from './openapi.js';
@@ -54,10 +55,11 @@ function isFile(path: string): boolean {
  * not "out of sync", so the UI stays quiet rather than warning on a guess.
  */
 function syncedCatalogPath(): string | null {
-  if (!existsSync(config.LIBRARY_DB)) return null;
+  const { libraryDbPath } = resolveOpenLibraryPaths();
+  if (!existsSync(libraryDbPath)) return null;
   let db: Db | undefined;
   try {
-    db = openLibraryDb(config.LIBRARY_DB, { readonly: true });
+    db = openLibraryDb(libraryDbPath, { readonly: true });
     return getLibraryMeta(db, SYNCED_CATALOG_META_KEY);
   } catch {
     return null;

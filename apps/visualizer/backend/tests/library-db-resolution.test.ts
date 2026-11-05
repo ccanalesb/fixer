@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT, resolveLibraryDbLocation } from '../src/config.js';
 import { describeLibraryDb } from '../src/jobs/library-db.js';
+import { resolveOpenLibraryPaths } from '../src/open-library.js';
 
 let dir: string;
 const saved = {
@@ -62,5 +63,26 @@ describe('describeLibraryDb', () => {
       path: join(REPO_ROOT, 'library.db'),
       source: 'default',
     });
+  });
+});
+
+describe('resolveOpenLibraryPaths', () => {
+  it('pairs library.db resolution with vision_cache_dir from the same config file', () => {
+    const db = join(dir, 'library.db');
+    writeFileSync(db, '');
+    const cache = join(dir, 'my-vision-cache');
+    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
+    writeFileSync(process.env.LT_CONFIG_YAML, `db_path: ${db}\nvision_cache_dir: ${cache}\n`);
+
+    expect(resolveOpenLibraryPaths()).toEqual({ libraryDbPath: db, visionCacheDir: cache });
+  });
+
+  it('uses the vision cache default when vision_cache_dir is omitted', () => {
+    process.env.LT_DATA_DIR = dir;
+    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
+    writeFileSync(process.env.LT_CONFIG_YAML, 'catalog_path: /x.lrcat\n');
+
+    expect(resolveOpenLibraryPaths().visionCacheDir).toBe(join(dir, 'vision-cache'));
+    expect(resolveOpenLibraryPaths().libraryDbPath).toBe(join(dir, 'library.db'));
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Reconcile cull verdicts → Lightroom pick/rating/keywords with guards and per-photo state.
  */
-import { config, loadLibraryConfig } from '../config.js';
+import { config, resolveConfiguredCatalogPath } from '../config.js';
 import type { WritebackReconcileCounts } from './writeback-types.js';
 import { WRITE_CHUNK_SIZE } from './writeback-types.js';
 import type { Db } from '../db/connection.js';
@@ -46,8 +46,7 @@ export { undoWritebackKind } from './writeback-undo.js';
 export { buildWritebackPhotoDetail } from './writeback-detail.js';
 
 function catalogPathFromConfig(): string | null {
-  const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
-  const path = (cfg.catalogPath ?? '').trim();
+  const path = (resolveConfiguredCatalogPath(config.LT_CONFIG_YAML) ?? '').trim();
   return path || null;
 }
 

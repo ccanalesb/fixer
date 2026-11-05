@@ -18,8 +18,8 @@ import { CliError, withLibraryDb, withLibraryDbAsync } from '../library-db.js';
 import { boolFlag, intFlag, stringFlag } from '../parse.js';
 import type { CommandContext } from '../registry.js';
 
-/** `--catalog` if given, else `catalog_path` from `config.yaml`, and it must exist. */
-function resolveCatalogPath(ctx: CommandContext): string {
+/** `--catalog` if given, else the configured `.lrcat` from `config.yaml`, and it must exist. */
+function resolveCliConfiguredCatalogPath(ctx: CommandContext): string {
   const catalogPath = stringFlag(ctx.args, 'catalog') ?? ctx.config.catalogPath;
   if (!catalogPath) {
     throw new CliError('No catalog path provided. Use --catalog or config.yaml');
@@ -29,7 +29,7 @@ function resolveCatalogPath(ctx: CommandContext): string {
 }
 
 export function cmdScan(ctx: CommandContext): number {
-  const catalogPath = resolveCatalogPath(ctx);
+  const catalogPath = resolveCliConfiguredCatalogPath(ctx);
   ctx.out(`Scanning catalog: ${catalogPath}`);
 
   // Read-only, as `connect_catalog` is: a scan must not be able to mutate a file
@@ -55,7 +55,7 @@ export function cmdScan(ctx: CommandContext): number {
 }
 
 export async function cmdSync(ctx: CommandContext): Promise<number> {
-  const catalogPath = resolveCatalogPath(ctx);
+  const catalogPath = resolveCliConfiguredCatalogPath(ctx);
 
   return withLibraryDbAsync(ctx, { mustExist: false }, async (db) => {
     ctx.out(`Syncing catalog: ${catalogPath}`);

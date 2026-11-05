@@ -12,6 +12,7 @@ import { createServer } from 'node:net';
 import { existsSync } from 'node:fs';
 import { Server as SocketIOServer } from 'socket.io';
 import { config } from './config.js';
+import { resolveOpenLibraryPaths } from './open-library.js';
 import { createApp } from './app.js';
 import { serveApp } from './http-server.js';
 import { upgradeLibraryDb } from './api/library-db.js';
@@ -53,7 +54,7 @@ await refuseIfPortInUse(config.HOST, config.PORT);
 migrateProvidersConfigIfNeeded();
 migrateCullingModelsIfNeeded();
 
-const libraryDbPath = config.LIBRARY_DB;
+const { libraryDbPath } = resolveOpenLibraryPaths();
 if (process.env.LT_DATA_DIR && !existsSync(libraryDbPath)) {
   initLibraryDb(libraryDbPath).close();
 }

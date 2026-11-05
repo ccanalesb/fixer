@@ -17,7 +17,7 @@
 | **job transitions seam** | `jobs/transitions.ts` — pure cancel/retry status legality and `updateJobStatus` targets. Routes delegate via `transitionCancel` / `transitionRetry`; no status-rule literals in `api/jobs.ts`. See ADR-0010. |
 | **checkpoint** | Persisted job progress snapshot merged into job metadata so interrupted jobs can resume. |
 | **emit_progress** | SocketIO callback passed into job runner and handlers to push real-time progress to the frontend. |
-| **catalog** | The Lightroom Classic `.lrcat` file, named by `catalog_path` in `config.yaml`. Exactly one per installation. Read (and keyword-written) through `lightroom/`. Never a synonym for the **library DB**, which mirrors it, nor for an **image filepath**. Beware: several existing identifiers say "catalog" when they mean one of the other two — `catalogRequiringJobTypes()` gates on the library DB, and `utils/path-resolve.ts`'s `resolveCatalogPath` resolves image filepaths. |
+| **catalog** | The Lightroom Classic `.lrcat` file, named by `catalog_path` in `config.yaml`. Exactly one per installation. Read (and keyword-written) through `lightroom/`. Never a synonym for the **library DB**, which mirrors it, nor for an **image filepath**. Beware: several existing identifiers say "catalog" when they mean one of the other two — `catalogRequiringJobTypes()` gates on the library DB, and `utils/path-resolve.ts`'s `resolveCatalogImageFilePath` resolves image filepaths. The configured `.lrcat` path comes from `resolveConfiguredCatalogPath()` in `config.ts`. |
 | **data folder** | User-writable state for one install: `config.yaml`, `providers.json`, `library.db`, `visualizer.db`, `models/`, the vision cache, thumbnails, and (in the packaged app) converter caches. In a source install both `LT_DATA_DIR` and `LT_RESOURCES_DIR` default to the repo root, so paths match today's layout; the desktop host sets `LT_DATA_DIR` to app-local data. Per-file env vars (`LIBRARY_DB`, `DATABASE_PATH`, `LT_CONFIG_YAML`, `LT_PROVIDERS_JSON`, …) still override the defaults. |
 | **resources** | Read-only bundle the backend reads but never writes: factory prompts (`prompts/perspectives`, `prompts/culling-profiles`), `scripts/app-models/`, `providers.example.json`, and (when packaged) the built SPA. `LT_RESOURCES_DIR` defaults to the repo root in a source install. |
 | **visualizer DB** | `visualizer.db` — SQLite database holding jobs, logs, and visualizer-specific state. Separate from `library.db`. Lives in the **data folder**. |
@@ -67,6 +67,7 @@ Paths are relative to `apps/visualizer/backend/src/`.
 | `app.ts` | `createApp()` factory — mounts the route groups, CORS and the OpenAPI document |
 | `server.ts` | Process entry point — binds the port, attaches SocketIO, starts the job processor |
 | `config.ts` | Env-var getters (`LT_DATA_DIR`, `LT_RESOURCES_DIR`, `LIBRARY_DB`, `FLASK_PORT`, …), path roots, shared `library.db` resolution, and the `config.yaml` loader |
+| `open-library.ts` | Resolves the open library's `library.db` path and vision cache folder (`resolveOpenLibraryPaths`) |
 | `db/jobs/` | Visualizer DB schema and helpers (jobs, logs, checkpoints) |
 | `db/library/` | Every `library.db` read and write, one module per table family; `bootstrap.ts` owns the schema |
 | `jobs/runner.ts` | `JobRunner` — lifecycle, cancellation, progress hooks |

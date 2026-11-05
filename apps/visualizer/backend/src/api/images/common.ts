@@ -8,6 +8,7 @@
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { dirname, sep } from 'node:path';
 import { config, expandUserPath, loadLibraryConfig } from '../../config.js';
+import { resolveOpenLibraryPaths } from '../../open-library.js';
 
 /** Fully resolve a path: trim, expand `~`, then follow symlinks. `null` if unusable. */
 export function canonicalPath(path: string | null | undefined): string | null {
@@ -66,9 +67,10 @@ export function isPathUnderAllowedRoots(filePath: string, roots: readonly string
  */
 export function catalogThumbnailRoots(): string[] {
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
+  const { visionCacheDir } = resolveOpenLibraryPaths();
   const roots: string[] = [];
 
-  const vc = canonicalPath(cfg.visionCacheDir);
+  const vc = canonicalPath(visionCacheDir);
   if (vc) roots.push(vc);
 
   const mp = (cfg.mountPoint ?? '').trim();

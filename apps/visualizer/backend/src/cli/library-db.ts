@@ -4,6 +4,7 @@
 import { existsSync } from 'node:fs';
 import { openLibraryDb, type Db } from '../db/connection.js';
 import { initLibraryDb, upgradeLibrarySchema } from '../db/library/bootstrap.js';
+import { resolveOpenLibraryPathsForCli } from '../open-library.js';
 import type { CommandContext } from './registry.js';
 import { stringFlag } from './parse.js';
 
@@ -14,7 +15,10 @@ export class CliError extends Error {}
 
 /** `--db` if given, else `db_path` from `config.yaml`. */
 export function resolveLibraryDbPath(ctx: CommandContext, opts: { mustExist: boolean }): string {
-  const dbPath = stringFlag(ctx.args, 'db') ?? ctx.config.dbPath;
+  const { libraryDbPath: dbPath } = resolveOpenLibraryPathsForCli(
+    ctx.config,
+    stringFlag(ctx.args, 'db') ?? undefined,
+  );
   if (!dbPath) throw new CliError(MISSING_DB_PATH_MSG);
   if (opts.mustExist && !existsSync(dbPath)) {
     throw new CliError(`Database not found: ${dbPath}`);

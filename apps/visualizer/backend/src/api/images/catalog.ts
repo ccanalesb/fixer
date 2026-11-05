@@ -33,7 +33,7 @@ import { getVisionCachedImage } from '../../db/library/vision-cache.js';
 import { libraryDb, type LibraryEnv } from '../library-db.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { computeSingleImageAggregateScores } from '../../identity/aggregates.js';
-import { resolveCatalogPath } from '../../utils/path-resolve.js';
+import { resolveCatalogImageFilePath } from '../../utils/path-resolve.js';
 import { clampPagination, errorNotFound } from '../../utils/responses.js';
 import { validateScorePerspectiveExists } from '../../utils/score-perspective.js';
 import { sendFile } from '../../utils/send-file.js';
@@ -112,7 +112,7 @@ catalogRoutes.get('/images/catalog/:image_key/thumbnail', (c) => {
       return sendFile(c, cached.compressed_path, { mimetype: 'image/jpeg' });
     }
 
-    const filepath = resolveCatalogPath(String(image.filepath ?? ''));
+    const filepath = resolveCatalogImageFilePath(String(image.filepath ?? ''));
     if (!filepath || !existsSync(filepath)) return errorNotFound(c, 'file');
     if (!isPathUnderAllowedRoots(filepath, allowed)) return errorNotFound(c, 'file');
 
