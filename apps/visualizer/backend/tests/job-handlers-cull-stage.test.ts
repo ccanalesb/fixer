@@ -319,7 +319,8 @@ describe('sent by hand across stage versions', () => {
     db.close();
     const job = await runJob('batch_score', { force: true, max_workers: 1, perspective_slugs: ['street'] });
     expect(job.status).toBe('completed');
-    expect((job.result as JobCullResult).held_back?.sent_by_hand_passed).toBe(1);
+    expect((job.result as JobCullResult).held_back?.sent_by_hand_passed).toBe(0);
+    expect((job.result as JobCullResult).cull?.sent_by_hand_passed).toBe(0);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('passed');
     expect(fx.query("SELECT image_key FROM image_scores WHERE image_key = 'hand' AND is_current = 1")).toHaveLength(1);
   });

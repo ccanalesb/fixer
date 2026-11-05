@@ -5,6 +5,7 @@ import { openLibraryDb, type Db } from '../../db/connection.js';
 import type { JobLogLevel } from '../../db/jobs/jobs.js';
 import { upgradeLibrarySchema } from '../../db/library/bootstrap.js';
 import { loadCullVerdictsForKeys } from '../../db/library/cull-verdicts.js';
+import type { VerdictTally } from '../../cull/verdict-tally.js';
 import { CullingStageError } from '../../cull/stage-models.js';
 import { AuthenticationError, InvalidRequestError } from '../../providers/errors.js';
 import type { AnalyzeStage } from '../checkpoint.js';
@@ -174,14 +175,13 @@ export function filterVoidSubstanceFromScoringSelection(
 }
 
 /** Photos of a selection not sent to kimi because of their cull verdict, by reason. */
-export interface CullHeldBack {
-  filtered_by_culling_profile: number;
-  filtered_by_score_forecast: number;
-  /** A stage still unanswered (the model failed on it, or no image to read): retried by the next job. */
-  pending: number;
+export type CullHeldBack = Pick<
+  VerdictTally,
+  'filtered_by_culling_profile' | 'filtered_by_score_forecast' | 'pending'
+> & {
   /** Never culled: only when the culling step could not reach the photo. */
   no_verdict: number;
-}
+};
 
 /**
  * Keep only the photos culling passed: verdict `passed`, or sent by hand whatever the verdict.
