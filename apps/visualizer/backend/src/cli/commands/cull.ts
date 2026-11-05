@@ -11,10 +11,9 @@ import {
   STAGE_NAMES,
   stageModelsFromConfig,
 } from '../../cull/stage-models.js';
-import { resolveCurrentStages } from '../../cull/stages.js';
+import { syncCurrentStages } from '../../cull/stages.js';
 import type { StageKind } from '../../cull/types.js';
 import { initLibraryDb } from '../../db/library/bootstrap.js';
-import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { AppModels } from '../../app-models/app-models.js';
 import { THIS_APP_ENDPOINT } from '../../systemone/client.js';
 import { stringFlag } from '../parse.js';
@@ -46,7 +45,7 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
       { cfg: ctx.config.cullingModels },
     );
     for (const kind of KINDS) ctx.out(`  ${STAGE_NAMES[kind]} model identity: ${ids[kind]}`);
-    const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, ids);
+    const stages = syncCurrentStages(db, ids);
     const check = new CullingModels(models, stages);
     const photo = stringFlag(ctx.args, 'photo');
     await check.check();

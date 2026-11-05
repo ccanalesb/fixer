@@ -15,7 +15,7 @@ import {
   stageModelsFromConfig,
   stagesOn,
 } from '../../cull/stage-models.js';
-import { resolveCurrentStages } from '../../cull/stages.js';
+import { syncCurrentStages } from '../../cull/stages.js';
 import type { CullSummaryVerdict, StageKind } from '../../cull/types.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
@@ -102,7 +102,7 @@ export async function runCullPass(
     { cfg: cullingModels },
   );
   assertForecastHasQuestions(stagesOn(pipeline.config), getForecastQuestions(db).questions.length);
-  const stages = resolveCurrentStages(db, pipeline.config, modelIds);
+  const stages = syncCurrentStages(db, modelIds);
 
   const tSelect = performance.now();
   const { months, year } = resolveDateWindow(metadata);
