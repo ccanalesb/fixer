@@ -11,6 +11,8 @@ export const ConfigCatalogGetResponse = z
     catalog_kind: CatalogKindSchema,
     /** Photos in the library Fixer has for the configured catalog, when one exists. */
     photo_count: z.int().nullable(),
+    /** Subfolders that contain photos under a folder catalog root. */
+    folder_count: z.int().nullable(),
     /** Whether this host can open a native file dialog; macOS only for now. */
     picker_available: z.boolean(),
   })

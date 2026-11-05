@@ -14,6 +14,7 @@ import {
   findCatalogLibrariesForPath,
   inferCatalogKind,
 } from '../catalog-library.js';
+import { folderCatalogStats } from '../folder/walk.js';
 import {
   config,
   expandUserPath,
@@ -88,6 +89,24 @@ function currentPhotoCount(resolved: string): number | null {
   }
 }
 
+function catalogPhotoAndFolderCounts(
+  resolved: string,
+  kind: ReturnType<typeof inferCatalogKind>,
+): { photo_count: number | null; folder_count: number | null } {
+  if (!resolved || !catalogExists(resolved)) {
+    return { photo_count: null, folder_count: null };
+  }
+  const libraryCount = currentPhotoCount(resolved);
+  if (kind === 'folder') {
+    const walked = folderCatalogStats(resolved);
+    return {
+      photo_count: libraryCount && libraryCount > 0 ? libraryCount : walked.photoCount,
+      folder_count: walked.folderCount,
+    };
+  }
+  return { photo_count: libraryCount, folder_count: null };
+}
+
 // --- catalog ----------------------------------------------------------------
 
 const getCatalogRoute = createRoute({
@@ -104,13 +123,15 @@ ltConfigRoutes.openapi(getCatalogRoute, (c) => {
   const raw = cfg.catalogPathRaw || '';
   const resolved = raw ? expandUserPath(raw) : '';
   const kind = resolved ? inferCatalogKind(resolved) : 'lightroom';
+  const counts = resolved ? catalogPhotoAndFolderCounts(resolved, kind) : { photo_count: null, folder_count: null };
   return c.json(
     {
       catalog_path: raw,
       resolved_path: resolved,
       exists: Boolean(resolved && catalogExists(resolved)),
       catalog_kind: kind,
-      photo_count: resolved ? currentPhotoCount(resolved) : null,
+      photo_count: counts.photo_count,
+      folder_count: counts.folder_count,
       picker_available: nativeFileDialogAvailable(),
     },
     200,

@@ -6464,6 +6464,7 @@ export interface components {
             /** @enum {string} */
             catalog_kind: "lightroom" | "folder";
             photo_count: number | null;
+            folder_count: number | null;
             picker_available: boolean;
         };
         ConfigCatalogChangePreviewResponse: {

@@ -13,6 +13,7 @@
  */
 import { existsSync } from 'node:fs';
 import { config, resolveConfiguredCatalogPath } from '../../config.js';
+import { inferCatalogKind } from '../../catalog-library.js';
 import type { Db } from '../../db/connection.js';
 import {
   CATALOG_LOCKED_MSG,
@@ -20,6 +21,7 @@ import {
   syncCatalog,
   type SyncCatalogOutcome,
 } from '../../lightroom/catalog-sync.js';
+import { syncFolderCatalog } from '../../folder/sync.js';
 import type { JobRunner } from '../runner.js';
 import {
   asMetadata,
@@ -108,16 +110,27 @@ export async function runCatalogSyncPass(
 
   const progress = (pct: number, message: string): void =>
     runner.updateProgress(jobId, mapPassProgress(ctx, pct), `${prefix}${message}`);
-  progress(5, 'Connecting to Lightroom Classic catalog...');
+
+  const isFolder = inferCatalogKind(catalogPath) === 'folder';
+  progress(5, isFolder ? 'Reading the folder...' : 'Connecting to Lightroom Classic catalog...');
 
   let outcome: SyncCatalogOutcome;
   try {
-    outcome = await syncCatalog(catalogPath, libDb, {
-      log: (level, message) => runner.log(jobId, jobLogLevel(level), `${prefix}${message}`),
-      progress,
-      isCancelled: () => runner.isCancelled(jobId),
-      backfillKeywords: metadata['backfill_keywords'] === true,
-    });
+    if (isFolder) {
+      const folderOutcome = await syncFolderCatalog(catalogPath, libDb, {
+        log: (level, message) => runner.log(jobId, jobLogLevel(level), `${prefix}${message}`),
+        progress,
+        isCancelled: () => runner.isCancelled(jobId),
+      });
+      outcome = folderOutcome;
+    } else {
+      outcome = await syncCatalog(catalogPath, libDb, {
+        log: (level, message) => runner.log(jobId, jobLogLevel(level), `${prefix}${message}`),
+        progress,
+        isCancelled: () => runner.isCancelled(jobId),
+        backfillKeywords: metadata['backfill_keywords'] === true,
+      });
+    }
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     // A `CatalogSyncError`'s message is the whole value of the type, so an empty

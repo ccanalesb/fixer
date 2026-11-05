@@ -20,6 +20,7 @@ export interface CatalogStatus {
   exists: boolean
   catalogKind: 'lightroom' | 'folder'
   photoCount: number | null
+  folderCount: number | null
   pickerUsable: boolean
   /**
    * Another device talking to the backend over the network: the catalog is
@@ -66,6 +67,7 @@ export function useCatalogPicker() {
         exists: data.exists,
         catalogKind: data.catalog_kind,
         photoCount: data.photo_count,
+        folderCount: data.folder_count,
         pickerUsable:
           isTauri() ||
           (data.picker_available && browserIsOnBackendHost(window.location.hostname)),

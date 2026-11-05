@@ -45,6 +45,7 @@ describe('IdentityPage', () => {
       exists: true,
       catalog_kind: 'lightroom',
       photo_count: 0,
+      folder_count: null,
       picker_available: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)

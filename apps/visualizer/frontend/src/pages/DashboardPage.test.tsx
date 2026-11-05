@@ -13,7 +13,8 @@ import {
   EMPTY_BEST_PHOTOS_META,
 } from '../__test-utils__/identityFixtures'
 import {
-  FIRST_RUN_CHOOSE_CATALOG,
+  FIRST_RUN_CHOOSE_FOLDER,
+  FIRST_RUN_CHOOSE_LRCAT,
   FIRST_RUN_WELCOME_TITLE,
   INSIGHTS_KPI_SCORING_9_PLUS,
   INSIGHTS_PAGE_TITLE,
@@ -48,6 +49,7 @@ describe('DashboardPage', () => {
       exists: true,
       catalog_kind: 'lightroom',
       photo_count: 0,
+      folder_count: null,
       picker_available: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
@@ -138,6 +140,7 @@ describe('DashboardPage first-run setup', () => {
       exists: false,
       catalog_kind: 'lightroom',
       photo_count: null,
+      folder_count: null,
       picker_available: true,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue({
@@ -180,7 +183,8 @@ describe('DashboardPage first-run setup', () => {
     )
 
     expect(await screen.findByRole('heading', { name: FIRST_RUN_WELCOME_TITLE })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_CATALOG })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_FOLDER })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_LRCAT })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: INSIGHTS_PAGE_TITLE })).not.toBeInTheDocument()
   })
 })

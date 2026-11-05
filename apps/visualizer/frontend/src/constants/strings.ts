@@ -189,31 +189,51 @@ export const STACK_SUGGESTIONS_TIME_GAP_SECONDS = (seconds: number) =>
 // First-run setup (Insights catalog import)
 export const FIRST_RUN_WELCOME_TITLE = 'Welcome to Fixer'
 export const FIRST_RUN_WELCOME_SUBTITLE =
-  'Fixer works on your Lightroom Classic catalog. Two steps and your photos are here.'
-export const FIRST_RUN_STEP_CATALOG_TITLE = 'Choose your catalog'
-export const FIRST_RUN_STEP_CATALOG_HINT =
-  'The .lrcat file, usually in Pictures › Lightroom.'
-export const FIRST_RUN_CHOOSE_CATALOG = 'Choose catalog…'
+  'Fixer works on a folder of photos or a Lightroom Classic catalog. Two steps and your photos are here.'
+export const FIRST_RUN_STEP_CATALOG_TITLE = 'Choose where your photos are'
+export const FIRST_RUN_FOLDER_CARD_TITLE = 'A folder of photos'
+export const FIRST_RUN_FOLDER_CARD_BODY =
+  'Any folder on this Mac or a drive. Fixer looks in every folder inside and reads the pixels and EXIF.'
+export const FIRST_RUN_LRCAT_CARD_TITLE = 'A Lightroom Classic catalog'
+export const FIRST_RUN_LRCAT_CARD_BODY =
+  'The .lrcat file, usually in Pictures › Lightroom. Brings ratings, picks and keywords too.'
+export const FIRST_RUN_CHOOSE_FOLDER = 'Choose folder…'
+export const FIRST_RUN_CHOOSE_LRCAT = 'Choose .lrcat…'
+export const FIRST_RUN_MANUAL_PATH_DISCLOSURE = 'Enter a path manually'
+export const FIRST_RUN_MANUAL_PATH_LABEL = 'Folder or catalog path'
+export const FIRST_RUN_USE_PATH = 'Use this path'
+export const FIRST_RUN_KIND_FOLDER = 'Folder'
+export const FIRST_RUN_KIND_LRCAT = 'Lightroom catalog'
+export const FIRST_RUN_FOLDER_STATS = (photos: number, folders: number) =>
+  `${photos.toLocaleString('en-US')} photos in ${folders.toLocaleString('en-US')} folders`
+export const FIRST_RUN_LRCAT_STATS = (photos: number) =>
+  `${photos.toLocaleString('en-US')} photos in the catalog`
 export const FIRST_RUN_CHANGE_CATALOG = 'Change…'
 export const FIRST_RUN_STEP_IMPORT_TITLE = 'Import it'
-export const FIRST_RUN_STEP_IMPORT_HINT =
+export const FIRST_RUN_STEP_IMPORT_HINT_FOLDER =
+  'Reads every photo in the folder and the folders inside it, then prepares them for culling. Large folders take a while.'
+export const FIRST_RUN_STEP_IMPORT_HINT_LRCAT =
   'Reads your photos, then prepares them for culling. Large catalogs take a while.'
-export const FIRST_RUN_IMPORT_CATALOG = 'Import catalog'
+export const FIRST_RUN_IMPORT_PHOTOS = (count: number) =>
+  `Import ${count.toLocaleString('en-US')} photos`
 export const FIRST_RUN_IMPORT_WHILE_BUSY = 'Importing…'
 export const FIRST_RUN_IMPORT_KEEP_USING =
   'You can keep using the app; Images fills in after the first step.'
+export const FIRST_RUN_STAGE_READ_FOLDER = 'Reading the folder'
 export const FIRST_RUN_STAGE_READ_CATALOG = 'Reading the catalog'
 export const FIRST_RUN_STAGE_EMBEDDINGS = 'Computing image embeddings'
 export const FIRST_RUN_STAGE_BURST_STACKS = 'Detecting burst stacks'
 export const FIRST_RUN_STAGE_NEAR_DUPLICATES = 'Grouping near-duplicates'
+/** @deprecated Use FIRST_RUN_IMPORT_PHOTOS with a count. Kept for tests that mock the old label. */
+export const FIRST_RUN_IMPORT_CATALOG = 'Import catalog'
 export const FIRST_RUN_LIBRARY_EMPTY_TITLE = 'Your library is empty'
 export const FIRST_RUN_GO_TO_SETUP = 'Go to setup'
 export const FIRST_RUN_IMAGES_EMPTY_HINT =
-  'Choose and import your Lightroom Classic catalog to browse your photos.'
+  'Choose a folder or your Lightroom Classic catalog to browse your photos.'
 export const FIRST_RUN_IDENTITY_EMPTY_HINT =
-  'Identity is built from scores on your photos. Start by importing your catalog.'
+  'Identity is built from scores on your photos. Start by choosing where your photos are.'
 export const FIRST_RUN_READING_CATALOG =
-  'Reading your catalog… photos appear here when that step finishes.'
+  'Reading your photos… they appear here when that step finishes.'
 export const FIRST_RUN_IMPORT_STILL_RUNNING = 'Import still running —'
 export const FIRST_RUN_SEE_PROGRESS = 'see progress'
 export const FIRST_RUN_SETUP_ROUTE = '/'

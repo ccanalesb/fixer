@@ -40,6 +40,7 @@ describe('ImagesPage first-run states', () => {
       exists: false,
       catalog_kind: 'lightroom',
       photo_count: null,
+      folder_count: null,
       picker_available: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(EMPTY_PIPELINE)

@@ -77,6 +77,7 @@ describe('GET /api/config/catalog', () => {
       exists: true,
       catalog_kind: 'lightroom',
       photo_count: null,
+      folder_count: null,
       picker_available: onMac,
     });
   });
@@ -98,6 +99,7 @@ describe('GET /api/config/catalog', () => {
       exists: false,
       catalog_kind: 'lightroom',
       photo_count: null,
+      folder_count: null,
       picker_available: onMac,
     });
   });

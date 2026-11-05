@@ -5,7 +5,7 @@ import { FirstRunSetupScreen } from '../FirstRunSetupScreen'
 import {
   CLIP_CONFIRM_DOWNLOAD_IMPORT,
   CLIP_CONFIRM_TITLE_IMPORT,
-  FIRST_RUN_IMPORT_CATALOG,
+  FIRST_RUN_IMPORT_PHOTOS,
   FIRST_RUN_RETRY_IMPORT,
 } from '../../../constants/strings'
 import type { useFirstRunSetup } from '../../../hooks/useFirstRunSetup'
@@ -32,7 +32,8 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
         resolvedPath: '/tmp/cat.lrcat',
         exists: true,
         catalogKind: 'lightroom',
-        photoCount: 0,
+        photoCount: 12,
+        folderCount: null,
         pickerUsable: true,
         readOnly: false,
       },
@@ -64,6 +65,9 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
     showImagesReadingCatalog: false,
     showImagesImportBanner: false,
     pickAndSaveCatalog: vi.fn(),
+    pickAndSaveFolder: vi.fn(),
+    pickAndSaveLrcat: vi.fn(),
+    saveCatalogPath: vi.fn(),
     startImport: vi.fn(),
     ...overrides,
   }
@@ -80,7 +84,7 @@ describe('FirstRunSetupScreen', () => {
         <FirstRunSetupScreen setup={baseSetup()} />
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_CATALOG }))
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_PHOTOS(12) }))
     expect(screen.getByRole('dialog')).toBeTruthy()
     expect(screen.getByText(CLIP_CONFIRM_TITLE_IMPORT)).toBeTruthy()
   })
@@ -93,7 +97,7 @@ describe('FirstRunSetupScreen', () => {
         <FirstRunSetupScreen setup={baseSetup({ startImport })} />
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_CATALOG }))
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_PHOTOS(12) }))
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(startImport).toHaveBeenCalled()
   })
@@ -105,7 +109,7 @@ describe('FirstRunSetupScreen', () => {
         <FirstRunSetupScreen setup={baseSetup({ startImport })} />
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_CATALOG }))
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_PHOTOS(12) }))
     fireEvent.click(screen.getByRole('button', { name: CLIP_CONFIRM_DOWNLOAD_IMPORT }))
     expect(startImport).toHaveBeenCalledWith({ expectClipDownload: true })
   })
@@ -117,7 +121,7 @@ describe('FirstRunSetupScreen', () => {
         <FirstRunSetupScreen setup={baseSetup({ startImport })} />
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_CATALOG }))
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_IMPORT_PHOTOS(12) }))
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(startImport).not.toHaveBeenCalled()
   })
