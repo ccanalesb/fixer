@@ -7,7 +7,7 @@ import { makeFakeCatalog } from '../backend/tests/helpers/fake-catalog.js';
 import { patchLrWritebackSettings } from '../backend/src/db/library/lr-writeback-settings.js';
 import { reconcileLrWriteback } from '../backend/src/lightroom/writeback.js';
 import { basename, join } from 'node:path';
-import { resolveCurrentStages } from '../backend/src/cull/stages.js';
+import { syncCurrentStages } from '../backend/src/cull/stages.js';
 import { initLibraryDb } from '../backend/src/db/library/bootstrap.js';
 import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../backend/src/db/library/cull-pipeline.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../backend/src/db/library/score-forecast-questions.js';
@@ -125,7 +125,7 @@ createPipelineSettingVersion(db, {
   score_forecast: { ...initial.score_forecast, enabled: true },
 });
 const pipe = getCurrentPipelineSetting(db);
-const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
+const stages = syncCurrentStages(db, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
 const stageByKey = new Map(stages.map((s) => [s.stageKey, s]));
 const profile7 = stageByKey.get('culling_profile:default:7');
 const profile10 = stageByKey.get('culling_profile:default:10');

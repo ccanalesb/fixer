@@ -35,7 +35,7 @@ import {
 
 export const lrWritebackRoutes = createOpenApiApp<LibraryEnv>();
 
-lrWritebackRoutes.use('/cull/lightroom-writeback/*', libraryDb({ write: true }));
+lrWritebackRoutes.use('/cull/lightroom-writeback/*', libraryDb({ writeForMethods: ['PATCH', 'POST'] }));
 
 function withJobsDb<T>(fn: (db: import('../db/connection.js').Db) => T): T {
   const db = initJobsDb(config.VISUALIZER_DB);

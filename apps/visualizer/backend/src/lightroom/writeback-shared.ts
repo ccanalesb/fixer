@@ -1,10 +1,10 @@
 import { countStrongDimensions, ratingFromStrongCount } from './writeback-stars.js';
 import type { WritebackKind } from './writeback-types.js';
-import { resolveCurrentStages } from '../cull/stages.js';
+import { readCurrentStages } from '../cull/stages.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
 import { getCullVerdict, listDecidedCullImageKeys, type CullVerdictRow } from '../db/library/cull-verdicts.js';
-import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
 import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
 import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
@@ -85,11 +85,7 @@ export function desiredReject(
 }
 
 function stagesForStarsProfile(db: Db, starsSlug: string) {
-  const modelIds = readStoredStageModelIds(db);
-  const pipe = getCurrentPipelineSetting(db);
-  return resolveCurrentStages(db, pipe.config, modelIds).filter(
-    (s) => s.profileSlug === starsSlug && s.kind === 'culling_profile',
-  );
+  return readCurrentStages(db).stages.filter((s) => s.profileSlug === starsSlug && s.kind === 'culling_profile');
 }
 
 export function desiredStarsRating(

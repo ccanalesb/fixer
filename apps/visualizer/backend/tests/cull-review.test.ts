@@ -7,9 +7,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
+import { getCullProfile } from '../src/db/library/cull-profiles-read.js';
+import { saveProfileDefinition } from '../src/db/library/cull-profiles.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import { getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { getCullVerdict, upsertCullVerdict, type CullVerdictInput } from '../src/db/library/cull-verdicts.js';
@@ -80,7 +82,7 @@ afterEach(() => {
 function seedFailingProfileAnswers(fx: LibraryFixture, imageKey: string, levelIndex: number): void {
   const db = new Database(fx.dbPath);
   const pipe = getCurrentPipelineSetting(db);
-  const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
+  const stages = syncCurrentStages(db, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
   const stage = stages.find((s) => s.stageKey === 'culling_profile:default:7');
   if (!stage) throw new Error('expected profile 7 stage');
   const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
@@ -285,10 +287,9 @@ describe('GET /api/cull/photos/{image_key}', () => {
         applies: null,
       },
     ]);
+    syncCurrentStages(db, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
     const pipe = getCurrentPipelineSetting(db);
-    const stage = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' }).find(
-      (s) => s.kind === 'score_forecast',
-    )!;
+    const stage = readCurrentStages(db).stages.find((s) => s.kind === 'score_forecast')!;
     const tenth = (i: number) => Array.from({ length: 10 }, (_, k) => (k === i ? 1 : 0));
     upsertStageAnswer(db, {
       imageKey: 'filtered-low',
@@ -307,6 +308,44 @@ describe('GET /api/cull/photos/{image_key}', () => {
       { name: 'Compositional-Cleanliness', p8: 1, excused: false },
       { name: 'My own question', p8: 0, excused: false },
     ]);
+  });
+});
+
+describe('cull review GETs never touch stage versions', () => {
+  function stageVersionsSnapshot(): { rows: number; current: number } {
+    const db = new Database(fx.dbPath, { readonly: true });
+    const rows = (db.prepare('SELECT COUNT(*) AS n FROM cull_stage_versions').get() as { n: number }).n;
+    const current = (db.prepare('SELECT COUNT(*) AS n FROM cull_stage_versions WHERE is_current = 1').get() as { n: number }).n;
+    db.close();
+    return { rows, current };
+  }
+
+  it('leaves cull_stage_versions row count and is_current unchanged', async () => {
+    const db = new Database(fx.dbPath);
+    syncCurrentStages(db, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
+    db.close();
+    const before = stageVersionsSnapshot();
+    expect(before.rows).toBeGreaterThan(0);
+    expect((await app.request('/api/cull/photos/')).status).toBe(200);
+    expect((await app.request('/api/cull/photos/filtered-a')).status).toBe(200);
+    expect(stageVersionsSnapshot()).toEqual(before);
+  });
+
+  it('reads the current version a profile save made, without writing', async () => {
+    const db = new Database(fx.dbPath);
+    const profile = getCullProfile(db, 'default')!;
+    const dims = profile.definition.dimensions.map((d) =>
+      d.slug === 'immediate-impact' ? { ...d, name: 'Immediate Impact Renamed' } : d,
+    );
+    saveProfileDefinition(db, 'default', { ...profile.definition, dimensions: dims }, profile.rule);
+    db.close();
+    const before = stageVersionsSnapshot();
+    const body = await json<{
+      data: { profile: { level_sets: { dimensions: { slug: string; name: string }[] }[] } }[];
+    }>(await app.request('/api/cull/photos/'));
+    const dim = body.data[0]!.profile.level_sets[0]?.dimensions.find((d) => d.slug === 'immediate-impact');
+    expect(dim?.name).toBe('Immediate Impact Renamed');
+    expect(stageVersionsSnapshot()).toEqual(before);
   });
 });
 

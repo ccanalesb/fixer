@@ -1,10 +1,9 @@
 import { countStrongDimensions, ratingFromStrongCount } from './writeback-stars.js';
-import { resolveCurrentStages } from '../cull/stages.js';
+import { readCurrentStages } from '../cull/stages.js';
 import type { Db } from '../db/connection.js';
-import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullProfile } from '../db/library/cull-profiles.js';
 import { isFrameSubstanceVoid } from '../db/library/frame-substance.js';
-import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { getWritebackState } from '../db/library/lr-writeback-state.js';
 import { resolveStarsProfileSlug, type LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import {
@@ -42,9 +41,7 @@ export function buildWritebackPhotoDetail(
   } else if (starsSlug) {
     const profile = getCullProfile(db, starsSlug);
     if (profile) {
-      const modelIds = readStoredStageModelIds(db);
-      const pipe = getCurrentPipelineSetting(db);
-      const stages = resolveCurrentStages(db, pipe.config, modelIds).filter(
+      const stages = readCurrentStages(db).stages.filter(
         (s) => s.profileSlug === starsSlug && s.kind === 'culling_profile',
       );
       const answers = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};

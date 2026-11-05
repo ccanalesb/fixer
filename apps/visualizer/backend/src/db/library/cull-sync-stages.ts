@@ -29,7 +29,8 @@ function currentForecastStageQuestions(db: Db): Record<string, import('../../sys
   return forecastStageQuestions(questions);
 }
 
-function specsForPipeline(
+/** Stage keys and question text the pipeline setting names, before resolving stored version ids. */
+export function stageSpecsForPipeline(
   db: Db,
   pipeline: PipelineSettingConfig,
   models: StageModelIds,
@@ -73,7 +74,7 @@ function syncCurrentStagesInTransaction(db: Db, models: StageModelIds): Resolved
     .get() as { config_json: string } | undefined;
   if (!row) throw new Error('library.db has no cull pipeline setting; culling defaults were never seeded');
   const pipeline = parsePipelineSetting(JSON.parse(row.config_json));
-  return specsForPipeline(db, pipeline, models).map((spec) => ({
+  return stageSpecsForPipeline(db, pipeline, models).map((spec) => ({
     ...spec,
     versionId: getOrCreateStageVersion(db, spec),
   }));

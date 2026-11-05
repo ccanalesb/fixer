@@ -238,6 +238,17 @@ describe('batch_redecide_cull_verdicts_from_stored_answers', () => {
     expect(job.result).toMatchObject({ total: 0, changed: 0 });
   });
 
+  it('leaves the stage versions as they are, a stage with no current version included', async () => {
+    await addPhoto('a', PASS);
+    await runCull();
+    fx.exec("UPDATE cull_stage_versions SET is_current = 0 WHERE stage_key = 'culling_profile:default:7'");
+    const versions = () => fx.query('SELECT id, is_current FROM cull_stage_versions ORDER BY id');
+    const before = versions();
+
+    expect((await runRedecide()).status).toBe('completed');
+    expect(versions()).toEqual(before);
+  });
+
   it('cancel between chunks keeps written chunks consistent', async () => {
     await addPhoto('_seed', PASS);
     await runCull();

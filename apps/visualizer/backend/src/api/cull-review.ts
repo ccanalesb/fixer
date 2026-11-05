@@ -10,11 +10,11 @@ import {
   resolveFilteringProfile,
   scoreForecastByQuestion,
 } from '../cull/review.js';
-import { SCORE_FORECAST_STAGE_KEY, resolveCurrentStages } from '../cull/stages.js';
+import { SCORE_FORECAST_STAGE_KEY, readCurrentStages } from '../cull/stages.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
 import { getCullReviewSummary, listCullReviewPhotos } from '../db/library/cull-review.js';
-import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
 import { listPerspectives } from '../db/library/scores.js';
 import {
@@ -40,7 +40,7 @@ import { compactJobPayload } from './schemas/jobs.js';
 
 export const cullReviewRoutes = createOpenApiApp<LibraryEnv>();
 
-cullReviewRoutes.use('/cull/*', libraryDb({ write: true }));
+cullReviewRoutes.use('/cull/*', libraryDb({ writeForMethods: ['POST', 'DELETE'] }));
 redirectToTrailingSlash(cullReviewRoutes, '/cull');
 
 /** Not catalog image keys — must not match `/cull/photos/{image_key}`. */
@@ -121,9 +121,7 @@ cullReviewRoutes.openapi(listRoute, (c) => {
   const tab = (c.req.query('tab') ?? 'all') as 'all' | 'culling_profile' | 'score_forecast';
   const { limit, offset } = clampPagination(c.req.query('limit'), c.req.query('offset'), 50);
   const { rows, total } = listCullReviewPhotos(db, tab, limit, offset);
-  const modelIds = readStoredStageModelIds(db);
-  const pipe = getCurrentPipelineSetting(db);
-  const stages = resolveCurrentStages(db, pipe.config, modelIds);
+  const { stages } = readCurrentStages(db);
   const keys = rows.map((r) => r.image_key);
   const answers = loadCurrentStageAnswers(db, stages, keys);
   const completionByKey = batchDescribeScoreCompletion(db, keys);
@@ -216,9 +214,7 @@ cullReviewRoutes.openapi(detailRoute, (c) => {
     return errorNotFound(c, 'image');
   }
   const image = db.prepare('SELECT filename FROM images WHERE key = ?').get(imageKey) as { filename: string } | undefined;
-  const modelIds = readStoredStageModelIds(db);
-  const pipe = getCurrentPipelineSetting(db);
-  const stages = resolveCurrentStages(db, pipe.config, modelIds);
+  const { pipeline: pipe, stages } = readCurrentStages(db);
   const answers = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
   const profile = resolveFilteringProfile(db, v.filtered_by_stage_key, pipelineFallbackProfile(db));
   const profileBlock = profile

@@ -12,7 +12,7 @@ import { initLibraryDb, LIBRARY_SCHEMA_VERSION } from '../src/db/library/bootstr
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { DEFAULT_CULLING_PROFILE_SLUG } from '../src/db/library/cull-profiles.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { seedCullingStagesOn } from './helpers/culling-stages.js';
 
 const OLD = 'recipe-culling';
@@ -43,7 +43,7 @@ function writeV17Library(): void {
   const db = initLibraryDb(path);
   seedCullingStagesOn(db);
   saveForecastQuestions(db, factoryForecastQuestions(db));
-  const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODELS);
+  const stages = syncCurrentStages(db, MODELS);
   const [seven] = stages;
   db.prepare("INSERT INTO cull_runs (kind, started_at, pipeline_setting_version, detail_json) VALUES ('job', 't', 1, ?)").run(
     JSON.stringify(RUN_DETAIL),
@@ -109,7 +109,7 @@ describe('library schema 18', () => {
       ]);
       expect(getCurrentPipelineSetting(db).config.culling_profiles.map((p) => p.profile_slug)).toEqual(['default']);
       expect(db.prepare('SELECT stars_profile_slug FROM lr_writeback_settings').get()).toEqual({ stars_profile_slug: 'default' });
-      const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODELS);
+      const stages = readCurrentStages(db).stages;
       expect(stages.map((s) => s.versionId)).toEqual([1, 2, 3]);
     } finally {
       db.close();
