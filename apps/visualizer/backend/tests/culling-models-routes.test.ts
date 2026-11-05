@@ -19,6 +19,7 @@ import { providerIdFromCullingUrl } from '../src/providers/culling-provider-id.j
 import { FAKE_PROFILE_MODEL_ID, fakeModelState, writeFakeAppModels } from './helpers/fake-app-models.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
+import { registerSystemOneProvider } from './helpers/register-systemone-provider.js';
 
 let fx: LibraryFixture;
 let dir: string;
@@ -55,26 +56,7 @@ function seedSystemOneProvider(
   id = providerIdFromCullingUrl(url),
 ): string {
   providersPath = join(dir, 'providers.json');
-  writeFileSync(
-    providersPath,
-    JSON.stringify(
-      {
-        providers: {
-          [id]: {
-            name: 'Test host',
-            protocol: 'system_one',
-            enabled: true,
-            base_url: { from: 'literal', value: url.replace(/\/+$/, '') },
-            auth: apiKey ? { mode: 'bearer', secret: { from: 'literal', value: apiKey } } : { mode: 'none' },
-          },
-        },
-        defaults: {},
-        fallback_order: [],
-      },
-      null,
-      2,
-    ),
-  );
+  registerSystemOneProvider({ providersPath, url, apiKey, id, name: 'Test host' });
   process.env.LT_PROVIDERS_JSON = providersPath;
   const db = initJobsDb(join(dir, 'visualizer.db'));
   for (const m of models) {
