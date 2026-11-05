@@ -1,14 +1,9 @@
-import type { Db } from '../db/connection.js';
 import { getWritebackState, type LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
-import type { CullVerdictRow } from '../db/library/cull-verdicts.js';
-import type { LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
-import { decideWriteback } from './writeback-decision.js';
 import {
   AUTO_REJECT_KEYWORD,
   clearRejectFromCatalog,
   removeKeywordByKey,
   writeRejectToCatalog,
-  type LivePickRating,
 } from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 import {
@@ -18,23 +13,18 @@ import {
   notFoundState,
   syncWrittenFromLiveCatalog,
   userChangedAfterWrite,
-  type ReconcileRunTally,
-  type WritebackTrigger,
+  type WritebackPlanPhoto,
+  type WritebackPlanRun,
 } from './writeback-shared.js';
 
 export function planRejectPhoto(
-  db: Db,
-  settings: LrWritebackSettings,
-  verdict: CullVerdictRow | null,
-  live: LivePickRating | null,
-  imageKey: string,
-  trigger: WritebackTrigger,
-  canWrite: boolean,
-  conn: Db | null,
-  tally: ReconcileRunTally,
+  run: WritebackPlanRun,
+  photo: WritebackPlanPhoto,
 ): Omit<LrWritebackStateRow, 'updated_at'> | null {
+  const { db, conn, tally } = run;
+  const { imageKey, live, writeNow, decision } = photo;
   const row = getWritebackState(db, imageKey, 'reject');
-  const want = decideWriteback(db, settings, imageKey, null).reject.want;
+  const want = decision.reject.want;
 
   if (conn && live === null) {
     return notFoundState(imageKey, 'reject', row, tally);
@@ -43,18 +33,18 @@ export function planRejectPhoto(
   if (live && row && userChangedAfterWrite('reject', live, row)) {
     if ((live.pick ?? 0) !== 0) return { ...row, status: 'skipped' };
     // Unflagging the app's reject in Lightroom is an undo: never written again.
-    if (conn && canWrite) removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
+    if (conn && writeNow) removeKeywordByKey(conn, imageKey, AUTO_REJECT_KEYWORD);
     return { ...row, status: 'undone', written_pick: null, written_at: null };
   }
 
   if (!want) {
-    if (conn && canWrite && catalogHasAppReject(conn, imageKey)) {
+    if (conn && writeNow && catalogHasAppReject(conn, imageKey)) {
       clearRejectFromCatalog(conn, imageKey);
       tally.catalog_cleared_reject += 1;
       if (row) return { ...row, status: 'pending', written_pick: null, written_at: null };
       return null;
     }
-    if (row?.status === 'written' && live && liveMatchesWritten('reject', live, row) && conn && canWrite) {
+    if (row?.status === 'written' && live && liveMatchesWritten('reject', live, row) && conn && writeNow) {
       clearRejectFromCatalog(conn, imageKey);
       tally.catalog_cleared_reject += 1;
       return { ...row, status: 'pending', written_pick: null, written_at: null };
@@ -114,7 +104,7 @@ export function planRejectPhoto(
 
   if (row?.status === 'written' && liveMatchesWritten('reject', live, row)) return null;
 
-  if (!canWrite || !conn) {
+  if (!writeNow || !conn) {
     return {
       image_key: imageKey,
       kind: 'reject',

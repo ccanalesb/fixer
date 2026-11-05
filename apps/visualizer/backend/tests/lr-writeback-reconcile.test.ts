@@ -1,14 +1,15 @@
 /**
  * End-to-end reconcile on temp config + fake catalog + temp library.db.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { openLibraryDb } from '../src/db/connection.js';
 import { reconcileLrWriteback } from '../src/lightroom/writeback.js';
+import * as writebackDecision from '../src/lightroom/writeback-decision.js';
 import { AUTO_REJECT_KEYWORD } from '../src/lightroom/writer.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { getWritebackState } from '../src/db/library/lr-writeback-state.js';
@@ -103,6 +104,38 @@ describe('reconcileLrWriteback', () => {
     });
     await reconcileLrWriteback(db, { trigger: 'write_pending', catalogPath: lrcatPath });
     expect(getWritebackState(db, '2024-06-01_filtered-photo', 'reject')).toBeNull();
+    db.close();
+  });
+
+  it('calls decideWriteback once per photo when both write switches are on', async () => {
+    const secondKey = '2024-06-02_other-photo';
+    fx.addImage({ key: secondKey, id: '2' });
+    if (existsSync(lrcatPath)) unlinkSync(lrcatPath);
+    makeFakeCatalog(lrcatPath, [
+      { id: 1, baseName: 'filtered-photo', pick: 0, rating: null },
+      { id: 2, baseName: 'other-photo', pick: 0, rating: null },
+    ]);
+    const db = openLibraryDb(fx.dbPath);
+    patchLrWritebackSettings(db, { write_reject: true, write_stars: true });
+    upsertCullVerdict(db, {
+      imageKey: secondKey,
+      verdict: 'filtered',
+      filteredBy: 'culling_profile',
+      filteredByStageKey: 'culling_profile:default:7',
+      cullingProfileVerdict: 'filtered',
+      sentByHand: false,
+      pendingStages: [],
+      pendingReason: '',
+      scoreForecastOff: false,
+      scoreForecastP8: null,
+      pipelineSettingVersion: 1,
+      stageVersionIds: [],
+      runId: null,
+    });
+    const decideSpy = vi.spyOn(writebackDecision, 'decideWriteback');
+    await reconcileLrWriteback(db, { trigger: 'write_pending', catalogPath: lrcatPath });
+    expect(decideSpy).toHaveBeenCalledTimes(2);
+    decideSpy.mockRestore();
     db.close();
   });
 });
