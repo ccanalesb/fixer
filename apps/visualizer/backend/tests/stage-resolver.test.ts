@@ -6,12 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CullingStageError, resolveStageModelIds, stageModelsFromConfig } from '../src/cull/stage-models.js';
-import { cullingStageErrorForProblem, resolveStage } from '../src/cull/stage-resolver.js';
+import { cullingStageErrorForProblem, resolveStage, stageEndpoint } from '../src/cull/stage-resolver.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
-import { providerIdFromCullingUrl } from '../src/providers/culling-provider-id.js';
 import { THIS_APP_ENDPOINT } from '../src/systemone/client.js';
 import { setupErrorMessage } from '../src/app-models/files.js';
 import { fakeModelState } from './helpers/fake-app-models.js';
+import { registerSystemOneProvider } from './helpers/register-systemone-provider.js';
 import { startFakeSystemOneServer, type FakeSystemOneServer } from './helpers/fake-systemone-server.js';
 
 let server: FakeSystemOneServer;
@@ -22,28 +22,8 @@ let dir: string;
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lt-stage-resolver-'));
   server = await startFakeSystemOneServer(fakeModelState(), ['clef-forecast']);
-  providerId = providerIdFromCullingUrl(server.url);
   providersPath = join(dir, 'providers.json');
-  writeFileSync(
-    providersPath,
-    JSON.stringify(
-      {
-        providers: {
-          [providerId]: {
-            name: 'Host',
-            protocol: 'system_one',
-            enabled: true,
-            base_url: { from: 'literal', value: server.url },
-            auth: { mode: 'none' },
-          },
-        },
-        defaults: {},
-        fallback_order: [],
-      },
-      null,
-      2,
-    ),
-  );
+  providerId = registerSystemOneProvider({ providersPath, url: server.url });
   process.env.LT_PROVIDERS_JSON = providersPath;
 });
 
@@ -264,6 +244,19 @@ describe('resolveStage', () => {
       registry: registry(),
     });
     expect(r.problem).toBe('removed');
+  });
+
+  it('a legacy raw URL in config is removed', async () => {
+    const r = await resolveStage('culling_profile', {
+      on: true,
+      cfg: { endpoint: server.url, model: 'clef-forecast' },
+      appModels: [],
+      questionCount: 0,
+      registry: registry(),
+    });
+    expect(r.problem).toBe('removed');
+    expect(r.systemOne).toBeNull();
+    expect(stageEndpoint({ endpoint: server.url, model: '' }, registry())).toBeNull();
   });
 
   it('a non-System One provider is removed', async () => {

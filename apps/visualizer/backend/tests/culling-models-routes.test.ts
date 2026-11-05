@@ -220,6 +220,18 @@ describe('GET /api/culling-models/{stage}/models', () => {
     });
   });
 
+  it('a legacy raw URL in config lists nothing', async () => {
+    writeFileSync(
+      configPath,
+      `app_models_dir: ${modelsDir}\ncatalog_path: /somewhere/catalog.lrcat\nculling_models:\n  culling_profile: {endpoint: http://127.0.0.1:59999, model: m}\n  score_forecast: {endpoint: this_app, model: ""}\n`,
+    );
+    expect(await json(await app.request('/api/culling-models/culling_profile/models'))).toEqual({
+      answers: false,
+      models: [],
+      error: 'Unknown provider',
+    });
+  });
+
   it('this app lists the models installed in it', async () => {
     writeFakeAppModels(modelsDir);
     expect(await json(await app.request('/api/culling-models/score_forecast/models'))).toEqual({
@@ -343,6 +355,20 @@ describe('GET /api/culling-models/usable', () => {
     delete stored.providers[id];
     writeFileSync(providersPath, JSON.stringify(stored, null, 2));
     expect((await usable()).culling_profile).toMatchObject({ problem: 'removed' });
+  });
+
+  it('a legacy raw URL in config is removed when the stage is on', async () => {
+    await stagesOn();
+    writeFileSync(
+      configPath,
+      `app_models_dir: ${modelsDir}\ncatalog_path: /somewhere/catalog.lrcat\nculling_models:\n  culling_profile: {endpoint: http://127.0.0.1:59999, model: clef-cull}\n  score_forecast: {endpoint: this_app, model: ""}\n`,
+    );
+    expect((await usable()).culling_profile).toMatchObject({
+      on: true,
+      problem: 'removed',
+      model: 'clef-cull',
+      endpoint: 'http://127.0.0.1:59999',
+    });
   });
 
   it('answers without HTTP even when the endpoint would fail', async () => {

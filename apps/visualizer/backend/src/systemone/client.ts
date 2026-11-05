@@ -81,8 +81,12 @@ export function systemOneEndpoint(
       fetch: globalThis.fetch.bind(globalThis),
     };
   }
-  const url = cfg.endpoint.replace(/\/+$/, '');
-  return { id: url, label: url, url, apiKey: cfg.apiKey ?? '', fetch: globalThis.fetch.bind(globalThis) };
+  throw new Error(`Unknown culling endpoint: ${cfg.endpoint}`);
+}
+
+/** Placeholder when a stage's endpoint is removed; callers must not call the endpoint. */
+export function placeholderSystemOneEndpoint(label: string): SystemOneEndpoint {
+  return { id: label, label, url: label, apiKey: '', fetch: globalThis.fetch.bind(globalThis) };
 }
 
 /** The identity stage versions hash: the endpoint's own, or the model's name on that endpoint. */

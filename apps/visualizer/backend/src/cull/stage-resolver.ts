@@ -42,17 +42,18 @@ const TURN_OFF: Record<StageKind, string> = { culling_profile: 'the culling prof
 
 const named = (kind: StageKind, message: string) => `${STAGE_NAMES[kind]}: ${message}`;
 
-function buildSystemOne(
+/** This app, a System One provider's endpoint, or null when the stage's endpoint is removed. */
+export function stageEndpoint(
   cfg: CullingModelConfig,
   registry: ProviderRegistry,
-  thisAppFetch?: typeof fetch,
+  opts: { thisAppFetch?: typeof fetch } = {},
 ): SystemOneEndpoint | null {
   if (cfg.endpoint === THIS_APP_ENDPOINT) {
-    return systemOneEndpoint(cfg, { registry, thisAppFetch });
+    return systemOneEndpoint(cfg, { registry, thisAppFetch: opts.thisAppFetch });
   }
   const pcfg = registry.hasProvider(cfg.endpoint) ? registry.providerConfig(cfg.endpoint) : null;
   if (pcfg?.protocol === 'system_one') {
-    return systemOneEndpoint(cfg, { registry, thisAppFetch });
+    return systemOneEndpoint(cfg, { registry, thisAppFetch: opts.thisAppFetch });
   }
   return null;
 }
@@ -60,7 +61,7 @@ function buildSystemOne(
 export async function resolveStage(kind: StageKind, input: ResolveStageInput): Promise<ResolveStageResult> {
   const { cfg } = input;
   const registry = input.registry ?? new ProviderRegistry();
-  const systemOne = buildSystemOne(cfg, registry, input.thisAppFetch);
+  const systemOne = stageEndpoint(cfg, registry, { thisAppFetch: input.thisAppFetch });
   const base: ResolveStageResult = {
     on: input.on,
     problem: null,
@@ -78,13 +79,10 @@ export async function resolveStage(kind: StageKind, input: ResolveStageInput): P
     if (converting) return { ...base, problem: 'converting', job_id: converting.job_id };
     const ready = input.appModels.some((m) => m.name === cfg.model && m.status === 'ready');
     if (!ready) return { ...base, problem: 'no_model' };
-  } else if (!cfg.endpoint.trim()) {
+  } else if (!cfg.endpoint.trim() || systemOne === null) {
     return { ...base, problem: 'removed', systemOne: null };
   } else {
-    const pcfg = registry.hasProvider(cfg.endpoint) ? registry.providerConfig(cfg.endpoint) : null;
-    if (!pcfg || pcfg.protocol !== 'system_one') {
-      return { ...base, problem: 'removed', systemOne: null };
-    }
+    const pcfg = registry.providerConfig(cfg.endpoint)!;
     if (pcfg.enabled === false) {
       return { ...base, problem: 'parked', provider_name: pcfg.name };
     }

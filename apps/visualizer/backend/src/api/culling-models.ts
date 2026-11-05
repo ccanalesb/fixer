@@ -5,7 +5,7 @@
 import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig, updateConfigYamlCullingModel, type CullingModelConfig } from '../config.js';
 import { stagesOn } from '../cull/stage-models.js';
-import { resolveStage } from '../cull/stage-resolver.js';
+import { resolveStage, stageEndpoint } from '../cull/stage-resolver.js';
 import type { StageKind } from '../cull/types.js';
 import type { Db } from '../db/connection.js';
 import { initJobsDb } from '../db/jobs/jobs.js';
@@ -63,9 +63,9 @@ function listSystemOneProviders(registry: ProviderRegistry): z.infer<typeof Cull
 
 function normalizeEndpoint(raw: string, registry: ProviderRegistry): string | null {
   const text = raw.trim();
-  if (text === THIS_APP_ENDPOINT) return text;
-  if (registry.hasProvider(text) && registry.providerConfig(text)?.protocol === 'system_one') return text;
-  return null;
+  if (!text) return null;
+  const cfg: CullingModelConfig = { endpoint: text, model: '' };
+  return stageEndpoint(cfg, registry) ? text : null;
 }
 
 /** What a model identity is called: this app's model by its name, `<name>@<url>` as "name on url". */
@@ -212,17 +212,17 @@ cullingModelsRoutes.openapi(modelsRoute, async (c) => {
   const { stage } = c.req.valid('param');
   const cfg = stagesConfig()[stage];
   const registry = new ProviderRegistry();
+  const ep = stageEndpoint(cfg, registry);
   if (cfg.endpoint === THIS_APP_ENDPOINT) {
     try {
-      const listed = await listSystemOneModels(systemOneEndpoint(cfg, { registry }));
+      const listed = await listSystemOneModels(ep!);
       return c.json({ answers: true, models: listed.map((m) => m.name), error: null }, 200);
     } catch (e) {
       if (!(e instanceof SystemOneError)) throw e;
       return c.json({ answers: false, models: [], error: e.message }, 200);
     }
   }
-  const pcfg = registry.providerConfig(cfg.endpoint);
-  if (!pcfg || pcfg.protocol !== 'system_one') {
+  if (!ep) {
     return c.json({ answers: false, models: [], error: 'Unknown provider' }, 200);
   }
   const models = await registry.listModels(cfg.endpoint);

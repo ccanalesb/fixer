@@ -67,7 +67,7 @@ describeMaybe('parity with the PyTorch reference', () => {
 
   it('answers in a worker thread, within 0.01 of PyTorch, without holding the main event loop', async () => {
     const lag = monitorEventLoopDelay({ resolution: 5 });
-    const ep = systemOneEndpoint({ endpoint: 'this_app', model: '', apiKey: '' });
+    const ep = systemOneEndpoint({ endpoint: 'this_app', model: '' });
     // One window for every call, the worker's start included: a histogram enabled twice counts the gap.
     lag.enable();
     for (const m of models) {
