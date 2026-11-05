@@ -42,6 +42,7 @@ export function recordCullUserAction(db: Db, imageKey: string, action: CullUserA
       JSON.stringify(summary?.stage_version_ids ?? []),
     );
     if (action !== 'sent_by_hand') return;
+    // `sent_by_hand` on the verdict row is written but not read; actions are the record.
     if (summary) {
       db.prepare(
         "UPDATE cull_verdicts SET verdict = 'passed', filtered_by = NULL, filtered_by_stage_key = NULL, sent_by_hand = 1, decided_at = ? WHERE image_key = ?",
@@ -79,18 +80,3 @@ export function listCullUserActions(db: Db, imageKey: string): CullUserActionRow
   return rows.map((r) => ({ ...r, answered_stage_version_ids: JSON.parse(r.answered_stage_version_ids) as number[] }));
 }
 
-export function isSentByHand(db: Db, imageKey: string): boolean {
-  return (
-    db
-      .prepare("SELECT 1 FROM cull_user_actions WHERE image_key = ? AND action = 'sent_by_hand' LIMIT 1")
-      .get(imageKey) !== undefined
-  );
-}
-
-/** Every photo the user sent by hand. */
-export function listSentByHandKeys(db: Db): Set<string> {
-  const rows = db
-    .prepare("SELECT DISTINCT image_key FROM cull_user_actions WHERE action = 'sent_by_hand'")
-    .all() as { image_key: string }[];
-  return new Set(rows.map((r) => r.image_key));
-}

@@ -140,7 +140,7 @@ describe('cullPhoto', () => {
     const r = await cullPhoto(db, ctx, answerer, { imageKey: 'a', sentByHand: true, runId, resolveImage: image });
     expect(r.outcome).toBe('redecided');
     expect(answerer.calls).toEqual([]);
-    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed', sent_by_hand: true });
+    expect(getCullVerdict(db, 'a')).toMatchObject({ verdict: 'passed' });
   });
 
   it('forced, asks the models again though every stage is answered, and stores the new answers', async () => {

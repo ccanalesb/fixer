@@ -90,7 +90,9 @@ describe('decideWriteback reject.why', () => {
 
   it('sent_by_hand when the photo was sent by hand', async () => {
     await cull(KEY, fakeModels(PROFILE_FILTERS));
-    db.prepare(`UPDATE cull_verdicts SET sent_by_hand = 1 WHERE image_key = ?`).run(KEY);
+    const { recordCullUserAction } = await import('../src/db/library/cull-user-actions.js');
+    recordCullUserAction(db, KEY, 'sent_by_hand');
+    db.prepare(`UPDATE cull_verdicts SET sent_by_hand = 0 WHERE image_key = ?`).run(KEY);
     expect(decide(KEY).reject).toEqual({ want: false, why: 'sent_by_hand' });
   });
 

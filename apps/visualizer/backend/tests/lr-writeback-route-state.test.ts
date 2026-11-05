@@ -11,6 +11,7 @@ import { createApp } from '../src/app.js';
 import { openLibraryDb } from '../src/db/connection.js';
 import { patchLrWritebackSettings } from '../src/db/library/lr-writeback-settings.js';
 import { upsertCullVerdict } from '../src/db/library/cull-verdicts.js';
+import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
 import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
@@ -528,8 +529,9 @@ describe('switch job stars state', () => {
 
   it('never rejects a void frame sent by hand', async () => {
     fx.addFrameSubstance(starsKey, 'void');
-    fx.exec('UPDATE cull_verdicts SET sent_by_hand = 1 WHERE image_key = ?', starsKey);
     const db = openLibraryDb(fx.dbPath);
+    recordCullUserAction(db, starsKey, 'sent_by_hand');
+    db.prepare('UPDATE cull_verdicts SET sent_by_hand = 0 WHERE image_key = ?').run(starsKey);
     await reconcileLrWriteback(db, { trigger: 'job', catalogPath: lrcatPath });
     db.close();
 

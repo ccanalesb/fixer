@@ -3,6 +3,7 @@
  */
 import { buildDescriptionFtsQuery, DESCRIPTION_FTS_KEY_SUBQUERY } from './descriptions.js';
 import { flaggedExistsSql } from './frame-substance-sql.js';
+import { sentByHandSql } from './sent-by-hand.js';
 
 /** SQLite binding values these queries produce. */
 export type Binding = string | number | null;
@@ -25,8 +26,7 @@ export function nonEmptyStrListForJsonArrayFilter(
 }
 
 /** Passed culling or sent-by-hand (Images → Culling catalog). */
-const CULL_CATALOG_SQL =
-  "EXISTS (SELECT 1 FROM cull_verdicts cv WHERE cv.image_key = i.key AND (cv.verdict = 'passed' OR cv.sent_by_hand = 1 OR EXISTS (SELECT 1 FROM cull_user_actions ua WHERE ua.image_key = cv.image_key AND ua.action = 'sent_by_hand')))";
+const CULL_CATALOG_SQL = `EXISTS (SELECT 1 FROM cull_verdicts cv WHERE cv.image_key = i.key AND (cv.verdict = 'passed' OR ${sentByHandSql('cv')}))`;
 
 export interface CatalogImageFilters {
   cullCatalog?: boolean | null;

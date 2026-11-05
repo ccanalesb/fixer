@@ -23,7 +23,7 @@ import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-profiles.js';
 import { loadCurrentStageAnswers, readStoredStageModelIds } from '../../db/library/cull-stages.js';
 import { getForecastQuestions } from '../../db/library/score-forecast-questions.js';
-import { listSentByHandKeys } from '../../db/library/cull-user-actions.js';
+import { listSentByHandKeys } from '../../db/library/sent-by-hand.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { listAppModels } from '../../app-models/install.js';
@@ -81,7 +81,7 @@ export async function runCullPass(
   ctx: PassContext,
   opts: {
     imageKeys?: readonly string[];
-    skipModelsFor?: ReadonlySet<string>;
+    askModelsForSentByHand?: boolean;
     force?: boolean;
     /** Called with each photo's decision as it is counted. */
     onDecision?: (imageKey: string, decision: PhotoDecision) => void;
@@ -202,7 +202,7 @@ export async function runCullPass(
   };
 
   const sentByHand = listSentByHandKeys(db);
-  const skipModels = opts.skipModelsFor ?? new Set<string>();
+  const askModelsForSentByHand = opts.askModelsForSentByHand ?? true;
   const stageSec: Record<StageKind, number> = { culling_profile: 0, score_forecast: 0 };
   const counts = { culled: 0, redecided: 0, failed: 0, ...emptyVerdictTally() };
   const tally = (imageKey: string, decision: PhotoDecision): void => {
@@ -214,7 +214,7 @@ export async function runCullPass(
   const skippedAnswers = loadCurrentStageAnswers(db, stages, skipped);
   for (const key of skipped) {
     counts.failed += 1;
-    const byHand = getCullVerdict(db, key)?.sent_by_hand ?? sentByHand.has(key);
+    const byHand = sentByHand.has(key);
     const d = decidePhoto(pipeline.config, stages, skippedAnswers.get(key) ?? {}, {
       sentByHand: byHand,
       scoreForecastAvailable: cullCtx.scoreForecastAvailable,
@@ -234,7 +234,7 @@ export async function runCullPass(
       }
 
       let r;
-      if (skipModels.has(key)) {
+      if (!askModelsForSentByHand && sentByHand.has(key)) {
         const stored = loadCurrentStageAnswers(db, stages, [key]).get(key) ?? {};
         const decision = decideAndStorePhoto(db, cullCtx, {
           imageKey: key,

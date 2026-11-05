@@ -3,9 +3,7 @@
  */
 import type { StageKind } from '../../cull/types.js';
 import type { Db } from '../connection.js';
-
-const SENT_BY_HAND_SQL =
-  "(v.sent_by_hand = 1 OR EXISTS (SELECT 1 FROM cull_user_actions u WHERE u.image_key = v.image_key AND u.action = 'sent_by_hand'))";
+import { sentByHandSql } from './sent-by-hand.js';
 
 const KEYS_PER_QUERY = 500;
 
@@ -19,20 +17,20 @@ export interface CullReviewSummary {
 export function getCullReviewSummary(db: Db): CullReviewSummary {
   const notPassed = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM cull_verdicts v WHERE v.verdict = 'filtered' AND NOT ${SENT_BY_HAND_SQL}`,
+      `SELECT COUNT(*) AS n FROM cull_verdicts v WHERE v.verdict = 'filtered' AND NOT ${sentByHandSql('v')}`,
     )
     .get() as { n: number };
   const sentManual = db
-    .prepare(`SELECT COUNT(*) AS n FROM cull_verdicts v WHERE ${SENT_BY_HAND_SQL}`)
+    .prepare(`SELECT COUNT(*) AS n FROM cull_verdicts v WHERE ${sentByHandSql('v')}`)
     .get() as { n: number };
   const byProfile = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM cull_verdicts v WHERE v.verdict = 'filtered' AND v.filtered_by = 'culling_profile' AND NOT ${SENT_BY_HAND_SQL}`,
+      `SELECT COUNT(*) AS n FROM cull_verdicts v WHERE v.verdict = 'filtered' AND v.filtered_by = 'culling_profile' AND NOT ${sentByHandSql('v')}`,
     )
     .get() as { n: number };
   const byForecast = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM cull_verdicts v WHERE v.verdict = 'filtered' AND v.filtered_by = 'score_forecast' AND NOT ${SENT_BY_HAND_SQL}`,
+      `SELECT COUNT(*) AS n FROM cull_verdicts v WHERE v.verdict = 'filtered' AND v.filtered_by = 'score_forecast' AND NOT ${sentByHandSql('v')}`,
     )
     .get() as { n: number };
   const lastRun = db
@@ -67,7 +65,7 @@ export function listCullReviewPhotos(
   if (tab === 'culling_profile') verdictFilter = " AND v.filtered_by = 'culling_profile'";
   else if (tab === 'score_forecast') verdictFilter = " AND v.filtered_by = 'score_forecast'";
 
-  const baseWhere = `v.verdict = 'filtered' AND NOT ${SENT_BY_HAND_SQL}${verdictFilter}`;
+  const baseWhere = `v.verdict = 'filtered' AND NOT ${sentByHandSql('v')}${verdictFilter}`;
   const total = (db.prepare(`SELECT COUNT(*) AS n FROM cull_verdicts v WHERE ${baseWhere}`).get() as { n: number }).n;
 
   const rows = db
@@ -94,7 +92,7 @@ export function listCullCatalogImageKeys(db: Db, keys: readonly string[]): Set<s
       .prepare(
         `SELECT v.image_key FROM cull_verdicts v
          WHERE v.image_key IN (${chunk.map(() => '?').join(',')})
-           AND (v.verdict = 'passed' OR ${SENT_BY_HAND_SQL})`,
+           AND (v.verdict = 'passed' OR ${sentByHandSql('v')})`,
       )
       .all(...chunk) as { image_key: string }[];
     for (const r of rows) out.add(r.image_key);
@@ -107,7 +105,7 @@ export function isCullCatalogPhoto(db: Db, imageKey: string): boolean {
     db
       .prepare(
         `SELECT 1 FROM cull_verdicts v WHERE v.image_key = ?
-         AND (v.verdict = 'passed' OR ${SENT_BY_HAND_SQL})`,
+         AND (v.verdict = 'passed' OR ${sentByHandSql('v')})`,
       )
       .get(imageKey) !== undefined
   );
@@ -125,7 +123,7 @@ export function batchCullManuallySent(db: Db, keys: readonly string[]): Set<stri
     const rows = db
       .prepare(
         `SELECT v.image_key FROM cull_verdicts v
-         WHERE v.image_key IN (${chunk.map(() => '?').join(',')}) AND ${SENT_BY_HAND_SQL}`,
+         WHERE v.image_key IN (${chunk.map(() => '?').join(',')}) AND ${sentByHandSql('v')}`,
       )
       .all(...chunk) as { image_key: string }[];
     for (const r of rows) out.add(r.image_key);
