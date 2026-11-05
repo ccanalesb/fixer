@@ -33,6 +33,7 @@ export interface LiveWritebackCatalog extends LivePickRating {
 
 export interface WritebackCatalogWriter {
   readLive(imageKey: string): LiveWritebackCatalog | null;
+  readPickRating(imageKey: string): LivePickRating | null;
   hasAppStars(imageKey: string, rating: number): boolean;
   hasAppReject(imageKey: string): boolean;
   removeAutoStarsKeyword(imageKey: string): void;
@@ -65,6 +66,10 @@ class LrcatWritebackCatalogWriter implements WritebackCatalogWriter {
       auto_stars_keyword: imageHasKeywordByKey(this.conn, imageKey, AUTO_STARS_KEYWORD),
       auto_reject_keyword: imageHasKeywordByKey(this.conn, imageKey, AUTO_REJECT_KEYWORD),
     };
+  }
+
+  readPickRating(imageKey: string): LivePickRating | null {
+    return readPickRating(this.conn, imageKey);
   }
 
   hasAppStars(imageKey: string, rating: number): boolean {

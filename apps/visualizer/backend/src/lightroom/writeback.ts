@@ -154,8 +154,7 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
         }
         if (canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
         const writeNow = canWrite && !lockStopped && catalogSession !== null;
-        const liveFull = catalogSession?.writer.readLive(imageKey) ?? null;
-        const live = liveFull ? { pick: liveFull.pick, rating: liveFull.rating } : null;
+        const live = catalogSession?.writer.readPickRating(imageKey) ?? null;
         const decision = decideWriteback(db, settings, imageKey, starsSlug);
         const photo = { imageKey, live, writeNow, decision };
 
