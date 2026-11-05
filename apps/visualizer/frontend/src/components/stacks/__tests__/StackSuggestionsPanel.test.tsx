@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { StackSuggestionsPanel } from '../StackSuggestionsPanel'
-import { invalidateAll } from '../../../data'
+import { deleteMatching } from '../../../data/cache'
 import {
   STACK_SUGGESTIONS_ACCEPT,
   STACK_SUGGESTIONS_EMPTY,
@@ -39,7 +39,7 @@ function renderPanel() {
 
 describe('StackSuggestionsPanel', () => {
   beforeEach(() => {
-    invalidateAll(['stacks.suggestions'])
+    deleteMatching(() => true)
     mockListStackSuggestions.mockResolvedValue({
       items: [
         {

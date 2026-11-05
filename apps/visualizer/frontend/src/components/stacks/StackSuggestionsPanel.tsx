@@ -10,8 +10,7 @@ import {
   STACK_SUGGESTIONS_TIME_GAP_SECONDS,
   msgShowingOf,
 } from '../../constants/strings'
-import { ErrorState, invalidateAll, useQuery } from '../../data'
-import { keys, prefixOf } from '../../data/keys'
+import { ErrorState, keys, useQuery } from '../../data'
 import { ImagesAPI, type StackSuggestion } from '../../services/api'
 
 type StackSuggestionsListProps = {
@@ -116,10 +115,8 @@ export function StackSuggestionsList({
 export function StackSuggestionsPanel() {
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [actionError, setActionError] = useState<Error | null>(null)
-  const listRev = busyKey ? 1 : 0
-  const suggestions = useQuery(
-    ['stacks.suggestions', listRev] as const,
-    () => ImagesAPI.listStackSuggestions({ limit: 50, offset: 0 }),
+  const suggestions = useQuery(keys.stacks.suggestions(), () =>
+    ImagesAPI.listStackSuggestions({ limit: 50, offset: 0 }),
   )
 
   const handleAccept = async (item: StackSuggestion) => {
@@ -128,9 +125,6 @@ export function StackSuggestionsPanel() {
     setActionError(null)
     try {
       await ImagesAPI.acceptStackSuggestion(item.image_a.key, item.image_b.key)
-      invalidateAll(['stacks.suggestions'])
-      invalidateAll(keys.dashboard())
-      invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
     } catch (e) {
       setActionError(e instanceof Error ? e : new Error(String(e)))
     } finally {
@@ -144,8 +138,6 @@ export function StackSuggestionsPanel() {
     setActionError(null)
     try {
       await ImagesAPI.rejectStackSuggestion(item.image_a.key, item.image_b.key)
-      invalidateAll(['stacks.suggestions'])
-      invalidateAll(keys.dashboard())
     } catch (e) {
       setActionError(e instanceof Error ? e : new Error(String(e)))
     } finally {

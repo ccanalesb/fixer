@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { CatalogImage } from '../../../services/api'
+import { keys, useQuery } from '../../../data'
 import { ImagesAPI } from '../../../services/api'
 import { Button } from '../../ui/Button/Button'
 import { ConfirmModalFrame, UndoToastBar, useUndoToast } from '../../ui/ConfirmUndoAction'
@@ -35,16 +35,10 @@ type ConfirmSpec = {
 }
 
 /** The burst stack the photo belongs to: split, re-pick its representative, merge another in. */
-export function StackTab({
-  stackId,
-  imageKey,
-  onDataChanged,
-}: {
-  stackId: number
-  imageKey: string
-  onDataChanged: () => void
-}) {
-  const [members, setMembers] = useState<CatalogImage[] | null>(null)
+export function StackTab({ stackId, imageKey }: { stackId: number; imageKey: string }) {
+  const { items: members } = useQuery(keys.images.stackMembers(stackId), () =>
+    ImagesAPI.getStackMembers(stackId),
+  )
   const [selectedKey, setSelectedKey] = useState(imageKey)
   const [mutating, setMutating] = useState(false)
   const [mergeSourceId, setMergeSourceId] = useState('')
@@ -52,25 +46,6 @@ export function StackTab({
   const { toast, offerUndo, runUndo } = useUndoToast()
 
   useEffect(() => setSelectedKey(imageKey), [imageKey])
-
-  useEffect(() => {
-    let cancelled = false
-    void ImagesAPI.getStackMembers(stackId)
-      .then((r) => !cancelled && setMembers(r.items))
-      .catch(() => !cancelled && setMembers([]))
-    return () => {
-      cancelled = true
-    }
-  }, [stackId])
-
-  async function refreshMembers() {
-    try {
-      setMembers((await ImagesAPI.getStackMembers(stackId)).items)
-    } catch {
-      setMembers([])
-    }
-    onDataChanged()
-  }
 
   async function runConfirmed(spec: ConfirmSpec) {
     setMutating(true)
@@ -95,7 +70,6 @@ export function StackTab({
       confirmVariant: 'danger',
       onConfirm: async () => {
         await ImagesAPI.splitStackMember(stackId, memberKey)
-        await refreshMembers()
       },
     })
 
@@ -108,10 +82,8 @@ export function StackTab({
       confirmVariant: 'primary',
       onConfirm: async () => {
         await ImagesAPI.setStackRepresentative(stackId, memberKey)
-        await refreshMembers()
         offerUndo(CATALOG_STACK_TOAST_REP_UPDATED, async () => {
           await ImagesAPI.setStackRepresentative(stackId, rep)
-          await refreshMembers()
         })
       },
     })
@@ -128,7 +100,6 @@ export function StackTab({
       onConfirm: async () => {
         await ImagesAPI.mergeStacks(stackId, sid)
         setMergeSourceId('')
-        onDataChanged()
       },
     })
   }

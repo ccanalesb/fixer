@@ -27,8 +27,7 @@ import { FileTab } from './tabs/FileTab'
 import { LightroomTab } from './tabs/LightroomTab'
 import { StackTab } from './tabs/StackTab'
 import { frameHeldBack, frameSaysNothing, frameSubstanceQuery } from './tabs/frameSubstance'
-import { ErrorBoundary, ErrorState, invalidate, invalidateAll, useQuery } from '../../data'
-import { keys, prefixOf } from '../../data/keys'
+import { ErrorBoundary, ErrorState, invalidate, invalidateAll, keys, prefixOf, stacksChanged, useQuery } from '../../data'
 
 export type ImageDetailTab = 'culling' | 'ai' | 'lightroom' | 'file' | 'stack'
 
@@ -209,8 +208,7 @@ function ImageDetailModalBody({
     ai: () => <AiTab imageKey={imageKey} onDataChanged={handleDataChanged} />,
     lightroom: () => <LightroomTab image={displayImage} />,
     file: () => <FileTab image={displayImage} onPostedChange={setPostedOverride} />,
-    stack: () =>
-      hasStack ? <StackTab stackId={stackId} imageKey={imageKey} onDataChanged={handleDataChanged} /> : null,
+    stack: () => (hasStack ? <StackTab stackId={stackId} imageKey={imageKey} /> : null),
   }
 
   return (
@@ -241,7 +239,15 @@ function ImageDetailModalBody({
           >
             <ErrorBoundary
               resetKeys={[active, imageKey]}
-              fallback={({ error, reset }) => <ErrorState error={error} reset={reset} />}
+              fallback={({ error, reset }) => (
+                <ErrorState
+                  error={error}
+                  reset={() => {
+                    if (active === 'stack') stacksChanged()
+                    reset()
+                  }}
+                />
+              )}
             >
               <Suspense fallback={<p className="text-sm text-text-tertiary">Loading…</p>}>{panel[active]()}</Suspense>
             </ErrorBoundary>
