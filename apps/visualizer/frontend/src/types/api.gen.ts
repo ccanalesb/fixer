@@ -2172,6 +2172,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/catalog/change-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConfigCatalogChangePreviewRequest"];
+                };
+            };
+            responses: {
+                /** @description What changing the catalog would do */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConfigCatalogChangePreviewResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config/catalog/pick": {
         parameters: {
             query?: never;
@@ -2197,6 +2254,77 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ConfigCatalogPickResponse"];
+                    };
+                };
+                /** @description A dialog is already open */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+                /** @description The dialog failed to open */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description This host has no native dialog */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/catalog/pick-folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Chosen folder, or null */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConfigCatalogPickFolderResponse"];
                     };
                 };
                 /** @description A dialog is already open */
@@ -6333,17 +6461,63 @@ export interface components {
             catalog_path: string;
             resolved_path: string;
             exists: boolean;
+            /** @enum {string} */
+            catalog_kind: "lightroom" | "folder";
+            photo_count: number | null;
             picker_available: boolean;
+        };
+        ConfigCatalogChangePreviewResponse: {
+            unchanged: boolean;
+            current: {
+                catalog_path: string;
+                resolved_path: string;
+                /** @enum {string} */
+                catalog_kind: "lightroom" | "folder";
+                display_name: string;
+                exists: boolean;
+                library_photo_count: number | null;
+                has_library: boolean;
+            };
+            next: {
+                catalog_path: string;
+                resolved_path: string;
+                /** @enum {string} */
+                catalog_kind: "lightroom" | "folder";
+                display_name: string;
+                exists: boolean;
+                library_photo_count: number | null;
+                has_library: boolean;
+            };
+            ask_same_or_different: boolean;
+            jobs_to_cancel: {
+                id: string;
+                type: string;
+                status: string;
+            }[];
+        };
+        ConfigCatalogChangePreviewRequest: {
+            catalog_path: string;
         };
         ConfigCatalogPickResponse: {
             catalog_path: string | null;
         };
+        ConfigCatalogPickFolderResponse: {
+            catalog_path: string | null;
+        };
         ConfigCatalogPutResponse: {
             catalog_path: string;
+            /** @enum {string} */
+            change: "update_path" | "switch";
+            reopened_library: boolean;
+            library_photo_count: number | null;
+            catalog_sync_job_id: string | null;
+            cancelled_job_ids: string[];
             ok: boolean;
         };
         ConfigCatalogPutRequest: {
             catalog_path: string;
+            /** @enum {string} */
+            change: "update_path" | "switch";
         };
         ConfigStackDetectionGetResponse: {
             stack_burst_delta_ms: number;

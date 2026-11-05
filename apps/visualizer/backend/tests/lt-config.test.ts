@@ -30,6 +30,9 @@ const put = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+const putCatalog = (catalogPath: string, change: 'update_path' | 'switch') =>
+  put('/api/config/catalog', { catalog_path: catalogPath, change });
+
 const readCfg = (): Record<string, unknown> =>
   parseYaml(readFileSync(cfgPath, 'utf8')) as Record<string, unknown>;
 
@@ -72,6 +75,8 @@ describe('GET /api/config/catalog', () => {
       catalog_path: lrcat,
       resolved_path: lrcat,
       exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: null,
       picker_available: onMac,
     });
   });
@@ -91,6 +96,8 @@ describe('GET /api/config/catalog', () => {
       catalog_path: '',
       resolved_path: '',
       exists: false,
+      catalog_kind: 'lightroom',
+      photo_count: null,
       picker_available: onMac,
     });
   });
@@ -113,9 +120,12 @@ describe('PUT /api/config/catalog', () => {
     const lrcat = join(dir, 'new.lrcat');
     writeFileSync(lrcat, 'x');
 
-    const res = await put('/api/config/catalog', { catalog_path: lrcat });
+    const res = await putCatalog(lrcat, 'switch');
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ catalog_path: lrcat, ok: true });
+    const body = await json<{ catalog_path: string; ok: boolean; change: string }>(res);
+    expect(body.catalog_path).toBe(lrcat);
+    expect(body.ok).toBe(true);
+    expect(body.change).toBe('switch');
 
     const cfg = readCfg();
     expect(cfg.catalog_path).toBe(lrcat);
@@ -125,23 +135,18 @@ describe('PUT /api/config/catalog', () => {
     expect(Object.keys(cfg)).toEqual(['workers', 'vision_model', 'catalog_path']);
   });
 
-  it('rejects a padded path, because validation runs before the trim', async () => {
-    // Validation runs on the raw path before trim, so padded paths fail the extension check.
+  it('trims surrounding spaces on save', async () => {
+    writeFileSync(cfgPath, 'catalog_path: /old.lrcat\n');
     const lrcat = join(dir, 'spaced.lrcat');
     writeFileSync(lrcat, 'x');
 
-    const trailing = await put('/api/config/catalog', { catalog_path: `${lrcat}  ` });
-    expect(trailing.status).toBe(400);
-    expect(await json(trailing)).toEqual({ error: 'catalog_path must be a .lrcat file' });
-
-    const leading = await put('/api/config/catalog', { catalog_path: `  ${lrcat}` });
-    expect(leading.status).toBe(400);
-    expect(await json(leading)).toEqual({ error: 'catalog_path must be an existing file' });
+    const res = await put('/api/config/catalog', { catalog_path: `  ${lrcat}  `, change: 'switch' });
+    expect(res.status).toBe(200);
+    expect(readCfg().catalog_path).toBe(lrcat);
   });
 
   it.each([
-    [{ catalog_path: '/tmp/notacatalog.txt' }, 'catalog_path must be a .lrcat file'],
-    [{ catalog_path: '/nope/missing.lrcat' }, 'catalog_path must be an existing file'],
+    [{ catalog_path: '/nope/missing.lrcat', change: 'switch' }, 'catalog_path must be an existing file'],
   ])('rejects %j with a 400', async (body, message) => {
     const res = await put('/api/config/catalog', body);
     expect(res.status).toBe(400);
@@ -151,7 +156,7 @@ describe('PUT /api/config/catalog', () => {
   it.each([
     [{}, 'a missing field'],
     [{ catalog_path: 5 }, 'a non-string'],
-    [{ catalog_path: '/nope/missing.lrcat', extra: 1 }, 'an unexpected field'],
+    [{ catalog_path: '/nope/missing.lrcat', extra: 1, change: 'switch' }, 'an unexpected field'],
   ])('answers 422 for %o (%s)', async (body, _why) => {
     // Schema violations return 422, not 400.
     const res = await put('/api/config/catalog', body);
@@ -161,12 +166,12 @@ describe('PUT /api/config/catalog', () => {
   it('accepts a .LRCAT extension case-insensitively', async () => {
     const lrcat = join(dir, 'Shouty.LRCAT');
     writeFileSync(lrcat, 'x');
-    expect((await put('/api/config/catalog', { catalog_path: lrcat })).status).toBe(200);
+    expect((await putCatalog(lrcat, 'switch')).status).toBe(200);
   });
 
   it('does not write the file when validation fails', async () => {
     writeFileSync(cfgPath, 'catalog_path: /original.lrcat\n');
-    await put('/api/config/catalog', { catalog_path: '/nope/missing.lrcat' });
+    await putCatalog('/nope/missing.lrcat', 'switch');
     expect(readCfg().catalog_path).toBe('/original.lrcat');
   });
 
@@ -179,7 +184,7 @@ describe('PUT /api/config/catalog', () => {
     process.env.LIBRARY_DB = libraryPath;
     writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(first)}\n`);
 
-    const res = await put('/api/config/catalog', { catalog_path: second });
+    const res = await putCatalog(second, 'switch');
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error: 'library pinned by LIBRARY_DB' });
   });
@@ -194,7 +199,7 @@ describe('PUT /api/config/catalog', () => {
     process.env.LIBRARY_DB = libraryPath;
     writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(oldPath)}\n`);
 
-    const res = await put('/api/config/catalog', { catalog_path: newPath });
+    const res = await putCatalog(newPath, 'update_path');
     expect(res.status).toBe(200);
     expect(readCfg().catalog_path).toBe(newPath);
   });

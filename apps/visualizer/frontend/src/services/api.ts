@@ -25,6 +25,7 @@ import type {
   InstagramPostedResponse,
 } from '../types/catalog'
 import type {
+  ConfigCatalogChangePreviewResponse,
   ConfigCatalogGetResponse,
   ConfigCatalogPickResponse,
   ConfigCatalogPutResponse,
@@ -412,10 +413,23 @@ export const ConfigAPI = {
       CATALOG_PICK_TIMEOUT_MS,
     ),
 
-  putCatalog: async (catalogPath: string) => {
+  pickFolderCatalog: () =>
+    request<ConfigCatalogPickResponse>(
+      '/config/catalog/pick-folder',
+      { method: 'POST' },
+      CATALOG_PICK_TIMEOUT_MS,
+    ),
+
+  previewCatalogChange: (catalogPath: string) =>
+    request<ConfigCatalogChangePreviewResponse>('/config/catalog/change-preview', {
+      method: 'POST',
+      body: JSON.stringify({ catalog_path: catalogPath }),
+    }),
+
+  putCatalog: async (catalogPath: string, change: 'update_path' | 'switch') => {
     const result = await request<ConfigCatalogPutResponse>('/config/catalog', {
       method: 'PUT',
-      body: JSON.stringify({ catalog_path: catalogPath }),
+      body: JSON.stringify({ catalog_path: catalogPath, change }),
     })
     invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
     invalidateAll(keys.catalog.cache.stats())

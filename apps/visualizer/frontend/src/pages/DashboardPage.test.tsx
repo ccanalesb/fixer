@@ -46,6 +46,8 @@ describe('DashboardPage', () => {
       catalog_path: '/tmp/test.lrcat',
       resolved_path: '/tmp/test.lrcat',
       exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 0,
       picker_available: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
@@ -134,6 +136,8 @@ describe('DashboardPage first-run setup', () => {
       catalog_path: '',
       resolved_path: '',
       exists: false,
+      catalog_kind: 'lightroom',
+      photo_count: null,
       picker_available: true,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue({

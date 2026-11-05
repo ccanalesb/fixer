@@ -1,4 +1,5 @@
-import { Suspense, useMemo } from 'react'
+import { Suspense, useEffect, useMemo } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { FirstRunSetupScreen } from '../components/setup/FirstRunSetupScreen'
 import { useFirstRunSetup } from '../hooks/useFirstRunSetup'
 import type { FilterSchema } from '../components/filters/types'
@@ -115,6 +116,22 @@ const dashboardSuspenseFallback = (
 
 function DashboardPageInner() {
   const firstRun = useFirstRunSetup()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const state = location.state as { startCatalogImport?: boolean } | null
+    if (!state?.startCatalogImport || firstRun.loading || !firstRun.showInsightsSetup) return
+    navigate(location.pathname, { replace: true, state: null })
+    void firstRun.startImport()
+  }, [
+    location.pathname,
+    location.state,
+    firstRun.loading,
+    firstRun.showInsightsSetup,
+    firstRun.startImport,
+    navigate,
+  ])
 
   if (firstRun.showInsightsSetup) {
     if (firstRun.loading) {

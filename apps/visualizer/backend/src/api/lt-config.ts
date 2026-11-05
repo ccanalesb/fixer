@@ -7,23 +7,28 @@
 import { createRoute } from '@hono/zod-openapi';
 import { existsSync, statSync } from 'node:fs';
 import {
-  absoluteCatalogPath,
-  invalidateOpenLibraryCache,
-  isLibraryDbPinned,
-  pinnedLibraryCatalogPath,
-  updatePinnedLibraryCatalogPath,
+  applyCatalogChange,
+  previewCatalogChange,
+} from '../catalog-change.js';
+import {
+  findCatalogLibrariesForPath,
+  inferCatalogKind,
 } from '../catalog-library.js';
 import {
   config,
   expandUserPath,
   loadLibraryConfig,
-  updateConfigYamlCatalogPath,
   updateConfigYamlStackBurstDeltaMs,
 } from '../config.js';
+import { openLibraryDb } from '../db/connection.js';
+import { getImageCount } from '../db/library/statistics.js';
 import { createOpenApiApp } from './openapi.js';
 import { jsonBody, withValidationError } from './route-helpers.js';
 import {
+  ConfigCatalogChangePreviewRequest,
+  ConfigCatalogChangePreviewResponse,
   ConfigCatalogGetResponse,
+  ConfigCatalogPickFolderResponse,
   ConfigCatalogPickResponse,
   ConfigCatalogPutRequest,
   ConfigCatalogPutResponse,
@@ -34,6 +39,7 @@ import {
 import { ErrorBody } from './schemas/errors.js';
 import {
   chooseFile,
+  chooseFolder,
   FileDialogBusyError,
   FileDialogUnavailableError,
   nativeFileDialogAvailable,
@@ -63,6 +69,22 @@ function catalogExists(resolved: string): boolean {
   return isDirectory(resolved);
 }
 
+function currentPhotoCount(resolved: string): number | null {
+  if (!resolved) return null;
+  const matches = findCatalogLibrariesForPath(resolved);
+  if (matches.length !== 1) return null;
+  const dbPath = matches[0]!.libraryDbPath;
+  if (!existsSync(dbPath)) return null;
+  const db = openLibraryDb(dbPath, { readonly: true });
+  try {
+    return getImageCount(db);
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
 // --- catalog ----------------------------------------------------------------
 
 const getCatalogRoute = createRoute({
@@ -78,15 +100,39 @@ ltConfigRoutes.openapi(getCatalogRoute, (c) => {
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
   const raw = cfg.catalogPathRaw || '';
   const resolved = raw ? expandUserPath(raw) : '';
+  const kind = resolved ? inferCatalogKind(resolved) : 'lightroom';
   return c.json(
     {
       catalog_path: raw,
       resolved_path: resolved,
       exists: Boolean(resolved && catalogExists(resolved)),
+      catalog_kind: kind,
+      photo_count: resolved ? currentPhotoCount(resolved) : null,
       picker_available: nativeFileDialogAvailable(),
     },
     200,
   );
+});
+
+const previewCatalogChangeRoute = createRoute({
+  method: 'post',
+  path: '/config/catalog/change-preview',
+  tags: ['config'],
+  request: { body: { content: jsonBody(ConfigCatalogChangePreviewRequest) } },
+  responses: withValidationError({
+    200: {
+      description: 'What changing the catalog would do',
+      content: jsonBody(ConfigCatalogChangePreviewResponse),
+    },
+    400: { description: 'Invalid request', content: jsonBody(ErrorBody) },
+  }),
+});
+
+ltConfigRoutes.openapi(previewCatalogChangeRoute, (c) => {
+  const { catalog_path: value } = c.req.valid('json');
+  const preview = previewCatalogChange(value);
+  if ('error' in preview) return c.json({ error: preview.error }, 400);
+  return c.json(preview, 200);
 });
 
 const pickCatalogRoute = createRoute({
@@ -112,6 +158,29 @@ ltConfigRoutes.openapi(pickCatalogRoute, async (c) => {
   }
 });
 
+const pickFolderCatalogRoute = createRoute({
+  method: 'post',
+  path: '/config/catalog/pick-folder',
+  tags: ['config'],
+  responses: withValidationError({
+    200: { description: 'Chosen folder, or null', content: jsonBody(ConfigCatalogPickFolderResponse) },
+    409: { description: 'A dialog is already open', content: jsonBody(ErrorBody) },
+    500: { description: 'The dialog failed to open', content: jsonBody(ErrorBody) },
+    501: { description: 'This host has no native dialog', content: jsonBody(ErrorBody) },
+  }),
+});
+
+ltConfigRoutes.openapi(pickFolderCatalogRoute, async (c) => {
+  try {
+    const result = await chooseFolder('Select a folder of photos');
+    return c.json({ catalog_path: 'path' in result ? result.path : null }, 200);
+  } catch (error) {
+    if (error instanceof FileDialogUnavailableError) return c.json({ error: error.message }, 501);
+    if (error instanceof FileDialogBusyError) return c.json({ error: error.message }, 409);
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
+  }
+});
+
 const putCatalogRoute = createRoute({
   method: 'put',
   path: '/config/catalog',
@@ -124,33 +193,10 @@ const putCatalogRoute = createRoute({
 });
 
 ltConfigRoutes.openapi(putCatalogRoute, (c) => {
-  const { catalog_path: value } = c.req.valid('json');
-  if (!value.toLowerCase().endsWith('.lrcat')) {
-    return c.json({ error: 'catalog_path must be a .lrcat file' }, 400);
-  }
-  if (!isFile(expandUserPath(value))) {
-    return c.json({ error: 'catalog_path must be an existing file' }, 400);
-  }
-
-  if (isLibraryDbPinned()) {
-    const recorded = pinnedLibraryCatalogPath();
-    if (recorded) {
-      const recordedAbs = absoluteCatalogPath(recorded);
-      const newAbs = absoluteCatalogPath(value);
-      const recordedBase = recordedAbs.split('/').pop() ?? '';
-      const newBase = newAbs.split('/').pop() ?? '';
-      if (recordedBase.toLowerCase() !== newBase.toLowerCase()) {
-        return c.json({ error: 'library pinned by LIBRARY_DB' }, 400);
-      }
-      if (recordedAbs !== newAbs) {
-        updatePinnedLibraryCatalogPath(newAbs);
-      }
-    }
-  }
-
-  updateConfigYamlCatalogPath(config.LT_CONFIG_YAML, value);
-  invalidateOpenLibraryCache();
-  return c.json({ catalog_path: value.trim(), ok: true }, 200);
+  const { catalog_path: value, change } = c.req.valid('json');
+  const result = applyCatalogChange(value, change);
+  if ('error' in result) return c.json({ error: result.error }, 400);
+  return c.json({ ...result, ok: true }, 200);
 });
 
 // --- stack detection --------------------------------------------------------

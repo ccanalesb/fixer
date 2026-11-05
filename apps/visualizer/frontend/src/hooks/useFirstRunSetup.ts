@@ -121,7 +121,7 @@ export function useFirstRunSetup() {
     try {
       const chosen = await pickCatalogPath()
       if (!chosen) return
-      await ConfigAPI.putCatalog(chosen)
+      await ConfigAPI.putCatalog(chosen, 'switch')
       await catalog.refresh()
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e))

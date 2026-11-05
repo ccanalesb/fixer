@@ -1,6 +1,8 @@
 import type { components } from './api.gen'
 
 /** Generated from backend OpenAPI — see ADR-0013. */
+export type ConfigCatalogChangePreviewResponse =
+  components['schemas']['ConfigCatalogChangePreviewResponse']
 export type ConfigCatalogGetResponse =
   components['schemas']['ConfigCatalogGetResponse']
 export type ConfigCatalogPickResponse =

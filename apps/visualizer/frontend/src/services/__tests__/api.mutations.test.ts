@@ -136,7 +136,7 @@ describe('mutation cache updates', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     fetchMock.mockResolvedValueOnce(okJson({ catalog_path: '/x.lrcat', exists: true }))
-    await ConfigAPI.putCatalog('/x.lrcat')
+    await ConfigAPI.putCatalog('/x.lrcat', 'switch')
 
     fetchMock.mockResolvedValueOnce(okJson({ months: ['2024-01', '2024-02'] }))
     const p2 = catchThrown(() => query(monthsKey, () => ImagesAPI.getCatalogMonths())) as Promise<unknown>
