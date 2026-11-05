@@ -334,7 +334,10 @@ describe('TaskAssignmentsBlock', () => {
         usable: { problem: 'parked', job_id: null, provider_name: 'Ollama' },
       }),
     }
-    cullingModelsChanged()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+    await ProvidersAPI.update(PROVIDER_ID, { enabled: false })
     await waitFor(() =>
       expect(desc(cull)).toContain(STAGE_PARKED('Ollama', 'the culling profile')),
     )
