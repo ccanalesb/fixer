@@ -15,7 +15,7 @@ interface ExemplarRailProps {
   perspectiveSlug: string
   initialItems?: MirrorExemplar[]
   initialTotal: number
-  onOpenExemplar: (exemplar: MirrorExemplar, index: number) => void
+  onOpenExemplar: (exemplar: MirrorExemplar, index: number, exemplars: MirrorExemplar[]) => void
   /** From mirror `meta.exemplar_page_size`; falls back to the default. */
   pageSize?: number
   /** From mirror `meta.exemplar_initial_limit`; falls back to the default. */
@@ -170,7 +170,7 @@ export function ExemplarRail({
               key={exemplar.image_key}
               type="button"
               className="relative h-[150px] w-[150px] shrink-0 snap-start overflow-hidden rounded-base border border-border bg-bg transition hover:-translate-y-0.5 hover:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent"
-              onClick={() => onOpenExemplar(exemplar, index)}
+              onClick={() => onOpenExemplar(exemplar, index, items)}
             >
               <span className="absolute left-1.5 top-1.5 z-10 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] font-semibold text-white">
                 #{index + 1}

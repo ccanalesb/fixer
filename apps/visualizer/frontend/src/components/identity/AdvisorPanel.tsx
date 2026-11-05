@@ -56,6 +56,7 @@ export function AdvisorPanel() {
     rows: [],
   })
   const [selected, setSelected] = useState<PostNextCandidate | null>(null)
+  const [navIndex, setNavIndex] = useState(0)
 
   const postNextSchema = useMemo<FilterSchema>(
     () => [
@@ -182,7 +183,10 @@ export function AdvisorPanel() {
                     >
                       <button
                         type="button"
-                        onClick={() => setSelected(row)}
+                        onClick={() => {
+                          setNavIndex(i)
+                          setSelected(row)
+                        }}
                         className="mx-auto shrink-0 focus:outline-none focus:ring-2 focus:ring-accent sm:mx-0"
                       >
                         <img
@@ -249,8 +253,17 @@ export function AdvisorPanel() {
 
       {selected ? (
         <ImageDetailModal
-          imageKey={selected.image_key}
+          imageKey={rows[navIndex]?.image_key ?? selected.image_key}
           {...modalPropsFor('identity')}
+          nav={
+            rows.length > 1
+              ? {
+                  keys: rows.map((r) => r.image_key),
+                  index: navIndex,
+                  onIndexChange: setNavIndex,
+                }
+              : undefined
+          }
           onClose={() => setSelected(null)}
         />
       ) : null}

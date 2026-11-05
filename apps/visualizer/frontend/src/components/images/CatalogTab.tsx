@@ -80,7 +80,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const [page, setPage] = useState(1);
   const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<SelectedCatalogEntry | null>(null);
-  const [cullNavIndex, setCullNavIndex] = useState(0);
+  const [navIndex, setNavIndex] = useState(0);
 
   const monthsPayload = useQuery(keys.images.catalogMonths(), () =>
     ImagesAPI.getCatalogMonths(),
@@ -298,11 +298,13 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
     const sp = new URLSearchParams(location.search);
     const raw = sp.get('image_key');
     if (!raw) return;
+    const idx = images.findIndex((im) => im.key === raw);
+    if (idx >= 0) setNavIndex(idx);
     setSelected({ key: raw });
     sp.delete('image_key');
     const next = sp.toString();
     navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true });
-  }, [location.search, location.pathname, navigate]);
+  }, [location.search, location.pathname, navigate, images]);
 
   const postedCommitted = filterValues.posted as boolean | undefined;
   useEffect(() => {
@@ -423,7 +425,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
                     ) : undefined
                   }
                   onClick={() => {
-                    setCullNavIndex(idx);
+                    setNavIndex(idx);
                     setSelected({ key: image.key });
                   }}
                 />
@@ -441,29 +443,32 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
         </>
       )}
 
-      {selected && (
-        <ImageDetailModal
-          imageKey={
-            cullCatalog ? (images[cullNavIndex]?.key ?? selected.key) : selected.key
-          }
-          {...modalPropsFor(cullCatalog ? 'culling' : 'catalog')}
-          scorePerspectiveSlug={
-            typeof filterValues.scorePerspective === 'string' && filterValues.scorePerspective
-              ? filterValues.scorePerspective
-              : undefined
-          }
-          nav={
-            cullCatalog
-              ? {
-                  keys: images.map((im) => im.key),
-                  index: cullNavIndex,
-                  onIndexChange: setCullNavIndex,
-                }
-              : undefined
-          }
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {selected && (() => {
+        const onPage = images.findIndex((im) => im.key === selected.key);
+        const listNav =
+          onPage >= 0 && images.length > 1
+            ? {
+                keys: images.map((im) => im.key),
+                index: navIndex,
+                onIndexChange: setNavIndex,
+              }
+            : undefined;
+        const imageKey =
+          onPage >= 0 ? (images[navIndex]?.key ?? selected.key) : selected.key;
+        return (
+          <ImageDetailModal
+            imageKey={imageKey}
+            {...modalPropsFor(cullCatalog ? 'culling' : 'catalog')}
+            scorePerspectiveSlug={
+              typeof filterValues.scorePerspective === 'string' && filterValues.scorePerspective
+                ? filterValues.scorePerspective
+                : undefined
+            }
+            nav={listNav}
+            onClose={() => setSelected(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

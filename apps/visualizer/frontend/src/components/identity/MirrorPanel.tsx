@@ -59,7 +59,7 @@ function TechniqueBlock({
   initialLimit,
 }: {
   section: MirrorTechniqueSection
-  onOpenExemplar: (exemplar: MirrorExemplar) => void
+  onOpenExemplar: (exemplar: MirrorExemplar, index: number, exemplars: MirrorExemplar[]) => void
   pageSize?: number
   initialLimit?: number
 }) {
@@ -126,7 +126,7 @@ function OtherLensRow({
   initialLimit,
 }: {
   lens: MirrorOtherLens
-  onOpenExemplar: (exemplar: MirrorExemplar) => void
+  onOpenExemplar: (exemplar: MirrorExemplar, index: number, exemplars: MirrorExemplar[]) => void
   pageSize?: number
   initialLimit?: number
 }) {
@@ -166,7 +166,8 @@ function OtherLensRow({
 function MirrorContent({ data }: { data: MirrorResponse }) {
   const [modal, setModal] = useState<{
     section: Pick<MirrorTechniqueSection, 'perspective_slug' | 'display_name' | 'win_rate' | 'chance_rate' | 'z_score'>
-    exemplar: MirrorExemplar
+    exemplars: MirrorExemplar[]
+    navIndex: number
   } | null>(null)
 
   if (data.sections.length === 0) {
@@ -179,7 +180,8 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
 
   function openFromSection(
     section: MirrorTechniqueSection | MirrorOtherLens,
-    exemplar: MirrorExemplar,
+    index: number,
+    exemplars: MirrorExemplar[],
   ) {
     setModal({
       section: {
@@ -189,16 +191,18 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
         chance_rate: section.chance_rate,
         z_score: section.z_score,
       },
-      exemplar,
+      exemplars,
+      navIndex: index,
     })
   }
 
   let contextSlot: ReactNode = null
   if (modal) {
+    const exemplar = modal.exemplars[modal.navIndex] ?? modal.exemplars[0]
     contextSlot = (
       <div>
         <h3 className="mb-3 text-lg font-semibold text-text">{IDENTITY_MIRROR_WHY_HERE}</h3>
-        <MirrorStandoutContext section={modal.section} exemplar={modal.exemplar} />
+        <MirrorStandoutContext section={modal.section} exemplar={exemplar} />
       </div>
     )
   }
@@ -216,7 +220,9 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
           <TechniqueBlock
             key={section.perspective_slug}
             section={section}
-            onOpenExemplar={(exemplar) => openFromSection(section, exemplar)}
+            onOpenExemplar={(_exemplar, index, exemplars) =>
+              openFromSection(section, index, exemplars)
+            }
             pageSize={exemplarPageSize}
             initialLimit={exemplarInitialLimit}
           />
@@ -234,7 +240,9 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
               <OtherLensRow
                 key={lens.perspective_slug}
                 lens={lens}
-                onOpenExemplar={(exemplar) => openFromSection(lens, exemplar)}
+                onOpenExemplar={(_exemplar, index, exemplars) =>
+                  openFromSection(lens, index, exemplars)
+                }
                 pageSize={exemplarPageSize}
                 initialLimit={exemplarInitialLimit}
               />
@@ -249,10 +257,21 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
 
       {modal ? (
         <ImageDetailModal
-          imageKey={modal.exemplar.image_key}
+          imageKey={
+            modal.exemplars[modal.navIndex]?.image_key ?? modal.exemplars[0]?.image_key ?? ''
+          }
           {...modalPropsFor('identity')}
           scorePerspectiveSlug={modal.section.perspective_slug}
           contextSlot={contextSlot}
+          nav={
+            modal.exemplars.length > 1
+              ? {
+                  keys: modal.exemplars.map((e) => e.image_key),
+                  index: modal.navIndex,
+                  onIndexChange: (index) => setModal((prev) => (prev ? { ...prev, navIndex: index } : prev)),
+                }
+              : undefined
+          }
           onClose={() => setModal(null)}
         />
       ) : null}
