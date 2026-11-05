@@ -1,4 +1,4 @@
-import { invalidate, invalidateAll, patchMatching } from '../data'
+import { cullingChanged, invalidate, invalidateAll, patchMatching } from '../data'
 import type {
   CatalogImage,
   CatalogImageInput,
@@ -683,17 +683,23 @@ export const FrameSubstanceAPI = {
       `/images/catalog/${encodeURIComponent(imageKey)}/frame-substance`,
     ),
 
-  createOverride: (imageKey: string) =>
-    request<FrameSubstanceOverrideResponse>(
+  createOverride: async (imageKey: string) => {
+    const result = await request<FrameSubstanceOverrideResponse>(
       `/images/catalog/${encodeURIComponent(imageKey)}/frame-substance/override`,
       { method: 'POST' },
-    ),
+    )
+    cullingChanged()
+    return result
+  },
 
-  deleteOverride: (imageKey: string) =>
-    request<FrameSubstanceOverrideResponse>(
+  deleteOverride: async (imageKey: string) => {
+    const result = await request<FrameSubstanceOverrideResponse>(
       `/images/catalog/${encodeURIComponent(imageKey)}/frame-substance/override`,
       { method: 'DELETE' },
-    ),
+    )
+    cullingChanged()
+    return result
+  },
 }
 
 export const DescriptionsAPI = {
@@ -972,21 +978,36 @@ export const CullAPI = {
   },
   photoDetail: (imageKey: string) =>
     request<CullReviewDetail>(`/cull/photos/${encodeURIComponent(imageKey)}`),
-  recordAction: (imageKey: string, action: 'sent_by_hand' | 'agrees_with_filter' | 'should_have_been_filtered') =>
-    request<{ ok: boolean }>(`/cull/photos/${encodeURIComponent(imageKey)}/actions`, {
-      method: 'POST',
-      body: JSON.stringify({ action }),
-    }),
-  withdrawShouldHaveBeenFiltered: (imageKey: string) =>
-    request<{ ok: boolean; removed: number }>(
+  recordAction: async (
+    imageKey: string,
+    action: 'sent_by_hand' | 'agrees_with_filter' | 'should_have_been_filtered',
+  ) => {
+    const result = await request<{ ok: boolean }>(
+      `/cull/photos/${encodeURIComponent(imageKey)}/actions`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      },
+    )
+    cullingChanged()
+    return result
+  },
+  withdrawShouldHaveBeenFiltered: async (imageKey: string) => {
+    const result = await request<{ ok: boolean; removed: number }>(
       `/cull/photos/${encodeURIComponent(imageKey)}/actions/should_have_been_filtered`,
       { method: 'DELETE' },
-    ),
-  sendPhotos: (imageKeys: string[]) =>
-    request<{ sent_by_hand: string[]; job_id: string | null; skipped_complete: number }>(
+    )
+    cullingChanged()
+    return result
+  },
+  sendPhotos: async (imageKeys: string[]) => {
+    const result = await request<{ sent_by_hand: string[]; job_id: string | null; skipped_complete: number }>(
       '/cull/photos/send',
       { method: 'POST', body: JSON.stringify({ image_keys: imageKeys }) },
-    ),
+    )
+    cullingChanged()
+    return result
+  },
 }
 
 export type ScoreForecastQuestion = components['schemas']['ScoreForecastQuestion']

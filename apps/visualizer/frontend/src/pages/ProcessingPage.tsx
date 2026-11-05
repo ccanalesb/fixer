@@ -13,7 +13,7 @@ import { Button } from '../components/ui/Button';
 import { useJobSocket } from '../hooks/useJobSocket';
 import { usePageTab } from '../hooks/usePageTab';
 import { JobsAPI } from '../services/api';
-import { ErrorBoundary, ErrorState, invalidateAll, useQuery } from '../data';
+import { ErrorBoundary, ErrorState, cullingChanged, invalidateAll, useQuery } from '../data';
 import { AnalyzeOptionsProvider } from '../stores/analyzeOptionsContext';
 import { PROCESSING_TAB_IDS, usePageUiStore } from '../stores/pageUiStore';
 import {
@@ -125,8 +125,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['cull.summary']);
-                invalidateAll(['cull.photos']);
+                cullingChanged();
                 reset();
               }}
             />

@@ -24,6 +24,7 @@ import {
   INSIGHTS_TOP_PHOTOS_TAB_UNPOSTED,
 } from '../constants/strings'
 import { ErrorBoundary, ErrorState, useQuery } from '../data'
+import { keys } from '../data/keys'
 import { useFilters } from '../hooks/useFilters'
 import {
   IdentityAPI,
@@ -147,7 +148,7 @@ function DashboardInsightsView() {
 
   const filters = useFilters(dashboardTopPhotosSchema)
 
-  const bundle = useQuery(['dashboard'] as const, () => fetchDashboardBundle())
+  const bundle = useQuery(keys.dashboard(), () => fetchDashboardBundle())
 
   const { insights, errInsights, topPhotosByTab } = bundle
 

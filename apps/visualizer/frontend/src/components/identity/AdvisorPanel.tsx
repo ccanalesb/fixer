@@ -5,6 +5,7 @@ import {
   type PostNextCandidate,
 } from '../../services/api'
 import { useQuery } from '../../data'
+import { keys } from '../../data/keys'
 import { ImageDetailModal, fromPostNextRow } from '../image-view'
 import { Button } from '../ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
@@ -83,7 +84,7 @@ export function AdvisorPanel() {
 
   const sortKey = sortParam ?? 'none'
   const initial = useQuery(
-    ['identity', 'post-next', sortParam ?? null] as const,
+    keys.identity.postNext(sortParam ?? null),
     () =>
       IdentityAPI.getSuggestions({
         limit: SUGGESTIONS_LIMIT,

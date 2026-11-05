@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { CullAPI, FrameSubstanceAPI, type CullReviewDetail, type FrameSubstanceResponse } from '../../../services/api'
-import { invalidate, invalidateAll, useQuery } from '../../../data'
+import { useQuery } from '../../../data'
+import { keys } from '../../../data/keys'
 import { Button } from '../../ui/Button'
 import { levelHighlightClass } from '../../cull/cullHighlight'
 import { rowSendButtonLabel } from '../../cull/sendLabel'
@@ -144,12 +145,8 @@ function CullingTabContent({
   const [error, setError] = useState<string | null>(null)
 
   const refreshVerdict = useCallback(() => {
-    invalidate(['cull.detail', imageKey])
-    invalidateAll(['cull.summary'])
-    invalidateAll(['cull.photos'])
-    invalidateAll(['images.catalog'])
     onDataChanged?.()
-  }, [imageKey, onDataChanged])
+  }, [onDataChanged])
 
   const act = async (fn: () => Promise<unknown>) => {
     setError(null)
@@ -167,10 +164,6 @@ function CullingTabContent({
     try {
       if (frame.has_override) await FrameSubstanceAPI.deleteOverride(imageKey)
       else await FrameSubstanceAPI.createOverride(imageKey)
-      invalidate(['frameSubstance', imageKey])
-      invalidateAll(['images.catalog', 'list'])
-      invalidateAll(['dashboard'])
-      invalidateAll(['identity'])
       onDataChanged?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update override')
@@ -273,7 +266,7 @@ function CullingTabContent({
 }
 
 function CullingTabWithVerdict(props: { imageKey: string; onDataChanged?: () => void }) {
-  const detail = useQuery(['cull.detail', props.imageKey] as const, () => CullAPI.photoDetail(props.imageKey))
+  const detail = useQuery(keys.cull.detail(props.imageKey), () => CullAPI.photoDetail(props.imageKey))
   return <CullingTabContent {...props} detail={detail} />
 }
 

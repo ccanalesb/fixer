@@ -5,6 +5,7 @@ import { CatalogTab } from '../components/images/CatalogTab';
 import { SkeletonGrid } from '../components/ui/page-states';
 import { LibraryEmptyPrompt } from '../components/setup/LibraryEmptyPrompt';
 import { ErrorBoundary, ErrorState, invalidateAll } from '../data';
+import { keys, prefixOf } from '../data/keys';
 import { usePageTab } from '../hooks/usePageTab';
 import { useFirstRunSetup } from '../hooks/useFirstRunSetup';
 import { IMAGES_TAB_IDS, usePageUiStore } from '../stores/pageUiStore';
@@ -43,7 +44,7 @@ function ImagesPageBody() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['images.catalog']);
+                invalidateAll(prefixOf(keys.images.catalogMonths(), 1));
                 invalidateAll(['perspectives']);
                 reset();
               }}
@@ -65,7 +66,7 @@ function ImagesPageBody() {
             <ErrorState
               error={error}
               reset={() => {
-                invalidateAll(['images.catalog']);
+                invalidateAll(prefixOf(keys.images.catalogMonths(), 1));
                 reset();
               }}
             />

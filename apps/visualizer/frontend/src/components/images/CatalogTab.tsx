@@ -11,6 +11,7 @@ import { ImageDetailModal, ImageTile, fromCatalogListRow } from '../image-view';
 import { Pagination } from '../ui/Pagination';
 import { TileGrid } from '../ui/TileGrid';
 import { useQuery } from '../../data';
+import { keys } from '../../data/keys';
 import {
   FILTER_ALL_DATES,
   CATALOG_FILTER_LABEL_STATUS,
@@ -84,7 +85,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const [selected, setSelected] = useState<SelectedCatalogEntry | null>(null);
   const [cullNavIndex, setCullNavIndex] = useState(0);
 
-  const monthsPayload = useQuery(['images.catalog', 'months'] as const, () =>
+  const monthsPayload = useQuery(keys.images.catalogMonths(), () =>
     ImagesAPI.getCatalogMonths(),
   );
   const availableMonths = monthsPayload.months;
@@ -288,7 +289,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   );
 
   const listQueryKey = useMemo(
-    () => ['images.catalog', 'list', stableSerializeRecord(listParams)] as const,
+    () => keys.images.catalogList(stableSerializeRecord(listParams)),
     [listParams],
   );
 

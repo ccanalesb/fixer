@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { deleteMatching } from '../../../../data/cache'
 import { useQuery } from '../../../../data'
+import { keys } from '../../../../data/keys'
 import type { FrameSubstanceResponse } from '../../../../services/api'
 import { CullingTab } from '../CullingTab'
 
@@ -12,12 +13,21 @@ const mockDeleteOverride = vi.fn()
 
 vi.mock('../../../../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../services/api')>()
+  const { cullingChanged } = await import('../../../../data/keys')
   return {
     ...actual,
     FrameSubstanceAPI: {
       get: (...args: unknown[]) => mockGet(...args),
-      createOverride: (...args: unknown[]) => mockCreateOverride(...args),
-      deleteOverride: (...args: unknown[]) => mockDeleteOverride(...args),
+      createOverride: async (...args: unknown[]) => {
+        const result = await mockCreateOverride(...args)
+        cullingChanged()
+        return result
+      },
+      deleteOverride: async (...args: unknown[]) => {
+        const result = await mockDeleteOverride(...args)
+        cullingChanged()
+        return result
+      },
     },
   }
 })
@@ -164,8 +174,8 @@ describe('CullingTab — frame substance', () => {
     mockGet.mockResolvedValue(frame())
 
     function Harness() {
-      useQuery(['dashboard'] as const, () => mockDashboard())
-      useQuery(['identity', 'probe'] as const, () => mockIdentity())
+      useQuery(keys.dashboard(), () => mockDashboard())
+      useQuery(keys.identity.mirror(), () => mockIdentity())
       return <CullingTab imageKey={KEY} showVerdict={false} />
     }
 
