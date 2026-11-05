@@ -37,6 +37,8 @@ import {
   PROCESSING_PROVIDERS_SYSTEM_ONE_ROUTE,
 } from '../../../constants/strings'
 import type { Job } from '../../../types/job'
+import { deleteMatching } from '../../../data/cache'
+import { cullingProfilesChanged } from '../../../data'
 
 vi.mock('../../ui/ProviderModelSelect', () => ({ ProviderModelSelect: () => null }))
 
@@ -91,6 +93,7 @@ const usableStage = (over: Partial<CullingStageUsability> = {}): CullingStageUsa
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  deleteMatching(() => true)
   socket.onJobUpdated = null
   pipeline()
   usable = { culling_profile: usableStage(), score_forecast: usableStage({ model: 'forecast-model' }), culling_profile_filter: true }
@@ -131,10 +134,12 @@ beforeEach(() => {
   vi.spyOn(CullingProfilesAPI, 'saveCullingProfileSwitches').mockImplementation(async (body) => {
     if (body.enabled !== undefined) stored = { ...stored, culling_profiles_enabled: body.enabled }
     if (body.filter_enabled !== undefined) stored = { ...stored, culling_profiles_filter_enabled: body.filter_enabled }
+    cullingProfilesChanged()
     return { version: 2, redecide_job_id: 'job-9' }
   })
   vi.spyOn(CullingProfilesAPI, 'saveScoreForecast').mockImplementation(async (body) => {
     stored = { ...stored, score_forecast: { ...stored.score_forecast, ...body } }
+    cullingProfilesChanged()
     return { version: 2, redecide_job_id: 'job-9' }
   })
   vi.spyOn(ProvidersAPI, 'getFallbackOrder').mockResolvedValue({ order: [] })

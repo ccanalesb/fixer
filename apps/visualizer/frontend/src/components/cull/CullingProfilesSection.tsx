@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CullingProfilesAPI } from '../../services/api'
-import { useQuery, invalidateAll } from '../../data'
+import { keys, useQuery } from '../../data'
 import { Button } from '../ui/Button'
 import { FoldingCard } from '../ui/Card'
 import {
@@ -16,10 +16,10 @@ import { CullingProfileEditor } from './CullingProfileEditor'
 import { minimalNewProfileBody } from './minimalProfile'
 
 export function CullingProfilesSection() {
-  const profiles = useQuery(['culling-profiles.list'] as const, () => CullingProfilesAPI.list())
+  const profiles = useQuery(keys.cullingProfiles.list(), () => CullingProfilesAPI.list())
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
 
-  const detail = useQuery(['culling-profiles.detail', selectedSlug ?? ''] as const, () =>
+  const detail = useQuery(keys.cullingProfiles.detail(selectedSlug ?? ''), () =>
     selectedSlug ? CullingProfilesAPI.get(selectedSlug) : Promise.resolve(null),
   )
 
@@ -29,17 +29,10 @@ export function CullingProfilesSection() {
     }
   }, [profiles, selectedSlug])
 
-  const refresh = useCallback(() => {
-    invalidateAll(['culling-profiles.list'])
-    invalidateAll(['culling-profiles.pipeline'])
-    invalidateAll(['culling-profiles.detail'])
-  }, [])
-
   const onAdd = async () => {
     const slug = `profile-${Date.now()}`
     const created = await CullingProfilesAPI.create(minimalNewProfileBody(slug, 'New profile'))
     setSelectedSlug(created.slug)
-    refresh()
   }
 
   const list = profiles?.profiles ?? []
@@ -79,7 +72,7 @@ export function CullingProfilesSection() {
           </div>
           <div className="flex-1 min-w-0">
             {detail && selectedSlug ? (
-              <CullingProfileEditor key={`${detail.slug}-${detail.version}`} profile={detail} onRefresh={refresh} />
+              <CullingProfileEditor key={`${detail.slug}-${detail.version}`} profile={detail} />
             ) : null}
           </div>
         </div>

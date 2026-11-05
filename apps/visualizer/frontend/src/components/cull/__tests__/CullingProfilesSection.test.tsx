@@ -6,10 +6,10 @@ import { CULL_ADD_PROFILE, CULL_PROFILES_SECTION } from '../../../constants/stri
 
 const expand = () => fireEvent.click(screen.getByRole('button', { name: new RegExp(CULL_PROFILES_SECTION) }))
 import { deleteMatching } from '../../../data/cache'
+import { cullingProfilesChanged } from '../../../data'
 
 const apiMocks = vi.hoisted(() => ({
   list: vi.fn(),
-  getPipeline: vi.fn(),
   get: vi.fn(),
   create: vi.fn(),
 }))
@@ -21,9 +21,12 @@ vi.mock('../../../services/api', async (importOriginal) => {
     CullingProfilesAPI: {
       ...actual.CullingProfilesAPI,
       list: (...args: unknown[]) => apiMocks.list(...args),
-      getPipeline: (...args: unknown[]) => apiMocks.getPipeline(...args),
       get: (...args: unknown[]) => apiMocks.get(...args),
-      create: (...args: unknown[]) => apiMocks.create(...args),
+      create: async (...args: unknown[]) => {
+        const result = await apiMocks.create(...args)
+        cullingProfilesChanged()
+        return result
+      },
     },
   }
 })
@@ -46,15 +49,6 @@ describe('CullingProfilesSection', () => {
           pipeline_order: 0,
         },
       ],
-    })
-    apiMocks.getPipeline.mockResolvedValue({
-      version: 1,
-      config: {
-        culling_profiles_enabled: true,
-        culling_profiles_filter_enabled: true,
-        score_forecast: { threshold: 0.111, enabled: true, high_from_level: 8, excused_at: 1 },
-        culling_profiles: [],
-      },
     })
     apiMocks.get.mockResolvedValue({
       slug: 'default',
