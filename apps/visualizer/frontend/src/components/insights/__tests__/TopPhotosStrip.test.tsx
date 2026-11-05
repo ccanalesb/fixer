@@ -1,38 +1,75 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TopPhotosStrip } from '../TopPhotosStrip'
 import { NULLABLE_BEST_PHOTO_FIELDS } from '../../../__test-utils__/identityFixtures'
 import type { IdentityBestPhotoItem } from '../../../services/api'
+import { deleteMatching } from '../../../data/cache'
+import {
+  clickTileByKey,
+  mockImageDetailFilenames,
+  mockImageDetailModalDeps,
+  stepModalPrevNext,
+} from '../../image-view/__tests__/modalNavTestUtils'
 
-const item: IdentityBestPhotoItem = {
-  ...NULLABLE_BEST_PHOTO_FIELDS,
-  image_key: 'k-dash',
-  peak_percentile: 0.8,
-  perspectives_covered: 1,
-  eligible: null,
-  per_perspective: [
-    {
-      perspective_slug: 'street',
-      display_name: 'Street',
-      score: 9,
-      percentile: 0.8,
-      prompt_version: 'v1',
-      model_used: 'm',
-      scored_at: 't',
-      rationale_preview: '',
-    },
-  ],
-  filename: 'k.jpg',
-  date_taken: '2024-01-01',
-  rating: 0,
-  instagram_posted: false,
+function stripItem(imageKey: string): IdentityBestPhotoItem {
+  return {
+    ...NULLABLE_BEST_PHOTO_FIELDS,
+    image_key: imageKey,
+    peak_percentile: 0.8,
+    perspectives_covered: 1,
+    eligible: null,
+    per_perspective: [
+      {
+        perspective_slug: 'street',
+        display_name: 'Street',
+        score: 9,
+        percentile: 0.8,
+        prompt_version: 'v1',
+        model_used: 'm',
+        scored_at: 't',
+        rationale_preview: '',
+      },
+    ],
+    filename: `${imageKey}.jpg`,
+    date_taken: '2024-01-01',
+    rating: 0,
+    instagram_posted: false,
+  }
 }
 
+const item = stripItem('k-dash')
+
 describe('TopPhotosStrip', () => {
+  beforeEach(() => {
+    deleteMatching(() => true)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('renders dominant perspective label and score in the tile footer', () => {
     render(
       <TopPhotosStrip items={[item]} loading={false} error={null} emptyMessage={null} />,
     )
     expect(screen.getByText('Street 9')).toBeInTheDocument()
+  })
+
+  it('steps through strip photos with Prev / Next', async () => {
+    const keys = ['top-a', 'top-b', 'top-c']
+    mockImageDetailModalDeps()
+    mockImageDetailFilenames(keys)
+
+    render(
+      <TopPhotosStrip
+        items={keys.map(stripItem)}
+        loading={false}
+        error={null}
+        emptyMessage={null}
+      />,
+    )
+
+    clickTileByKey('top-b')
+    await stepModalPrevNext('top-a.jpg', 'top-b.jpg', 'top-c.jpg')
   })
 })

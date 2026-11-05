@@ -15,6 +15,7 @@ export type TopPhotosStripProps = {
 export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhotosStripProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<IdentityBestPhotoItem | null>(null)
+  const [navIndex, setNavIndex] = useState(0)
 
   if (loading) {
     return (
@@ -47,7 +48,7 @@ export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhoto
   return (
     <>
       <div ref={scrollRef} className="-mx-1 flex gap-3 overflow-x-auto pb-2 pt-1">
-        {items.map((row) => {
+        {items.map((row, idx) => {
           const dom = pickDominantPerspective(row.per_perspective)
           return (
             <ImageTile
@@ -56,7 +57,10 @@ export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhoto
               variant="strip"
               primaryScoreSource="identity"
               scrollContainerRef={scrollRef}
-              onClick={() => setSelected(row)}
+              onClick={() => {
+                setNavIndex(idx)
+                setSelected(row)
+              }}
               footer={
                 dom ? (
                   <PerspectiveBadge
@@ -72,8 +76,17 @@ export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhoto
       </div>
       {selected ? (
         <ImageDetailModal
-          imageKey={selected.image_key}
+          imageKey={items[navIndex]?.image_key ?? selected.image_key}
           {...modalPropsFor('identity')}
+          nav={
+            items.length > 1
+              ? {
+                  keys: items.map((r) => r.image_key),
+                  index: navIndex,
+                  onIndexChange: setNavIndex,
+                }
+              : undefined
+          }
           onClose={() => setSelected(null)}
         />
       ) : null}
