@@ -41,6 +41,7 @@ interface StageState {
   endpoint: string;
   model: string | null;
   answered: { photos: number; model: string | null };
+  usable: { problem: string | null; job_id: string | null; provider_name: string | null };
 }
 type Listing = {
   culling_profile: StageState;
@@ -94,7 +95,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const NONE: StageState = { endpoint: 'this_app', model: null, answered: { photos: 0, model: null } };
+const USABLE_OK = { problem: null, job_id: null, provider_name: null };
+const NONE: StageState = { endpoint: 'this_app', model: null, answered: { photos: 0, model: null }, usable: USABLE_OK };
 const NO_PROVIDERS: Listing['system_one_providers'] = [];
 
 describe('GET /api/culling-models', () => {
@@ -116,6 +118,33 @@ describe('GET /api/culling-models', () => {
     expect(res.system_one_providers).toEqual([
       { id, name: 'Test host', url: 'http://localhost:11434', enabled: true, has_key: true },
     ]);
+  });
+
+  it('gives each stage the same usable slice as GET /api/culling-models/usable', async () => {
+    type Usable = {
+      on: boolean;
+      problem: string | null;
+      job_id: string | null;
+      provider_name: string | null;
+    };
+    type UsableBody = { culling_profile: Usable; score_forecast: Usable };
+    const pipelinePut = (path: string, body: unknown) =>
+      app.request(`/api/culling-profiles/pipeline/${path}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    await pipelinePut('culling-profiles', { enabled: true });
+    await pipelinePut('score-forecast', { enabled: true });
+    const listing = await json<Listing>(await app.request('/api/culling-models'));
+    const usableBody = await json<UsableBody>(await app.request('/api/culling-models/usable'));
+    const slice = (u: Usable) => ({
+      problem: u.problem,
+      job_id: u.job_id,
+      provider_name: u.provider_name,
+    });
+    expect(listing.culling_profile.usable).toEqual(slice(usableBody.culling_profile));
+    expect(listing.score_forecast.usable).toEqual(slice(usableBody.score_forecast));
   });
 });
 
@@ -143,6 +172,7 @@ describe('PUT /api/culling-models/{stage}', () => {
       endpoint: id,
       model: null,
       answered: { photos: 0, model: null },
+      usable: USABLE_OK,
     });
     expect((yamlOnDisk().culling_models as Record<string, unknown>).score_forecast).toEqual({
       endpoint: id,

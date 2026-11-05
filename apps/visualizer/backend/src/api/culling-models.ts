@@ -5,7 +5,7 @@
 import { createRoute } from '@hono/zod-openapi';
 import { config, loadLibraryConfig, updateConfigYamlCullingModel, type CullingModelConfig } from '../config.js';
 import { stagesOn } from '../cull/stage-models.js';
-import { resolveStage, stageEndpoint } from '../cull/stage-resolver.js';
+import { resolveStage, stageEndpoint, type ResolveStageResult } from '../cull/stage-resolver.js';
 import type { StageKind } from '../cull/types.js';
 import type { Db } from '../db/connection.js';
 import { initJobsDb } from '../db/jobs/jobs.js';
@@ -82,16 +82,39 @@ async function modelName(identity: string | null): Promise<string | null> {
   return at > 0 ? `${identity.slice(0, at)} on ${identity.slice(at + 1)}` : identity;
 }
 
+function stageUsable(resolved: ResolveStageResult): z.infer<typeof CullingStageModel>['usable'] {
+  return { problem: resolved.problem, job_id: resolved.job_id, provider_name: resolved.provider_name };
+}
+
+async function resolveContext(db: Db) {
+  const { config: pipeline } = getCurrentPipelineSetting(db);
+  const questionCount = getForecastQuestions(db).questions.length;
+  const on = stagesOn(pipeline);
+  const cfg = stagesConfig();
+  const registry = new ProviderRegistry();
+  const appModels = withJobsDb((jobsDb) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir, jobsDb));
+  const input = (kind: StageKind) => ({
+    on: on[kind],
+    cfg: cfg[kind],
+    appModels,
+    questionCount,
+    registry,
+  });
+  return { cfg, input, pipeline, registry };
+}
+
 async function stageState(
   db: Db,
   kind: StageKind,
   cfg: CullingModelConfig,
   storedModelId: string | null,
+  resolved: ResolveStageResult,
 ): Promise<z.infer<typeof CullingStageModel>> {
   return {
     endpoint: cfg.endpoint,
     model: cfg.model || null,
     answered: { photos: countPhotosAnsweredByCurrentStage(db, kind), model: await modelName(storedModelId) },
+    usable: stageUsable(resolved),
   };
 }
 
@@ -106,13 +129,16 @@ const getRoute = createRoute({
 
 cullingModelsRoutes.openapi(getRoute, async (c) => {
   const db = c.get('libraryDb');
-  const cfg = stagesConfig();
+  const { cfg, input, registry } = await resolveContext(db);
   const stored = readStoredStageModelIds(db);
-  const registry = new ProviderRegistry();
+  const [cullingProfile, scoreForecast] = await Promise.all([
+    resolveStage('culling_profile', input('culling_profile')),
+    resolveStage('score_forecast', input('score_forecast')),
+  ]);
   return c.json(
     {
-      culling_profile: await stageState(db, 'culling_profile', cfg.culling_profile, stored.culling_profile),
-      score_forecast: await stageState(db, 'score_forecast', cfg.score_forecast, stored.score_forecast),
+      culling_profile: await stageState(db, 'culling_profile', cfg.culling_profile, stored.culling_profile, cullingProfile),
+      score_forecast: await stageState(db, 'score_forecast', cfg.score_forecast, stored.score_forecast, scoreForecast),
       total_photos: countCatalogPhotosForCullEstimate(db),
       system_one_providers: listSystemOneProviders(registry),
     },
@@ -149,7 +175,9 @@ cullingModelsRoutes.openapi(putRoute, async (c) => {
   };
   updateConfigYamlCullingModel(config.LT_CONFIG_YAML, stage, next);
   const db = c.get('libraryDb');
-  return c.json(await stageState(db, stage, next, readStoredStageModelIds(db)[stage]), 200);
+  const { input } = await resolveContext(db);
+  const resolved = await resolveStage(stage, input(stage));
+  return c.json(await stageState(db, stage, next, readStoredStageModelIds(db)[stage], resolved), 200);
 });
 
 const modelsRoute = createRoute({
@@ -173,19 +201,7 @@ const usableRoute = createRoute({
 
 cullingModelsRoutes.openapi(usableRoute, async (c) => {
   const libDb = c.get('libraryDb');
-  const { config: pipeline } = getCurrentPipelineSetting(libDb);
-  const questionCount = getForecastQuestions(libDb).questions.length;
-  const on = stagesOn(pipeline);
-  const cfg = stagesConfig();
-  const registry = new ProviderRegistry();
-  const appModels = withJobsDb((db) => listAppModels(loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir, db));
-  const input = (kind: StageKind) => ({
-    on: on[kind],
-    cfg: cfg[kind],
-    appModels,
-    questionCount,
-    registry,
-  });
+  const { input, pipeline } = await resolveContext(libDb);
   const [cullingProfile, scoreForecast] = await Promise.all([
     resolveStage('culling_profile', input('culling_profile')),
     resolveStage('score_forecast', input('score_forecast')),

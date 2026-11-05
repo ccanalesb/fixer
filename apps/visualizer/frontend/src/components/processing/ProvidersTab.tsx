@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, keys } from '../../data';
 import {
-  CullingModelsAPI,
   JobsAPI,
   ProvidersAPI,
+  CullingModelsAPI,
   type ProviderModel,
 } from '../../services/api';
 import {
@@ -22,20 +22,20 @@ export function ProvidersTab() {
   const bundle = useQuery(
     keys.providers.tabBundle(),
     async () => {
-      const [providerList, fallback, defaults, cullingModels] = await Promise.all([
+      const [providerList, fallback, defaults] = await Promise.all([
         ProvidersAPI.list(),
         ProvidersAPI.getFallbackOrder(),
         ProvidersAPI.getDefaults(),
-        CullingModelsAPI.get().catch(() => null),
       ]);
       return {
         providers: providerList,
         fallbackOrder: fallback.order,
         defaults,
-        cullingModels,
       };
     },
   );
+
+  const cullingModels = useQuery(keys.cullingModels(), () => CullingModelsAPI.get());
 
   const activeJobs = useQuery(keys.jobs.active(), () => JobsAPI.getActive(), {
     initialValue: [],
@@ -53,8 +53,7 @@ export function ProvidersTab() {
 
   const cullingStagesByProvider = useMemo(() => {
     const map: Record<string, string[]> = {};
-    const cm = bundle.cullingModels;
-    if (!cm) return map;
+    const cm = cullingModels;
     const add = (providerId: string, label: string) => {
       if (!providerId || providerId === 'this_app') return;
       map[providerId] = [...(map[providerId] ?? []), label];
@@ -66,16 +65,16 @@ export function ProvidersTab() {
       add(cm.score_forecast.endpoint, 'Score forecast');
     }
     return map;
-  }, [bundle.cullingModels]);
+  }, [cullingModels]);
 
   const thisAppTaskUsage = useMemo(() => {
-    const cm = bundle.cullingModels;
+    const cm = cullingModels;
     if (!cm) return { cullingProfile: false, scoreForecast: false };
     return {
       cullingProfile: cm.culling_profile.endpoint === 'this_app',
       scoreForecast: cm.score_forecast.endpoint === 'this_app',
     };
-  }, [bundle.cullingModels]);
+  }, [cullingModels]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [modelCache, setModelCache] = useState<Record<string, ProviderModel[]>>({});

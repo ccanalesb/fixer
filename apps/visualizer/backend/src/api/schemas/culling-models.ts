@@ -16,6 +16,18 @@ export const CullingSystemOneProvider = z
   .strict()
   .openapi('CullingSystemOneProvider');
 
+export const CullingStageModelUsable = z
+  .object({
+    /** Why a stage that is on cannot run; `null` when it can, or is off. */
+    problem: z.enum(['no_model', 'converting', 'parked', 'removed', 'no_questions']).nullable(),
+    /** The conversion job of a model still converting in this app. */
+    job_id: z.string().nullable(),
+    /** System One provider name when the stage is parked. */
+    provider_name: z.string().nullable(),
+  })
+  .strict()
+  .openapi('CullingStageModelUsable');
+
 export const CullingStageModel = z
   .object({
     /** `this_app`, or a System One provider id. */
@@ -24,6 +36,7 @@ export const CullingStageModel = z
     model: z.string().nullable(),
     /** Photos with answers under the stage's current versions, and the model those versions were made with. */
     answered: z.object({ photos: z.number().int(), model: z.string().nullable() }).strict(),
+    usable: CullingStageModelUsable,
   })
   .strict()
   .openapi('CullingStageModel');

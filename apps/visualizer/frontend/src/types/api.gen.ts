@@ -6642,6 +6642,13 @@ export interface components {
                 photos: number;
                 model: string | null;
             };
+            usable: components["schemas"]["CullingStageModelUsable"];
+        };
+        CullingStageModelUsable: {
+            /** @enum {string|null} */
+            problem: "no_model" | "converting" | "parked" | "removed" | "no_questions" | null;
+            job_id: string | null;
+            provider_name: string | null;
         };
         CullingSystemOneProvider: {
             id: string;

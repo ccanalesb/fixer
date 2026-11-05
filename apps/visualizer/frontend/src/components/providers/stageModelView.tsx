@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import type { AppModel, CullingStageKind, CullingStageModel, CullingSystemOneProvider } from '../../services/api'
+import type {
+  AppModel,
+  CullingStageKind,
+  CullingStageModel,
+  CullingStageProblem,
+  CullingSystemOneProvider,
+} from '../../services/api'
 import {
   APP_MODEL_VIEW_JOB,
   PROCESSING_JOB_QUEUE_ROUTE,
@@ -18,8 +24,6 @@ import {
   STAGE_TURN_PROVIDER_BACK_ON,
 } from '../../constants/strings'
 
-export type StageProblem = 'nomodel' | 'converting' | 'noquestions' | 'parked' | 'removed'
-
 export interface StageView {
   on: boolean
   saved: CullingStageModel
@@ -27,8 +31,6 @@ export interface StageView {
   providerModels: string[] | null
   appModels: AppModel[]
   providers: CullingSystemOneProvider[]
-  /** The Score forecast's questions; unset for the culling profile. */
-  questionCount?: number
   /** Unpark a System One provider from the stage row. */
   onUnparkProvider?: (providerId: string) => void
 }
@@ -56,25 +58,6 @@ export function offeredModels(v: StageView): { name: string; ready: boolean }[] 
   return (v.providerModels ?? []).map((name) => ({ name, ready: true }))
 }
 
-/** Why a stage that is on cannot run; null when it can or is off. */
-export function stageProblem(v: StageView): StageProblem | null {
-  if (!v.on) return null
-  const model = shownModel(v)
-  if (!model) return 'nomodel'
-  if (v.saved.endpoint !== 'this_app') {
-    const endpoint = v.saved.endpoint.trim()
-    if (!endpoint) return 'removed'
-    const p = providerForEndpoint(v)
-    if (!p) return 'removed'
-    if (!p.enabled) return 'parked'
-    return null
-  }
-  const found = offeredModels(v).find((m) => m.name === model)
-  if (!found) return 'nomodel'
-  if (!found.ready) return 'converting'
-  return v.questionCount === 0 ? 'noquestions' : null
-}
-
 const stageOffLabel = (kind: CullingStageKind) => STAGE_IN_SENTENCE[kind]
 
 /** The row's description: which model the stage runs where, or what keeps jobs from starting. */
@@ -82,27 +65,30 @@ export function stageDescription(kind: CullingStageKind, v: StageView): ReactNod
   const model = shownModel(v)
   const where = endpointLabel(v)
   if (!v.on) return model ? STAGE_OFF_WITH(model, where) : STAGE_OFF
-  const problem = stageProblem(v)
+  const problem: CullingStageProblem | null = v.saved.usable.problem
   const off = stageOffLabel(kind)
   if (problem === 'parked') {
-    const p = providerForEndpoint(v)!
+    const name = v.saved.usable.provider_name ?? providerForEndpoint(v)?.name ?? 'Provider'
+    const p = providerForEndpoint(v)
     return (
       <span className="text-error">
-        {STAGE_PARKED(p.name, off)}{' '}
-        <button
-          type="button"
-          className="text-accent underline"
-          onClick={() => v.onUnparkProvider?.(p.id)}
-        >
-          {STAGE_TURN_PROVIDER_BACK_ON(p.name)}
-        </button>
+        {STAGE_PARKED(name, off)}{' '}
+        {p ? (
+          <button
+            type="button"
+            className="text-accent underline"
+            onClick={() => v.onUnparkProvider?.(p.id)}
+          >
+            {STAGE_TURN_PROVIDER_BACK_ON(name)}
+          </button>
+        ) : null}
       </span>
     )
   }
   if (problem === 'removed') {
     return <span className="text-error">{STAGE_REMOVED(off)}</span>
   }
-  if (problem === 'nomodel') return <span className="text-error">{STAGE_NO_MODEL(off)}</span>
+  if (problem === 'no_model') return <span className="text-error">{STAGE_NO_MODEL(off)}</span>
   if (problem === 'converting') {
     return (
       <>
@@ -114,7 +100,7 @@ export function stageDescription(kind: CullingStageKind, v: StageView): ReactNod
       </>
     )
   }
-  if (problem === 'noquestions') {
+  if (problem === 'no_questions') {
     return (
       <>
         {STAGE_RUNS(model!, where)} — <span className="text-error">{STAGE_NO_QUESTIONS}</span>

@@ -26,6 +26,7 @@ export const keys = {
     pipeline: () => ['culling-profiles.pipeline'] as const,
   },
   scoreForecastQuestions: () => ['score-forecast-questions'] as const,
+  cullingModels: () => ['culling-models'] as const,
   frameSubstance: (imageKey: string) => ['frameSubstance', imageKey] as const,
   dashboard: () => ['dashboard'] as const,
   identity: {
@@ -189,7 +190,13 @@ const CULLING_PROFILES_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
   prefixOf(keys.cullingProfiles.detail(''), 1),
   keys.cullingProfiles.pipeline(),
   keys.scoreForecastQuestions(),
+  keys.cullingModels(),
 ]
+
+/** Invalidate cached culling stage models (endpoint, model, and usable problems). */
+export function cullingModelsChanged(): void {
+  invalidateAll(keys.cullingModels())
+}
 
 /** Invalidate every query whose data changes when culling profiles, pipeline settings, or score-forecast questions do. */
 export function cullingProfilesChanged(): void {

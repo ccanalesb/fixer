@@ -25,6 +25,7 @@ import {
   STAGE_ADD_MODEL,
   STAGE_ENDPOINT_PARKED,
   STAGE_ENDPOINT_THIS_APP,
+  STAGE_NO_QUESTIONS,
   STAGE_PARKED,
   STAGE_PROVIDERS_LINK,
   STAGE_TURN_PROVIDER_BACK_ON,
@@ -38,7 +39,7 @@ import {
 } from '../../../constants/strings'
 import type { Job } from '../../../types/job'
 import { deleteMatching } from '../../../data/cache'
-import { cullingProfilesChanged } from '../../../data'
+import { cullingModelsChanged, cullingProfilesChanged } from '../../../data'
 
 vi.mock('../../ui/ProviderModelSelect', () => ({ ProviderModelSelect: () => null }))
 
@@ -66,6 +67,7 @@ const stage = (over: Partial<CullingStageModel> = {}): CullingStageModel => ({
   endpoint: 'this_app',
   model: null,
   answered: { photos: 0, model: null },
+  usable: { problem: 'no_model', job_id: null, provider_name: null },
   ...over,
 })
 const ready = (name: string): AppModel => ({ name, source: null, revision: null, status: 'ready', job_id: null })
@@ -111,12 +113,19 @@ beforeEach(() => {
     const s = stages[k]
     const endpoint = body.endpoint ?? s.endpoint
     const moved = endpoint !== s.endpoint
+    const model = body.model !== undefined ? body.model : moved ? null : s.model
     const next = {
       ...s,
       endpoint,
-      model: body.model !== undefined ? body.model : moved ? null : s.model,
+      model,
+      usable: {
+        problem: model ? null : ('no_model' as const),
+        job_id: null,
+        provider_name: null,
+      },
     }
     stages = { ...stages, [k]: next }
+    cullingModelsChanged()
     return next
   })
   vi.spyOn(CullingModelsAPI, 'models').mockImplementation(async (k: Stage) => {
@@ -168,7 +177,7 @@ describe('TaskAssignmentsBlock', () => {
     return document.querySelector(`[data-stage="${k}"]`) as HTMLElement
   }
   const control = (r: HTMLElement, name: string) => within(r).getByRole('combobox', { name })
-  const desc = (r: HTMLElement) => r.querySelector('[data-stage-description]')!.textContent
+  const desc = (r: HTMLElement) => r.querySelector('[data-stage-description]')?.textContent ?? ''
 
   it('shows the task block with fallback order under Descriptions', async () => {
     renderBlock()
@@ -180,7 +189,11 @@ describe('TaskAssignmentsBlock', () => {
   })
 
   it('choosing a model saves it once and offers to process the photos the previous model answered', async () => {
-    stages.culling_profile = stage({ model: 'culling-model', answered: { photos: 100, model: 'culling-model' } })
+    stages.culling_profile = stage({
+      model: 'culling-model',
+      answered: { photos: 100, model: 'culling-model' },
+      usable: { problem: null, job_id: null, provider_name: null },
+    })
     appModels = [ready('culling-model'), ready('my-run-best')]
     renderBlock()
     const cull = await row('culling_profile')
@@ -230,7 +243,11 @@ describe('TaskAssignmentsBlock', () => {
     stages = {
       ...stages,
       system_one_providers: systemOneProviders,
-      culling_profile: stage({ endpoint: PROVIDER_ID, model: 'clef-flash' }),
+      culling_profile: stage({
+        endpoint: PROVIDER_ID,
+        model: 'clef-flash',
+        usable: { problem: 'parked', job_id: null, provider_name: 'Ollama' },
+      }),
     }
     vi.spyOn(ProvidersAPI, 'update').mockResolvedValue({ provider: {} as never })
     renderBlock()
@@ -273,8 +290,56 @@ describe('TaskAssignmentsBlock', () => {
     const cull = await row('culling_profile')
     await waitFor(() => expect(within(cull).getByRole('option', { name: 'culling-model' })).toBeInTheDocument())
     fireEvent.change(control(cull, 'Model'), { target: { value: 'culling-model' } })
-    fireEvent.click(await within(cull).findByRole('button', { name: MODEL_CHANGE_LATER }))
+    await waitFor(() =>
+      expect(within(cull).getByRole('button', { name: MODEL_CHANGE_LATER })).toBeInTheDocument(),
+    )
+    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_LATER }))
     expect(within(cull).queryByRole('button', { name: MODEL_CHANGE_PROCESS })).not.toBeInTheDocument()
     expect(JobsAPI.create).not.toHaveBeenCalled()
+  })
+
+  it('Score forecast on a provider with no questions shows the no-questions problem', async () => {
+    stages = {
+      ...stages,
+      score_forecast: stage({
+        endpoint: PROVIDER_ID,
+        model: 'clef-flash',
+        usable: { problem: 'no_questions', job_id: null, provider_name: null },
+      }),
+    }
+    renderBlock()
+    const forecast = await row('score_forecast')
+    expect(desc(forecast)).toContain(STAGE_NO_QUESTIONS)
+  })
+
+  it('parking the stage provider refreshes the red row without a reload', async () => {
+    stages = {
+      ...stages,
+      culling_profile: stage({
+        endpoint: PROVIDER_ID,
+        model: 'clef-flash',
+        usable: { problem: null, job_id: null, provider_name: null },
+      }),
+    }
+    renderBlock()
+    const cull = await row('culling_profile')
+    expect(desc(cull)).toBe('')
+    systemOneProviders = [{ id: PROVIDER_ID, name: 'Ollama', url: OLLAMA, enabled: false, has_key: true }]
+    stages = {
+      ...stages,
+      system_one_providers: systemOneProviders,
+      culling_profile: stage({
+        endpoint: PROVIDER_ID,
+        model: 'clef-flash',
+        usable: { problem: 'parked', job_id: null, provider_name: 'Ollama' },
+      }),
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+    await ProvidersAPI.update(PROVIDER_ID, { enabled: false })
+    await waitFor(() =>
+      expect(desc(cull)).toContain(STAGE_PARKED('Ollama', 'the culling profile')),
+    )
   })
 })

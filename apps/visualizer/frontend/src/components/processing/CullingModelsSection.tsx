@@ -6,7 +6,6 @@ import {
   CullingProfilesAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
-  type CullingModelsResponse,
   type PipelineChangeResponse,
   type PipelineSettingResponse,
 } from '../../services/api'
@@ -54,7 +53,7 @@ import {
 import { applyPipelineStageChange } from '../cull/pipelineStageSwitch'
 import { Button } from '../ui/Button'
 import { SettingRow } from './SettingRow'
-import { endpointLabel, stageProblem, type StageView } from '../providers/stageModelView'
+import { endpointLabel, type StageView } from '../providers/stageModelView'
 
 type Config = PipelineSettingResponse['config']
 type Stage = 'culling_profile' | 'score_forecast'
@@ -93,7 +92,7 @@ function Switch({ label, checked, disabled, onChange }: {
 function ModelSummaryLine({ stage, view }: { stage: Stage; view: StageView }) {
   const model = view.saved.model
   const where = endpointLabel(view)
-  const problem = view.on ? stageProblem(view) : null
+  const problem = view.on ? view.saved.usable.problem : null
   const providersStageRoute = PROCESSING_PROVIDERS_STAGE_ROUTE(stage)
 
   return (
@@ -102,7 +101,7 @@ function ModelSummaryLine({ stage, view }: { stage: Stage; view: StageView }) {
       <Link to={providersStageRoute} className="text-accent underline">
         {CULLING_CHANGE_IN_PROVIDERS}
       </Link>
-      {problem && problem !== 'noquestions' ? (
+      {problem && problem !== 'no_questions' ? (
         <div className="mt-1 text-error">
           {CULLING_MODEL_NOT_READY} ·{' '}
           <Link to={providersStageRoute} className="text-accent underline">
@@ -118,12 +117,12 @@ function ModelSummaryLine({ stage, view }: { stage: Stage; view: StageView }) {
 function CullingModelsSectionInner() {
   const pipeline = useQuery(keys.cullingProfiles.pipeline(), () => CullingProfilesAPI.getPipeline())
   const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
+  const stageModels = useQuery(keys.cullingModels(), () => CullingModelsAPI.get())
   const [optimisticConfig, setOptimisticConfig] = useState<Config | null>(null)
   const config = optimisticConfig ?? pipeline.config
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<{ stage: Stage; jobId: string | null } | null>(null)
   const [threshold, setThreshold] = useState(() => String(config.score_forecast.threshold))
-  const [stageModels, setStageModels] = useState<CullingModelsResponse | null>(null)
   const [appModels, setAppModels] = useState<AppModel[]>([])
   const [explain, setExplain] = useState(false)
   const [created, setCreated] = useState<{ skipped: string[] } | null>(null)
@@ -138,16 +137,12 @@ function CullingModelsSectionInner() {
     void AppModelsAPI.list()
       .then(({ models }) => setAppModels(models))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-    void CullingModelsAPI.get()
-      .then(setStageModels)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load culling models'))
   }, [])
 
   const { hash } = useLocation()
-  const loaded = stageModels !== null
   useEffect(() => {
-    if (loaded && hash.startsWith('#stage-')) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [loaded, hash])
+    if (hash.startsWith('#stage-')) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [hash, stageModels])
 
   const save = async (stage: Stage, shown: Config, call: () => Promise<PipelineChangeResponse>) => {
     setOptimisticConfig(shown)
@@ -176,14 +171,6 @@ function CullingModelsSectionInner() {
     }
   }, [pipeline, optimisticConfig])
 
-  if (!stageModels) {
-    return error ? (
-      <p className="text-sm text-error">{error}</p>
-    ) : (
-      <p className="text-sm text-text-secondary">{CULLING_MODELS_LOADING}</p>
-    )
-  }
-
   const questionCount = questions.questions.length
 
   const forecast = config.score_forecast
@@ -196,7 +183,6 @@ function CullingModelsSectionInner() {
     providerModels: null,
     appModels,
     providers: stageModels.system_one_providers,
-    ...(stage === 'score_forecast' ? { questionCount } : {}),
   })
 
   const thresholdChanged = threshold.trim() !== String(forecast.threshold)

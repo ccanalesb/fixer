@@ -70,6 +70,7 @@ const stage = (over: Partial<CullingStageModel> = {}): CullingStageModel => ({
   endpoint: 'this_app',
   model: null,
   answered: { photos: 0, model: null },
+  usable: { problem: 'no_model', job_id: null, provider_name: null },
   ...over,
 })
 const ready = (name: string): AppModel => ({ name, source: null, revision: null, status: 'ready', job_id: null })
@@ -193,7 +194,10 @@ describe('CullingModelsSection — settings model summary', () => {
 
   it('links to Providers for the model and when it cannot run', async () => {
     pipeline()
-    stages.culling_profile = stage({ model: 'culling-model' })
+    stages.culling_profile = stage({
+      model: 'culling-model',
+      usable: { problem: null, job_id: null, provider_name: null },
+    })
     renderSection()
     await screen.findByRole('checkbox', { name: CULLING_PROFILE_STAGE })
     expect(profileRow()).toBeTruthy()
@@ -208,7 +212,11 @@ describe('CullingModelsSection — settings model summary', () => {
     stages = {
       ...stages,
       system_one_providers: systemOneProviders,
-      culling_profile: stage({ endpoint: PROVIDER_ID, model: 'clef-flash' }),
+      culling_profile: stage({
+        endpoint: PROVIDER_ID,
+        model: 'clef-flash',
+        usable: { problem: 'parked', job_id: null, provider_name: 'Ollama' },
+      }),
     }
     renderSection()
     await screen.findByRole('checkbox', { name: CULLING_PROFILE_STAGE })
@@ -332,7 +340,13 @@ describe('CullingModelsSection', () => {
 
 describe('CullingModelsSection — Score forecast questions', () => {
   beforeEach(() => {
-    stages = { ...stages, score_forecast: stage({ model: 'forecast-model' }) }
+    stages = {
+      ...stages,
+      score_forecast: stage({
+        model: 'forecast-model',
+        usable: { problem: null, job_id: null, provider_name: null },
+      }),
+    }
   })
 
   it('with the Score forecast on and no questions: says so, explains it, and offers both ways to create them', async () => {

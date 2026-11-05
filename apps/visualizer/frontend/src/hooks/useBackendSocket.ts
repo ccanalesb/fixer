@@ -3,6 +3,7 @@ import {
   catalogCacheBuildSignalsChanged,
   clipModelChanged,
   cullingChanged,
+  cullingModelsChanged,
   invalidate,
   keys,
   lightroomWritten,
@@ -70,6 +71,7 @@ export function useBackendSocket() {
         return
       }
       if (!FINISHED.has(job.status)) return
+      if (job.type === 'app_model_install') cullingModelsChanged()
       if (VERDICT_JOB_TYPES.has(job.type)) onVerdictJobFinished(job)
       else if (job.status === 'completed' && (job.type === 'single_describe' || job.type === 'single_score')) {
         onSingleImageJobCompleted(job)

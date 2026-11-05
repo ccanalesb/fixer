@@ -1,6 +1,7 @@
 import {
   catalogCacheBuildSignalsChanged,
   cullingChanged,
+  cullingModelsChanged,
   cullingProfilesChanged,
   invalidate,
   invalidateAll,
@@ -881,6 +882,7 @@ export const ProvidersAPI = {
       },
     );
     providersChanged()
+    if (payload.enabled !== undefined) cullingModelsChanged()
     return result;
   },
   remove: async (providerId: string) => {
@@ -889,6 +891,7 @@ export const ProvidersAPI = {
       { method: 'DELETE' },
     );
     providersChanged()
+    cullingModelsChanged()
     return result;
   },
   probe: async (providerId: string) => {
@@ -1178,6 +1181,7 @@ export const CullingModelsAPI = {
       method: 'PUT',
       body: JSON.stringify(body),
     })
+    cullingModelsChanged()
     providersChanged()
     return result
   },

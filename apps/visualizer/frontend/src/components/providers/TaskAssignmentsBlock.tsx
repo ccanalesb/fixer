@@ -8,7 +8,6 @@ import {
   ProvidersAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
-  type CullingModelsResponse,
   type CullingStageModelPutRequest,
   type Provider,
   type ProviderModel,
@@ -62,6 +61,7 @@ function TaskAssignmentsBlockInner({
 }: TaskAssignmentsBlockProps) {
   const pipeline = useQuery(keys.cullingProfiles.pipeline(), () => CullingProfilesAPI.getPipeline())
   const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
+  const stageModels = useQuery(keys.cullingModels(), () => CullingModelsAPI.get())
   const [optimisticOn, setOptimisticOn] = useState<Partial<Record<Stage, boolean>> | null>(null)
   const pipelineOn = {
     culling_profile: optimisticOn?.culling_profile ?? pipeline.config.culling_profiles_enabled,
@@ -72,7 +72,6 @@ function TaskAssignmentsBlockInner({
   const [descriptionModel, setDescriptionModel] = useState<string | null>(null)
   const [defaultsSaveMsg, setDefaultsSaveMsg] = useState<string | null>(null)
 
-  const [stageModels, setStageModels] = useState<CullingModelsResponse | null>(null)
   const [appModels, setAppModels] = useState<AppModel[]>([])
   const [providerModels, setProviderModels] = useState<Record<Stage, string[] | null>>({
     culling_profile: null,
@@ -92,7 +91,6 @@ function TaskAssignmentsBlockInner({
   appModelsRef.current = appModels
 
   const { hash } = useLocation()
-  const loaded = stageModels !== null
 
   useEffect(() => {
     const block = defaults.description
@@ -141,27 +139,19 @@ function TaskAssignmentsBlockInner({
     }
   }, [])
 
-  const load = useCallback(async () => {
-    try {
-      const next = await CullingModelsAPI.get()
-      setStageModels(next)
-      for (const stage of STAGES) void loadProviderModels(stage, next[stage].endpoint)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load task assignments')
-    }
-  }, [loadProviderModels])
+  useEffect(() => {
+    for (const stage of STAGES) void loadProviderModels(stage, stageModels[stage].endpoint)
+  }, [stageModels, loadProviderModels])
 
   useEffect(() => {
-    void load()
     void refreshAppModels()
-  }, [load, refreshAppModels])
+  }, [refreshAppModels])
 
   useEffect(() => {
-    if (!loaded) return
     if (hash.startsWith('#task-')) {
       document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
-  }, [loaded, hash])
+  }, [hash, stageModels])
 
   const { run: runCullingGate, dialog: cullingDialog } = useCullingGate()
 
@@ -178,7 +168,6 @@ function TaskAssignmentsBlockInner({
     setError(null)
     try {
       const next = await CullingModelsAPI.save(stage, body)
-      setStageModels((s) => (s ? { ...s, [stage]: next } : s))
       if (body.endpoint !== undefined) void loadProviderModels(stage, next.endpoint)
       return next
     } catch (e) {
@@ -276,7 +265,6 @@ function TaskAssignmentsBlockInner({
     setError(null)
     try {
       await ProvidersAPI.update(providerId, { enabled: true })
-      await load()
       onRefreshBundle()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -302,10 +290,6 @@ function TaskAssignmentsBlockInner({
         onRefreshBundle()
       })
       .catch(console.error)
-  }
-
-  if (!stageModels) {
-    return error ? <p className="text-sm text-error">{error}</p> : null
   }
 
   return (
