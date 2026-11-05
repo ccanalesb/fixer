@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
 import { LrWritebackAPI, type ImageView, type LrWritebackPhotoDetailResponse } from '../../../services/api'
+import { keys, useQuery } from '../../../data'
 import { Button } from '../../ui/Button/Button'
 import {
   LABEL_KEYWORDS,
@@ -28,25 +28,20 @@ function flagValue(image: ImageView, detail: LrWritebackPhotoDetailResponse | nu
   return detail.flag.app_wrote_reject ? 'written by the app' : 'not written'
 }
 
+async function fetchLrWritebackPhoto(imageKey: string): Promise<LrWritebackPhotoDetailResponse | null> {
+  try {
+    return await LrWritebackAPI.getPhoto(imageKey)
+  } catch {
+    return null
+  }
+}
+
 /** What Lightroom Classic holds for the photo, including what the app wrote there. */
 export function LightroomTab({ image }: { image: ImageView }) {
-  const [detail, setDetail] = useState<LrWritebackPhotoDetailResponse | null>(null)
-
-  const load = useCallback(async () => {
-    try {
-      setDetail(await LrWritebackAPI.getPhoto(image.key))
-    } catch {
-      setDetail(null)
-    }
-  }, [image.key])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const detail = useQuery(keys.lrWriteback.photo(image.key), () => fetchLrWritebackPhoto(image.key))
 
   const undo = async (kind: 'stars' | 'reject') => {
     await LrWritebackAPI.undo(image.key, kind)
-    await load()
   }
 
   const keywords = Array.isArray(image.keywords) ? image.keywords : []

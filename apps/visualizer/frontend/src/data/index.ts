@@ -5,7 +5,7 @@ export {
   cullingChanged,
   cullingProfilesChanged,
   keys,
-  lrWritebackFinishedPrefixes,
+  lightroomWritten,
   prefixOf,
   stacksChanged,
 } from './keys'

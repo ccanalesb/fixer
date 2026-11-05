@@ -3,7 +3,7 @@ import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { deleteMatching } from '../cache'
 import { useQuery } from '../useQuery'
-import { cullingChanged, cullingProfilesChanged, keys, stacksChanged } from '../keys'
+import { cullingChanged, cullingProfilesChanged, keys, lightroomWritten, stacksChanged } from '../keys'
 
 type Deferred<T> = {
   promise: Promise<T>
@@ -285,6 +285,96 @@ describe('cullingProfilesChanged', () => {
     })
 
     for (const id of CULLING_PROFILES_PROBE_IDS) {
+      expect(callCounts[id]).toBe(2)
+    }
+  })
+})
+
+function LightroomWrittenProbes({
+  fetches,
+}: {
+  fetches: Record<(typeof LR_WRITEBACK_PROBE_IDS)[number], () => Promise<unknown>>
+}) {
+  const lrPhoto = useQuery(keys.lrWriteback.photo('probe.jpg'), fetches.lrPhoto)
+  const months = useQuery(keys.images.catalogMonths(), fetches.months)
+  const list = useQuery(keys.images.catalogList({ limit: 50 }), fetches.list)
+  const imageDetail = useQuery(keys.images.detail('catalog', 'probe.jpg', ''), fetches.imageDetail)
+  const summary = useQuery(keys.cull.summary(), fetches.summary)
+  const photos = useQuery(keys.cull.photos('all', 1), fetches.photos)
+  const cullDetail = useQuery(keys.cull.detail('probe.jpg'), fetches.cullDetail)
+  return (
+    <div>
+      {String(lrPhoto)}
+      {String(months)}
+      {String(list)}
+      {String(imageDetail)}
+      {String(summary)}
+      {String(photos)}
+      {String(cullDetail)}
+    </div>
+  )
+}
+
+const LR_WRITEBACK_PROBE_IDS = [
+  'lrPhoto',
+  'months',
+  'list',
+  'imageDetail',
+  'summary',
+  'photos',
+  'cullDetail',
+] as const
+
+describe('lightroomWritten', () => {
+  it('refetches every query the group covers', async () => {
+    const pending = Object.fromEntries(
+      LR_WRITEBACK_PROBE_IDS.map((id) => [id, deferred<unknown>()]),
+    ) as Record<(typeof LR_WRITEBACK_PROBE_IDS)[number], Deferred<unknown>>
+    const callCounts = Object.fromEntries(LR_WRITEBACK_PROBE_IDS.map((id) => [id, 0])) as Record<
+      (typeof LR_WRITEBACK_PROBE_IDS)[number],
+      number
+    >
+    const fetches = Object.fromEntries(
+      LR_WRITEBACK_PROBE_IDS.map((id) => [
+        id,
+        () => {
+          callCounts[id] += 1
+          return pending[id].promise
+        },
+      ]),
+    ) as Record<(typeof LR_WRITEBACK_PROBE_IDS)[number], () => Promise<unknown>>
+
+    render(
+      <Suspense fallback={<div>loading</div>}>
+        <LightroomWrittenProbes fetches={fetches} />
+      </Suspense>,
+    )
+    expect(screen.getByText('loading')).toBeInTheDocument()
+
+    await act(async () => {
+      for (const id of LR_WRITEBACK_PROBE_IDS) {
+        pending[id].resolve(id)
+        await pending[id].promise
+      }
+    })
+
+    for (const id of LR_WRITEBACK_PROBE_IDS) {
+      expect(callCounts[id]).toBe(1)
+      pending[id] = deferred<unknown>()
+    }
+
+    act(() => {
+      lightroomWritten()
+    })
+
+    await act(async () => {
+      for (const id of LR_WRITEBACK_PROBE_IDS) {
+        pending[id].resolve(`${id}-2`)
+        await pending[id].promise
+      }
+    })
+
+    for (const id of LR_WRITEBACK_PROBE_IDS) {
       expect(callCounts[id]).toBe(2)
     }
   })
