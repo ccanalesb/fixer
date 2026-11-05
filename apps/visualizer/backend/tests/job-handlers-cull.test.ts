@@ -595,6 +595,26 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
   it('keeps the endpoint the pass started with after the provider is parked', async () => {
     writeConfig(both());
     await addPhoto('a', PASS);
+    await addPhoto('b', PASS);
+    const providersPath = join(dir, 'providers.json');
+    let parkedMidPass = false;
+    server.onRequest = (req) => {
+      if (parkedMidPass || req.key !== 'b') return;
+      parkedMidPass = true;
+      const stored = JSON.parse(readFileSync(providersPath, 'utf8')) as {
+        providers: Record<string, { enabled: boolean }>;
+      };
+      stored.providers[providerId]!.enabled = false;
+      writeFileSync(providersPath, JSON.stringify(stored, null, 2));
+    };
+    const job = await runCull();
+    expect(job.status).toBe('completed');
+    expect(server.requests.filter((r) => r.key !== null).map((r) => r.key)).toEqual(['b', 'b', 'a', 'a']);
+  });
+
+  it('a parked provider before the job fails naming the stage, without calling the endpoint', async () => {
+    writeConfig(both());
+    await addPhoto('a', PASS);
     const providersPath = join(dir, 'providers.json');
     const stored = JSON.parse(readFileSync(providersPath, 'utf8')) as {
       providers: Record<string, { enabled: boolean }>;
@@ -602,8 +622,61 @@ describe('batch_cull_photos_before_scoring on an external System One endpoint', 
     stored.providers[providerId]!.enabled = false;
     writeFileSync(providersPath, JSON.stringify(stored, null, 2));
     const job = await runCull();
-    expect(job.status).toBe('completed');
-    expect(server.requests.length).toBeGreaterThan(0);
+    expect(job.status).toBe('failed');
+    expect(job.error).toMatch(/^Culling profile: External is parked\. Turn it back on in Processing → Providers, or turn the culling profile off/);
+    expect(server.requests).toEqual([]);
+  });
+
+  it('only the Score forecast on a parked provider fails naming it, without calling that endpoint', async () => {
+    writeConfig({
+      culling_profile: '{endpoint: this_app, model: culling-model}',
+      score_forecast: `{endpoint: ${providerId}, model: clef-forecast}`,
+    });
+    await addPhoto('a', PASS);
+    const providersPath = join(dir, 'providers.json');
+    const stored = JSON.parse(readFileSync(providersPath, 'utf8')) as {
+      providers: Record<string, { enabled: boolean }>;
+    };
+    stored.providers[providerId]!.enabled = false;
+    writeFileSync(providersPath, JSON.stringify(stored, null, 2));
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toMatch(/^Score forecast: External is parked\. Turn it back on in Processing → Providers, or turn the Score forecast off/);
+    expect(server.requests).toEqual([]);
+    expect(fakeModels.calls).toEqual([]);
+  });
+
+  it('a removed provider fails naming the stage, without calling the endpoint', async () => {
+    writeConfig(both());
+    await addPhoto('a', PASS);
+    writeFileSync(
+      join(dir, 'providers.json'),
+      JSON.stringify({ providers: {}, defaults: {}, fallback_order: [] }, null, 2),
+    );
+    const job = await runCull();
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe(
+      'Culling profile: its endpoint was removed. Choose one in Processing → Providers, or turn the culling profile off',
+    );
+    expect(server.requests).toEqual([]);
+  });
+
+  it('a parked provider on a stage that is off does not stop the job', async () => {
+    writeConfig({
+      culling_profile: '{endpoint: this_app, model: culling-model}',
+      score_forecast: `{endpoint: ${providerId}, model: clef-forecast}`,
+    });
+    changePipeline((cfg) => ({ ...cfg, score_forecast: { ...cfg.score_forecast, enabled: false } }));
+    const providersPath = join(dir, 'providers.json');
+    const stored = JSON.parse(readFileSync(providersPath, 'utf8')) as {
+      providers: Record<string, { enabled: boolean }>;
+    };
+    stored.providers[providerId]!.enabled = false;
+    writeFileSync(providersPath, JSON.stringify(stored, null, 2));
+    await addPhoto('a', PASS);
+    expect((await runCull()).status).toBe('completed');
+    expect(server.requests).toEqual([]);
+    expect(fakeModels.calls.length).toBeGreaterThan(0);
   });
 
   it('asks each stage of the endpoint config.yaml names, with its API key, and files answers under it', async () => {

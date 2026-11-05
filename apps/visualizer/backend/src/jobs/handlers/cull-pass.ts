@@ -92,12 +92,14 @@ export async function runCullPass(
 
   seedCullingDefaults(db);
   const pipeline = getCurrentPipelineSetting(db);
-  const stageModels = stageModelsFromConfig(loadLibraryConfig(config.LT_CONFIG_YAML).cullingModels);
+  const cullingModels = loadLibraryConfig(config.LT_CONFIG_YAML).cullingModels;
+  const stageModels = stageModelsFromConfig(cullingModels);
   const modelIds = await resolveStageModelIds(
     stageModels,
     stagesOn(pipeline.config),
     readStoredStageModelIds(db),
     convertingModelNames(runner.waitingOrRunningJobs()),
+    { cfg: cullingModels },
   );
   assertForecastHasQuestions(stagesOn(pipeline.config), getForecastQuestions(db).questions.length);
   const stages = resolveCurrentStages(db, pipeline.config, modelIds);
