@@ -107,7 +107,7 @@ function removedMessage(kind: StageKind): string {
 function assertStageEndpointReady(
   kind: StageKind,
   cfg: CullingModelConfig,
-  registry: ProviderRegistry = new ProviderRegistry(),
+  registry: ProviderRegistry,
 ): void {
   if (cfg.endpoint === THIS_APP_ENDPOINT) return;
   if (!cfg.endpoint.trim()) throw new CullingStageError(kind, 'removed', removedMessage(kind));
@@ -134,14 +134,15 @@ export async function resolveStageModelIds(
   on: Record<StageKind, boolean>,
   stored: StageModelIds,
   converting: ReadonlySet<string> = new Set(),
-  endpointCfg?: CullingModelsConfig,
+  endpoints?: { cfg: CullingModelsConfig; registry?: ProviderRegistry },
 ): Promise<StageModelIds> {
   const ids: StageModelIds = { ...stored };
+  const registry = endpoints ? (endpoints.registry ?? new ProviderRegistry()) : null;
   for (const kind of KINDS) {
     if (!on[kind]) continue;
     const m = models[kind];
     if (!m.model) throw new CullingStageError(kind, 'no_model', noModelMessage(kind));
-    if (endpointCfg) assertStageEndpointReady(kind, endpointCfg[kind]);
+    if (endpoints && registry) assertStageEndpointReady(kind, endpoints.cfg[kind], registry);
     let listed;
     try {
       listed = await listSystemOneModels(m.endpoint);

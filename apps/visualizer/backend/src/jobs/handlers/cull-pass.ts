@@ -99,7 +99,7 @@ export async function runCullPass(
     stagesOn(pipeline.config),
     readStoredStageModelIds(db),
     convertingModelNames(runner.waitingOrRunningJobs()),
-    cullingModels,
+    { cfg: cullingModels },
   );
   assertForecastHasQuestions(stagesOn(pipeline.config), getForecastQuestions(db).questions.length);
   const stages = resolveCurrentStages(db, pipeline.config, modelIds);

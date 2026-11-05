@@ -43,7 +43,7 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
       { culling_profile: true, score_forecast: true },
       { culling_profile: null, score_forecast: null },
       new Set(),
-      ctx.config.cullingModels,
+      { cfg: ctx.config.cullingModels },
     );
     for (const kind of KINDS) ctx.out(`  ${STAGE_NAMES[kind]} model identity: ${ids[kind]}`);
     const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, ids);

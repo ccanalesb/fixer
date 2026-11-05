@@ -63,13 +63,14 @@ async function jobProblem(
     score_forecast: kind === 'score_forecast' ? cfg : { endpoint: 'this_app', model: 'm' },
   };
   const onMap = { culling_profile: kind === 'culling_profile' && on, score_forecast: kind === 'score_forecast' && on };
+  const reg = registry();
   try {
     await resolveStageModelIds(
-      stageModelsFromConfig(cullingModels, { registry: registry() }),
+      stageModelsFromConfig(cullingModels, { registry: reg }),
       onMap,
       { culling_profile: null, score_forecast: null },
       new Set(),
-      cullingModels,
+      { cfg: cullingModels, registry: reg },
     );
     return null;
   } catch (e) {
