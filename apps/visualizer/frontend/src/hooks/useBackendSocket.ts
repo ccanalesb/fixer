@@ -11,16 +11,17 @@ import {
 } from '../data'
 import { useSocketStore } from '../stores/socketStore'
 import type { Job } from '../types/job'
+import { CULLING_JOB_TYPE } from '../services/api'
 import { catalogCacheBuildSyncComplete } from '../utils/catalogCacheBuildProgress'
 
 /** Jobs that change verdicts or Lightroom stars, and so what the photo and culling lists show. */
 const VERDICT_JOB_TYPES = new Set([
-  'batch_cull_photos_before_scoring',
+  CULLING_JOB_TYPE,
   'batch_redecide_cull_verdicts_from_stored_answers',
   'lr_writeback',
 ])
 const CULLING_JOB_TYPES = new Set([
-  'batch_cull_photos_before_scoring',
+  CULLING_JOB_TYPE,
   'batch_redecide_cull_verdicts_from_stored_answers',
 ])
 const FINISHED: ReadonlySet<Job['status']> = new Set(['completed', 'failed', 'cancelled'])

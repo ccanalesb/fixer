@@ -216,7 +216,11 @@ function CullingTabContent({ imageKey, detail }: { imageKey: string; detail: Cul
                 size="sm"
                 variant="primary"
                 onClick={() =>
-                  void runCullingGate('send', () => act(() => CullAPI.sendPhotos([imageKey])))
+                  void runCullingGate('send', () => CullAPI.sendPhotos([imageKey])).then((result) => {
+                    if (result.status === 'failed') {
+                      setError(result.error instanceof Error ? result.error.message : String(result.error))
+                    }
+                  })
                 }
               >
                 {sendLabel}

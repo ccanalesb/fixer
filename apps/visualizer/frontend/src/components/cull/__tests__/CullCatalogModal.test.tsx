@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import {
   CullAPI,
+  CullingModelsAPI,
   DescriptionsAPI,
   FrameSubstanceAPI,
   ImagesAPI,
   PerspectivesAPI,
   ProvidersAPI,
   ScoresAPI,
+  type CullingStageUsability,
   type ImageDetailResponse,
 } from '../../../services/api'
 import { ImageDetailModal } from '../../image-view/ImageDetailModal'
@@ -219,5 +221,46 @@ describe('Cull catalog modal cull section', () => {
       expect(screen.getByText(CULL_SENT_BY_HAND_NOTE)).toBeInTheDocument()
       expect(CULL_SENT_BY_HAND_NOTE).toBe('Sent by hand — never filtered automatically again.')
     })
+  })
+
+  it('sends a filtered photo through the culling gate when every stage can run', async () => {
+    vi.mocked(CullAPI.photoDetail).mockResolvedValue({
+      image_key: KEY,
+      filename: 'passed-one.jpg',
+      verdict: 'filtered',
+      sent_by_hand: false,
+      completion: 'none',
+      needs_send_work: true,
+      score_forecast: [],
+      profile: { slug: '', name: '', level_sets: [] },
+      user_actions: [],
+      filtered_by: 'culling_profile',
+      score_forecast_p8: null,
+    })
+    const ok = (model: string): CullingStageUsability => ({
+      on: true,
+      problem: null,
+      model,
+      endpoint: 'this_app',
+      job_id: null,
+      provider_name: null,
+    })
+    vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue({
+      culling_profile: ok('culling-model'),
+      score_forecast: ok('forecast-model'),
+      culling_profile_filter: true,
+    })
+    const send = vi.spyOn(CullAPI, 'sendPhotos').mockResolvedValue({ sent_by_hand: [KEY], job_id: 'j', skipped_complete: 0 })
+
+    render(
+      <ImageDetailModal
+        imageKey={KEY}
+        {...modalPropsFor('culling')}
+        onClose={() => {}}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Send to scoring' }))
+    await waitFor(() => expect(send).toHaveBeenCalledWith([KEY]))
   })
 })

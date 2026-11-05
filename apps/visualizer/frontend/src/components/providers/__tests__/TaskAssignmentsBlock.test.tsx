@@ -342,4 +342,26 @@ describe('TaskAssignmentsBlock', () => {
       expect(desc(cull)).toContain(STAGE_PARKED('Ollama', 'the culling profile')),
     )
   })
+
+  it('opens the gate dialog when process photos and a stage that is on cannot run', async () => {
+    usable = {
+      culling_profile: usableStage({ model: null, problem: 'no_model' }),
+      score_forecast: usableStage({ model: 'forecast-model' }),
+      culling_profile_filter: true,
+    }
+    stages.culling_profile = stage({
+      model: 'culling-model',
+      answered: { photos: 100, model: 'culling-model' },
+      usable: { problem: null, job_id: null, provider_name: null },
+    })
+    appModels = [ready('culling-model'), ready('my-run-best')]
+    renderBlock()
+    const cull = await row('culling_profile')
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'my-run-best' })).toBeInTheDocument())
+    fireEvent.change(within(cull).getByRole('combobox', { name: 'Model' }), { target: { value: 'my-run-best' } })
+    expect(await within(cull).findByText('Culling profile now uses my-run-best.')).toBeInTheDocument()
+    fireEvent.click(within(cull).getByRole('button', { name: MODEL_CHANGE_PROCESS }))
+    expect(await screen.findByRole('dialog', { name: 'Culling profile has no model' })).toBeInTheDocument()
+    expect(JobsAPI.create).not.toHaveBeenCalled()
+  })
 })
