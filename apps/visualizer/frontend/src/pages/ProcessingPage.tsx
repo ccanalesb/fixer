@@ -13,7 +13,7 @@ import { Button } from '../components/ui/Button';
 import { useJobSocket } from '../hooks/useJobSocket';
 import { usePageTab } from '../hooks/usePageTab';
 import { JobsAPI } from '../services/api';
-import { ErrorBoundary, ErrorState, cullingChanged, keys, retryCatalogCacheTab, retryJobsList, retryPerspectivesTab, retryProvidersTab, useQuery } from '../data';
+import { ErrorBoundary, ErrorState, cullingChanged, keys, catalogCacheChanged, perspectivesChanged, providersChanged, retryJobsList, useQuery } from '../data';
 import { AnalyzeOptionsProvider } from '../stores/analyzeOptionsContext';
 import { PROCESSING_TAB_IDS, usePageUiStore } from '../stores/pageUiStore';
 import {
@@ -146,7 +146,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                retryPerspectivesTab();
+                perspectivesChanged();
                 reset();
               }}
             />
@@ -167,7 +167,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                retryCatalogCacheTab();
+                catalogCacheChanged();
                 reset();
               }}
             />
@@ -212,7 +212,7 @@ export function ProcessingPage() {
             <ErrorState
               error={error}
               reset={() => {
-                retryProvidersTab();
+                providersChanged();
                 reset();
               }}
             />

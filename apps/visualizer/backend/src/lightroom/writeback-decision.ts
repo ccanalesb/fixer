@@ -22,7 +22,15 @@ export type StarsWhy = 'no_profile' | 'profile_off' | 'void_frame' | 'none' | 's
 
 export interface WritebackDecision {
   reject: { want: boolean; why: RejectWhy };
-  stars: { rating: number | null; strong: number; profileName: string | null; why: StarsWhy };
+  stars: {
+    /** What write-back puts in Lightroom: `null` while write stars is off. */
+    rating: number | null;
+    /** What the strong dimensions earn, whether or not it is written. */
+    earnedRating: number | null;
+    strong: number;
+    profileName: string | null;
+    why: StarsWhy;
+  };
 }
 
 function readStarsProfileStages(db: Db, starsSlug: string) {
@@ -50,22 +58,22 @@ function decideStars(
   imageKey: string,
   starsSlug: string | null,
 ): WritebackDecision['stars'] {
-  if (!starsSlug) return { rating: null, strong: 0, profileName: null, why: 'no_profile' };
+  if (!starsSlug) return { rating: null, earnedRating: null, strong: 0, profileName: null, why: 'no_profile' };
   const profile = getCullProfile(db, starsSlug);
-  if (!profile) return { rating: null, strong: 0, profileName: null, why: 'no_profile' };
+  if (!profile) return { rating: null, earnedRating: null, strong: 0, profileName: null, why: 'no_profile' };
   if (!getCurrentPipelineSetting(db).config.culling_profiles_enabled) {
-    return { rating: null, strong: 0, profileName: profile.name, why: 'profile_off' };
+    return { rating: null, earnedRating: null, strong: 0, profileName: profile.name, why: 'profile_off' };
   }
   if (isFrameSubstanceVoid(db, imageKey)) {
-    return { rating: null, strong: 0, profileName: profile.name, why: 'void_frame' };
+    return { rating: null, earnedRating: null, strong: 0, profileName: profile.name, why: 'void_frame' };
   }
   const stages = readStarsProfileStages(db, starsSlug);
   const answersByStage = loadCurrentStageAnswers(db, stages, [imageKey]).get(imageKey) ?? {};
   const strong = countStrongDimensions(profile.definition, profile.rule, answersByStage, starsSlug);
-  const computedRating = ratingFromStrongCount(strong);
-  const why: StarsWhy = computedRating === null ? 'none' : 'strong';
-  const rating = settings.write_stars ? computedRating : null;
-  return { rating, strong, profileName: profile.name, why };
+  const earnedRating = ratingFromStrongCount(strong);
+  const why: StarsWhy = earnedRating === null ? 'none' : 'strong';
+  const rating = settings.write_stars ? earnedRating : null;
+  return { rating, earnedRating, strong, profileName: profile.name, why };
 }
 
 export function decideWriteback(

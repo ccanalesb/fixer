@@ -5,10 +5,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CullingStageError, resolveStageModelIds, stageModelsFromConfig } from '../src/cull/stage-models.js';
-import { cullingStageErrorForProblem, resolveStage, stageEndpoint } from '../src/cull/stage-resolver.js';
+import { CullingStageError, resolveStageModelIds, stageModelsFrom } from '../src/cull/stage-models.js';
+import { cullingStageErrorForProblem, resolveStages } from '../src/cull/stage-resolver.js';
+import type { CullingModelConfig } from '../src/config.js';
+import type { AppModelStatus } from '../src/app-models/install.js';
+import type { StageKind } from '../src/cull/types.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
-import { THIS_APP_ENDPOINT } from '../src/systemone/client.js';
+import { findSystemOneEndpoint, THIS_APP_ENDPOINT } from '../src/systemone/client.js';
 import { setupErrorMessage } from '../src/app-models/files.js';
 import { fakeModelState } from './helpers/fake-app-models.js';
 import { registerSystemOneProvider } from './helpers/register-systemone-provider.js';
@@ -36,6 +39,21 @@ afterEach(() => {
 const at = (model: string) => ({ endpoint: providerId, model });
 const thisApp = (model: string) => ({ endpoint: THIS_APP_ENDPOINT, model });
 const registry = () => new ProviderRegistry(providersPath);
+
+/** One stage through `resolveStages`, the other off. */
+function resolveStage(
+  kind: StageKind,
+  input: { on: boolean; cfg: CullingModelConfig; appModels: AppModelStatus[]; questionCount: number; registry: ProviderRegistry },
+) {
+  const off = { endpoint: THIS_APP_ENDPOINT, model: '' };
+  return resolveStages({
+    on: { culling_profile: false, score_forecast: false, [kind]: input.on },
+    cfg: { culling_profile: off, score_forecast: off, [kind]: input.cfg },
+    appModels: input.appModels,
+    questionCount: input.questionCount,
+    registry: input.registry,
+  })[kind];
+}
 
 const baseFields = (overrides: Record<string, unknown> = {}) => ({
   job_id: null,
@@ -256,7 +274,7 @@ describe('resolveStage', () => {
     });
     expect(r.problem).toBe('removed');
     expect(r.systemOne).toBeNull();
-    expect(stageEndpoint({ endpoint: server.url, model: '' }, registry())).toBeNull();
+    expect(findSystemOneEndpoint(server.url, { registry: registry() })).toBeNull();
   });
 
   it('a non-System One provider is removed', async () => {
@@ -295,19 +313,9 @@ describe('resolveStage before resolveStageModelIds', () => {
       score_forecast: kind === 'score_forecast' ? cfg : { endpoint: 'this_app', model: 'm' },
     };
     const onMap = { culling_profile: kind === 'culling_profile', score_forecast: kind === 'score_forecast' };
-    const reg = registry();
-    const resolved = await resolveStage(kind, {
-      on: true,
-      cfg,
-      appModels: [],
-      questionCount: 1,
-      registry: reg,
-    });
-    if (resolved.problem) return resolved.problem;
-    const models = stageModelsFromConfig(cullingModels, {
-      registry: reg,
-      systemOne: { [kind]: resolved.systemOne },
-    });
+    const resolved = resolveStages({ on: onMap, cfg: cullingModels, appModels: [], questionCount: 1, registry: registry() });
+    if (resolved[kind].problem) return resolved[kind].problem;
+    const models = stageModelsFrom(resolved);
     try {
       await resolveStageModelIds(models, onMap, { culling_profile: null, score_forecast: null });
       return null;
@@ -347,5 +355,24 @@ describe('resolveStage before resolveStageModelIds', () => {
     await server.close();
     const cfg = { endpoint: 'gone_provider', model: 'clef-forecast' };
     expect(await jobFailure('score_forecast', cfg)).toBe('removed');
+  });
+
+  it('a removed endpoint is never called, even when the stage resolver is skipped', async () => {
+    const resolved = resolveStages({
+      on: { culling_profile: false, score_forecast: false },
+      cfg: { culling_profile: { endpoint: server.url, model: 'm' }, score_forecast: { endpoint: 'gone_provider', model: 'm' } },
+      appModels: [],
+      questionCount: 1,
+      registry: registry(),
+    });
+    const models = stageModelsFrom(resolved);
+    expect(models.culling_profile.endpoint).toBeNull();
+    expect(models.score_forecast.endpoint).toBeNull();
+    const err = await resolveStageModelIds(models, { culling_profile: true, score_forecast: false }, {
+      culling_profile: null,
+      score_forecast: null,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CullingStageError);
+    expect((err as CullingStageError).failure).toBe('removed');
   });
 });

@@ -3,32 +3,22 @@
  * and the in-job cull step.
  */
 import { performance } from 'node:perf_hooks';
-import { config, loadLibraryConfig } from '../../config.js';
 import { cullPhoto } from '../../cull/answer-photo.js';
 import { decidePhoto } from '../../cull/decide.js';
 import { decideAndStorePhoto, type CullContext } from '../../cull/persist.js';
 import { selectPhotosToCull } from '../../cull/select.js';
-import {
-  CullingModels,
-  resolveStageModelIds,
-  stageModelsFromConfig,
-  stagesOn,
-} from '../../cull/stage-models.js';
-import { resolveStage, throwIfStageProblem } from '../../cull/stage-resolver.js';
-import { syncCurrentStages } from '../../cull/stages.js';
+import { CullingModels, resolveStageModelIds, stageModelsFrom, stagesOn } from '../../cull/stage-models.js';
+import { resolveLibraryStages, throwIfStageProblem } from '../../cull/stage-resolver.js';
+import { syncCurrentStages } from '../../db/library/cull-sync-stages.js';
 import type { PhotoDecision, StageKind } from '../../cull/types.js';
 import { addDecision, emptyVerdictTally, type VerdictTally } from '../../cull/verdict-tally.js';
 import type { Db } from '../../db/connection.js';
 import { getCurrentPipelineSetting } from '../../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../../db/library/cull-profiles.js';
 import { loadCurrentStageAnswers, readStoredStageModelIds } from '../../db/library/cull-stages.js';
-import { getForecastQuestions } from '../../db/library/score-forecast-questions.js';
 import { listSentByHandKeys } from '../../db/library/sent-by-hand.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCullRunIdsForJob } from '../../db/library/cull-verdicts.js';
 import { libraryWrite } from '../../db/library/write.js';
-import { listAppModels } from '../../app-models/install.js';
-import { initJobsDb } from '../../db/jobs/jobs.js';
-import { ProviderRegistry } from '../../providers/registry.js';
 import { createEventLoopYieldState, pollCancelAndYield } from '../../utils/yield.js';
 import {
   buildBatchCullCheckpointBody,
@@ -96,38 +86,10 @@ export async function runCullPass(
 
   seedCullingDefaults(db);
   const pipeline = getCurrentPipelineSetting(db);
-  const cullingModels = loadLibraryConfig(config.LT_CONFIG_YAML).cullingModels;
   const on = stagesOn(pipeline.config);
-  const questionCount = getForecastQuestions(db).questions.length;
-  const registry = new ProviderRegistry();
-  const appModelsDir = loadLibraryConfig(config.LT_CONFIG_YAML).appModelsDir;
-  const jobsDb = initJobsDb(config.VISUALIZER_DB);
-  let appModels;
-  try {
-    appModels = listAppModels(appModelsDir, jobsDb);
-  } finally {
-    jobsDb.close();
-  }
-  const stageInput = (kind: 'culling_profile' | 'score_forecast') => ({
-    on: on[kind],
-    cfg: cullingModels[kind],
-    appModels,
-    questionCount,
-    registry,
-  });
-  const [profileResolved, forecastResolved] = await Promise.all([
-    resolveStage('culling_profile', stageInput('culling_profile')),
-    resolveStage('score_forecast', stageInput('score_forecast')),
-  ]);
-  throwIfStageProblem('culling_profile', profileResolved);
-  throwIfStageProblem('score_forecast', forecastResolved);
-  const stageModels = stageModelsFromConfig(cullingModels, {
-    registry,
-    systemOne: {
-      culling_profile: profileResolved.systemOne,
-      score_forecast: forecastResolved.systemOne,
-    },
-  });
+  const resolved = resolveLibraryStages(db);
+  throwIfStageProblem(resolved);
+  const stageModels = stageModelsFrom(resolved);
   const modelIds = await resolveStageModelIds(stageModels, on, readStoredStageModelIds(db));
   const stages = syncCurrentStages(db, modelIds);
 

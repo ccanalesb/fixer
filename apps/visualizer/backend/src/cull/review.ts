@@ -4,7 +4,7 @@
 import { excusedQuestions, levelSetReadout, pAtLeast } from './decide.js';
 import type { ScoreForecastQuestion } from './forecast-questions.js';
 import type { ScoreForecastSetting, StageAnswers } from './types.js';
-import { profileStageKey } from './stages.js';
+import { profileStageKey } from './stage-specs.js';
 import type { ProfileDefinition, ProfileRule } from './types.js';
 import type { CullProfile } from '../db/library/cull-profiles.js';
 import type { Db } from '../db/connection.js';

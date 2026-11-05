@@ -3,6 +3,7 @@ import {
   cullingChanged,
   cullingModelsChanged,
   cullingProfilesChanged,
+  imageDetailChanged,
   invalidate,
   invalidateAll,
   keys,
@@ -11,7 +12,6 @@ import {
   perspectivesChanged,
   prefixOf,
   providersChanged,
-  refreshCatalogCacheQueries,
   stacksChanged,
 } from '../data'
 import type {
@@ -325,10 +325,6 @@ export const PerspectivesAPI = {
     perspectivesChanged()
     return result
   },
-
-  refreshQueries: () => {
-    perspectivesChanged()
-  },
 }
 
 export const CULLING_JOB_TYPE = 'batch_cull_photos_before_scoring' as const
@@ -358,13 +354,13 @@ export const JobsAPI = {
       method: 'POST',
       body: JSON.stringify({ type, metadata }),
     })
-    invalidateAll(prefixOf(keys.jobs.list(), 1))
+    invalidateAll(keys.jobs.listAll())
     invalidateAll(prefixOf(keys.jobs.health(), 1))
     if (type === 'catalog_cache_build') {
       catalogCacheBuildSignalsChanged()
     }
     if (type === 'batch_catalog_similarity') {
-      invalidateAll(prefixOf(keys.catalog.similarity.groups({ limit: 0, offset: 0 }), 1))
+      invalidateAll(keys.catalog.similarity.groupsAll())
     }
     const pipelineJobTypes = new Set([
       'catalog_cache_build',
@@ -508,10 +504,6 @@ function appendCatalogListSearchParams(
 }
 
 export const SystemAPI = {
-  refreshCatalogCacheQueries: () => {
-    refreshCatalogCacheQueries()
-  },
-
   status: () =>
     request<SystemStatusResponse>('/status'),
 
@@ -763,7 +755,7 @@ export const DescriptionsAPI = {
       },
     )
     invalidate(keys.descriptions(imageKey))
-    invalidateAll(prefixOf(keys.images.detail(imageType as 'catalog', imageKey, ''), 3))
+    imageDetailChanged(imageKey)
     return result
   },
 }
@@ -934,7 +926,6 @@ export const ProvidersAPI = {
       body: JSON.stringify(defaults),
     })
     providersChanged()
-    invalidate(keys.providers.defaults())
     return result
   },
   addModel: async (
@@ -979,9 +970,6 @@ export const ProvidersAPI = {
     )
     providersChanged()
     return result
-  },
-  refreshQueries: () => {
-    providersChanged()
   },
 }
 
@@ -1132,6 +1120,7 @@ export const CullingProfilesAPI = {
       body: JSON.stringify(body),
     })
     cullingProfilesChanged()
+    cullingChanged()
     return result
   },
   saveScoreForecast: async (body: { enabled?: boolean; threshold?: number; high_from_level?: number }) => {
@@ -1140,6 +1129,7 @@ export const CullingProfilesAPI = {
       body: JSON.stringify(body),
     })
     cullingProfilesChanged()
+    cullingChanged()
     return result
   },
 }

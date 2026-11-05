@@ -397,12 +397,19 @@ describe('the batch_frame_substance handler', () => {
   it('fails with a presentable message when the library DB is not configured', async () => {
     delete process.env.LIBRARY_DB;
     process.env.LT_CONFIG_YAML = join(dir, 'missing.yaml');
+    // Without a data folder the default is the repo root, where a source checkout keeps its real library.db.
+    const savedDataDir = process.env.LT_DATA_DIR;
+    process.env.LT_DATA_DIR = dir;
+    try {
+      const job = await runJob();
 
-    const job = await runJob();
-
-    expect(job.status).toBe('failed');
-    expect(job.error_severity).toBe('warning');
-    delete process.env.LT_CONFIG_YAML;
+      expect(job.status).toBe('failed');
+      expect(job.error_severity).toBe('warning');
+    } finally {
+      delete process.env.LT_CONFIG_YAML;
+      if (savedDataDir === undefined) delete process.env.LT_DATA_DIR;
+      else process.env.LT_DATA_DIR = savedDataDir;
+    }
   });
 });
 

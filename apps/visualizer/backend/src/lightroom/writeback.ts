@@ -133,8 +133,6 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const run: WritebackPlanRun = {
     db,
     conn,
-    settings,
-    trigger: opts.trigger,
     tally,
     starsVersionId,
   };

@@ -1,5 +1,6 @@
 /** Culling models API models (`/api/culling-models*`): each culling stage's endpoint and model. */
 import { z } from '@hono/zod-openapi';
+import { STAGE_PROBLEMS } from '../../cull/types.js';
 
 export const CullingStageParam = z.object({
   stage: z.enum(['culling_profile', 'score_forecast']).openapi({ param: { name: 'stage', in: 'path' } }),
@@ -19,7 +20,7 @@ export const CullingSystemOneProvider = z
 export const CullingStageModelUsable = z
   .object({
     /** Why a stage that is on cannot run; `null` when it can, or is off. */
-    problem: z.enum(['no_model', 'converting', 'parked', 'removed', 'no_questions']).nullable(),
+    problem: z.enum(STAGE_PROBLEMS).nullable(),
     /** The conversion job of a model still converting in this app. */
     job_id: z.string().nullable(),
     /** System One provider name when the stage is parked. */
@@ -77,7 +78,7 @@ export const CullingStageUsability = z
   .object({
     on: z.boolean(),
     /** Why a stage that is on cannot run; `null` when it can, or is off. */
-    problem: z.enum(['no_model', 'converting', 'parked', 'removed', 'no_questions']).nullable(),
+    problem: z.enum(STAGE_PROBLEMS).nullable(),
     model: z.string().nullable(),
     endpoint: z.string(),
     /** The conversion job of a model still converting in this app. */

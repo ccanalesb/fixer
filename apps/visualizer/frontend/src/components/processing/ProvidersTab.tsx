@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useQuery, keys } from '../../data';
+import { useQuery, keys, providersChanged } from '../../data';
 import {
   JobsAPI,
   ProvidersAPI,
@@ -276,7 +276,7 @@ export function ProvidersTab() {
         modelCache={modelCache}
         defaults={bundle.defaults}
         defaultsNotice={defaultsNotice}
-        onRefreshBundle={() => ProvidersAPI.refreshQueries()}
+        onRefreshBundle={providersChanged}
       />
 
       <OpenAiProvidersGroup

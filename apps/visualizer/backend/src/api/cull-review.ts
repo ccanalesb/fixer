@@ -10,7 +10,8 @@ import {
   resolveFilteringProfile,
   scoreForecastByQuestion,
 } from '../cull/review.js';
-import { SCORE_FORECAST_STAGE_KEY, readCurrentStages } from '../cull/stages.js';
+import { SCORE_FORECAST_STAGE_KEY } from '../cull/stage-specs.js';
+import { readCurrentStages } from '../cull/stages.js';
 import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { getCullVerdict } from '../db/library/cull-verdicts.js';
 import { getCullReviewSummary, listCullReviewPhotos } from '../db/library/cull-review.js';

@@ -118,4 +118,17 @@ describe('CullReviewTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Send 1/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent('cannot reach backend')
   })
+
+  it('shows why "agrees with the filter" failed and keeps the selection', async () => {
+    vi.spyOn(CullAPI, 'recordAction').mockRejectedValue(new Error('action not recorded'))
+    render(
+      <MemoryRouter>
+        <CullReviewTab />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByLabelText('Select DSCF4401.RAF'))
+    fireEvent.click(screen.getByRole('button', { name: CULL_AGREE }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('action not recorded')
+    expect(screen.getByLabelText('Select DSCF4401.RAF')).toBeChecked()
+  })
 })

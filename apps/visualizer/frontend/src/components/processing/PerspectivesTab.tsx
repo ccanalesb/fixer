@@ -1,7 +1,7 @@
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { ErrorBoundary, ErrorState, keys, retryPerspectivesTab, useQuery } from '../../data';
+import { ErrorBoundary, ErrorState, keys, perspectivesChanged, useQuery } from '../../data';
 import { Modal } from '../modal/Modal';
 import { Badge } from '../ui/badges';
 import { Button } from '../ui/Button';
@@ -225,7 +225,7 @@ function PerspectivesTabInner() {
   const [newBody, setNewBody] = useState(NEW_TEMPLATE);
 
   const refreshList = useCallback(() => {
-    PerspectivesAPI.refreshQueries();
+    perspectivesChanged();
   }, []);
 
   async function handleToggleActive(row: PerspectiveSummary, next: boolean) {
@@ -299,7 +299,7 @@ function PerspectivesTabInner() {
                   <ErrorState
                     error={err}
                     reset={() => {
-                      retryPerspectivesTab();
+                      perspectivesChanged();
                       reset();
                     }}
                   />
@@ -386,7 +386,7 @@ export function PerspectivesTab() {
         <ErrorState
           error={error}
           reset={() => {
-            retryPerspectivesTab();
+            perspectivesChanged();
             reset();
           }}
         />

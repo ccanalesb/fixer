@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClipModelDownloadConfirm } from '../setup/ClipModelDownloadConfirm';
 import { useClipModelStatus } from '../../hooks/useClipModelStatus';
-import { keys, useQuery } from '../../data';
+import { catalogCacheChanged, keys, useQuery } from '../../data';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/badges';
@@ -119,7 +119,7 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
   const anyBusy = buildStarting || advancedBusy !== null;
 
   const refreshStats = useCallback(() => {
-    SystemAPI.refreshCatalogCacheQueries();
+    catalogCacheChanged();
   }, []);
 
   const handleOpenJobQueue = useCallback(() => {

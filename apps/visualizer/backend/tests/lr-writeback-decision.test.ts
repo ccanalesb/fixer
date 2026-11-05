@@ -200,12 +200,12 @@ describe('decideWriteback stars.why', () => {
 
   it('strong when answers yield a star rating', async () => {
     await cull(KEY, fakeModels(STRONG));
-    expect(decide(KEY).stars).toMatchObject({ rating: 3, strong: 4, why: 'strong' });
+    expect(decide(KEY).stars).toMatchObject({ rating: 3, earnedRating: 3, strong: 4, why: 'strong' });
   });
 
-  it('strong with rating null while write stars is off', async () => {
+  it('strong with rating null but the earned rating kept while write stars is off', async () => {
     await cull(KEY, fakeModels(STRONG));
     patchLrWritebackSettings(db, { write_stars: false });
-    expect(decide(KEY).stars).toMatchObject({ rating: null, strong: 4, why: 'strong' });
+    expect(decide(KEY).stars).toMatchObject({ rating: null, earnedRating: 3, strong: 4, why: 'strong' });
   });
 });

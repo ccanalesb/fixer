@@ -364,4 +364,23 @@ describe('TaskAssignmentsBlock', () => {
     expect(await screen.findByRole('dialog', { name: 'Culling profile has no model' })).toBeInTheDocument()
     expect(JobsAPI.create).not.toHaveBeenCalled()
   })
+
+  it('process photos queues the culling job when every stage that is on can run', async () => {
+    stages.culling_profile = stage({
+      model: 'culling-model',
+      answered: { photos: 100, model: 'culling-model' },
+      usable: { problem: null, job_id: null, provider_name: null },
+    })
+    appModels = [ready('culling-model'), ready('my-run-best')]
+    renderBlock()
+    const cull = await row('culling_profile')
+    await waitFor(() => expect(within(cull).getByRole('option', { name: 'my-run-best' })).toBeInTheDocument())
+    fireEvent.change(within(cull).getByRole('combobox', { name: 'Model' }), { target: { value: 'my-run-best' } })
+    fireEvent.click(await within(cull).findByRole('button', { name: MODEL_CHANGE_PROCESS }))
+    expect(await within(cull).findByText('Job queued ·', { exact: false })).toBeInTheDocument()
+    expect(CullingModelsAPI.usable).toHaveBeenCalled()
+    expect(JobsAPI.create).toHaveBeenCalledTimes(1)
+    expect(JobsAPI.create).toHaveBeenCalledWith('batch_cull_photos_before_scoring', {})
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
 })

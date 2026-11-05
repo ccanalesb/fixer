@@ -27,23 +27,23 @@ import { FileTab } from './tabs/FileTab'
 import { LightroomTab } from './tabs/LightroomTab'
 import { StackTab } from './tabs/StackTab'
 import { frameHeldBack, frameSaysNothing, frameSubstanceQuery } from './tabs/frameSubstance'
-import { ErrorBoundary, ErrorState, keys, retryImageDetail, stacksChanged, useQuery } from '../../data'
+import { ErrorBoundary, ErrorState, imageDetailChanged, keys, stacksChanged, useQuery } from '../../data'
 
 export type ImageDetailTab = 'culling' | 'ai' | 'lightroom' | 'file' | 'stack'
 
 interface ImageDetailModalProps {
   imageKey: string
-  /** Header primary-score source (CONTEXT Q3). */
+  /** Header primary-score source (CONTEXT Q3). From `modalPropsFor`. */
   primaryScoreSource: PrimaryScoreSource
   /** When set, catalog detail calls request `?score_perspective=<slug>`
    *  so the header pill shows the same slug the tile used. */
   scorePerspectiveSlug?: string
   /** Optional content rendered above the detail body (e.g. Mirror standout). */
   contextSlot?: ReactNode
-  /** When set, the Culling tab loads `/api/cull/photos/{key}` and shows the verdict. */
-  showCullSection?: boolean
-  /** Tab to open on; falls back to the first tab the photo has. Defaults to Culling in culling views, else AI. */
-  initialTab?: ImageDetailTab
+  /** When set, the Culling tab loads `/api/cull/photos/{key}` and shows the verdict. From `modalPropsFor`. */
+  showCullSection: boolean
+  /** Tab to open on; falls back to the first tab the photo has. From `modalPropsFor`. */
+  initialTab: ImageDetailTab
   /** Prev / next within a cull review or catalog list. */
   nav?: {
     keys: string[]
@@ -136,12 +136,12 @@ function ImageDetailModalBody({
   imageKey,
   primaryScoreSource,
   scorePerspectiveSlug,
-  showCullSection = false,
+  showCullSection,
   tab,
   onTabChange,
 }: DetailSource & {
   primaryScoreSource: PrimaryScoreSource
-  showCullSection?: boolean
+  showCullSection: boolean
   tab: ImageDetailTab
   onTabChange: (tab: ImageDetailTab) => void
 }) {
@@ -251,14 +251,14 @@ export function ImageDetailModal({
   primaryScoreSource,
   scorePerspectiveSlug,
   contextSlot,
-  showCullSection = false,
+  showCullSection,
   initialTab,
   nav,
   onClose,
 }: ImageDetailModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = `image-detail-modal-title-${imageKey.replace(/[^a-zA-Z0-9_-]/g, '_')}`
-  const [tab, setTab] = useState<ImageDetailTab>(initialTab ?? (showCullSection ? 'culling' : 'ai'))
+  const [tab, setTab] = useState<ImageDetailTab>(initialTab)
   const source = { imageKey, scorePerspectiveSlug }
 
   useBodyScrollLock(true)
@@ -334,7 +334,7 @@ export function ImageDetailModal({
               <ErrorState
                 error={error}
                 reset={() => {
-                  retryImageDetail('catalog', imageKey, scorePerspectiveSlug)
+                  imageDetailChanged(imageKey)
                   reset()
                 }}
               />

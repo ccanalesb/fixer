@@ -16,7 +16,7 @@ import {
   listSystemOneModels,
   modelIdentity,
   SystemOneError,
-  systemOneEndpoint,
+  findSystemOneEndpoint,
 } from '../src/systemone/client.js';
 
 type Handler = (req: IncomingMessage, body: string, res: ServerResponse) => void;
@@ -105,7 +105,7 @@ afterAll(async () => {
 });
 
 const registry = () => new ProviderRegistry(providersPath);
-const stageEp = (model: string, id = providerId) => systemOneEndpoint({ endpoint: id, model }, { registry: registry() });
+const stageEp = (id = providerId) => findSystemOneEndpoint(id, { registry: registry() })!;
 
 beforeEach(() => {
   seen.length = 0;
@@ -127,7 +127,7 @@ describe('listSystemOneModels', () => {
           { name: 'jev-latest', description: 'y', release_date: '2026-10-14' },
         ],
       });
-    const ep = systemOneEndpoint({ endpoint: providerId, model: 'culling-model' }, { registry: registry() });
+    const ep = findSystemOneEndpoint(providerId, { registry: registry() })!;
     const models = await listSystemOneModels(ep);
     expect(models).toEqual([
       { name: 'culling-model', modelId: 'owner/vision-model@8b318c9' },
@@ -138,13 +138,13 @@ describe('listSystemOneModels', () => {
 
   it('reads the OpenAI shape Ollama and oMLX answer with', async () => {
     handler = (_q, _b, res) => json(res, 200, { object: 'list', data: [{ id: 'clef-flash:latest', object: 'model' }] });
-    const models = await listSystemOneModels(stageEp('clef-flash:latest', noAuthProviderId));
+    const models = await listSystemOneModels(stageEp(noAuthProviderId));
     expect(models).toEqual([{ name: 'clef-flash:latest', modelId: null }]);
     expect(seen[0]!.auth).toBeUndefined();
   });
 
   it('names a model by its endpoint when the endpoint gives no identity', () => {
-    const endpoint = stageEp('clef', noAuthProviderId);
+    const endpoint = stageEp(noAuthProviderId);
     expect(modelIdentity(endpoint, { name: 'clef', modelId: null })).toBe(`clef@${baseUrl}`);
     expect(modelIdentity(endpoint, { name: 'culling-model', modelId: 'owner/vision-model@8b318c9' })).toBe(
       'owner/vision-model@8b318c9',
@@ -152,7 +152,7 @@ describe('listSystemOneModels', () => {
   });
 
   it('an endpoint that does not answer is down', async () => {
-    const endpoint = stageEp('x', deadProviderId);
+    const endpoint = stageEp(deadProviderId);
     const e = await listSystemOneModels(endpoint).catch((err: unknown) => err);
     expect(e).toBeInstanceOf(SystemOneError);
     expect(e).toMatchObject({ failure: 'down' });
@@ -161,7 +161,7 @@ describe('listSystemOneModels', () => {
 
   it('a rejected API key is refused, and a list it cannot read is malformed', async () => {
     handler = (_q, _b, res) => json(res, 401, { error: { message: 'API key required' } });
-    const endpoint = stageEp('x', badKeyProviderId);
+    const endpoint = stageEp(badKeyProviderId);
     await expect(listSystemOneModels(endpoint)).rejects.toMatchObject({ failure: 'refused' });
     handler = (_q, _b, res) => json(res, 200, { nothing: true });
     await expect(listSystemOneModels(endpoint)).rejects.toMatchObject({ failure: 'malformed' });
@@ -169,7 +169,7 @@ describe('listSystemOneModels', () => {
 });
 
 describe('askSystemOne', () => {
-  const ep = () => stageEp('m');
+  const ep = () => stageEp();
 
   it('sends the model, an empty state, the image as a data URL and the questions', async () => {
     handler = (_q, _b, res) =>
@@ -286,17 +286,17 @@ describe('culling_models in config.yaml', () => {
   });
 });
 
-describe('systemOneEndpoint', () => {
+describe('findSystemOneEndpoint', () => {
   it('this app is reached in-process, never over a socket, and takes no API key', async () => {
     const calls: string[] = [];
-    const ep = systemOneEndpoint({ endpoint: 'this_app', model: 'culling-model' }, {
+    const ep = findSystemOneEndpoint('this_app', {
       thisAppFetch: async (input) => {
         calls.push(String(input instanceof Request ? input.url : input));
         return new Response(JSON.stringify({ models: [{ name: 'culling-model', description: '', release_date: '' }] }), {
           headers: { 'content-type': 'application/json' },
         });
       },
-    });
+    })!;
     expect(ep.label).toBe('this app');
     expect(await listSystemOneModels(ep)).toEqual([{ name: 'culling-model', modelId: null }]);
     expect(calls).toEqual(['http://this-app/v1/models']);
@@ -304,8 +304,6 @@ describe('systemOneEndpoint', () => {
   });
 
   it('refuses a raw URL endpoint', () => {
-    expect(() => systemOneEndpoint({ endpoint: 'http://studio:8000', model: 'm' }, { registry: registry() })).toThrow(
-      /Unknown culling endpoint/,
-    );
+    expect(findSystemOneEndpoint('http://studio:8000', { registry: registry() })).toBeNull();
   });
 });

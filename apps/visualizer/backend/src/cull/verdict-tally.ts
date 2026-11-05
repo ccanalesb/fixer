@@ -18,7 +18,10 @@ export function emptyVerdictTally(): VerdictTally {
   };
 }
 
-export function addDecision(tally: VerdictTally, decision: PhotoDecision): void {
+export function addDecision(
+  tally: VerdictTally,
+  decision: Pick<PhotoDecision, 'verdict' | 'filteredBy' | 'sentByHandOverride'>,
+): void {
   if (decision.verdict === 'pending') tally.pending += 1;
   else if (decision.verdict === 'passed') tally.passed += 1;
   else if (decision.filteredBy === 'culling_profile') tally.filtered_by_culling_profile += 1;

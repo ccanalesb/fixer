@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ImagesAPI, PerspectivesAPI } from '../../services/api';
-import { ImageDetailModal, ImageTile, fromCatalogListRow, modalPropsFor } from '../image-view';
+import { ImageDetailModal, ImageTile, fromCatalogListRow, modalPropsFor, useListNav } from '../image-view';
 import { Pagination } from '../ui/Pagination';
 import { TileGrid } from '../ui/TileGrid';
 import { useQuery } from '../../data';
@@ -62,11 +62,6 @@ import { stableSerializeRecord } from '../../utils/stableQueryKey';
 
 const LIMIT = 50;
 
-/** Row key used to open the consolidated modal — detail endpoint fills the rest. */
-type SelectedCatalogEntry = {
-  key: string;
-};
-
 type CatalogTabProps = {
   /** Fires when the posted / not-posted filter changes (for parent UI, e.g. Analytics cross-link). */
   onPostedFilterChange?: (posted: boolean | undefined) => void;
@@ -79,8 +74,6 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [isPending, startTransition] = useTransition();
-  const [selected, setSelected] = useState<SelectedCatalogEntry | null>(null);
-  const [navIndex, setNavIndex] = useState(0);
 
   const monthsPayload = useQuery(keys.images.catalogMonths(), () =>
     ImagesAPI.getCatalogMonths(),
@@ -293,18 +286,18 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const catalogPage = useQuery(listQueryKey, () => ImagesAPI.listCatalog(listParams));
   const images = catalogPage.images;
   const total = catalogPage.total;
+  const listNav = useListNav(images.map((im) => im.key));
+  const { open: openPhoto } = listNav;
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const raw = sp.get('image_key');
     if (!raw) return;
-    const idx = images.findIndex((im) => im.key === raw);
-    if (idx >= 0) setNavIndex(idx);
-    setSelected({ key: raw });
+    openPhoto(raw);
     sp.delete('image_key');
     const next = sp.toString();
     navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true });
-  }, [location.search, location.pathname, navigate, images]);
+  }, [location.search, location.pathname, navigate, openPhoto]);
 
   const postedCommitted = filterValues.posted as boolean | undefined;
   useEffect(() => {
@@ -413,7 +406,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
         <>
           <div className={`relative transition-opacity duration-150${isPending ? ' opacity-50 pointer-events-none' : ''}`}>
             <TileGrid>
-              {images.map((image, idx) => (
+              {images.map((image) => (
                 <ImageTile
                   key={image.id != null ? String(image.id) : image.key}
                   image={fromCatalogListRow(image)}
@@ -424,10 +417,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
                       <Badge variant="default">{CULL_SENT_BY_HAND}</Badge>
                     ) : undefined
                   }
-                  onClick={() => {
-                    setNavIndex(idx);
-                    setSelected({ key: image.key });
-                  }}
+                  onClick={() => openPhoto(image.key)}
                 />
               ))}
             </TileGrid>
@@ -443,32 +433,19 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
         </>
       )}
 
-      {selected && (() => {
-        const onPage = images.findIndex((im) => im.key === selected.key);
-        const listNav =
-          onPage >= 0 && images.length > 1
-            ? {
-                keys: images.map((im) => im.key),
-                index: navIndex,
-                onIndexChange: setNavIndex,
-              }
-            : undefined;
-        const imageKey =
-          onPage >= 0 ? (images[navIndex]?.key ?? selected.key) : selected.key;
-        return (
-          <ImageDetailModal
-            imageKey={imageKey}
-            {...modalPropsFor(cullCatalog ? 'culling' : 'catalog')}
-            scorePerspectiveSlug={
-              typeof filterValues.scorePerspective === 'string' && filterValues.scorePerspective
-                ? filterValues.scorePerspective
-                : undefined
-            }
-            nav={listNav}
-            onClose={() => setSelected(null)}
-          />
-        );
-      })()}
+      {listNav.openKey && (
+        <ImageDetailModal
+          imageKey={listNav.openKey}
+          {...modalPropsFor(cullCatalog ? 'culling' : 'catalog')}
+          scorePerspectiveSlug={
+            typeof filterValues.scorePerspective === 'string' && filterValues.scorePerspective
+              ? filterValues.scorePerspective
+              : undefined
+          }
+          nav={listNav.nav}
+          onClose={listNav.close}
+        />
+      )}
     </div>
   );
 }

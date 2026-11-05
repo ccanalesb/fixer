@@ -85,14 +85,7 @@ export function CullingStageTaskRow({
   }
 
   const problem: CullingStageProblem | null = stageOn ? stageModels[stage].usable.problem : null
-  const showRedRow =
-    stageOn &&
-    problem &&
-    (problem === 'parked' ||
-      problem === 'removed' ||
-      problem === 'no_model' ||
-      problem === 'converting' ||
-      problem === 'no_questions')
+  const showRedRow = problem !== null
 
   const modelChangeNote = (): ReactNode => {
     if (queued === stage) {

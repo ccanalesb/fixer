@@ -4,8 +4,11 @@ import { TopPhotosStrip } from '../TopPhotosStrip'
 import { NULLABLE_BEST_PHOTO_FIELDS } from '../../../__test-utils__/identityFixtures'
 import type { IdentityBestPhotoItem } from '../../../services/api'
 import { deleteMatching } from '../../../data/cache'
+import { CULL_MODAL_PREV } from '../../../constants/strings'
 import {
+  clickModalNav,
   clickTileByKey,
+  expectModalFilename,
   mockImageDetailFilenames,
   mockImageDetailModalDeps,
   stepModalPrevNext,
@@ -71,5 +74,37 @@ describe('TopPhotosStrip', () => {
 
     clickTileByKey('top-b')
     await stepModalPrevNext('top-a.jpg', 'top-b.jpg', 'top-c.jpg')
+  })
+
+  it('stays on the photo stepped to when the strip reloads in a new order', async () => {
+    const keys = ['top-a', 'top-b', 'top-c']
+    mockImageDetailModalDeps()
+    mockImageDetailFilenames(keys)
+
+    const { rerender } = render(
+      <TopPhotosStrip
+        items={keys.map(stripItem)}
+        loading={false}
+        error={null}
+        emptyMessage={null}
+      />,
+    )
+
+    clickTileByKey('top-b')
+    await expectModalFilename('top-b.jpg')
+    clickModalNav('next')
+    await expectModalFilename('top-c.jpg')
+
+    rerender(
+      <TopPhotosStrip
+        items={['top-c', 'top-a', 'top-b'].map(stripItem)}
+        loading={false}
+        error={null}
+        emptyMessage={null}
+      />,
+    )
+
+    await expectModalFilename('top-c.jpg')
+    expect(screen.getByRole('button', { name: new RegExp(CULL_MODAL_PREV) })).toBeDisabled()
   })
 })

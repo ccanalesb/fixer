@@ -6,11 +6,13 @@ const fetchMock = vi.fn()
 globalThis.fetch = fetchMock
 
 const cullingProfilesChangedMock = vi.fn()
+const cullingChangedMock = vi.fn()
 vi.mock('../../data/keys', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../data/keys')>()
   return {
     ...actual,
     cullingProfilesChanged: () => cullingProfilesChangedMock(),
+    cullingChanged: () => cullingChangedMock(),
   }
 })
 
@@ -107,6 +109,26 @@ describe('CullingProfilesAPI mutations', () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
     await expect(CullingProfilesAPI.saveScoreForecast({ enabled: true })).rejects.toThrow()
     expect(cullingProfilesChangedMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['saveCullingProfileSwitches', () => CullingProfilesAPI.saveCullingProfileSwitches({ enabled: false })],
+    ['saveScoreForecast', () => CullingProfilesAPI.saveScoreForecast({ enabled: false })],
+  ])('%s calls cullingChanged even when no re-decide job is queued', async (_name, save) => {
+    cullingChangedMock.mockClear()
+    fetchMock.mockResolvedValueOnce(okJson({ version: 2, redecide_job_id: null }))
+    await save()
+    expect(cullingChangedMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['saveCullingProfileSwitches', () => CullingProfilesAPI.saveCullingProfileSwitches({ enabled: false })],
+    ['saveScoreForecast', () => CullingProfilesAPI.saveScoreForecast({ enabled: false })],
+  ])('%s does not call cullingChanged when the request fails', async (_name, save) => {
+    cullingChangedMock.mockClear()
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
+    await expect(save()).rejects.toThrow()
+    expect(cullingChangedMock).not.toHaveBeenCalled()
   })
 })
 

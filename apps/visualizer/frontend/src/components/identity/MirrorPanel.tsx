@@ -9,7 +9,7 @@ import {
 import { useQuery } from '../../data'
 import { keys } from '../../data/keys'
 import { Card, CardContent } from '../ui/Card'
-import { ImageDetailModal, modalPropsFor } from '../image-view'
+import { ImageDetailModal, modalPropsFor, useListNav } from '../image-view'
 import {
   IDENTITY_MIRROR_EMPTY,
   IDENTITY_MIRROR_INTRO,
@@ -167,8 +167,8 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
   const [modal, setModal] = useState<{
     section: Pick<MirrorTechniqueSection, 'perspective_slug' | 'display_name' | 'win_rate' | 'chance_rate' | 'z_score'>
     exemplars: MirrorExemplar[]
-    navIndex: number
   } | null>(null)
+  const listNav = useListNav(modal?.exemplars.map((e) => e.image_key) ?? [])
 
   if (data.sections.length === 0) {
     return (
@@ -192,13 +192,20 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
         z_score: section.z_score,
       },
       exemplars,
-      navIndex: index,
     })
+    const key = exemplars[index]?.image_key
+    if (key !== undefined) listNav.open(key)
+  }
+
+  function closeModal() {
+    setModal(null)
+    listNav.close()
   }
 
   let contextSlot: ReactNode = null
   if (modal) {
-    const exemplar = modal.exemplars[modal.navIndex] ?? modal.exemplars[0]
+    const exemplar =
+      modal.exemplars.find((e) => e.image_key === listNav.openKey) ?? modal.exemplars[0]
     contextSlot = (
       <div>
         <h3 className="mb-3 text-lg font-semibold text-text">{IDENTITY_MIRROR_WHY_HERE}</h3>
@@ -255,24 +262,14 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
         <p className="text-xs text-text-tertiary">{data.meta.scores_are_advisory}</p>
       ) : null}
 
-      {modal ? (
+      {modal && listNav.openKey ? (
         <ImageDetailModal
-          imageKey={
-            modal.exemplars[modal.navIndex]?.image_key ?? modal.exemplars[0]?.image_key ?? ''
-          }
+          imageKey={listNav.openKey}
           {...modalPropsFor('identity')}
           scorePerspectiveSlug={modal.section.perspective_slug}
           contextSlot={contextSlot}
-          nav={
-            modal.exemplars.length > 1
-              ? {
-                  keys: modal.exemplars.map((e) => e.image_key),
-                  index: modal.navIndex,
-                  onIndexChange: (index) => setModal((prev) => (prev ? { ...prev, navIndex: index } : prev)),
-                }
-              : undefined
-          }
-          onClose={() => setModal(null)}
+          nav={listNav.nav}
+          onClose={closeModal}
         />
       ) : null}
     </>

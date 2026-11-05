@@ -6,7 +6,7 @@ import {
 } from '../../services/api'
 import { useQuery } from '../../data'
 import { keys } from '../../data/keys'
-import { ImageDetailModal, modalPropsFor } from '../image-view'
+import { ImageDetailModal, modalPropsFor, useListNav } from '../image-view'
 import { Button } from '../ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
 import {
@@ -55,8 +55,6 @@ export function AdvisorPanel() {
     sortKey: '',
     rows: [],
   })
-  const [selected, setSelected] = useState<PostNextCandidate | null>(null)
-  const [navIndex, setNavIndex] = useState(0)
 
   const postNextSchema = useMemo<FilterSchema>(
     () => [
@@ -102,6 +100,7 @@ export function AdvisorPanel() {
   const appended = extra.sortKey === sortKey ? extra.rows : []
   const rows = [...initial.candidates, ...appended]
   const total = initial.total
+  const listNav = useListNav(rows.map((r) => r.image_key))
   const emptyState = initial.empty_state
 
   const handleLoadMore = () => {
@@ -183,10 +182,7 @@ export function AdvisorPanel() {
                     >
                       <button
                         type="button"
-                        onClick={() => {
-                          setNavIndex(i)
-                          setSelected(row)
-                        }}
+                        onClick={() => listNav.open(row.image_key)}
                         className="mx-auto shrink-0 focus:outline-none focus:ring-2 focus:ring-accent sm:mx-0"
                       >
                         <img
@@ -251,20 +247,12 @@ export function AdvisorPanel() {
         </CardContent>
       </Card>
 
-      {selected ? (
+      {listNav.openKey ? (
         <ImageDetailModal
-          imageKey={rows[navIndex]?.image_key ?? selected.image_key}
+          imageKey={listNav.openKey}
           {...modalPropsFor('identity')}
-          nav={
-            rows.length > 1
-              ? {
-                  keys: rows.map((r) => r.image_key),
-                  index: navIndex,
-                  onIndexChange: setNavIndex,
-                }
-              : undefined
-          }
-          onClose={() => setSelected(null)}
+          nav={listNav.nav}
+          onClose={listNav.close}
         />
       ) : null}
     </section>

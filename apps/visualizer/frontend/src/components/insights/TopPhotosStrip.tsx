@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import type { IdentityBestPhotoItem } from '../../services/api'
-import { ImageDetailModal, ImageTile, fromBestPhotoRow, modalPropsFor } from '../image-view'
+import { ImageDetailModal, ImageTile, fromBestPhotoRow, modalPropsFor, useListNav } from '../image-view'
 import { PerspectiveBadge } from '../ui/badges'
 import { pickDominantPerspective } from '../identity/pickDominantPerspective'
 import { MSG_LOADING } from '../../constants/strings'
@@ -14,8 +14,7 @@ export type TopPhotosStripProps = {
 
 export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhotosStripProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [selected, setSelected] = useState<IdentityBestPhotoItem | null>(null)
-  const [navIndex, setNavIndex] = useState(0)
+  const listNav = useListNav(items.map((r) => r.image_key))
 
   if (loading) {
     return (
@@ -48,7 +47,7 @@ export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhoto
   return (
     <>
       <div ref={scrollRef} className="-mx-1 flex gap-3 overflow-x-auto pb-2 pt-1">
-        {items.map((row, idx) => {
+        {items.map((row) => {
           const dom = pickDominantPerspective(row.per_perspective)
           return (
             <ImageTile
@@ -57,10 +56,7 @@ export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhoto
               variant="strip"
               primaryScoreSource="identity"
               scrollContainerRef={scrollRef}
-              onClick={() => {
-                setNavIndex(idx)
-                setSelected(row)
-              }}
+              onClick={() => listNav.open(row.image_key)}
               footer={
                 dom ? (
                   <PerspectiveBadge
@@ -74,20 +70,12 @@ export function TopPhotosStrip({ items, loading, error, emptyMessage }: TopPhoto
           )
         })}
       </div>
-      {selected ? (
+      {listNav.openKey ? (
         <ImageDetailModal
-          imageKey={items[navIndex]?.image_key ?? selected.image_key}
+          imageKey={listNav.openKey}
           {...modalPropsFor('identity')}
-          nav={
-            items.length > 1
-              ? {
-                  keys: items.map((r) => r.image_key),
-                  index: navIndex,
-                  onIndexChange: setNavIndex,
-                }
-              : undefined
-          }
-          onClose={() => setSelected(null)}
+          nav={listNav.nav}
+          onClose={listNav.close}
         />
       ) : null}
     </>

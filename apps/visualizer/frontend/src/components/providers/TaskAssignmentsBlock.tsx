@@ -1,9 +1,8 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import {
   AppModelsAPI,
   CullingModelsAPI,
-  CullingProfilesAPI,
   CULLING_JOB_TYPE,
   JobsAPI,
   ProvidersAPI,
@@ -17,15 +16,13 @@ import { keys, useQuery } from '../../data'
 import { useJobSocket } from '../../hooks/useJobSocket'
 import type { Job } from '../../types/job'
 import {
-  CULLING_MODELS_SAVED,
-  CULLING_MODELS_SAVED_JOB_WAITING,
-  CULLING_MODELS_VIEW_QUEUE,
-  PROCESSING_JOB_QUEUE_ROUTE,
   TASK_ASSIGNMENTS_HEADING,
   TASK_ASSIGNMENTS_LEAD,
   THIS_APP_SECTION_ID,
 } from '../../constants/strings'
 import { applyPipelineStageChange } from '../cull/pipelineStageSwitch'
+import { PipelineSavedNote } from '../cull/PipelineSavedNote'
+import { useOptimisticPipeline } from '../cull/useOptimisticPipeline'
 import { useCullingGate } from '../cull/useCullingGate'
 import { CullingStageTaskRow } from './CullingStageTaskRow'
 import { DescriptionTaskRow } from './DescriptionTaskRow'
@@ -59,13 +56,12 @@ function TaskAssignmentsBlockInner({
   defaultsNotice,
   onRefreshBundle,
 }: TaskAssignmentsBlockProps) {
-  const pipeline = useQuery(keys.cullingProfiles.pipeline(), () => CullingProfilesAPI.getPipeline())
+  const { config: pipelineConfig, show: showPipeline } = useOptimisticPipeline()
   const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
   const stageModels = useQuery(keys.cullingModels(), () => CullingModelsAPI.get())
-  const [optimisticOn, setOptimisticOn] = useState<Partial<Record<Stage, boolean>> | null>(null)
   const pipelineOn = {
-    culling_profile: optimisticOn?.culling_profile ?? pipeline.config.culling_profiles_enabled,
-    score_forecast: optimisticOn?.score_forecast ?? pipeline.config.score_forecast.enabled,
+    culling_profile: pipelineConfig.culling_profiles_enabled,
+    score_forecast: pipelineConfig.score_forecast.enabled,
   }
   const questionCount = questions.questions.length
   const [descriptionProvider, setDescriptionProvider] = useState<string | null>(null)
@@ -216,42 +212,24 @@ function TaskAssignmentsBlockInner({
     setTurningOn(stage)
     setSaved(null)
     setError(null)
-    setOptimisticOn({ [stage]: true })
+    showPipeline(
+      stage === 'culling_profile'
+        ? { ...pipelineConfig, culling_profiles_enabled: true }
+        : { ...pipelineConfig, score_forecast: { ...pipelineConfig.score_forecast, enabled: true } },
+    )
     try {
       const { redecide_job_id } = await applyPipelineStageChange(stage, { enabled: true })
       setSaved({ stage, jobId: redecide_job_id })
     } catch (e) {
-      setOptimisticOn(null)
+      showPipeline(null)
       setError(e instanceof Error ? e.message : 'Save failed')
     } finally {
       setTurningOn(null)
     }
   }
 
-  useEffect(() => {
-    if (!optimisticOn) return
-    const p = pipeline.config
-    const matches = STAGES.every((stage) => {
-      const want = optimisticOn[stage]
-      if (want === undefined) return true
-      return stage === 'culling_profile'
-        ? p.culling_profiles_enabled === want
-        : p.score_forecast.enabled === want
-    })
-    if (matches) setOptimisticOn(null)
-  }, [pipeline, optimisticOn])
-
-  const savedNote = (stage: Stage): ReactNode => {
-    if (saved?.stage !== stage) return null
-    return (
-      <p className="text-sm text-success">
-        {saved.jobId ? CULLING_MODELS_SAVED : CULLING_MODELS_SAVED_JOB_WAITING}{' '}
-        <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-accent underline">
-          {CULLING_MODELS_VIEW_QUEUE}
-        </Link>
-      </p>
-    )
-  }
+  const savedNote = (stage: Stage): ReactNode =>
+    saved?.stage === stage ? <PipelineSavedNote jobId={saved.jobId} /> : null
 
   const unparkProvider = async (providerId: string) => {
     setError(null)

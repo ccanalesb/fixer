@@ -6,8 +6,8 @@ import {
   cullingModelsChanged,
   invalidate,
   keys,
+  imageDetailChanged,
   lightroomWritten,
-  retryImageDetail,
 } from '../data'
 import { useSocketStore } from '../stores/socketStore'
 import type { Job } from '../types/job'
@@ -46,7 +46,7 @@ function onSingleImageJobCompleted(job: Job): void {
   const imageKey = imageKeyOf(job)
   if (!imageKey) return
   if (job.type === 'single_describe') invalidate(keys.descriptions(imageKey))
-  retryImageDetail('catalog', imageKey)
+  imageDetailChanged(imageKey)
 }
 
 /**
