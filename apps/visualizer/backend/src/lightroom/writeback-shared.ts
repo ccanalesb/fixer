@@ -68,7 +68,10 @@ export function userChangedAfterWrite(kind: WritebackKind, live: LivePickRating,
   return !liveMatchesWritten(kind, live, row);
 }
 
-/** Reject when the culling profile's rule says filtered, whatever decided the photo, or the frame is void. */
+/**
+ * Reject when the culling profile's rule says filtered, whatever decided the photo, or the frame is void.
+ * Nothing is rejected while the culling profile is off.
+ */
 export function desiredReject(
   db: Db,
   settings: LrWritebackSettings,
