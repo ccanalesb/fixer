@@ -11,10 +11,14 @@ import {
   STAGE_NAMES,
   stageModelsFromConfig,
 } from '../../cull/stage-models.js';
+import { resolveStage, throwIfStageProblem, type StageProblem } from '../../cull/stage-resolver.js';
 import { syncCurrentStages } from '../../cull/stages.js';
 import type { StageKind } from '../../cull/types.js';
 import { initLibraryDb } from '../../db/library/bootstrap.js';
 import { AppModels } from '../../app-models/app-models.js';
+import { installedModels } from '../../app-models/files.js';
+import type { AppModelStatus } from '../../app-models/install.js';
+import { ProviderRegistry } from '../../providers/registry.js';
 import { THIS_APP_ENDPOINT } from '../../systemone/client.js';
 import { stringFlag } from '../parse.js';
 import type { CommandContext } from '../registry.js';
@@ -26,10 +30,37 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
   const local = new AppModels(() => ctx.config.appModelsDir);
   const app = systemOneApp(() => local);
   const thisAppFetch: typeof fetch = async (input, init) => app.request(input instanceof URL ? input.href : input, init);
-  const models = stageModelsFromConfig(ctx.config.cullingModels, { thisAppFetch });
-  // The default pipeline setting, in a throwaway library: the questions a fresh library's job asks.
+  const registry = new ProviderRegistry();
+  const on = { culling_profile: true, score_forecast: true };
+  const appModels: AppModelStatus[] = installedModels(ctx.config.appModelsDir).map((m) => ({
+    name: m.name,
+    source: m.source,
+    revision: m.revision,
+    status: 'ready',
+    job_id: m.jobId,
+  }));
   const db = initLibraryDb(':memory:');
   try {
+    const stageInput = (kind: StageKind) => ({
+      on: true,
+      cfg: ctx.config.cullingModels[kind],
+      appModels,
+      questionCount: 0,
+      registry,
+      thisAppFetch,
+    });
+    const [profileResolved, forecastResolved] = await Promise.all([
+      resolveStage('culling_profile', stageInput('culling_profile')),
+      resolveStage('score_forecast', stageInput('score_forecast')),
+    ]);
+    const models = stageModelsFromConfig(ctx.config.cullingModels, {
+      thisAppFetch,
+      registry,
+      systemOne: {
+        culling_profile: profileResolved.systemOne,
+        score_forecast: forecastResolved.systemOne,
+      },
+    });
     for (const kind of KINDS) {
       const m = models[kind];
       ctx.out(`${STAGE_NAMES[kind]}: ${m.model || 'no model'} on ${m.endpoint.label}`);
@@ -37,12 +68,13 @@ export async function cmdCullCheck(ctx: CommandContext): Promise<number> {
     if (KINDS.some((k) => models[k].endpoint.id === THIS_APP_ENDPOINT)) {
       ctx.out(`This app's models: ${ctx.config.appModelsDir}`);
     }
+    const skip = new Set<StageProblem>(['no_questions']);
+    throwIfStageProblem('culling_profile', profileResolved, { skip });
+    throwIfStageProblem('score_forecast', forecastResolved, { skip });
     const ids = await resolveStageModelIds(
       models,
-      { culling_profile: true, score_forecast: true },
+      on,
       { culling_profile: null, score_forecast: null },
-      new Set(),
-      { cfg: ctx.config.cullingModels },
     );
     for (const kind of KINDS) ctx.out(`  ${STAGE_NAMES[kind]} model identity: ${ids[kind]}`);
     const stages = syncCurrentStages(db, ids);
