@@ -167,6 +167,7 @@ describe('CullingProfilesSection', () => {
         }),
       )
       expect(screen.getByText('New profile')).toBeInTheDocument()
+      expect(apiMocks.list).toHaveBeenCalledTimes(2)
     })
   })
 

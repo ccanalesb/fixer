@@ -72,7 +72,8 @@ export function CullReviewTab() {
     setTurningOff(true)
     try {
       await turnStageOff(stage)
-      invalidateAll(['cull.summary', 'cull.photos'])
+      invalidateAll(['cull.summary'])
+      invalidateAll(['cull.photos'])
       load()
     } finally {
       setTurningOff(false)
@@ -180,14 +181,16 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
     await runCullingGate('send', async () => {
       await CullAPI.sendPhotos(keys)
       setSelected(new Set())
-      invalidateAll(['cull.summary', 'cull.photos'])
+      invalidateAll(['cull.summary'])
+      invalidateAll(['cull.photos'])
     })
   }
 
   const agreeSelected = async () => {
     await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_filter')))
     setSelected(new Set())
-    invalidateAll(['cull.summary', 'cull.photos'])
+    invalidateAll(['cull.summary'])
+    invalidateAll(['cull.photos'])
   }
 
   const tabs: { id: TabId; label: string }[] = [

@@ -50,11 +50,15 @@ describe('CullReviewTab', () => {
     expect(screen.getByRole('button', { name: 'Score forecast (1121)' })).toBeInTheDocument()
   })
 
-  it('records "agrees with the filter" for the selected photos', async () => {
+  it('records "agrees with the filter" for the selected photos and refetches summary and list', async () => {
     const record = vi.spyOn(CullAPI, 'recordAction').mockResolvedValue({ ok: true } as never)
     render(<CullReviewTab />)
+    await waitFor(() => expect(CullAPI.summary).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(CullAPI.listPhotos).toHaveBeenCalledTimes(1))
     fireEvent.click(await screen.findByLabelText('Select DSCF4401.RAF'))
     fireEvent.click(screen.getByRole('button', { name: CULL_AGREE }))
     await waitFor(() => expect(record).toHaveBeenCalledWith('filtered-one', 'agrees_with_filter'))
+    await waitFor(() => expect(CullAPI.summary).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(CullAPI.listPhotos).toHaveBeenCalledTimes(2))
   })
 })
