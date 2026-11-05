@@ -1,4 +1,4 @@
-import { act } from 'react'
+import { act, Suspense } from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteMatching } from '../../../../data/cache'
@@ -40,13 +40,17 @@ function renderTab(image: Parameters<typeof LightroomTab>[0]['image'], withSocke
   if (withSocket) {
     useSocketStore.setState({ socket: socket as never, connected: true, connect: () => {} })
     return render(
-      <>
+      <Suspense fallback={null}>
         <SocketShell />
         <LightroomTab image={image} />
-      </>,
+      </Suspense>,
     )
   }
-  return render(<LightroomTab image={image} />)
+  return render(
+    <Suspense fallback={null}>
+      <LightroomTab image={image} />
+    </Suspense>,
+  )
 }
 
 function SocketShell() {

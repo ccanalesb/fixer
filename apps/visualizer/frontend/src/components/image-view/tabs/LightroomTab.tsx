@@ -1,4 +1,3 @@
-import { Suspense } from 'react'
 import { LrWritebackAPI, type ImageView, type LrWritebackPhotoDetailResponse } from '../../../services/api'
 import { keys, useQuery } from '../../../data'
 import { Button } from '../../ui/Button/Button'
@@ -37,7 +36,8 @@ async function fetchLrWritebackPhoto(imageKey: string): Promise<LrWritebackPhoto
   }
 }
 
-function LightroomTabContent({ image }: { image: ImageView }) {
+/** What Lightroom Classic holds for the photo, including what the app wrote there. */
+export function LightroomTab({ image }: { image: ImageView }) {
   const detail = useQuery(keys.lrWriteback.photo(image.key), () => fetchLrWritebackPhoto(image.key))
 
   const undo = async (kind: 'stars' | 'reject') => {
@@ -105,14 +105,5 @@ function LightroomTabContent({ image }: { image: ImageView }) {
         ) : null}
       </ActionArea>
     </>
-  )
-}
-
-/** What Lightroom Classic holds for the photo, including what the app wrote there. */
-export function LightroomTab({ image }: { image: ImageView }) {
-  return (
-    <Suspense fallback={null}>
-      <LightroomTabContent image={image} />
-    </Suspense>
   )
 }
