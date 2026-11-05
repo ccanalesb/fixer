@@ -1,38 +1,40 @@
 /**
  * Make stage versions current for the pipeline setting's saved text and the given model identities.
  */
+import { forecastStageQuestions, type ScoreForecastQuestion } from '../../cull/forecast-questions.js';
 import type { StageModelIds } from '../../cull/stage-models.js';
 import {
   profileStageKey,
   profileStageQuestions,
   SCORE_FORECAST_STAGE_KEY,
-  scoreForecastStageQuestions,
-  type StageVersionSpecInput,
 } from '../../cull/stage-specs.js';
 import type { PipelineSettingConfig, ResolvedStage } from '../../cull/types.js';
 import type { Db } from '../connection.js';
 import { parsePipelineSetting } from '../../cull/default-pipeline.js';
 import { getCullProfile } from './cull-profiles-read.js';
-import { getOrCreateStageVersion, readStoredStageModelIds } from './cull-stages.js';
+import { getOrCreateStageVersion, readStoredStageModelIds, type StageVersionSpec } from './cull-stages.js';
 import { libraryWrite } from './write.js';
 
-function currentForecastStageQuestions(db: Db): ReturnType<typeof scoreForecastStageQuestions> {
+/**
+ * The Score forecast's questions from the current version, read with raw SQL rather than
+ * `getForecastQuestions`: that module imports this one (writers call `syncCurrentStagesAfterLibraryWrite`),
+ * so importing it back here would make a module-load cycle.
+ */
+function currentForecastStageQuestions(db: Db): Record<string, import('../../systemone/question.js').SystemOneQuestion> {
   const row = db
     .prepare('SELECT definition_json FROM score_forecast_question_versions WHERE is_current = 1')
     .get() as { definition_json: string } | undefined;
-  if (!row) return scoreForecastStageQuestions([]);
-  const { questions } = JSON.parse(row.definition_json) as {
-    questions: Parameters<typeof scoreForecastStageQuestions>[0];
-  };
-  return scoreForecastStageQuestions(questions);
+  if (!row) return forecastStageQuestions([]);
+  const { questions } = JSON.parse(row.definition_json) as { questions: ScoreForecastQuestion[] };
+  return forecastStageQuestions(questions);
 }
 
 function specsForPipeline(
   db: Db,
   pipeline: PipelineSettingConfig,
   models: StageModelIds,
-): StageVersionSpecInput[] {
-  const specs: StageVersionSpecInput[] = [];
+): StageVersionSpec[] {
+  const specs: StageVersionSpec[] = [];
   const profileModel = models.culling_profile;
   for (const entry of profileModel === null ? [] : pipeline.culling_profiles) {
     const profile = getCullProfile(db, entry.profile_slug);
@@ -82,13 +84,12 @@ export function syncCurrentStages(db: Db, modelIds: StageModelIds): ResolvedStag
   return libraryWrite(db, () => syncCurrentStagesInTransaction(db, modelIds));
 }
 
-/** When the caller already holds a `libraryWrite` transaction. */
-export function syncCurrentStagesInLibraryWrite(db: Db, modelIds: StageModelIds): ResolvedStage[] {
-  return syncCurrentStagesInTransaction(db, modelIds);
-}
-
+/**
+ * For the writers: sync at the end of their own `libraryWrite`, with the stored model identities. A
+ * no-op before the pipeline setting is seeded, so an early bootstrap write does not throw.
+ */
 export function syncCurrentStagesAfterLibraryWrite(db: Db, modelIds: StageModelIds = readStoredStageModelIds(db)): void {
   const hasPipeline = db.prepare('SELECT 1 FROM cull_pipeline_settings WHERE is_current = 1').get() !== undefined;
   if (!hasPipeline) return;
-  syncCurrentStagesInLibraryWrite(db, modelIds);
+  syncCurrentStagesInTransaction(db, modelIds);
 }

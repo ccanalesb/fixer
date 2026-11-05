@@ -1,10 +1,10 @@
 /**
- * What each stage asks its model, from a culling profile's text or the Score forecast questions.
- * Pure shapes: safe for `db/library/` and `cull/` to share without import cycles.
+ * A stage's key and the questions it asks, from a culling profile's text. Pure (no database), so
+ * `db/library/` and `cull/` can share it without an import cycle. The Score forecast's questions come
+ * from `forecast-questions.ts`, which is already pure.
  */
 import type { SystemOneQuestion } from '../systemone/question.js';
-import { forecastStageQuestions, type ScoreForecastQuestion } from './forecast-questions.js';
-import type { ProfileDefinition, StageKind } from './types.js';
+import type { ProfileDefinition } from './types.js';
 
 export const SCORE_FORECAST_STAGE_KEY = 'score_forecast';
 
@@ -28,18 +28,4 @@ export function profileStageQuestions(
     };
   }
   return questions;
-}
-
-export interface StageVersionSpecInput {
-  stageKey: string;
-  kind: StageKind;
-  profileSlug: string | null;
-  levelSet: string | null;
-  modelId: string;
-  questions: Record<string, SystemOneQuestion>;
-}
-
-/** What the Score forecast's model is asked from the current question set. */
-export function scoreForecastStageQuestions(questions: readonly ScoreForecastQuestion[]): Record<string, SystemOneQuestion> {
-  return forecastStageQuestions(questions);
 }

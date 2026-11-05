@@ -14,7 +14,7 @@ import { openLibraryDb, type Db } from '../connection.js';
 import { resourcesRoot } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { upgradeDefaultProfileSlug } from './cull-default-profile-v18.js';
-import { syncCurrentStages } from '../../cull/stages.js';
+import { syncCurrentStages } from './cull-sync-stages.js';
 import { readStoredStageModelIds } from './cull-stages.js';
 import { seedCullingDefaults } from './cull-profiles.js';
 import { markdownMarksOptional } from './scores.js';
