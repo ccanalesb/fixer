@@ -8,7 +8,8 @@ import {
   type CullingStageKind,
   type CullReviewRow,
 } from '../../services/api'
-import { useQuery, invalidateAll } from '../../data'
+import { invalidateAll, useQuery } from '../../data'
+import { keys } from '../../data/keys'
 import { Button } from '../ui/Button'
 import { Pagination } from '../ui/Pagination'
 import {
@@ -152,9 +153,9 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
   const [modalIndex, setModalIndex] = useState<number | null>(null)
   const [, startTransition] = useTransition()
 
-  const summary = useQuery(['cull.summary'] as const, () => CullAPI.summary())
+  const summary = useQuery(keys.cull.summary(), () => CullAPI.summary())
   const list = useQuery(
-    ['cull.photos', tab, page] as const,
+    keys.cull.photos(tab, page),
     () => CullAPI.listPhotos({ tab, limit: LIMIT, offset: (page - 1) * LIMIT }),
   )
 
@@ -181,16 +182,12 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
     await runCullingGate('send', async () => {
       await CullAPI.sendPhotos(keys)
       setSelected(new Set())
-      invalidateAll(['cull.summary'])
-      invalidateAll(['cull.photos'])
     })
   }
 
   const agreeSelected = async () => {
     await Promise.all([...selected].map((key) => CullAPI.recordAction(key, 'agrees_with_filter')))
     setSelected(new Set())
-    invalidateAll(['cull.summary'])
-    invalidateAll(['cull.photos'])
   }
 
   const tabs: { id: TabId; label: string }[] = [

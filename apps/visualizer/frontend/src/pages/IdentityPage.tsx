@@ -11,6 +11,7 @@ import {
   IDENTITY_PAGE_TITLE,
 } from '../constants/strings'
 import { ErrorBoundary, ErrorState, invalidate, invalidateAll } from '../data'
+import { keys, prefixOf } from '../data/keys'
 import { useFirstRunSetup } from '../hooks/useFirstRunSetup'
 
 function IdentityPageBody() {
@@ -32,7 +33,7 @@ function IdentityPageBody() {
           <ErrorState
             error={error}
             reset={() => {
-              invalidate(['identity', 'mirror'])
+              invalidate(keys.identity.mirror())
               reset()
             }}
           />
@@ -58,7 +59,7 @@ function IdentityPageBody() {
           <ErrorState
             error={error}
             reset={() => {
-              invalidateAll(['identity', 'post-next'])
+              invalidateAll(prefixOf(keys.identity.postNext(null), 2))
               reset()
             }}
           />

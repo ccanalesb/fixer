@@ -7,6 +7,7 @@ import {
   type MirrorTechniqueSection,
 } from '../../services/api'
 import { useQuery } from '../../data'
+import { keys } from '../../data/keys'
 import { Card, CardContent } from '../ui/Card'
 import { ImageDetailModal, fromMirrorExemplar } from '../image-view'
 import {
@@ -262,7 +263,7 @@ function MirrorContent({ data }: { data: MirrorResponse }) {
 }
 
 export function MirrorPanel() {
-  const data = useQuery(['identity', 'mirror'] as const, () => IdentityAPI.getMirror())
+  const data = useQuery(keys.identity.mirror(), () => IdentityAPI.getMirror())
 
   return (
     <section className="space-y-3" aria-labelledby="identity-mirror-heading">

@@ -11,6 +11,7 @@ import {
   msgShowingOf,
 } from '../../constants/strings'
 import { ErrorState, invalidateAll, useQuery } from '../../data'
+import { keys, prefixOf } from '../../data/keys'
 import { ImagesAPI, type StackSuggestion } from '../../services/api'
 
 type StackSuggestionsListProps = {
@@ -128,8 +129,8 @@ export function StackSuggestionsPanel() {
     try {
       await ImagesAPI.acceptStackSuggestion(item.image_a.key, item.image_b.key)
       invalidateAll(['stacks.suggestions'])
-      invalidateAll(['dashboard'])
-      invalidateAll(['images.catalog'])
+      invalidateAll(keys.dashboard())
+      invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
     } catch (e) {
       setActionError(e instanceof Error ? e : new Error(String(e)))
     } finally {
@@ -144,7 +145,7 @@ export function StackSuggestionsPanel() {
     try {
       await ImagesAPI.rejectStackSuggestion(item.image_a.key, item.image_b.key)
       invalidateAll(['stacks.suggestions'])
-      invalidateAll(['dashboard'])
+      invalidateAll(keys.dashboard())
     } catch (e) {
       setActionError(e instanceof Error ? e : new Error(String(e)))
     } finally {

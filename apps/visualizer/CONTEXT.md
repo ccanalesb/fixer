@@ -107,6 +107,8 @@ Paths are relative to `apps/visualizer/backend/src/`.
 
 The server emits `job_created` on job creation (`POST /jobs`); `useJobSocket` owns the resulting `jobs.list` invalidation. No component hand-bubbles a job-list-refresh callback (e.g. an `onJobEnqueued` prop) outside `useJobSocket` — refresh-on-enqueue is driven by the server's `job_created` event. No component subscribes to job socket events (`job_created` / `job_updated` / `jobs_recovered`) outside `useJobSocket`. Per-job `subscribe_job` / `unsubscribe_job` emits are the one allowed exception (job-instance scoped, not fan-out).
 
+Query keys are built in `src/data/keys.ts`. A mutation in `services/api.ts` invalidates a named group of keys when the server answers; components do not list keys to invalidate.
+
 ### Image detail modal
 
 `ImageDetailModal` (`src/components/image-view/`) is the only way to look at one photo. The photo and its badges sit on the left: the culling verdict (in culling views), a held-back frame, stars, Pick, Posted and the score. Everything else is in one of five tabs on the right, in `image-view/tabs/`:

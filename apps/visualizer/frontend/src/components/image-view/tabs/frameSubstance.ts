@@ -1,4 +1,5 @@
 import { FrameSubstanceAPI, type FrameSubstanceResponse } from '../../../services/api'
+import { keys } from '../../../data/keys'
 import {
   FRAME_SUBSTANCE_DECODE_FAILED,
   FRAME_SUBSTANCE_MOUNT_SHARE,
@@ -10,7 +11,7 @@ import {
 } from '../../../constants/strings'
 
 export const frameSubstanceQuery = (imageKey: string) =>
-  [['frameSubstance', imageKey] as const, () => FrameSubstanceAPI.get(imageKey)] as const
+  [keys.frameSubstance(imageKey), () => FrameSubstanceAPI.get(imageKey)] as const
 
 // An unknown verdict never falls back to the OK message: absence of a
 // reading is not a clean reading, and reading silence as approval is the

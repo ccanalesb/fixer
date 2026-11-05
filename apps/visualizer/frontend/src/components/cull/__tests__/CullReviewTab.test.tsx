@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { CullAPI, CullingModelsAPI, type CullReviewRow } from '../../../services/api'
+import { cullingChanged } from '../../../data/keys'
 import { CullReviewTab } from '../CullReviewTab'
 import { CULL_AGREE, CULL_SUB_AUTO } from '../../../constants/strings'
 import { deleteMatching } from '../../../data/cache'
@@ -51,7 +52,10 @@ describe('CullReviewTab', () => {
   })
 
   it('records "agrees with the filter" for the selected photos and refetches summary and list', async () => {
-    const record = vi.spyOn(CullAPI, 'recordAction').mockResolvedValue({ ok: true } as never)
+    const record = vi.spyOn(CullAPI, 'recordAction').mockImplementation(async () => {
+      cullingChanged()
+      return { ok: true }
+    })
     render(<CullReviewTab />)
     await waitFor(() => expect(CullAPI.summary).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(CullAPI.listPhotos).toHaveBeenCalledTimes(1))

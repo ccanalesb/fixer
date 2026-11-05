@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { invalidateAll, useQuery } from '../data'
+import { keys, prefixOf } from '../data/keys'
 import { ConfigAPI, JobsAPI, SystemAPI } from '../services/api'
 import { pickCatalogPath } from '../utils/nativeFilePickers'
 import type { Job } from '../types/job'
@@ -56,9 +57,9 @@ export function useFirstRunSetup() {
 
   const refreshSignals = useCallback(() => {
     invalidateAll(['firstRun', 'signals'])
-    invalidateAll(['dashboard'])
+    invalidateAll(keys.dashboard())
     invalidateAll(['catalog.cache.stats'])
-    invalidateAll(['images.catalog'])
+    invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
   }, [])
 
   const syncImportJobFromApi = useCallback(async () => {

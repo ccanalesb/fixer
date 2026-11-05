@@ -28,6 +28,7 @@ import { LightroomTab } from './tabs/LightroomTab'
 import { StackTab } from './tabs/StackTab'
 import { frameHeldBack, frameSaysNothing, frameSubstanceQuery } from './tabs/frameSubstance'
 import { ErrorBoundary, ErrorState, invalidate, invalidateAll, useQuery } from '../../data'
+import { keys, prefixOf } from '../../data/keys'
 
 export type ImageDetailTab = 'culling' | 'ai' | 'lightroom' | 'file' | 'stack'
 
@@ -60,7 +61,7 @@ interface ImageDetailModalProps {
 type DetailSource = Pick<ImageDetailModalProps, 'imageType' | 'imageKey' | 'scorePerspectiveSlug' | 'initialImage'>
 
 const detailKeyOf = ({ imageType, imageKey, scorePerspectiveSlug }: DetailSource) =>
-  ['images.detail', imageType, imageKey, scorePerspectiveSlug ?? ''] as const
+  keys.images.detail(imageType, imageKey, scorePerspectiveSlug)
 
 function useImageDetail({ imageType, imageKey, scorePerspectiveSlug, initialImage }: DetailSource) {
   return useQuery(detailKeyOf({ imageType, imageKey, scorePerspectiveSlug }), () => {
@@ -121,7 +122,7 @@ function DetailLayout({ photo, panel }: { photo: ReactNode; panel: ReactNode }) 
 }
 
 function CullVerdictBadge({ imageKey }: { imageKey: string }) {
-  const detail = useQuery(['cull.detail', imageKey] as const, () => CullAPI.photoDetail(imageKey))
+  const detail = useQuery(keys.cull.detail(imageKey), () => CullAPI.photoDetail(imageKey))
   if (detail.sent_by_hand) return <Badge variant="accent">{CULL_SENT_BY_HAND}</Badge>
   if (detail.verdict === 'passed') return <Badge variant="success">{CULL_PASSED}</Badge>
   return <Badge variant="warning">{CULL_FILTERED}</Badge>
@@ -364,7 +365,7 @@ export function ImageDetailModal({
               <ErrorState
                 error={error}
                 reset={() => {
-                  invalidateAll(['images.detail', imageType, imageKey])
+                  invalidateAll(prefixOf(keys.images.detail(imageType, imageKey, ''), 3))
                   reset()
                 }}
               />
