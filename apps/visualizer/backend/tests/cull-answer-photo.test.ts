@@ -10,7 +10,7 @@ import { cullPhoto } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import { selectPhotosToCull } from '../src/cull/select.js';
 import { CullingStageError, StageCallError, type StageAnswerer } from '../src/cull/stage-models.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import type { PipelineSettingConfig, ResolvedStage } from '../src/cull/types.js';
 import type { Db } from '../src/db/connection.js';
@@ -31,6 +31,7 @@ beforeEach(() => {
   db = initLibraryDb(join(dir, 'library.db'));
   seedCullingStagesOn(db);
   saveForecastQuestions(db, factoryForecastQuestions(db));
+  syncCurrentStages(db, MODEL_IDS);
   runId = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
 });
 
@@ -42,7 +43,7 @@ afterEach(() => {
 function context(change?: (cfg: PipelineSettingConfig) => PipelineSettingConfig): CullContext {
   if (change) createPipelineSettingVersion(db, change(getCurrentPipelineSetting(db).config));
   const pipeline = getCurrentPipelineSetting(db);
-  return { stages: resolveCurrentStages(db, pipeline.config, MODEL_IDS), pipeline, scoreForecastAvailable: true };
+  return { stages: readCurrentStages(db).stages, pipeline, scoreForecastAvailable: true };
 }
 
 const forecastOff = (cfg: PipelineSettingConfig): PipelineSettingConfig => ({

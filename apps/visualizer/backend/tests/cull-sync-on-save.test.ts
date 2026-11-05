@@ -1,7 +1,7 @@
 /**
  * A stage version becomes current when what the stage is asked is saved, before anything reads it: the
  * writers in `db/library/` sync the stages, so `cull_stage_versions` already has the right current row
- * without a `resolveCurrentStages` call. (Reads becoming read-only is a later slice.)
+ * without a read-time stage sync. Review GET routes only read current versions.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
@@ -80,7 +80,7 @@ afterEach(() => {
 function seedFailingProfileAnswers(fx: LibraryFixture, imageKey: string, levelIndex: number): void {
   const db = new Database(fx.dbPath);
   const pipe = getCurrentPipelineSetting(db);
-  const stages = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
+  const stages = syncCurrentStages(db, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
   const stage = stages.find((s) => s.stageKey === 'culling_profile:default:7');
   if (!stage) throw new Error('expected profile 7 stage');
   const dims = ['immediate-impact', 'visual-structure', 'point-of-tension', 'connotation'] as const;
@@ -285,10 +285,9 @@ describe('GET /api/cull/photos/{image_key}', () => {
         applies: null,
       },
     ]);
+    syncCurrentStages(db, { culling_profile: 'culling-model', score_forecast: 'forecast-model' });
     const pipe = getCurrentPipelineSetting(db);
-    const stage = resolveCurrentStages(db, pipe.config, { culling_profile: 'culling-model', score_forecast: 'forecast-model' }).find(
-      (s) => s.kind === 'score_forecast',
-    )!;
+    const stage = readCurrentStages(db).stages.find((s) => s.kind === 'score_forecast')!;
     const tenth = (i: number) => Array.from({ length: 10 }, (_, k) => (k === i ? 1 : 0));
     upsertStageAnswer(db, {
       imageKey: 'filtered-low',

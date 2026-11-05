@@ -13,8 +13,7 @@ import {
   factoryForecastQuestions,
   saveForecastQuestions,
 } from '../src/db/library/score-forecast-questions.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
-import { getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { seedCullingStagesOn } from './helpers/culling-stages.js';
 
 const MODEL = 'forecast-model@sha256:abc';
@@ -31,10 +30,12 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const forecastStage = () =>
-  resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { culling_profile: null, score_forecast: MODEL }).find(
-    (s) => s.kind === 'score_forecast',
-  );
+const FORECAST_MODELS = { culling_profile: null, score_forecast: MODEL } as const;
+
+const forecastStage = () => {
+  syncCurrentStages(db, FORECAST_MODELS);
+  return readCurrentStages(db).stages.find((s) => s.kind === 'score_forecast');
+};
 
 /** The factory questions saved as version 1; returns their stage version's id. */
 function saveFactoryQuestions(): number {

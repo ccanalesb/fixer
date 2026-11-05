@@ -202,6 +202,35 @@ export function countPhotosAnsweredByCurrentStages(db: Db, kinds: readonly Stage
  * The model identity each stage kind's current versions were made with; null for a kind never
  * answered. What re-decide resolves stages with, so it never calls an endpoint.
  */
+/** The current version row for `stageKey`, if any; read-only. */
+export function readCurrentStageVersion(db: Db, stageKey: string): ResolvedStage | null {
+  const row = db
+    .prepare(
+      `SELECT id, kind, profile_slug, level_set, model_id, questions_json FROM cull_stage_versions
+       WHERE stage_key = ? AND is_current = 1`,
+    )
+    .get(stageKey) as
+    | {
+        id: number;
+        kind: StageKind;
+        profile_slug: string | null;
+        level_set: string | null;
+        model_id: string;
+        questions_json: string;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    stageKey,
+    kind: row.kind,
+    versionId: row.id,
+    modelId: row.model_id,
+    profileSlug: row.profile_slug,
+    levelSet: row.level_set,
+    questions: JSON.parse(row.questions_json) as Record<string, SystemOneQuestion>,
+  };
+}
+
 export function readStoredStageModelIds(db: Db): StageModelIds {
   const modelOf = (kind: StageKind) =>
     (

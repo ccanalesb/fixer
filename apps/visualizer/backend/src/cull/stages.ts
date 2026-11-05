@@ -6,23 +6,36 @@
  * Default culling profile's stage versions hash the same text those answers were asked.
  */
 import type { Db } from '../db/connection.js';
-import { syncCurrentStages } from '../db/library/cull-sync-stages.js';
+import { stageSpecsForPipeline } from '../db/library/cull-sync-stages.js';
 import { getForecastQuestions } from '../db/library/score-forecast-questions.js';
+import { getCurrentPipelineSetting, type PipelineSetting } from '../db/library/cull-pipeline.js';
+import { readCurrentStageVersion, readStoredStageModelIds } from '../db/library/cull-stages.js';
 import type { SystemOneQuestion } from '../systemone/question.js';
+import { stagesOn, type StageModelIds } from './stage-models.js';
 import { forecastStageQuestions } from './forecast-questions.js';
-import type { StageModelIds } from './stage-models.js';
-import type { PipelineSettingConfig, ResolvedStage } from './types.js';
+import type { ResolvedStage, StageKind } from './types.js';
 
 export { SCORE_FORECAST_STAGE_KEY, profileStageKey } from './stage-specs.js';
 export { syncCurrentStages } from '../db/library/cull-sync-stages.js';
 
-/**
- * Stages at their current stored versions. Reads call this; the writers have already made the versions
- * current with `syncCurrentStages`, so this finds them and writes nothing new. Jobs and the CLI pass the
- * model identities they resolved, which moves a version when a model change brought a new identity.
- */
-export function resolveCurrentStages(db: Db, _pipeline: PipelineSettingConfig, models: StageModelIds): ResolvedStage[] {
-  return syncCurrentStages(db, models);
+export interface ReadCurrentStagesResult {
+  pipeline: PipelineSetting;
+  on: Record<StageKind, boolean>;
+  modelIds: StageModelIds;
+  stages: ResolvedStage[];
+}
+
+/** Current pipeline stages from stored versions only; never creates or marks current. */
+export function readCurrentStages(db: Db): ReadCurrentStagesResult {
+  const pipeline = getCurrentPipelineSetting(db);
+  const modelIds = readStoredStageModelIds(db);
+  const on = stagesOn(pipeline.config);
+  const stages: ResolvedStage[] = [];
+  for (const spec of stageSpecsForPipeline(db, pipeline.config, modelIds)) {
+    const row = readCurrentStageVersion(db, spec.stageKey);
+    if (row) stages.push(row);
+  }
+  return { pipeline, on, modelIds, stages };
 }
 
 /** What the Score forecast's model is asked now: the current Score forecast questions. */

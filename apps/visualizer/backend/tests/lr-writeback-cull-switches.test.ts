@@ -10,7 +10,7 @@ import { isFrameSubstanceVoid } from '../src/db/library/frame-substance.js';
 import { cullPhoto } from '../src/cull/answer-photo.js';
 import type { CullContext } from '../src/cull/persist.js';
 import type { StageAnswerer } from '../src/cull/stage-models.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import type { PipelineSettingConfig } from '../src/cull/types.js';
 import type { Db } from '../src/db/connection.js';
@@ -36,6 +36,7 @@ beforeEach(() => {
   db = initLibraryDb(join(dir, 'library.db'));
   seedCullingStagesOn(db);
   saveForecastQuestions(db, factoryForecastQuestions(db));
+  syncCurrentStages(db, MODEL_IDS);
   runId = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
   patchLrWritebackSettings(db, { write_stars: true, write_reject: true });
 });
@@ -72,7 +73,7 @@ function fakeModels(levels10: number[], p8 = 0.5): StageAnswerer {
 async function cull(imageKey: string, answerer: StageAnswerer, change?: (cfg: PipelineSettingConfig) => PipelineSettingConfig) {
   if (change) createPipelineSettingVersion(db, change(getCurrentPipelineSetting(db).config));
   const pipeline = getCurrentPipelineSetting(db);
-  const ctx: CullContext = { stages: resolveCurrentStages(db, pipeline.config, MODEL_IDS), pipeline, scoreForecastAvailable: true };
+  const ctx: CullContext = { stages: readCurrentStages(db).stages, pipeline, scoreForecastAvailable: true };
   await cullPhoto(db, ctx, answerer, { imageKey, sentByHand: false, runId, resolveImage: async () => '/cache/x.jpg' });
 }
 

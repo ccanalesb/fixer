@@ -3,15 +3,14 @@
  */
 import { performance } from 'node:perf_hooks';
 import type { Db } from '../db/connection.js';
-import { getCurrentPipelineSetting } from '../db/library/cull-pipeline.js';
 import { seedCullingDefaults } from '../db/library/cull-profiles.js';
-import { loadCurrentStageAnswers, readStoredStageModelIds } from '../db/library/cull-stages.js';
+import { loadCurrentStageAnswers } from '../db/library/cull-stages.js';
 import { listSentByHandKeys } from '../db/library/cull-user-actions.js';
 import { finishCullRun, getCullVerdict, insertCullRun, listCulledImageKeys } from '../db/library/cull-verdicts.js';
 import { libraryWrite } from '../db/library/write.js';
 import { createEventLoopYieldState, pollCancelAndYield, type EventLoopYieldState } from '../utils/yield.js';
 import { decideAndStorePhoto, type CullContext } from './persist.js';
-import { resolveCurrentStages } from './stages.js';
+import { readCurrentStages } from './stages.js';
 
 const CHUNK = 500;
 
@@ -38,8 +37,7 @@ export async function redecideAllPhotos(
 ): Promise<RedecideAllPhotosResult> {
   const t0 = performance.now();
   seedCullingDefaults(db);
-  const pipeline = getCurrentPipelineSetting(db);
-  const ids = readStoredStageModelIds(db);
+  const { pipeline, modelIds: ids, stages } = readCurrentStages(db);
   if (ids.culling_profile === null && ids.score_forecast === null) {
     return {
       total: 0,
@@ -55,7 +53,6 @@ export async function redecideAllPhotos(
     };
   }
 
-  const stages = resolveCurrentStages(db, pipeline.config, ids);
   const scoreForecastAvailable = ids.score_forecast !== null;
   const ctx: CullContext = { stages, pipeline, scoreForecastAvailable };
   const stageVersions = Object.fromEntries(stages.map((s) => [s.stageKey, s.versionId]));

@@ -38,7 +38,7 @@ import {
   dropFilteredPhotosFromDescribeAndScoringSelection,
   filterVoidSubstanceFromScoringSelection,
 } from '../src/jobs/handlers/common.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { factoryForecastQuestions, saveForecastQuestions } from '../src/db/library/score-forecast-questions.js';
 import { FACTORY_QUESTIONS } from '../src/app-models/factory-questions.js';
 import type { ProfileDefinition } from '../src/cull/types.js';
@@ -119,10 +119,11 @@ describe('migration and seed', () => {
   });
 
   it('the seed file asks the Default culling profile questions in questions.json, word for word', () => {
+    syncCurrentStages(db, MODEL_IDS);
     const seed = JSON.parse(
       readFileSync(join(REPO_ROOT, 'prompts', 'culling-profiles', 'default.json'), 'utf8'),
     ) as { definition: ProfileDefinition };
-    const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
+    const stages = readCurrentStages(db).stages;
     for (const set of seed.definition.level_sets) {
       const stage = stages.find((s) => s.stageKey === `culling_profile:default:${set.id}`)!;
       const asked = Object.values(stage.questions);
@@ -135,7 +136,11 @@ describe('migration and seed', () => {
 });
 
 describe('versions', () => {
-  const current = () => resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
+  beforeEach(() => {
+    syncCurrentStages(db, MODEL_IDS);
+  });
+
+  const current = () => readCurrentStages(db).stages;
   const byKey = (key: string) => current().find((s) => s.stageKey === key)!;
   const S7 = 'culling_profile:default:7';
   const S10 = 'culling_profile:default:10';
@@ -196,7 +201,7 @@ describe('versions', () => {
 
   it('a new model makes a new stage version', () => {
     const old = byKey('score_forecast').versionId;
-    const other = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, score_forecast: 'forecast-model@other' });
+    const other = syncCurrentStages(db, { ...MODEL_IDS, score_forecast: 'forecast-model@other' });
     expect(other.find((s) => s.stageKey === 'score_forecast')!.versionId).not.toBe(old);
   });
 
@@ -320,26 +325,27 @@ describe('what the jobs that send photos to kimi read', () => {
 
   it('readStoredStageModelIds: the model identities of the current stage versions, never an endpoint', () => {
     expect(readStoredStageModelIds(db)).toEqual({ culling_profile: null, score_forecast: null });
-    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
+    syncCurrentStages(db, MODEL_IDS);
     expect(readStoredStageModelIds(db)).toEqual(MODEL_IDS);
-    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { culling_profile: 'other-base', score_forecast: null });
+    syncCurrentStages(db, { culling_profile: 'other-base', score_forecast: null });
     // A stage left out of a later run keeps its current version (G8).
     expect(readStoredStageModelIds(db)).toEqual({ culling_profile: 'other-base', score_forecast: MODEL_IDS.score_forecast });
   });
 
   it('readStoredStageModelIds: no Score forecast identity without a Score forecast version', () => {
-    resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, score_forecast: null });
+    syncCurrentStages(db, { ...MODEL_IDS, score_forecast: null });
     expect(readStoredStageModelIds(db)).toEqual({ culling_profile: MODEL_IDS.culling_profile, score_forecast: null });
   });
 
-  it('resolveCurrentStages: no culling profile stages without a culling profile identity', () => {
-    const stages = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, { ...MODEL_IDS, culling_profile: null });
-    expect(stages.map((s) => s.stageKey)).toEqual(['score_forecast']);
+  it('readCurrentStages: no culling profile stages without a culling profile identity', () => {
+    syncCurrentStages(db, { ...MODEL_IDS, culling_profile: null });
+    expect(readCurrentStages(db).stages.map((s) => s.stageKey)).toEqual(['score_forecast']);
   });
 
   it('listCulledImageKeys: photos with a summary or a current answer', () => {
+    syncCurrentStages(db, MODEL_IDS);
     summary('a', 'passed');
-    const [stage] = resolveCurrentStages(db, getCurrentPipelineSetting(db).config, MODEL_IDS);
+    const [stage] = readCurrentStages(db).stages;
     const run = insertCullRun(db, { kind: 'job', jobId: null, pipelineSettingVersion: 1 });
     upsertStageAnswer(db, {
       imageKey: 'b',

@@ -15,7 +15,7 @@ import { getCurrentPipelineSetting, createPipelineSettingVersion } from '../src/
 import { seedCullingDefaults } from '../src/db/library/cull-profiles.js';
 import { upsertStageAnswer } from '../src/db/library/cull-stages.js';
 import { upsertWritebackState } from '../src/db/library/lr-writeback-state.js';
-import { resolveCurrentStages } from '../src/cull/stages.js';
+import { readCurrentStages, syncCurrentStages } from '../src/cull/stages.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { LR_WRITEBACK_JOB_TYPE } from '../src/jobs/handlers/lr-writeback.js';
 import { JobRunner } from '../src/jobs/runner.js';
@@ -53,7 +53,7 @@ function levelPick(levelSet: '7' | '10', dim: string, levelIndex: number): Recor
 
 function seedStarsEligible(db: ReturnType<typeof openLibraryDb>, imageKey: string, strongDimCount: number): void {
   const pipe = getCurrentPipelineSetting(db);
-  const stages = resolveCurrentStages(db, pipe.config, MODEL_IDS);
+  const stages = syncCurrentStages(db, MODEL_IDS);
   const profile7 = stages.find((s) => s.stageKey === 'culling_profile:default:7');
   const profile10 = stages.find((s) => s.stageKey === 'culling_profile:default:10');
   if (!profile7 || !profile10) throw new Error('profile stages missing');
