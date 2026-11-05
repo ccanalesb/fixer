@@ -43,10 +43,22 @@ describe('CullingProfilesAPI mutations', () => {
     expect(cullingProfilesChangedMock).toHaveBeenCalledTimes(1)
   })
 
+  it('duplicate does not call cullingProfilesChanged when the request fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
+    await expect(CullingProfilesAPI.duplicate('p1', { new_slug: 'p2' })).rejects.toThrow()
+    expect(cullingProfilesChangedMock).not.toHaveBeenCalled()
+  })
+
   it('saveDefinition calls cullingProfilesChanged after the server answers', async () => {
     fetchMock.mockResolvedValueOnce(okJson({ profile: {}, version: 1, created: false, impact: {}, cull_job_id: null }))
     await CullingProfilesAPI.saveDefinition('p1', { definition: {}, mode: 'save_only' })
     expect(cullingProfilesChangedMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('saveDefinition does not call cullingProfilesChanged when the request fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
+    await expect(CullingProfilesAPI.saveDefinition('p1', { definition: {}, mode: 'save_only' })).rejects.toThrow()
+    expect(cullingProfilesChangedMock).not.toHaveBeenCalled()
   })
 
   it('saveRule calls cullingProfilesChanged after the server answers', async () => {
@@ -55,16 +67,34 @@ describe('CullingProfilesAPI mutations', () => {
     expect(cullingProfilesChangedMock).toHaveBeenCalledTimes(1)
   })
 
+  it('saveRule does not call cullingProfilesChanged when the request fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
+    await expect(CullingProfilesAPI.saveRule('p1', {})).rejects.toThrow()
+    expect(cullingProfilesChangedMock).not.toHaveBeenCalled()
+  })
+
   it('patch calls cullingProfilesChanged after the server answers', async () => {
     fetchMock.mockResolvedValueOnce(okJson({ profile: {}, pipeline_setting_version: 1, redecide_job_id: null }))
     await CullingProfilesAPI.patch('p1', { name: 'x' })
     expect(cullingProfilesChangedMock).toHaveBeenCalledTimes(1)
   })
 
+  it('patch does not call cullingProfilesChanged when the request fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
+    await expect(CullingProfilesAPI.patch('p1', { name: 'x' })).rejects.toThrow()
+    expect(cullingProfilesChangedMock).not.toHaveBeenCalled()
+  })
+
   it('saveCullingProfileSwitches calls cullingProfilesChanged after the server answers', async () => {
     fetchMock.mockResolvedValueOnce(okJson({ version: 2, redecide_job_id: null }))
     await CullingProfilesAPI.saveCullingProfileSwitches({ enabled: false })
     expect(cullingProfilesChangedMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('saveCullingProfileSwitches does not call cullingProfilesChanged when the request fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
+    await expect(CullingProfilesAPI.saveCullingProfileSwitches({ enabled: false })).rejects.toThrow()
+    expect(cullingProfilesChangedMock).not.toHaveBeenCalled()
   })
 
   it('saveScoreForecast calls cullingProfilesChanged after the server answers', async () => {
@@ -103,5 +133,11 @@ describe('ScoreForecastQuestionsAPI mutations', () => {
     fetchMock.mockResolvedValueOnce(okJson({ questions: [], version: 1, perspectives: [], skipped: [] }))
     await ScoreForecastQuestionsAPI.fromPerspectives()
     expect(cullingProfilesChangedMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('fromPerspectives does not call cullingProfilesChanged when the request fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error' })
+    await expect(ScoreForecastQuestionsAPI.fromPerspectives()).rejects.toThrow()
+    expect(cullingProfilesChangedMock).not.toHaveBeenCalled()
   })
 })
