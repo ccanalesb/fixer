@@ -94,6 +94,7 @@ export async function stepModalPrevNext(firstFile: string, secondFile: string, t
   await expectModalFilename(secondFile)
   clickModalNav('next')
   await expectModalFilename(thirdFile)
+  expect(screen.getByRole('button', { name: new RegExp(CULL_MODAL_NEXT) })).toBeDisabled()
   clickModalNav('prev')
   clickModalNav('prev')
   await expectModalFilename(firstFile)

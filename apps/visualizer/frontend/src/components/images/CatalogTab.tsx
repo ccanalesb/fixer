@@ -295,20 +295,16 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const total = catalogPage.total;
 
   useEffect(() => {
-    if (!selected) return;
-    const idx = images.findIndex((im) => im.key === selected.key);
-    if (idx >= 0) setNavIndex(idx);
-  }, [selected, images]);
-
-  useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const raw = sp.get('image_key');
     if (!raw) return;
+    const idx = images.findIndex((im) => im.key === raw);
+    if (idx >= 0) setNavIndex(idx);
     setSelected({ key: raw });
     sp.delete('image_key');
     const next = sp.toString();
     navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true });
-  }, [location.search, location.pathname, navigate]);
+  }, [location.search, location.pathname, navigate, images]);
 
   const postedCommitted = filterValues.posted as boolean | undefined;
   useEffect(() => {

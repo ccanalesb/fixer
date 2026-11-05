@@ -10,8 +10,12 @@ import {
 } from '../../../constants/strings'
 import type { CatalogImageInput } from '../../../services/api'
 import { deleteMatching } from '../../../data/cache'
+import { cullingChanged } from '../../../data/keys'
+import { CULL_MODAL_NEXT, CULL_MODAL_PREV } from '../../../constants/strings'
 import {
+  clickModalNav,
   clickTileByKey,
+  expectModalFilename,
   mockImageDetailFilenames,
   mockImageDetailModalDeps,
   stepModalPrevNext,
@@ -237,5 +241,61 @@ describe('CatalogTab', () => {
 
     clickTileByKey('cat-b')
     await stepModalPrevNext('cat-a.jpg', 'cat-b.jpg', 'cat-c.jpg')
+  })
+
+  it('stays on the photo stepped to when the catalog list reloads', async () => {
+    const keys = ['cat-a', 'cat-b', 'cat-c']
+    apiMocks.listCatalogMock.mockImplementation(async () => ({
+      images: keys.map((key, i) => catalogRow(key, i + 1)),
+      total: 3,
+    }))
+    mockImageDetailModalDeps()
+    mockImageDetailFilenames(keys)
+
+    render(
+      <MemoryRouter>
+        <Suspense fallback={null}>
+          <CatalogTab />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('image-tile')).toHaveLength(3)
+    })
+    clickTileByKey('cat-b')
+    await expectModalFilename('cat-b.jpg')
+    clickModalNav('next')
+    await expectModalFilename('cat-c.jpg')
+
+    const calls = apiMocks.listCatalogMock.mock.calls.length
+    act(() => cullingChanged())
+    await waitFor(() => expect(apiMocks.listCatalogMock.mock.calls.length).toBeGreaterThan(calls))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    await expectModalFilename('cat-c.jpg')
+  })
+
+  it('a photo opened from a link that is not on the page has no Prev / Next', async () => {
+    const keys = ['cat-a', 'cat-b', 'cat-c']
+    apiMocks.listCatalogMock.mockResolvedValue({
+      images: keys.map((key, i) => catalogRow(key, i + 1)),
+      total: 3,
+    })
+    mockImageDetailModalDeps()
+    mockImageDetailFilenames([...keys, 'elsewhere'])
+
+    render(
+      <MemoryRouter initialEntries={['/?image_key=elsewhere']}>
+        <Suspense fallback={null}>
+          <CatalogTab />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    await expectModalFilename('elsewhere.jpg')
+    expect(screen.queryByRole('button', { name: new RegExp(CULL_MODAL_PREV) })).toBeNull()
+    expect(screen.queryByRole('button', { name: new RegExp(CULL_MODAL_NEXT) })).toBeNull()
   })
 })
