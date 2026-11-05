@@ -187,29 +187,24 @@ export type CullHeldBack = Pick<
  * Keep only the photos culling passed: verdict `passed`, or sent by hand whatever the verdict.
  *
  * Reads the summary rows as they are — the culling step before describe and score has just made them
- * current for every photo in scope. `sentByHandKept` names the kept photos the user sent by hand, so
- * the step can count the ones the stages alone would have filtered.
+ * current for every photo in scope.
  */
 export function dropFilteredPhotosFromDescribeAndScoringSelection<T extends readonly [string, string]>(
   db: Db,
   selection: readonly T[],
-): { kept: T[]; heldBack: CullHeldBack; sentByHandKept: string[] } {
+): { kept: T[]; heldBack: CullHeldBack } {
   const verdicts = loadCullVerdictsForKeys(db, [...new Set(selection.map(([k]) => k))]);
   const heldBack: CullHeldBack = { filtered_by_culling_profile: 0, filtered_by_score_forecast: 0, pending: 0, no_verdict: 0 };
   const kept: T[] = [];
-  const sentByHandKept: string[] = [];
   for (const pair of selection) {
     const v = verdicts.get(pair[0]);
-    if (v?.sentByHand) {
-      kept.push(pair);
-      sentByHandKept.push(pair[0]);
-    } else if (v?.verdict === 'passed') kept.push(pair);
+    if (v?.sentByHand || v?.verdict === 'passed') kept.push(pair);
     else if (v === undefined) heldBack.no_verdict += 1;
     else if (v.verdict === 'pending') heldBack.pending += 1;
     else if (v.filteredBy === 'score_forecast') heldBack.filtered_by_score_forecast += 1;
     else heldBack.filtered_by_culling_profile += 1;
   }
-  return { kept, heldBack, sentByHandKept };
+  return { kept, heldBack };
 }
 
 /**

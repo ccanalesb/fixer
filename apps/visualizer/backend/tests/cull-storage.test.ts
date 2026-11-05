@@ -405,12 +405,11 @@ describe('dropFilteredPhotosFromDescribeAndScoringSelection', () => {
     summary('hand', 'filtered', 'culling_profile');
     recordCullUserAction(db, 'hand', 'sent_by_hand');
     const selection = ['passed', 'profile', 'none', 'hand', 'forecast', 'pending'].map((k) => [k, 'catalog'] as const);
-    const { kept, heldBack, sentByHandKept } = dropFilteredPhotosFromDescribeAndScoringSelection(db, selection);
+    const { kept, heldBack } = dropFilteredPhotosFromDescribeAndScoringSelection(db, selection);
     expect(kept).toEqual([
       ['passed', 'catalog'],
       ['hand', 'catalog'],
     ]);
     expect(heldBack).toEqual({ filtered_by_culling_profile: 1, filtered_by_score_forecast: 1, pending: 1, no_verdict: 1 });
-    expect(sentByHandKept).toEqual(['hand']);
   });
 });

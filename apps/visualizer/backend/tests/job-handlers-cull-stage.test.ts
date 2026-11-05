@@ -23,6 +23,7 @@ import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { fingerprintBatchScore } from '../src/jobs/checkpoint.js';
 import { recordCullUserAction } from '../src/db/library/cull-user-actions.js';
+import { createPipelineSettingVersion, getCurrentPipelineSetting } from '../src/db/library/cull-pipeline.js';
 import { saveProfileDefinition, getCullProfile } from '../src/db/library/cull-profiles.js';
 import { APP_MODEL_SETUP_COMMAND } from '../src/app-models/files.js';
 
@@ -359,6 +360,23 @@ describe('batch_analyze force_cull', () => {
     expect([...new Set(fakeModels().calls.map((c) => c.file.split(/[/\\]/).at(-1)))]).toEqual(['pass.jpg']);
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'pass'")[0]?.verdict).toBe('filtered');
     expect(fx.query("SELECT verdict FROM cull_verdicts WHERE image_key = 'hand'")[0]?.verdict).toBe('passed');
+  });
+
+  it('counts a photo sent by hand as held back only when the job describes or scores it', async () => {
+    await seedCullPhoto('hand', PROFILE_CUT);
+    await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
+    const lib = openLibraryDb(fx.dbPath);
+    recordCullUserAction(lib, 'hand', 'sent_by_hand');
+    createPipelineSettingVersion(lib, getCurrentPipelineSetting(lib).config);
+    lib.close();
+    const sent = await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'] });
+    expect((sent.result as { held_back?: Record<string, number> }).held_back?.sent_by_hand_passed).toBe(1);
+
+    const job = await runJob('batch_analyze', { max_workers: 1, perspective_slugs: ['street'], force_cull: true });
+    expect(job.status).toBe('completed');
+    const result = job.result as { cull?: Record<string, number>; held_back?: Record<string, number> };
+    expect(result.cull?.sent_by_hand_passed).toBe(1);
+    expect(result.held_back?.sent_by_hand_passed).toBe(0);
   });
 });
 

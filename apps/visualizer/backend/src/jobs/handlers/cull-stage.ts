@@ -106,12 +106,16 @@ export async function runCullStageBeforeDescribeAndScore(
 
   runner.setCurrentStep(jobId, CULL_STEP_LABEL);
   const sentByHand = listSentByHandKeys(db);
+  const passedOnlyByHand = new Set<string>();
   const cullStep =
     (await runCullPass(runner, jobId, metadata, db, ctx, {
       // Forced, the whole window is culled again, not only the photos this job will describe or score.
       imageKeys: opts.forceCull ? undefined : candidateKeys,
       skipModelsFor: sentByHand,
       force: opts.forceCull,
+      onDecision: (key, decision) => {
+        if (decision.sentByHandOverride) passedOnlyByHand.add(key);
+      },
     })) ?? null;
   if (cullStep === null) return null;
 
@@ -147,7 +151,7 @@ export async function runCullStageBeforeDescribeAndScore(
     filtered_by_score_forecast: culled.heldBack.filtered_by_score_forecast,
     pending: culled.heldBack.pending,
     no_verdict: culled.heldBack.no_verdict,
-    sent_by_hand_passed: cullStep.sent_by_hand_passed,
+    sent_by_hand_passed: [...keep].filter((k) => passedOnlyByHand.has(k)).length,
   };
 
   runner.log(

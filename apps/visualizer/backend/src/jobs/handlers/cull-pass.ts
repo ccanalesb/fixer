@@ -79,7 +79,13 @@ export async function runCullPass(
   metadata: Record<string, unknown>,
   db: Db,
   ctx: PassContext,
-  opts: { imageKeys?: readonly string[]; skipModelsFor?: ReadonlySet<string>; force?: boolean } = {},
+  opts: {
+    imageKeys?: readonly string[];
+    skipModelsFor?: ReadonlySet<string>;
+    force?: boolean;
+    /** Called with each photo's decision as it is counted. */
+    onDecision?: (imageKey: string, decision: PhotoDecision) => void;
+  } = {},
 ): Promise<BatchCullResult | null> {
   const t0 = performance.now();
   const prefix = ctx.logPrefix;
@@ -199,7 +205,10 @@ export async function runCullPass(
   const skipModels = opts.skipModelsFor ?? new Set<string>();
   const stageSec: Record<StageKind, number> = { culling_profile: 0, score_forecast: 0 };
   const counts = { culled: 0, redecided: 0, failed: 0, ...emptyVerdictTally() };
-  const tally = (decision: PhotoDecision): void => addDecision(counts, decision);
+  const tally = (imageKey: string, decision: PhotoDecision): void => {
+    addDecision(counts, decision);
+    opts.onDecision?.(imageKey, decision);
+  };
 
   const skipped = candidates.filter((k) => resume.failed.has(k));
   const skippedAnswers = loadCurrentStageAnswers(db, stages, skipped);
@@ -210,7 +219,7 @@ export async function runCullPass(
       sentByHand: byHand,
       scoreForecastAvailable: cullCtx.scoreForecastAvailable,
     });
-    tally(d);
+    tally(key, d);
   }
 
   const tCull = performance.now();
@@ -254,7 +263,7 @@ export async function runCullPass(
         resume.failed.add(key);
         if (r.outcome === 'model_failed') log(`${key} left pending: ${r.error!.message}`, 'warning');
       }
-      tally(r.decision);
+      tally(key, r.decision);
       if (r.outcome === 'endpoint_down') throw r.error!;
       if ((i + 1) % CHECKPOINT_EVERY === 0) persist();
       progress(3 + Math.trunc(((i + 1) / Math.max(work.length, 1)) * 97), `Culled ${i + 1}/${work.length}`);
