@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
-import { CullAPI, CullingModelsAPI, type CullReviewRow } from '../../../services/api'
+import { CullAPI, CullingModelsAPI, type CullReviewRow, type CullingStageUsability } from '../../../services/api'
 import { cullingChanged } from '../../../data/keys'
 import { CullReviewTab } from '../CullReviewTab'
 import { CULL_AGREE, CULL_SUB_AUTO } from '../../../constants/strings'
@@ -17,6 +18,16 @@ const ROW: CullReviewRow = {
   needs_send_work: true,
   thumbnail_url: '/thumb.jpg',
 }
+
+const ok = (model: string): CullingStageUsability => ({
+  on: true,
+  problem: null,
+  model,
+  endpoint: 'this_app',
+  job_id: null,
+  provider_name: null,
+})
+const broken = (problem: CullingStageUsability['problem']) => ({ ...ok('forecast-model'), problem })
 
 describe('CullReviewTab', () => {
   beforeEach(() => {
@@ -64,5 +75,47 @@ describe('CullReviewTab', () => {
     await waitFor(() => expect(record).toHaveBeenCalledWith('filtered-one', 'agrees_with_filter'))
     await waitFor(() => expect(CullAPI.summary).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(CullAPI.listPhotos).toHaveBeenCalledTimes(2))
+  })
+
+  it('opens the gate dialog when sending and a stage that is on cannot run', async () => {
+    vi.spyOn(CullingModelsAPI, 'usable').mockResolvedValue({
+      culling_profile: ok('culling-model'),
+      score_forecast: broken('no_model'),
+      culling_profile_filter: true,
+    })
+    const send = vi.spyOn(CullAPI, 'sendPhotos').mockResolvedValue({ sent_by_hand: [], job_id: 'j', skipped_complete: 0 })
+    render(
+      <MemoryRouter>
+        <CullReviewTab />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByLabelText('Select DSCF4401.RAF'))
+    fireEvent.click(screen.getByRole('button', { name: /^Send 1/ }))
+    expect(await screen.findByRole('dialog', { name: 'Score forecast has no model' })).toBeInTheDocument()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('queues send when every stage that is on can run', async () => {
+    const send = vi.spyOn(CullAPI, 'sendPhotos').mockResolvedValue({ sent_by_hand: ['filtered-one'], job_id: 'j', skipped_complete: 0 })
+    render(
+      <MemoryRouter>
+        <CullReviewTab />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByLabelText('Select DSCF4401.RAF'))
+    fireEvent.click(screen.getByRole('button', { name: /^Send 1/ }))
+    await waitFor(() => expect(send).toHaveBeenCalledWith(['filtered-one']))
+  })
+
+  it('shows send errors from the gate when usable fails', async () => {
+    vi.spyOn(CullingModelsAPI, 'usable').mockRejectedValue(new Error('cannot reach backend'))
+    render(
+      <MemoryRouter>
+        <CullReviewTab />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByLabelText('Select DSCF4401.RAF'))
+    fireEvent.click(screen.getByRole('button', { name: /^Send 1/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('cannot reach backend')
   })
 })

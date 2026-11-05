@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   CullAPI,
   CullingModelsAPI,
-  CullingProfilesAPI,
   type CullingModelsUsable,
   type CullingStageKind,
   type CullReviewRow,
@@ -32,6 +31,7 @@ import {
 } from '../../constants/strings'
 import { StageFixLink } from './CullingStageDialog'
 import { cullingProfileNote, isUnusable, scoreForecastWarning } from './stageUsability'
+import { turnStageOff } from './pipelineStageSwitch'
 import { useCullingGate } from './useCullingGate'
 import { CullReviewRowView } from './CullReviewRow'
 import { bulkSendButtonLabel } from './sendLabel'
@@ -53,11 +53,6 @@ function PageNote({ text, sub, actions }: { text: string; sub?: string; actions?
     </div>
   )
 }
-
-const turnStageOff = (stage: CullingStageKind) =>
-  stage === 'culling_profile'
-    ? CullingProfilesAPI.saveCullingProfileSwitches({ enabled: false })
-    : CullingProfilesAPI.saveScoreForecast({ enabled: false })
 
 /** The list of filtered photos, unless the culling profile is off or cannot run. */
 export function CullReviewTab() {
@@ -148,6 +143,7 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
   const [tab, setTab] = useState<TabId>('all')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [sendError, setSendError] = useState<string | null>(null)
   const [modalIndex, setModalIndex] = useState<number | null>(null)
   const [, startTransition] = useTransition()
 
@@ -177,10 +173,13 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
   const sendSelected = async () => {
     const keys = selectedRows.filter((r) => r.needs_send_work).map((r) => r.image_key)
     if (keys.length === 0) return
-    await runCullingGate('send', async () => {
-      await CullAPI.sendPhotos(keys)
+    setSendError(null)
+    const result = await runCullingGate('send', () => CullAPI.sendPhotos(keys))
+    if (result.status === 'started') {
       setSelected(new Set())
-    })
+    } else if (result.status === 'failed') {
+      setSendError(result.error instanceof Error ? result.error.message : String(result.error))
+    }
   }
 
   const agreeSelected = async () => {
@@ -272,6 +271,11 @@ function CullReviewList({ onStageOff }: { onStageOff: () => void }) {
 
       {selected.size > 0 && (
         <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-bg p-4 flex flex-wrap gap-2 items-center justify-center shadow-lg z-30">
+          {sendError && (
+            <p className="w-full text-center text-sm text-error" role="alert">
+              {sendError}
+            </p>
+          )}
           {sendLabel && (
             <Button type="button" variant="primary" size="sm" onClick={() => void sendSelected()}>
               {sendLabel}

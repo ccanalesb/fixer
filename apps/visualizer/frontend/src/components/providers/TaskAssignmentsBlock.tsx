@@ -4,6 +4,7 @@ import {
   AppModelsAPI,
   CullingModelsAPI,
   CullingProfilesAPI,
+  CULLING_JOB_TYPE,
   JobsAPI,
   ProvidersAPI,
   ScoreForecastQuestionsAPI,
@@ -32,7 +33,6 @@ import { DescriptionTaskRow } from './DescriptionTaskRow'
 type Stage = 'culling_profile' | 'score_forecast'
 const STAGES: readonly Stage[] = ['culling_profile', 'score_forecast']
 const INSTALL_JOB_TYPE = 'app_model_install'
-const CULLING_JOB_TYPE = 'batch_cull_photos_before_scoring'
 
 interface TaskAssignmentsBlockProps {
   openAiProviders: Provider[]
@@ -198,22 +198,14 @@ function TaskAssignmentsBlockInner({
     if (queueing) return
     setQueueing(true)
     setError(null)
-    const failed = (e: unknown) => setError(e instanceof Error ? e.message : String(e))
-    try {
-      await runCullingGate('cull', async () => {
-        try {
-          await JobsAPI.create(CULLING_JOB_TYPE, {})
-          setQueued(stage)
-          setSuggest(null)
-        } catch (e) {
-          failed(e)
-        }
-      })
-    } catch (e) {
-      failed(e)
-    } finally {
-      setQueueing(false)
+    const result = await runCullingGate('cull', () => JobsAPI.create(CULLING_JOB_TYPE, {}))
+    if (result.status === 'started') {
+      setQueued(stage)
+      setSuggest(null)
+    } else if (result.status === 'failed') {
+      setError(result.error instanceof Error ? result.error.message : String(result.error))
     }
+    setQueueing(false)
   }
 
   const scrollToThisApp = () =>

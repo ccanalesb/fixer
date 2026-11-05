@@ -169,23 +169,4 @@ describe('CullReviewTab: culling stages that cannot run', () => {
     await waitFor(() => expect(screen.queryByText('Score forecast is on but has no model.')).not.toBeInTheDocument())
     expect(save).toHaveBeenCalledWith({ enabled: false })
   })
-
-  it('sending by hand asks first while a stage that is on cannot run', async () => {
-    const send = vi.spyOn(CullAPI, 'sendPhotos').mockResolvedValue({ sent_by_hand: ['filtered-one'], job_id: 'j', skipped_complete: 0 })
-    const save = vi.spyOn(CullingProfilesAPI, 'saveScoreForecast').mockResolvedValue({ version: 2, redecide_job_id: null })
-    usableSpy.mockResolvedValue(usable({ score_forecast: broken('no_model') }))
-    renderTab()
-    fireEvent.click(await screen.findByLabelText('Select DSCF4401.RAF'))
-    fireEvent.click(screen.getByRole('button', { name: /^Send 1/ }))
-    const dialog = await screen.findByRole('dialog', { name: 'Score forecast has no model' })
-    expect(
-      within(dialog).getByText(
-        "Sending starts a job that runs the Score forecast first. Fix it, or turn the Score forecast off and send without it. Without it, the culling profile's rule decides what goes to the big model.",
-      ),
-    ).toBeInTheDocument()
-    expect(send).not.toHaveBeenCalled()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Turn off and send' }))
-    await waitFor(() => expect(send).toHaveBeenCalledWith(['filtered-one']))
-    expect(save).toHaveBeenCalledWith({ enabled: false })
-  })
 })

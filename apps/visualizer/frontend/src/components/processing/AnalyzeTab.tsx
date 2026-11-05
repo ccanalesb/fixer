@@ -5,7 +5,7 @@ import { Button } from '../ui/Button';
 import { WorkerSlider } from '../ui/WorkerSlider';
 import { ProviderModelSelect } from '../ui/ProviderModelSelect';
 import { useAnalyzeOptions } from '../../stores/analyzeOptionsContext';
-import { JobsAPI, PerspectivesAPI, ProvidersAPI } from '../../services/api';
+import { CULLING_JOB_TYPE, JobsAPI, PerspectivesAPI, ProvidersAPI } from '../../services/api';
 import {
   ADVANCED_DATE_12MONTHS,
   ADVANCED_DATE_18MONTHS,
@@ -225,7 +225,7 @@ export function AnalyzeTab() {
   // stuck "disabled forever" if something throws.
   const runSubmit = useCallback(
     async (
-      jobType: 'batch_analyze' | 'batch_describe' | 'batch_score' | 'batch_cull_photos_before_scoring',
+      jobType: 'batch_analyze' | 'batch_describe' | 'batch_score' | typeof CULLING_JOB_TYPE,
       metadata: Record<string, unknown>,
       successMessage: string,
       setStarting: (v: boolean) => void,
@@ -233,28 +233,19 @@ export function AnalyzeTab() {
       if (submitInFlightRef.current) return;
       submitInFlightRef.current = true;
       setStarting(true);
-      // Clear any prior banner so the user doesn't see a stale success
-      // message while the new submission is still in flight.
       setStatusBanner(null);
       const failed = (error: unknown) => {
         const msg = error instanceof Error ? error.message : 'Unknown error';
         showStatus('error', `${ANALYZE_JOB_FAILED_PREFIX} ${msg}`);
       };
-      try {
-        await runCullingGate('start', async () => {
-          try {
-            const job = await JobsAPI.create(jobType, metadata);
-            showStatus('success', successMessage, job.id);
-          } catch (error) {
-            failed(error);
-          }
-        });
-      } catch (error) {
-        failed(error);
-      } finally {
-        setStarting(false);
-        submitInFlightRef.current = false;
+      const result = await runCullingGate('start', () => JobsAPI.create(jobType, metadata));
+      if (result.status === 'started') {
+        showStatus('success', successMessage, result.value.id);
+      } else if (result.status === 'failed') {
+        failed(result.error);
       }
+      setStarting(false);
+      submitInFlightRef.current = false;
     },
     [showStatus, runCullingGate],
   );
@@ -291,7 +282,7 @@ export function AnalyzeTab() {
   }, [runSubmit, buildSharedBaseMetadata, forceScore]);
 
   const startCullingOnly = useCallback(() => {
-    void runSubmit('batch_cull_photos_before_scoring', {}, ANALYZE_CULL_JOB_STARTED, setIsStartingCull);
+    void runSubmit(CULLING_JOB_TYPE, {}, ANALYZE_CULL_JOB_STARTED, setIsStartingCull);
   }, [runSubmit]);
 
   // Any in-flight submission disables all submit buttons — prevents a

@@ -331,6 +331,8 @@ export const PerspectivesAPI = {
   },
 }
 
+export const CULLING_JOB_TYPE = 'batch_cull_photos_before_scoring' as const
+
 export const JobsAPI = {
   list: (params?: { status?: string; limit?: number; offset?: number }) => {
     const sp = new URLSearchParams()
