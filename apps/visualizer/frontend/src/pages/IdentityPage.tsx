@@ -10,8 +10,7 @@ import {
   IDENTITY_PAGE_SUBTITLE,
   IDENTITY_PAGE_TITLE,
 } from '../constants/strings'
-import { ErrorBoundary, ErrorState, invalidate, invalidateAll } from '../data'
-import { keys, prefixOf } from '../data/keys'
+import { ErrorBoundary, ErrorState, retryIdentityAdvisor, retryIdentityMirror } from '../data'
 import { useFirstRunSetup } from '../hooks/useFirstRunSetup'
 
 function IdentityPageBody() {
@@ -33,7 +32,7 @@ function IdentityPageBody() {
           <ErrorState
             error={error}
             reset={() => {
-              invalidate(keys.identity.mirror())
+              retryIdentityMirror()
               reset()
             }}
           />
@@ -59,7 +58,7 @@ function IdentityPageBody() {
           <ErrorState
             error={error}
             reset={() => {
-              invalidateAll(prefixOf(keys.identity.postNext(null), 2))
+              retryIdentityAdvisor()
               reset()
             }}
           />

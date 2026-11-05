@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Suspense } from 'react'
 import { ImagesPage } from './ImagesPage'
-import { invalidateAll } from '../data'
+import { deleteMatching } from '../data/cache'
 import { ConfigAPI, SystemAPI } from '../services/api'
 import {
   FIRST_RUN_GO_TO_SETUP,
@@ -33,7 +33,7 @@ function renderImages() {
 
 describe('ImagesPage first-run states', () => {
   beforeEach(() => {
-    invalidateAll(['firstRun'])
+    deleteMatching(() => true)
     vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
       catalog_path: '',
       resolved_path: '',

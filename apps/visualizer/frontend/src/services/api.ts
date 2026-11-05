@@ -1,10 +1,16 @@
 import {
+  catalogCacheBuildSignalsChanged,
   cullingChanged,
   cullingProfilesChanged,
   invalidate,
   invalidateAll,
+  keys,
   lightroomWritten,
   patchMatching,
+  perspectivesChanged,
+  prefixOf,
+  providersChanged,
+  refreshCatalogCacheQueries,
   stacksChanged,
 } from '../data'
 import type {
@@ -292,7 +298,7 @@ export const PerspectivesAPI = {
       method: 'POST',
       body: JSON.stringify(body),
     })
-    invalidateAll(['perspectives'])
+    perspectivesChanged()
     return result
   },
 
@@ -301,13 +307,13 @@ export const PerspectivesAPI = {
       method: 'PUT',
       body: JSON.stringify(body),
     })
-    invalidateAll(['perspectives'])
+    perspectivesChanged()
     return result
   },
 
   remove: async (slug: string) => {
     await requestVoid(`/perspectives/${encodeURIComponent(slug)}`, { method: 'DELETE' })
-    invalidateAll(['perspectives'])
+    perspectivesChanged()
   },
 
   resetDefault: async (slug: string) => {
@@ -315,8 +321,12 @@ export const PerspectivesAPI = {
       `/perspectives/${encodeURIComponent(slug)}/reset-default`,
       { method: 'POST' },
     )
-    invalidateAll(['perspectives'])
+    perspectivesChanged()
     return result
+  },
+
+  refreshQueries: () => {
+    perspectivesChanged()
   },
 }
 
@@ -345,8 +355,24 @@ export const JobsAPI = {
       method: 'POST',
       body: JSON.stringify({ type, metadata }),
     })
-    invalidateAll(['jobs.list'])
-    invalidateAll(['jobs.health'])
+    invalidateAll(prefixOf(keys.jobs.list(), 1))
+    invalidateAll(prefixOf(keys.jobs.health(), 1))
+    if (type === 'catalog_cache_build') {
+      catalogCacheBuildSignalsChanged()
+    }
+    if (type === 'batch_catalog_similarity') {
+      invalidateAll(prefixOf(keys.catalog.similarity.groups({ limit: 0, offset: 0 }), 1))
+    }
+    const pipelineJobTypes = new Set([
+      'catalog_cache_build',
+      'catalog_sync',
+      'batch_embed_image',
+      'batch_stack_detect',
+      'batch_catalog_similarity',
+    ])
+    if (pipelineJobTypes.has(type)) {
+      invalidateAll(prefixOf(keys.catalog.cache.pipelineStatus(), 1))
+    }
     return job
   },
 
@@ -357,14 +383,14 @@ export const JobsAPI = {
     await requestVoid(`/jobs/${id}`, { method: 'DELETE' })
     // jobs.list is patched in-place via the job_updated socket event so we
     // don't invalidate here (that would wipe the cache and trigger Suspense).
-    invalidateAll(['jobs.health'])
+    invalidateAll(prefixOf(keys.jobs.health(), 1))
   },
 
   retry: async (id: string) => {
     const job = await request<Job>(`/jobs/${id}/retry`, { method: 'POST' })
     // jobs.list patched via socket; detail is updated via setLocalJob in the
     // modal — invalidating the detail cache would cause a Suspense flash there.
-    invalidateAll(['jobs.health'])
+    invalidateAll(prefixOf(keys.jobs.health(), 1))
     return job
   },
 
@@ -392,10 +418,10 @@ export const ConfigAPI = {
       method: 'PUT',
       body: JSON.stringify({ catalog_path: catalogPath }),
     })
-    invalidateAll(['images.catalog'])
-    invalidateAll(['catalog.cache.stats'])
-    invalidateAll(['jobs.health'])
-    invalidateAll(['dashboard'])
+    invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
+    invalidateAll(keys.catalog.cache.stats())
+    invalidateAll(prefixOf(keys.jobs.health(), 1))
+    invalidateAll(keys.dashboard())
     return result
   },
 
@@ -410,7 +436,7 @@ export const ConfigAPI = {
         body: JSON.stringify({ stack_burst_delta_ms: stackBurstDeltaMs }),
       },
     )
-    invalidateAll(['jobs.health'])
+    invalidateAll(prefixOf(keys.jobs.health(), 1))
     return result
   },
 }
@@ -479,6 +505,10 @@ function appendCatalogListSearchParams(
 }
 
 export const SystemAPI = {
+  refreshCatalogCacheQueries: () => {
+    refreshCatalogCacheQueries()
+  },
+
   status: () =>
     request<SystemStatusResponse>('/status'),
 
@@ -729,8 +759,8 @@ export const DescriptionsAPI = {
         }),
       },
     )
-    invalidate(['descriptions', imageKey])
-    invalidateAll(['images.detail', imageType, imageKey])
+    invalidate(keys.descriptions(imageKey))
+    invalidateAll(prefixOf(keys.images.detail(imageType as 'catalog', imageKey, ''), 3))
     return result
   },
 }
@@ -825,7 +855,7 @@ export const ProvidersAPI = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    invalidateAll(['providers.list']);
+    providersChanged()
     return result;
   },
   update: async (
@@ -850,7 +880,7 @@ export const ProvidersAPI = {
         body: JSON.stringify(payload),
       },
     );
-    invalidateAll(['providers.list']);
+    providersChanged()
     return result;
   },
   remove: async (providerId: string) => {
@@ -858,7 +888,7 @@ export const ProvidersAPI = {
       `/providers/${encodeURIComponent(providerId)}`,
       { method: 'DELETE' },
     );
-    invalidateAll(['providers.list']);
+    providersChanged()
     return result;
   },
   probe: async (providerId: string) => {
@@ -866,7 +896,7 @@ export const ProvidersAPI = {
       `/providers/${encodeURIComponent(providerId)}/probe`,
       { method: 'POST' },
     );
-    invalidateAll(['providers.list']);
+    providersChanged()
     return result;
   },
   addressChangeImpact: (providerId: string) =>
@@ -890,7 +920,7 @@ export const ProvidersAPI = {
       method: 'PUT',
       body: JSON.stringify({ order }),
     })
-    invalidateAll(['providers.list'])
+    providersChanged()
     return result
   },
   updateDefaults: async (defaults: Partial<ProviderDefaults>) => {
@@ -898,8 +928,8 @@ export const ProvidersAPI = {
       method: 'PUT',
       body: JSON.stringify(defaults),
     })
-    invalidateAll(['providers.list'])
-    invalidate(['providers.defaults'])
+    providersChanged()
+    invalidate(keys.providers.defaults())
     return result
   },
   addModel: async (
@@ -910,7 +940,7 @@ export const ProvidersAPI = {
       method: 'POST',
       body: JSON.stringify(model),
     })
-    invalidateAll(['providers.list'])
+    providersChanged()
     return result
   },
   removeModel: async (providerId: string, modelId: string) => {
@@ -918,7 +948,7 @@ export const ProvidersAPI = {
       `/providers/${providerId}/models/${encodeURIComponent(modelId)}`,
       { method: 'DELETE' },
     )
-    invalidateAll(['providers.list'])
+    providersChanged()
     return result
   },
   reorderModels: async (providerId: string, order: string[]) => {
@@ -926,7 +956,7 @@ export const ProvidersAPI = {
       method: 'PUT',
       body: JSON.stringify({ order }),
     })
-    invalidateAll(['providers.list'])
+    providersChanged()
     return result
   },
   retryModelImages: async (providerId: string, modelId: string) => {
@@ -934,7 +964,7 @@ export const ProvidersAPI = {
       `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/retry-images`,
       { method: 'POST' },
     )
-    invalidateAll(['providers.list'])
+    providersChanged()
     return result
   },
   updateModelName: async (providerId: string, modelId: string, name: string) => {
@@ -942,8 +972,11 @@ export const ProvidersAPI = {
       `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
       { method: 'PATCH', body: JSON.stringify({ name }) },
     )
-    invalidateAll(['providers.list'])
+    providersChanged()
     return result
+  },
+  refreshQueries: () => {
+    providersChanged()
   },
 }
 
@@ -1115,8 +1148,14 @@ export type AppModelPickResponse = components['schemas']['AppModelPickResponse']
 export const AppModelsAPI = {
   list: () => request<AppModelsListResponse>('/app-models'),
   /** Queues the conversion job. */
-  add: (source: string) =>
-    request<AppModelAddResponse>('/app-models', { method: 'POST', body: JSON.stringify({ source }) }),
+  add: async (source: string) => {
+    const result = await request<AppModelAddResponse>('/app-models', {
+      method: 'POST',
+      body: JSON.stringify({ source }),
+    })
+    providersChanged()
+    return result
+  },
   /** Opens a folder dialog on the machine running the backend, like `ConfigAPI.pickCatalog`. */
   pick: () => request<AppModelPickResponse>('/app-models/pick', { method: 'POST' }, CATALOG_PICK_TIMEOUT_MS),
 }
@@ -1134,8 +1173,14 @@ export type CullingStageProblem = NonNullable<CullingStageUsability['problem']>
 /** Each culling stage's System One endpoint and model, in `config.yaml`. */
 export const CullingModelsAPI = {
   get: () => request<CullingModelsResponse>('/culling-models'),
-  save: (stage: CullingStageKind, body: CullingStageModelPutRequest) =>
-    request<CullingStageModel>(`/culling-models/${stage}`, { method: 'PUT', body: JSON.stringify(body) }),
+  save: async (stage: CullingStageKind, body: CullingStageModelPutRequest) => {
+    const result = await request<CullingStageModel>(`/culling-models/${stage}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+    providersChanged()
+    return result
+  },
   /** What the stage's saved endpoint lists: Check. */
   models: (stage: CullingStageKind) => request<CullingStageModelsList>(`/culling-models/${stage}/models`),
   /** Whether each stage that is on can run; asks every endpoint, so it can take up to Check's timeout. */

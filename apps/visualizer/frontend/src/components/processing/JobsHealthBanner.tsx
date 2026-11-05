@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from 'react';
-import { ErrorBoundary, invalidateAll, useQuery } from '../../data';
+import { ErrorBoundary, invalidateAll, keys, prefixOf, useQuery } from '../../data';
 import { JobsAPI } from '../../services/api';
 
 export interface JobsHealthBannerProps {
@@ -15,14 +15,14 @@ function JobsHealthBannerBody({
   useEffect(() => {
     if (pollIntervalMs <= 0) return;
     const timer = window.setInterval(() => {
-      invalidateAll(['jobs.health']);
+      invalidateAll(prefixOf(keys.jobs.health(), 1));
       setPollTick((n) => n + 1);
     }, pollIntervalMs);
     return () => window.clearInterval(timer);
   }, [pollIntervalMs]);
 
   const health = useQuery(
-    ['jobs.health', pollTick] as const,
+    keys.jobs.health(pollTick),
     () => JobsAPI.health(),
   );
 

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { IdentityPage } from './IdentityPage'
 import { ConfigAPI, IdentityAPI, SystemAPI } from '../services/api'
-import { invalidateAll } from '../data'
+import { deleteMatching } from '../data/cache'
 import {
   EMPTY_MIRROR_RESPONSE,
   EMPTY_POST_NEXT_META,
@@ -38,8 +38,7 @@ const completedImportPipeline = {
 
 describe('IdentityPage', () => {
   beforeEach(() => {
-    invalidateAll(['identity'])
-    invalidateAll(['firstRun'])
+    deleteMatching(() => true)
     vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
       catalog_path: '/tmp/test.lrcat',
       resolved_path: '/tmp/test.lrcat',

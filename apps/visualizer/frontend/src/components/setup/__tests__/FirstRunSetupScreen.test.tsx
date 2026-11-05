@@ -58,7 +58,6 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
     showImagesImportBanner: false,
     pickAndSaveCatalog: vi.fn(),
     startImport: vi.fn(),
-    refreshSignals: vi.fn(),
     ...overrides,
   }
 }

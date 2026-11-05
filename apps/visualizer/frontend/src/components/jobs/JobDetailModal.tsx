@@ -31,7 +31,7 @@ import {
   MODAL_CLOSE,
   STATUS_LABELS,
 } from '../../constants/strings';
-import { ErrorBoundary, useQuery } from '../../data';
+import { ErrorBoundary, keys, useQuery } from '../../data';
 import { JobsAPI } from '../../services/api';
 import { useJobSocket } from '../../hooks/useJobSocket';
 import type { Job } from '../../types/job';
@@ -210,7 +210,7 @@ function configValue(
 
 function JobDetailModalBody({ job, onClose, onJobUpdate }: JobDetailModalProps) {
   const queried = useQuery(
-    ['jobs.detail', job.id] as const,
+    keys.jobs.detail(job.id),
     () => JobsAPI.get(job.id, { logs_limit: 20 }),
   );
 

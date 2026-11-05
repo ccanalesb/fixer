@@ -15,10 +15,8 @@ import {
 } from '../../../constants/strings'
 
 vi.mock('../tabs/AiTab', () => ({
-  AiTab: ({ imageKey, onDataChanged }: { imageKey: string; onDataChanged?: () => void }) => (
-    <div data-testid="ai-tab" data-key={imageKey}>
-      <button type="button" onClick={() => onDataChanged?.()}>refetch</button>
-    </div>
+  AiTab: ({ imageKey }: { imageKey: string }) => (
+    <div data-testid="ai-tab" data-key={imageKey} />
   ),
 }))
 vi.mock('../tabs/FileTab', () => ({
@@ -320,14 +318,5 @@ describe('ImageDetailModal', () => {
     renderModal()
     await screen.findByTestId('ai-tab')
     expect(screen.getByRole('tabpanel').className).toContain('overflow-y-auto')
-  })
-
-  it('re-fetches when a tab reports data changed', async () => {
-    const spy = vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail())
-    renderModal()
-    await screen.findByTestId('ai-tab')
-    expect(spy).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByText('refetch'))
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
   })
 })

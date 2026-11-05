@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ImageView } from '../../services/api'
 import { CullAPI, ImagesAPI } from '../../services/api'
@@ -27,7 +27,7 @@ import { FileTab } from './tabs/FileTab'
 import { LightroomTab } from './tabs/LightroomTab'
 import { StackTab } from './tabs/StackTab'
 import { frameHeldBack, frameSaysNothing, frameSubstanceQuery } from './tabs/frameSubstance'
-import { ErrorBoundary, ErrorState, invalidate, invalidateAll, keys, prefixOf, stacksChanged, useQuery } from '../../data'
+import { ErrorBoundary, ErrorState, keys, retryImageDetail, stacksChanged, useQuery } from '../../data'
 
 export type ImageDetailTab = 'culling' | 'ai' | 'lightroom' | 'file' | 'stack'
 
@@ -181,11 +181,6 @@ function ImageDetailModalBody({
   }, [imageKey])
   const displayImage = postedOverride !== null ? { ...image, instagram_posted: postedOverride } : image
 
-  const handleDataChanged = useCallback(
-    () => invalidate(detailKeyOf({ imageType, imageKey, scorePerspectiveSlug })),
-    [imageType, imageKey, scorePerspectiveSlug],
-  )
-
   const stackId = image.stack_id != null ? Number(image.stack_id) : null
   const stackSize = image.stack_member_count ?? 0
   const hasStack = stackId != null && !Number.isNaN(stackId) && stackSize >= 2
@@ -203,9 +198,9 @@ function ImageDetailModalBody({
 
   const panel: Record<ImageDetailTab, () => ReactNode> = {
     culling: () => (
-      <CullingTab imageKey={imageKey} showVerdict={showCullSection} onDataChanged={handleDataChanged} />
+      <CullingTab imageKey={imageKey} showVerdict={showCullSection} />
     ),
-    ai: () => <AiTab imageKey={imageKey} onDataChanged={handleDataChanged} />,
+    ai: () => <AiTab imageKey={imageKey} />,
     lightroom: () => <LightroomTab image={displayImage} />,
     file: () => <FileTab image={displayImage} onPostedChange={setPostedOverride} />,
     stack: () => (hasStack ? <StackTab stackId={stackId} imageKey={imageKey} /> : null),
@@ -371,7 +366,7 @@ export function ImageDetailModal({
               <ErrorState
                 error={error}
                 reset={() => {
-                  invalidateAll(prefixOf(keys.images.detail(imageType, imageKey, ''), 3))
+                  retryImageDetail(imageType, imageKey, scorePerspectiveSlug)
                   reset()
                 }}
               />

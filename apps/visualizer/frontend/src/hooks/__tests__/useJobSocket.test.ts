@@ -24,11 +24,15 @@ vi.mock('../../stores/socketStore', () => ({
   }),
 }));
 
-vi.mock('../../data', () => ({
-  invalidate: vi.fn(),
-  invalidateAll: vi.fn(),
-  patchMatching: vi.fn(),
-}));
+vi.mock('../../data', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../data')>()
+  return {
+    ...actual,
+    invalidate: vi.fn(),
+    invalidateAll: vi.fn(),
+    patchMatching: vi.fn(),
+  }
+})
 
 describe('useJobSocket', () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { invalidateAll } from './invalidate'
+import { invalidate, invalidateAll } from './invalidate'
 
 export function prefixOf<T extends readonly unknown[]>(key: T, length: number): readonly unknown[] {
   return key.slice(0, length)
@@ -35,7 +35,120 @@ export const keys = {
   lrWriteback: {
     photo: (imageKey: string) => ['lr-writeback.photo', imageKey] as const,
   },
+  jobs: {
+    list: (params?: { status?: string; limit?: number; offset?: number }) =>
+      ['jobs.list', params ?? {}] as const,
+    active: () => ['jobs.active'] as const,
+    health: (pollTick?: number) =>
+      pollTick === undefined ? (['jobs.health'] as const) : (['jobs.health', pollTick] as const),
+    detail: (id: string) => ['jobs.detail', id] as const,
+  },
+  providers: {
+    hookBundle: () => ['providers.list', 'hook'] as const,
+    tabBundle: () => ['providers.list', 'tab'] as const,
+    defaults: () => ['providers.defaults'] as const,
+    models: (providerId: string | null) => ['providers.models', providerId] as const,
+  },
+  perspectives: {
+    list: () => ['perspectives', 'list'] as const,
+    active: () => ['perspectives', 'list', 'active'] as const,
+    detail: (slug: string) => ['perspectives', 'detail', slug] as const,
+  },
+  catalog: {
+    cache: {
+      stats: () => ['catalog.cache.stats'] as const,
+      pipelineStatus: () => ['catalog.cache.pipeline-status'] as const,
+    },
+    similarity: {
+      groups: (params: { limit: number; offset: number }) =>
+        ['catalog.similarity.groups', params] as const,
+    },
+  },
+  descriptions: (imageKey: string) => ['descriptions', imageKey] as const,
+  scores: {
+    current: (imageKey: string, imageType: string, reloadToken = 0) =>
+      ['scores', 'current', imageKey, imageType, reloadToken] as const,
+  },
+  system: {
+    clipModel: () => ['system', 'clip-model'] as const,
+  },
+  firstRun: {
+    signals: () => ['firstRun', 'signals'] as const,
+  },
 } as const
+
+const PROVIDERS_LIST_PREFIX = prefixOf(keys.providers.hookBundle(), 1)
+
+/** Invalidate cached provider bundles (tab, hook, and related defaults). */
+export function providersChanged(): void {
+  invalidateAll(PROVIDERS_LIST_PREFIX)
+}
+
+const PERSPECTIVES_PREFIX = prefixOf(keys.perspectives.list(), 1)
+
+/** Invalidate every perspectives list, active-only list, and detail query. */
+export function perspectivesChanged(): void {
+  invalidateAll(PERSPECTIVES_PREFIX)
+}
+
+/** Invalidate catalog cache stats and pipeline status queries. */
+export function refreshCatalogCacheQueries(): void {
+  invalidateAll(keys.catalog.cache.stats())
+  invalidateAll(prefixOf(keys.catalog.cache.pipelineStatus(), 1))
+}
+
+/** Invalidate first-run signals and related dashboard / catalog summaries after import jobs move. */
+export function catalogCacheBuildSignalsChanged(): void {
+  invalidateAll(keys.firstRun.signals())
+  invalidateAll(keys.dashboard())
+  invalidateAll(keys.catalog.cache.stats())
+  invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
+}
+
+export function clipModelChanged(): void {
+  invalidateAll(prefixOf(keys.system.clipModel(), 1))
+}
+
+export function retryJobsList(): void {
+  invalidateAll(prefixOf(keys.jobs.list(), 1))
+}
+
+export function retryProvidersTab(): void {
+  providersChanged()
+}
+
+export function retryPerspectivesTab(): void {
+  perspectivesChanged()
+}
+
+export function retryCatalogCacheTab(): void {
+  refreshCatalogCacheQueries()
+}
+
+export function retryCatalogImagesTab(): void {
+  invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
+  perspectivesChanged()
+}
+
+export function retryCullCatalogTab(): void {
+  invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
+}
+
+export function retryIdentityMirror(): void {
+  invalidate(keys.identity.mirror())
+}
+
+export function retryIdentityAdvisor(): void {
+  invalidateAll(prefixOf(keys.identity.postNext(null), 2))
+}
+
+export function retryImageDetail(
+  imageType: 'catalog',
+  imageKey: string,
+  scorePerspectiveSlug?: string,
+): void {
+  invalidateAll(prefixOf(keys.images.detail(imageType, imageKey, scorePerspectiveSlug ?? ''), 3))
+}
 
 const CULLING_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
   keys.cull.summary(),

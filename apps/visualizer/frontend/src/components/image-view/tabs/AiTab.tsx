@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Job } from '../../../types/job'
 import { DescriptionsAPI, JobsAPI, PerspectivesAPI, ProvidersAPI, ScoresAPI } from '../../../services/api'
 import { useJobSocket } from '../../../hooks/useJobSocket'
-import { invalidate, useQuery } from '../../../data'
+import { keys, useQuery } from '../../../data'
 import { DescriptionPanel } from '../../DescriptionPanel'
 import ImageScoresPanel from '../../catalog/ImageScoresPanel'
 import { Button } from '../../ui/Button/Button'
@@ -23,15 +23,15 @@ type Run = { jobId: string | null; busy: boolean; error: string | null }
 const IDLE: Run = { jobId: null, busy: false, error: null }
 
 /** The photo's description and perspective scores, and the jobs that rewrite them. */
-export function AiTab({ imageKey, onDataChanged }: { imageKey: string; onDataChanged?: () => void }) {
-  const defaults = useQuery(['providers.defaults'] as const, () => ProvidersAPI.getDefaults())
-  const perspectives = useQuery(['perspectives', 'list', 'active'] as const, () =>
+export function AiTab({ imageKey }: { imageKey: string; onDataChanged?: () => void }) {
+  const defaults = useQuery(keys.providers.defaults(), () => ProvidersAPI.getDefaults())
+  const perspectives = useQuery(keys.perspectives.active(), () =>
     PerspectivesAPI.list({ active_only: true }),
   )
-  const description = useQuery(['descriptions', imageKey] as const, () => DescriptionsAPI.get(imageKey))
+  const description = useQuery(keys.descriptions(imageKey), () => DescriptionsAPI.get(imageKey))
     .description
   const [scoresToken, setScoresToken] = useState(0)
-  const scores = useQuery(['scores', 'current', imageKey, 'catalog', scoresToken] as const, () =>
+  const scores = useQuery(keys.scores.current(imageKey, 'catalog', scoresToken), () =>
     ScoresAPI.getCurrent(imageKey, { image_type: 'catalog' }),
   )
 
@@ -65,17 +65,16 @@ export function AiTab({ imageKey, onDataChanged }: { imageKey: string; onDataCha
           if (job.status === 'completed') {
             set(IDLE)
             onDone()
-            onDataChanged?.()
           } else if (job.status === 'failed') {
             set({ ...IDLE, error: job.error ?? failure })
           } else if (job.status === 'cancelled') {
             set(IDLE)
           }
         }
-        settle(describeRun, setDescribeRun, () => invalidate(['descriptions', imageKey]), 'Description generation failed')
+        settle(describeRun, setDescribeRun, () => undefined, 'Description generation failed')
         settle(scoreRun, setScoreRun, () => setScoresToken((n) => n + 1), 'Scoring failed')
       },
-      [describeRun, scoreRun, imageKey, onDataChanged],
+      [describeRun, scoreRun],
     ),
   })
 
