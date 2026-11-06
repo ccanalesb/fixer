@@ -22,10 +22,12 @@ import {
   CULLING_MODELS_SECTION_LEAD,
   CULLING_PROFILE_FILTER,
   CULLING_PROFILE_FILTER_OFF,
+  CULLING_PROFILE_FILTER_OFF_FOLDER,
   CULLING_PROFILE_FILTER_ON,
   CULLING_PROFILE_FILTER_UNAVAILABLE,
   CULLING_PROFILE_STAGE,
   CULLING_PROFILE_STAGE_HELP,
+  CULLING_PROFILE_STAGE_HELP_FOLDER,
   PROCESSING_PROVIDERS_ROUTE,
   PROCESSING_PROVIDERS_STAGE_ROUTE,
   SCORE_FORECAST_CREATE_FROM_PERSPECTIVES,
@@ -46,6 +48,8 @@ import {
   SCORE_FORECAST_WRITE_THEM,
 } from '../../constants/strings'
 import { applyPipelineStageChange } from '../cull/pipelineStageSwitch'
+import { useCatalogKind } from '../../hooks/useCatalogKind'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
 import { PipelineSavedNote } from '../cull/PipelineSavedNote'
 import { useOptimisticPipeline } from '../cull/useOptimisticPipeline'
 import { Button } from '../ui/Button'
@@ -112,6 +116,7 @@ function ModelSummaryLine({ stage, view }: { stage: Stage; view: StageView }) {
 
 /** Processing → Settings → Culling: stage switches, filter, and Score forecast level, threshold and questions. */
 function CullingModelsSectionInner() {
+  const catalogKind = useCatalogKind()
   const { config, savedConfig, pending, show: showConfig } = useOptimisticPipeline()
   const questions = useQuery(keys.scoreForecastQuestions(), () => ScoreForecastQuestionsAPI.get())
   const stageModels = useQuery(keys.cullingModels(), () => CullingModelsAPI.get())
@@ -257,7 +262,13 @@ function CullingModelsSectionInner() {
           }
           under={
             <div className="flex flex-col gap-3">
-              <p className="text-xs text-text-tertiary">{CULLING_PROFILE_STAGE_HELP}</p>
+              <p className="text-xs text-text-tertiary">
+                {forCatalogKind(
+                  catalogKind,
+                  CULLING_PROFILE_STAGE_HELP,
+                  CULLING_PROFILE_STAGE_HELP_FOLDER,
+                )}
+              </p>
               <div className="ml-4 flex items-center justify-between gap-4 rounded-base border border-border px-4 py-3">
                 <div className="min-w-0">
                   <div className={`text-sm font-medium ${cullingProfileOn ? 'text-text' : 'text-text-tertiary'}`}>
@@ -268,7 +279,11 @@ function CullingModelsSectionInner() {
                       ? CULLING_PROFILE_FILTER_UNAVAILABLE
                       : config.culling_profiles_filter_enabled
                         ? CULLING_PROFILE_FILTER_ON
-                        : CULLING_PROFILE_FILTER_OFF}
+                        : forCatalogKind(
+                            catalogKind,
+                            CULLING_PROFILE_FILTER_OFF,
+                            CULLING_PROFILE_FILTER_OFF_FOLDER,
+                          )}
                   </div>
                 </div>
                 <Switch

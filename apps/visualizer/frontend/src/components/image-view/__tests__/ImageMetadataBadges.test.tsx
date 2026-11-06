@@ -12,6 +12,18 @@ function baseImage(overrides: Partial<ImageView> = {}): ImageView {
 }
 
 describe('ImageMetadataBadges', () => {
+  it('shows a rejected chip for pick -1 and pick only for pick 1', () => {
+    const { rerender } = render(
+      <ImageMetadataBadges image={baseImage({ pick: -1 as unknown as boolean })} primaryScoreSource="none" />,
+    )
+    expect(screen.getByText('✕ Rejected')).toBeInTheDocument()
+    expect(screen.queryByText('Pick')).not.toBeInTheDocument()
+
+    rerender(<ImageMetadataBadges image={baseImage({ pick: 1 as unknown as boolean })} primaryScoreSource="none" />)
+    expect(screen.getByText('Pick')).toBeInTheDocument()
+    expect(screen.queryByText('✕ Rejected')).not.toBeInTheDocument()
+  })
+
   it('renders rating, pick, posted, AI chips when flags are set', () => {
     render(
       <ImageMetadataBadges

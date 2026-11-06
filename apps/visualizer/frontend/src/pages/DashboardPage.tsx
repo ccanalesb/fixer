@@ -13,6 +13,7 @@ import { TabNav } from '../components/ui/Tabs'
 import {
   IDENTITY_BEST_PHOTOS_EMPTY_FALLBACK,
   INSIGHTS_FOOTER_TIMEZONE,
+  INSIGHTS_FOOTER_TIMEZONE_FOLDER,
   INSIGHTS_PAGE_SUBTITLE,
   INSIGHTS_PAGE_TITLE,
   INSIGHTS_SECTION_EXPLORE,
@@ -27,6 +28,8 @@ import {
 import { ErrorBoundary, ErrorState, catalogLibraryChanged, useQuery } from '../data'
 import { keys } from '../data/keys'
 import { useFilters } from '../hooks/useFilters'
+import { useCatalogKind } from '../hooks/useCatalogKind'
+import { forCatalogKind } from '../utils/catalogKindCopy'
 import {
   IdentityAPI,
   SystemAPI,
@@ -156,6 +159,7 @@ function DashboardPageInner() {
 }
 
 function DashboardInsightsView() {
+  const catalogKind = useCatalogKind()
   const dashboardTopPhotosSchema = useMemo<FilterSchema>(
     () => [
       {
@@ -219,6 +223,7 @@ function DashboardInsightsView() {
         summary={insights}
         loading={loadingInsights}
         error={errInsights}
+        catalogKind={catalogKind}
       />
 
       {a11yErrors ? (
@@ -279,7 +284,13 @@ function DashboardInsightsView() {
       </section>
 
       <footer className="border-t border-border pt-6 text-xs text-text-tertiary">
-        <p>{INSIGHTS_FOOTER_TIMEZONE}</p>
+        <p>
+          {forCatalogKind(
+            catalogKind,
+            INSIGHTS_FOOTER_TIMEZONE,
+            INSIGHTS_FOOTER_TIMEZONE_FOLDER,
+          )}
+        </p>
       </footer>
     </div>
   )

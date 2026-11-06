@@ -154,11 +154,14 @@ export const INSIGHTS_TOP_PHOTOS_TAB_ALL = 'All'
 export const INSIGHTS_TOP_PHOTOS_REGION_ARIA = 'Top scored photos'
 export const INSIGHTS_FOOTER_TIMEZONE =
   'Timestamps on catalog images follow Lightroom Classic capture metadata where available.'
+export const INSIGHTS_FOOTER_TIMEZONE_FOLDER =
+  "Timestamps follow each file's capture date, else its modification date."
 export const INSIGHTS_QUICK_IDENTITY_TITLE = 'Identity'
 export const INSIGHTS_QUICK_IDENTITY_DESC = 'Mirror signature, and post-next suggestions.'
 export const INSIGHTS_QUICK_PROCESSING_TITLE = 'Processing'
 export const INSIGHTS_QUICK_PROCESSING_DESC = 'Matching, descriptions, scoring jobs, and perspectives.'
 export const INSIGHTS_KPI_CATALOG_DESC = 'Lightroom Classic catalog entries'
+export const INSIGHTS_KPI_CATALOG_DESC_FOLDER = 'Photos in the folder'
 export const CATALOG_FILTER_LABEL_MIN_SCORE_ACTIVE = 'Min score (any active perspective)'
 export const INSIGHTS_KPI_SCORING_9_PLUS = 'Scoring 9+'
 export const INSIGHTS_KPI_SCORING_9_PLUS_DESC = 'Best on an active perspective'
@@ -357,6 +360,7 @@ export const FILTER_SORT_DATE_NEWEST = 'Newest first'
 export const FILTER_SORT_DATE_OLDEST = 'Oldest first'
 
 export const CATALOG_FILTER_POSTED_ALL = 'All Images'
+export const CATALOG_FILTER_PRESENCE_ALL = 'All'
 export const CATALOG_FILTER_POSTED = 'Posted'
 export const CATALOG_FILTER_NOT_POSTED = 'Not Posted'
 
@@ -375,6 +379,14 @@ export const CATALOG_FILTER_CATALOG_IN = 'In catalog'
 export const CATALOG_FILTER_CATALOG_REMOVED = 'Removed'
 export const CATALOG_CHIP_FILE_MISSING = 'File missing'
 export const CATALOG_CHIP_NOT_IN_CATALOG = 'Not in catalog'
+export const CATALOG_CHIP_REJECTED = '✕ Rejected'
+
+export const CATALOG_MIN_RATING_EMPTY_INTRO = (min: number) =>
+  `No photo has ${min}★ or more. No photo in this catalog has a rating yet: ratings come from `
+export const CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER =
+  "each file's .xmp or its embedded XMP."
+export const CATALOG_MIN_RATING_EMPTY_SOURCE_LIGHTROOM = 'Lightroom Classic.'
+export const CATALOG_MIN_RATING_CLEAR = 'Clear Min rating'
 export const FILE_MISSING_STATUS_TITLE = 'File missing'
 export const FILE_MISSING_STATUS_BODY = (path: string, since: string) =>
   `Not found at ${path} since ${since}. If the file comes back, or turns up moved with the same size and capture time, it is this photo again. Its descriptions, scores and culling are kept.`
@@ -394,6 +406,8 @@ export const FILTER_DESCRIPTION_SEARCH_LABEL = 'Description search'
 export const FILTER_DESCRIPTION_SEARCH_PLACEHOLDER = 'Search AI description…'
 export const FILTER_DESCRIPTION_SEARCH_ARIA =
   'Search AI-generated description (summary and subjects), not Lightroom Classic keywords'
+export const FILTER_DESCRIPTION_SEARCH_ARIA_FOLDER =
+  'Search AI-generated description (summary and subjects), not the keywords in your files'
 export const CATALOG_FILTER_COLOR_PLACEHOLDER = 'e.g. Red'
 export const CATALOG_FILTER_COLOR_ARIA = 'Color label'
 
@@ -613,8 +627,11 @@ export const CATALOG_CACHE_BUILD_SUCCESS =
 export const CATALOG_CACHE_CARD_TITLE = 'Catalog Vision Cache'
 export const CATALOG_CACHE_INTRO_BODY =
   'The vision cache stores preprocessed Lightroom Classic catalog images for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
+export const CATALOG_CACHE_INTRO_BODY_FOLDER =
+  'The vision cache stores preprocessed photos from the folder for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
 export const CATALOG_CACHE_STAT_TOTAL_LABEL = 'Total Images'
 export const CATALOG_CACHE_STAT_TOTAL_HELPER = 'Images in Lightroom Classic catalog'
+export const CATALOG_CACHE_STAT_TOTAL_HELPER_FOLDER = 'Photos in the folder'
 export const CATALOG_CACHE_STAT_CACHED_LABEL = 'Cached Images'
 export const CATALOG_CACHE_STAT_CACHED_HELPER = 'Processed for AI matching'
 export const CATALOG_CACHE_STAT_MISSING_LABEL = 'Missing'
@@ -841,6 +858,8 @@ export const CULL_RULE_SAVE_NOTE =
   'Saving re-checks every photo from stored answers (no new model run).'
 export const CULL_REDECIDE_CONFIRM_BODY =
   'A re-decide job starts: every photo is checked again from its stored answers. No model runs; verdicts and Lightroom Classic stars may change when it finishes.'
+export const CULL_REDECIDE_CONFIRM_BODY_FOLDER =
+  'A re-decide job starts: every photo is checked again from its stored answers. No model runs; verdicts and the stars written into your files may change when it finishes.'
 export const CULL_RULE_SAVE_CONFIRM_TITLE = 'Save the rule?'
 export const CULL_RULE_SAVE_CONFIRM = 'Save and start job'
 export const CULL_PROFILE_ACTIVATE_CONFIRM_TITLE = 'Activate this profile?'
@@ -1025,10 +1044,14 @@ export const CULLING_MODELS_NOT_SAVED = 'Not saved'
 export const CULLING_PROFILE_STAGE = 'Culling profile'
 export const CULLING_PROFILE_STAGE_HELP =
   "Every photo answers the culling profile's questions. It gives the stars and reject written to Lightroom Classic."
+export const CULLING_PROFILE_STAGE_HELP_FOLDER =
+  "Every photo answers the culling profile's questions. It gives the stars and reject written into your photo files."
 export const CULLING_PROFILE_FILTER = "Filter with the culling profile's rule"
 export const CULLING_PROFILE_FILTER_ON = 'On — a photo its rule filters is not described or scored.'
 export const CULLING_PROFILE_FILTER_OFF =
   'Off — the rule still gives the reject written to Lightroom Classic, but filters nothing.'
+export const CULLING_PROFILE_FILTER_OFF_FOLDER =
+  'Off — the rule still gives the reject written into your photo files, but filters nothing.'
 export const CULLING_PROFILE_FILTER_UNAVAILABLE = 'Available while the culling profile is on.'
 export const SCORE_FORECAST_STAGE = 'Score forecast'
 export const SCORE_FORECAST_STAGE_HELP =
@@ -1242,6 +1265,8 @@ export const SETTINGS_ABOUT_NOT_AFFILIATED =
 export const SETTINGS_DELETE_ALL_HEADING = 'Delete all data and quit'
 export const SETTINGS_DELETE_ALL_DESCRIPTION =
   'Remove everything Fixer stored on this computer — its data folder, logs and web browser data — then quit. Your Lightroom Classic catalog, anything written to it, and your photos are not touched.'
+export const SETTINGS_DELETE_ALL_DESCRIPTION_FOLDER =
+  'Remove everything Fixer stored on this computer — its data folder, logs and web browser data — then quit. Your photo files, and the ratings Fixer wrote into them, are not touched.'
 export const SETTINGS_DELETE_ALL_BUTTON = 'Delete all data and quit…'
 export const SETTINGS_DELETE_ALL_CONFIRM_TITLE = 'Delete all data and quit?'
 export const SETTINGS_DELETE_ALL_CONFIRM_BODY =

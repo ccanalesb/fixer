@@ -3,7 +3,9 @@ import { Badge } from '../ui/badges'
 import {
   CATALOG_CHIP_FILE_MISSING,
   CATALOG_CHIP_NOT_IN_CATALOG,
+  CATALOG_CHIP_REJECTED,
 } from '../../constants/strings'
+import { isCatalogPick, isCatalogRejected } from '../../utils/catalogPick'
 import { PrimaryScorePill, type PrimaryScoreSource } from './PrimaryScorePill'
 
 export type { PrimaryScoreSource }
@@ -51,7 +53,8 @@ export function ImageMetadataBadges({
       {typeof image.rating === 'number' && image.rating > 0 ? (
         <Badge variant="accent">{image.rating}★</Badge>
       ) : null}
-      {image.pick ? <Badge variant="accent">Pick</Badge> : null}
+      {isCatalogPick(image.pick) ? <Badge variant="accent">Pick</Badge> : null}
+      {isCatalogRejected(image.pick) ? <Badge>{CATALOG_CHIP_REJECTED}</Badge> : null}
       {image.ai_analyzed ? <Badge variant="accent">AI</Badge> : null}
       {showPrimary ? <PrimaryScorePill image={image} source={primaryScoreSource} /> : null}
     </div>

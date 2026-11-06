@@ -1,6 +1,12 @@
 import { useEffect, useId } from 'react'
 import { Button } from '../ui/Button'
-import { CULL_REDECIDE_CONFIRM_BODY, CULLING_CANCEL } from '../../constants/strings'
+import {
+  CULL_REDECIDE_CONFIRM_BODY,
+  CULL_REDECIDE_CONFIRM_BODY_FOLDER,
+  CULLING_CANCEL,
+} from '../../constants/strings'
+import { useCatalogKind } from '../../hooks/useCatalogKind'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
 
 /** Before a change that queues a re-decide job. */
 export function RedecideConfirmDialog({
@@ -17,6 +23,10 @@ export function RedecideConfirmDialog({
   onConfirm: () => void
 }) {
   const titleId = useId()
+  const catalogKind = useCatalogKind()
+  const resolvedBody =
+    body ??
+    forCatalogKind(catalogKind, CULL_REDECIDE_CONFIRM_BODY, CULL_REDECIDE_CONFIRM_BODY_FOLDER)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,7 +48,7 @@ export function RedecideConfirmDialog({
         <h5 id={titleId} className="mb-2 text-lg font-bold tracking-tight text-text">
           {title}
         </h5>
-        <p className="text-sm text-text-secondary">{body}</p>
+        <p className="text-sm text-text-secondary">{resolvedBody}</p>
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
             {CULLING_CANCEL}

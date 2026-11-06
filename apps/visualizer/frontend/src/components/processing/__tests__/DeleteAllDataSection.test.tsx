@@ -8,10 +8,21 @@ import {
   SETTINGS_DELETE_ALL_HEADING,
 } from '../../../constants/strings'
 import * as tauri from '../../../utils/tauri'
+import { ConfigAPI } from '../../../services/api'
 
 describe('DeleteAllDataSection', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/tmp/test.lrcat',
+      resolved_path: '/tmp/test.lrcat',
+      exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 0,
+      folder_count: null,
+      unreadable_directories: [],
+      picker_available: false,
+    })
   })
 
   it('is not rendered in a browser', () => {
