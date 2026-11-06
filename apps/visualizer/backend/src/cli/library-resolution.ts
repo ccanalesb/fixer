@@ -3,7 +3,7 @@
  * server, with stricter rules for `--catalog` and library creation.
  */
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import {
   absoluteCatalogPath,
   CatalogLibraryConflictError,
@@ -26,6 +26,32 @@ import { CliError } from './library-db.js';
 
 export const NO_LIBRARY_FOR_CATALOG_MSG = (catalogPath: string) =>
   `No library for ${catalogPath}. Choose it in the app (Settings → Catalog) or set catalog_path in config.yaml`;
+
+const SYNCED_CATALOG_PATH_META_KEY = 'synced_catalog_path';
+
+function legacySyncedCatalogPath(db: Db): string | null {
+  const raw = getLibraryMeta(db, SYNCED_CATALOG_PATH_META_KEY);
+  if (!raw) return null;
+  const abs = absoluteCatalogPath(raw);
+  if (!abs || !existsSync(abs)) return null;
+  return abs;
+}
+
+function looksLikeMovedLightroomCatalog(recorded: string, requested: string): boolean {
+  const rec = absoluteCatalogPath(recorded);
+  const req = absoluteCatalogPath(requested);
+  if (!rec || !req) return false;
+  if (!rec.toLowerCase().endsWith('.lrcat') || !req.toLowerCase().endsWith('.lrcat')) return false;
+  return basename(rec) === basename(req) && dirname(rec) !== dirname(req);
+}
+
+function libraryBelongsToError(dbPath: string, recorded: string, requested?: string): string {
+  let msg = `library.db at ${dbPath} belongs to ${recorded}`;
+  if (requested && looksLikeMovedLightroomCatalog(recorded, requested)) {
+    msg += '. The catalog can be re-pointed in the app (Settings → Catalog)';
+  }
+  return msg;
+}
 
 function configuredCatalogAbsolute(ctx: CommandContext): string | null {
   const raw = ctx.config.catalogPathRaw.trim();
@@ -157,12 +183,15 @@ export function resolvePinnedScanSyncCatalog(
       throw new CliError(`Catalog not found: ${catalogFlag}`);
     }
     if (recorded && absoluteCatalogPath(recorded) !== requested) {
-      throw new CliError(`library.db at ${dbPath} belongs to ${recorded}`);
+      throw new CliError(libraryBelongsToError(dbPath, recorded, requested));
     }
     return requested;
   }
 
   if (recorded) return recorded;
+
+  const legacySynced = legacySyncedCatalogPath(db);
+  if (legacySynced) return legacySynced;
 
   if (!configCatalog) {
     throw new CliError('No catalog path provided. Use --catalog or config.yaml');

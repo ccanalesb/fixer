@@ -62,12 +62,6 @@ async function runFolderSyncCli(
     const sample = unreadablePaths.slice(0, UNREADABLE_LOG_LIMIT).join(', ');
     ctx.out(`Unreadable (${unreadablePaths.length}): ${sample}`);
   }
-  ctx.out(
-    `Added ${result.added}; ${result.stale} stale; ${result.changed} changed; ` +
-      `${result.metadata_changed} metadata changed; ${result.moved} moved; ` +
-      `${result.newly_gone} newly gone; ${result.unreadable} unreadable ` +
-      `(walk_ms=${result.walk_ms}, stat_ms=${result.stat_ms})`,
-  );
   return 0;
 }
 

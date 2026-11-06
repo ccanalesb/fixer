@@ -1,8 +1,9 @@
 /**
  * `enrich-catalog` — warm the vision cache.
  *
- * `--cache-only` and bare `enrich-catalog` both run cache warming; `--catalog` is
- * accepted but ignored. See `docs/plans/ts-backend-migration.md`.
+ * `--cache-only` and bare `enrich-catalog` both run cache warming. `--catalog`
+ * (and `config.yaml`'s catalog when `--catalog` is omitted) choose which
+ * library to open, the same as other commands. See `docs/plans/ts-backend-migration.md`.
  */
 import { warmVisionCache } from '../../vision/vision-cache.js';
 import { withLibraryDbAsync } from '../library-db.js';

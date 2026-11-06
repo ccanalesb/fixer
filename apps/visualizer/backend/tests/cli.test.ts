@@ -20,8 +20,10 @@ import { openLibraryDb } from '../src/db/connection.js';
 import {
   initLibraryDb,
   LIBRARY_SCHEMA_VERSION,
+  getLibraryMeta,
   setLibraryMeta,
 } from '../src/db/library/bootstrap.js';
+import { CHANGED_SINCE_RANKING_META_KEY } from '../src/db/library/ranking-stale.js';
 import { parseArgv, preparseConfigPath, UsageError } from '../src/cli/parse.js';
 import { COMMANDS } from '../src/cli/registry.js';
 import { run } from '../src/cli/main.js';
@@ -240,6 +242,39 @@ describe('read-only commands', () => {
     expect(upgraded).not.toBeNull();
     invalidateOpenLibraryCache();
     expect((await cli(['search'])).lines[0]).toBe('Found 3 images');
+  });
+
+  it('prints where legacy library.db and vision cache moved on the first unpinned command', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'lt-cli-legacy-'));
+    try {
+      const lrcat = join(dataDir, 'legacy.lrcat');
+      writeFileSync(lrcat, '');
+      const legacyDb = join(dataDir, 'library.db');
+      const legacyCache = join(dataDir, 'old-cache');
+      writeFileSync(
+        join(dataDir, 'config.yaml'),
+        stringifyYaml({
+          catalog_path: lrcat,
+          db_path: legacyDb,
+          vision_cache_dir: legacyCache,
+        }),
+      );
+      initLibraryDb(legacyDb).close();
+      mkdirSync(legacyCache, { recursive: true });
+      process.env.LT_DATA_DIR = dataDir;
+      process.env.LT_CONFIG_YAML = join(dataDir, 'config.yaml');
+      resetCatalogLibraryModuleStateForTests();
+      invalidateOpenLibraryCache();
+
+      const r = await cli(['stats']);
+      expect(r.code).toBe(0);
+      expect(r.lines.some((l) => l.startsWith('Moved library.db from '))).toBe(true);
+      expect(r.lines.some((l) => l.startsWith('Moved vision cache from '))).toBe(true);
+    } finally {
+      delete process.env.LT_DATA_DIR;
+      delete process.env.LT_CONFIG_YAML;
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 
   it('reports counts and a rating histogram for stats', async () => {
@@ -465,7 +500,36 @@ describe('scan and sync', () => {
     const r = await cli(['sync']);
     expect(r.code).toBe(0);
     expect(r.lines.some((l) => l === `Syncing folder: ${photos}`)).toBe(true);
-    expect(r.lines.some((l) => l.includes('added=1'))).toBe(true);
+    expect(r.lines.some((l) => l.includes('added=1') && l.includes('collisions='))).toBe(true);
+
+    const libDirs = readdirSync(join(fixture.dir, 'catalogs'));
+    expect(libDirs.length).toBe(1);
+    const dbPath = join(fixture.dir, 'catalogs', libDirs[0]!, 'library.db');
+    const db = openLibraryDb(dbPath, { readonly: true });
+    try {
+      expect(getLibraryMeta(db, CHANGED_SINCE_RANKING_META_KEY)).not.toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('scan on a folder catalog runs folder sync and prints the sync report', async () => {
+    const photos = join(fixture.dir, 'photos-scan');
+    mkdirSync(photos, { recursive: true });
+    writeFileSync(join(photos, 'b.jpg'), 'jpeg');
+    writeFileSync(
+      join(fixture.dir, 'config.yaml'),
+      stringifyYaml({ catalog_path: photos }),
+    );
+    process.env.LT_DATA_DIR = fixture.dir;
+    process.env.LT_CONFIG_YAML = join(fixture.dir, 'config.yaml');
+    resetCatalogLibraryModuleStateForTests();
+    invalidateOpenLibraryCache();
+
+    const r = await cli(['scan']);
+    expect(r.code).toBe(0);
+    expect(r.lines.some((l) => l === `Syncing folder: ${photos}`)).toBe(true);
+    expect(r.lines.some((l) => l.includes('added=1') && l.includes('collisions='))).toBe(true);
   });
 
   it('refuses --catalog when that catalog has no library yet', async () => {
@@ -550,6 +614,40 @@ describe('library resolution', () => {
     const r = await cli(['sync', '--db', dbPath, '--catalog', other]);
     expect(r.code).toBe(1);
     expect(r.text).toBe(`Error: library.db at ${dbPath} belongs to ${recorded}`);
+  });
+
+  it('suggests re-pointing the catalog when --catalog looks like a moved .lrcat', async () => {
+    const recorded = join(dir, 'old', 'Cat.lrcat');
+    const moved = join(dir, 'new', 'Cat.lrcat');
+    mkdirSync(join(dir, 'old'), { recursive: true });
+    mkdirSync(join(dir, 'new'), { recursive: true });
+    writeFileSync(recorded, '');
+    writeFileSync(moved, '');
+    const dbPath = makeCatalogLibrary('cat-ab12', recorded, 'lightroom');
+
+    const r = await cli(['sync', '--db', dbPath, '--catalog', moved]);
+    expect(r.code).toBe(1);
+    expect(r.text).toBe(
+      `Error: library.db at ${dbPath} belongs to ${recorded}. The catalog can be re-pointed in the app (Settings → Catalog)`,
+    );
+  });
+
+  it('scan/sync with --db uses legacy synced_catalog_path when catalog_path is not recorded', async () => {
+    const synced = join(dir, 'FromSync.lrcat');
+    makeFakeCatalog(synced, [
+      { id: 1, baseName: 'DSC_0001', captureTime: '2024-06-01T12:00:00', rating: 3 },
+    ]);
+    const dbPath = join(dir, 'pinned.db');
+    const db = initLibraryDb(dbPath);
+    try {
+      setLibraryMeta(db, 'synced_catalog_path', synced);
+    } finally {
+      db.close();
+    }
+
+    const r = await cli(['sync', '--db', dbPath]);
+    expect(r.code).toBe(0);
+    expect(r.lines.some((l) => l === `Syncing catalog: ${synced}`)).toBe(true);
   });
 
   it('every command refuses when two libraries claim one catalog path', async () => {
