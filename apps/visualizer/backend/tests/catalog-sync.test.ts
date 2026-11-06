@@ -260,6 +260,29 @@ describe('syncCatalog', () => {
     withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(false));
   });
 
+  it('clears the gone mark when a photo is back in the catalog', async () => {
+    makeFakeCatalog(lrcatPath, []);
+    seedLibraryImage('gone', '42');
+
+    await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(
+      fx.query<{ catalog_missing_since: string | null }>(
+        'SELECT catalog_missing_since FROM images WHERE key = ?',
+        'gone',
+      )[0]!.catalog_missing_since,
+    ).not.toBeNull();
+
+    rmSync(lrcatPath);
+    makeFakeCatalog(lrcatPath, [{ id: 42, baseName: 'gone' }]);
+    await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(
+      fx.query<{ catalog_missing_since: string | null }>(
+        'SELECT catalog_missing_since FROM images WHERE key = ?',
+        'gone',
+      )[0]!.catalog_missing_since,
+    ).toBeNull();
+  });
+
   it('diffs ids numerically, not lexicographically', async () => {
     makeFakeCatalog(lrcatPath, [
       { id: 38887, baseName: 'have' },

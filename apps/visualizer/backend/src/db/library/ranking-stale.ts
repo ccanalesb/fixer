@@ -55,15 +55,22 @@ export function markNewlyRemovedLightroomPhotos(db: Db, catalogIds: ReadonlySet<
   const sinceIso = nowIsoUtc();
   let newly = 0;
   libraryWrite(db, () => {
-    const update = db.prepare(
+    const markGone = db.prepare(
       'UPDATE images SET catalog_missing_since = ? WHERE key = ? AND catalog_missing_since IS NULL',
+    );
+    const clearGone = db.prepare(
+      'UPDATE images SET catalog_missing_since = NULL WHERE key = ? AND catalog_missing_since IS NOT NULL',
     );
     for (const row of rows) {
       const text = String(row.id).trim();
       if (!/^[+-]?\d+$/.test(text)) continue;
       const id = Number(text);
-      if (catalogIds.has(id)) continue;
-      const changed = update.run(sinceIso, row.key).changes;
+      if (catalogIds.has(id)) {
+        // Back in the catalog: no longer gone.
+        clearGone.run(row.key);
+        continue;
+      }
+      const changed = markGone.run(sinceIso, row.key).changes;
       newly += changed;
     }
   });
