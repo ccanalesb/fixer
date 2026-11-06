@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../../types/config'
 import type { Job } from '../../types/job'
 import {
   CATALOG_CACHE_BUILD_STAGE_ORDER,
@@ -59,7 +60,7 @@ function stageDotFromChecklistState(
 type CatalogImportStageChecklistProps = {
   job: Job | null
   expectClipDownloadInRun?: boolean
-  catalogKind?: 'lightroom' | 'folder'
+  catalogKind?: CatalogKind
 }
 
 export function CatalogImportStageChecklist({

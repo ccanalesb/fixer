@@ -15,7 +15,7 @@ describe('image-view adapters', () => {
       filepath: '/tmp/f.jpg',
       date_taken: '2024-01-01',
       rating: 5,
-      pick: false,
+      pick: 0,
       color_label: '',
       keywords: ['a'],
       title: 't',

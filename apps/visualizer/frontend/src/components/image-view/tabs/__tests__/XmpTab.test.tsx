@@ -2,16 +2,22 @@ import { Suspense } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteMatching } from '../../../../data/cache'
-import { ImagesAPI, LrWritebackAPI, type FolderXmpDetailResponse } from '../../../../services/api'
+import {
+  ImagesAPI,
+  LrWritebackAPI,
+  type FolderXmpDetailResponse,
+  type LrWritebackPhotoDetailResponse,
+} from '../../../../services/api'
 import {
   LR_WRITEBACK_BEFORE_NO_RATING,
   LR_WRITEBACK_UNDO,
   LR_WRITEBACK_UNDO_STARS_ROW,
   FOLDER_WRITEBACK_WRITTEN_DETAIL,
-  FOLDER_WRITEBACK_USER_CHANGED,
   XMP_DETAIL_SECTION,
   XMP_FILE_MISSING,
   XMP_NO_METADATA_HINT,
+  XMP_SECONDARY_SIDECAR,
+  XMP_WRITEBACK_LOAD_ERROR,
 } from '../../../../constants/strings'
 import { formatDateTime } from '../../../../utils/date'
 import { XmpTab } from '../XmpTab'
@@ -34,10 +40,54 @@ function sampleDetail(overrides: Partial<FolderXmpDetailResponse> = {}): FolderX
   }
 }
 
+const nothingWritten: LrWritebackPhotoDetailResponse = {
+  image_key: 'k',
+  rating: { live: null, app_wrote: false, before_label: null, undo_available: false, user_changed: false },
+  flag: { live_pick: 0, app_wrote_reject: false, undo_available: false, user_changed: false },
+  keywords: [],
+  strong_dimensions_line: null,
+  written_at: null,
+  written_file_label: null,
+  user_changed_message: null,
+}
+
+function renderTab() {
+  return render(
+    <Suspense fallback={null}>
+      <XmpTab image={{ image_type: 'catalog', key: 'k' }} />
+    </Suspense>,
+  )
+}
+
 describe('XmpTab', () => {
   beforeEach(() => {
     deleteMatching(() => true)
-    vi.spyOn(LrWritebackAPI, 'getPhoto').mockRejectedValue(new Error('no writeback'))
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockResolvedValue(nothingWritten)
+  })
+
+  it('says the write-back readout could not be read when that request fails, and keeps the file facts', async () => {
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(sampleDetail())
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockRejectedValue(new Error('boom'))
+    renderTab()
+    expect(await screen.findByText(XMP_WRITEBACK_LOAD_ERROR, { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('4★')).toBeInTheDocument()
+  })
+
+  it('does not show the write-back error when nothing was written', async () => {
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(sampleDetail())
+    renderTab()
+    expect(await screen.findByText('4★')).toBeInTheDocument()
+    expect(screen.queryByText(XMP_WRITEBACK_LOAD_ERROR, { exact: false })).toBeNull()
+  })
+
+  it('lists a second .xmp next to the photo with the order it is read in', async () => {
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(
+      sampleDetail({
+        secondary_sidecar_note: { basename: 'beach.xmp', read_after_basename: 'beach.jpg.xmp' },
+      }),
+    )
+    renderTab()
+    expect(await screen.findByText(XMP_SECONDARY_SIDECAR('beach.xmp', 'beach.jpg.xmp'))).toBeInTheDocument()
   })
 
   afterEach(() => {
@@ -200,7 +250,7 @@ describe('XmpTab', () => {
       strong_dimensions_line: null,
       written_at: null,
       written_file_label: null,
-      user_changed_message: FOLDER_WRITEBACK_USER_CHANGED('beach.jpg'),
+      user_changed_message: 'Undone by you: what the app wrote is no longer in beach.jpg.',
     })
 
     render(
@@ -209,7 +259,9 @@ describe('XmpTab', () => {
       </Suspense>,
     )
 
-    expect(await screen.findByText(FOLDER_WRITEBACK_USER_CHANGED('beach.jpg'))).toBeInTheDocument()
+    expect(
+      await screen.findByText('Undone by you: what the app wrote is no longer in beach.jpg.'),
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: LR_WRITEBACK_UNDO })).toBeNull()
   })
 })

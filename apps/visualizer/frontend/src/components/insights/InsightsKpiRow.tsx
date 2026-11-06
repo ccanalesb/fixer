@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../../types/config'
 import { Link } from 'react-router-dom'
 import type { InsightsSummary } from '../../services/api'
 import { Badge } from '../ui/badges'
@@ -24,7 +25,7 @@ export type InsightsKpiRowProps = {
   summary: InsightsSummary | null
   loading: boolean
   error: string | null
-  catalogKind?: 'lightroom' | 'folder'
+  catalogKind?: CatalogKind
 }
 
 type StatBadge = 'default' | 'success' | 'accent' | 'warning'

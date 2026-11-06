@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { browserIsOnBackendHost, normalizeCatalogPath } from '../useCatalogPicker'
+import {
+  browserIsOnBackendHost,
+  catalogChangeMode,
+  normalizeCatalogPath,
+} from '../useCatalogPicker'
 
 describe('browserIsOnBackendHost', () => {
   it('accepts the loopback names a browser can report', () => {
@@ -56,5 +60,22 @@ describe('normalizeCatalogPath', () => {
 
   it('returns empty for blank input', () => {
     expect(normalizeCatalogPath('   ')).toBe('')
+  })
+})
+
+describe('catalogChangeMode', () => {
+  const preview = (ask: boolean) => ({ ask_same_or_different: ask })
+
+  it('switches when the modal never asks same or different', () => {
+    expect(catalogChangeMode(preview(false), null)).toBe('switch')
+  })
+
+  it('waits for an answer when it asks', () => {
+    expect(catalogChangeMode(preview(true), null)).toBeNull()
+  })
+
+  it('updates the path for the same catalog and switches for a different one', () => {
+    expect(catalogChangeMode(preview(true), 'same')).toBe('update_path')
+    expect(catalogChangeMode(preview(true), 'different')).toBe('switch')
   })
 })

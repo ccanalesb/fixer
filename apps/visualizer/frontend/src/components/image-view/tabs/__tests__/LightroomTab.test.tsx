@@ -104,12 +104,19 @@ describe('LightroomTab', () => {
       image_type: 'catalog',
       key: 'k',
       rating: 3,
-      pick: true,
+      pick: 1,
       keywords: ['street'],
     })
     expect(await screen.findByText('3★')).toBeInTheDocument()
     expect(screen.getByText('Pick')).toBeInTheDocument()
     expect(screen.getByText('street')).toBeInTheDocument()
+  })
+
+  it('shows a catalog reject as Reject, not Pick, when nothing was written back', async () => {
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockRejectedValue(new Error('not found'))
+    renderTab({ image_type: 'catalog', key: 'k', rating: 0, pick: -1 })
+    expect(await screen.findByText('Reject')).toBeInTheDocument()
+    expect(screen.queryByText('Pick')).not.toBeInTheDocument()
   })
 
   it('shows new stars after an lr_writeback job finishes without reopening the tab', async () => {

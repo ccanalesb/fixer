@@ -19,7 +19,7 @@ const JOB_TYPE_LABELS: Record<string, string> = {
   batch_frame_substance: 'Frame substance',
   catalog_sync: CATALOG_CACHE_SYNC_LABEL,
   catalog_cache_build: CATALOG_CACHE_BUILD_CTA,
-  lr_writeback: 'Lightroom write-back',
+  lr_writeback: 'Write-back',
   app_model_install: 'Install app model',
   single_describe: 'Describe one photo',
   single_score: 'Score one photo',

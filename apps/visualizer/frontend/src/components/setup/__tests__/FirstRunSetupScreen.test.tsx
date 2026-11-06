@@ -5,10 +5,16 @@ import { FirstRunSetupScreen } from '../FirstRunSetupScreen'
 import {
   CLIP_CONFIRM_DOWNLOAD_IMPORT,
   CLIP_CONFIRM_TITLE_IMPORT,
+  FIRST_RUN_CHANGE_CATALOG,
   FIRST_RUN_CHOOSE_FOLDER,
+  FIRST_RUN_CHOOSE_LRCAT,
   FIRST_RUN_FOLDER_CARD_TITLE,
   FIRST_RUN_IMPORT_PHOTOS,
+  FIRST_RUN_MANUAL_PATH_DISCLOSURE,
+  FIRST_RUN_MANUAL_PATH_LABEL,
   FIRST_RUN_RETRY_IMPORT,
+  FIRST_RUN_USE_PATH,
+  SETTINGS_CATALOG_REMOTE_HINT,
 } from '../../../constants/strings'
 import type { useFirstRunSetup } from '../../../hooks/useFirstRunSetup'
 
@@ -42,12 +48,14 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
       changesCatalog: false,
       error: null,
       notice: null,
-      clearNotice: vi.fn(),
-      pickLrcat: vi.fn(),
-      pickFolder: vi.fn(),
       pickingFolder: false,
-      previewChange: vi.fn(),
-      applyChange: vi.fn(),
+      chooseLrcat: vi.fn(),
+      chooseFolder: vi.fn(),
+      beginChange: vi.fn(),
+      pendingChange: null,
+      setSameChoice: vi.fn(),
+      cancelChange: vi.fn(),
+      confirmChange: vi.fn(),
       refresh: vi.fn(),
     },
     catalogConfigured: true,
@@ -66,9 +74,6 @@ function baseSetup(overrides: Partial<SetupState> = {}): SetupState {
     showImagesEmpty: true,
     showImagesReadingCatalog: false,
     showImagesImportBanner: false,
-    pickAndSaveFolder: vi.fn(),
-    pickAndSaveLrcat: vi.fn(),
-    saveCatalogPath: vi.fn(),
     startImport: vi.fn(),
     ...overrides,
   }
@@ -218,5 +223,103 @@ describe('FirstRunSetupScreen', () => {
       </MemoryRouter>,
     )
     expect(screen.getByText(/12,408 photos in 214 folders/)).toBeInTheDocument()
+  })
+
+  it('shows the chosen catalog read-only from another device', () => {
+    render(
+      <MemoryRouter>
+        <FirstRunSetupScreen
+          setup={baseSetup({
+            catalog: {
+              ...baseSetup().catalog,
+              status: { ...baseSetup().catalog.status!, readOnly: true },
+            },
+          })}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('cat.lrcat')).toBeInTheDocument()
+    expect(screen.getByText(SETTINGS_CATALOG_REMOTE_HINT)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: FIRST_RUN_CHANGE_CATALOG })).not.toBeInTheDocument()
+  })
+
+  it('changes the catalog through the change flow, from either dialog', () => {
+    const setup = baseSetup()
+    render(
+      <MemoryRouter>
+        <FirstRunSetupScreen setup={setup} />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_CHANGE_CATALOG }))
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_FOLDER }))
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_LRCAT }))
+
+    expect(setup.catalog.chooseFolder).toHaveBeenCalled()
+    expect(setup.catalog.chooseLrcat).toHaveBeenCalled()
+  })
+
+  it('sends a typed path into the change flow from a disclosure that reports its state', () => {
+    const setup = baseSetup({ catalogConfigured: false })
+    render(
+      <MemoryRouter>
+        <FirstRunSetupScreen setup={setup} />
+      </MemoryRouter>,
+    )
+
+    const details = screen.getByText(FIRST_RUN_MANUAL_PATH_DISCLOSURE).closest('details')!
+    expect(details).not.toHaveAttribute('open')
+    fireEvent.click(screen.getByText(FIRST_RUN_MANUAL_PATH_DISCLOSURE))
+    expect(details).toHaveAttribute('open')
+
+    fireEvent.change(screen.getByLabelText(FIRST_RUN_MANUAL_PATH_LABEL), {
+      target: { value: "'/Volumes/NAS/My Photos'" },
+    })
+    expect(screen.getByText('Not a .lrcat file, so this is a folder catalog.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_USE_PATH }))
+
+    expect(setup.catalog.beginChange).toHaveBeenCalledWith("'/Volumes/NAS/My Photos'")
+  })
+
+  it('shows the catalog change modal for a pending change and confirms it', () => {
+    const setup = baseSetup()
+    setup.catalog.pendingChange = {
+      path: '/Volumes/NAS/Photos',
+      sameChoice: 'different',
+      preview: {
+        unchanged: false,
+        current: {
+          catalog_path: '/tmp/cat.lrcat',
+          resolved_path: '/tmp/cat.lrcat',
+          catalog_kind: 'lightroom',
+          display_name: 'cat',
+          exists: true,
+          library_photo_count: 12,
+          has_library: true,
+        },
+        next: {
+          catalog_path: '/Volumes/NAS/Photos',
+          resolved_path: '/Volumes/NAS/Photos',
+          catalog_kind: 'folder',
+          display_name: 'Photos',
+          exists: true,
+          library_photo_count: null,
+          has_library: false,
+        },
+        ask_same_or_different: false,
+        jobs_to_cancel: [{ id: 'job-1', type: 'batch_describe', status: 'running' }],
+      },
+    }
+    render(
+      <MemoryRouter>
+        <FirstRunSetupScreen setup={setup} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Switch to Photos?' })).toBeInTheDocument()
+    expect(screen.getByText(/Switching cancels 1 job on photos:/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Switch catalog' }))
+    expect(setup.catalog.confirmChange).toHaveBeenCalled()
   })
 })

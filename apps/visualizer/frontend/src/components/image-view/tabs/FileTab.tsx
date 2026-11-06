@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../../../types/config'
 import { useEffect, useState } from 'react'
 import type { ImageView } from '../../../services/api'
 import { ImagesAPI } from '../../../services/api'
@@ -20,18 +21,11 @@ import {
   LR_MISSING_STATUS_BODY,
   LR_MISSING_STATUS_TITLE,
 } from '../../../constants/strings'
+import { formatDate } from '../../../utils/date'
 import { ActionArea, ActionRow, Fact, FactsBlock, StatusBlock } from '../detail-blocks'
 
-function formatMissingSince(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch {
-    return iso
-  }
+function formatMissingSince(since: string): string {
+  return formatDate(since) || since
 }
 
 export function FileTab({
@@ -40,7 +34,7 @@ export function FileTab({
   onPostedChange,
 }: {
   image: ImageView
-  catalogKind: 'lightroom' | 'folder' | null
+  catalogKind: CatalogKind | null
   /** Optimistic posted flag for the badges under the photo. */
   onPostedChange?: (posted: boolean) => void
 }) {

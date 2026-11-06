@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../../types/config'
 import type { ReactNode, RefObject } from 'react'
 import { ScrollContainerLazyImage } from '../ui/ScrollContainerLazyImage'
 import type { ImageView } from '../../services/api'
@@ -29,7 +30,7 @@ interface ImageTileProps {
    *  load via IntersectionObserver instead of native lazy loading. */
   scrollContainerRef?: RefObject<HTMLElement | null>
   /** Folder vs Lightroom catalog — labels the missing-from-catalog chip. */
-  catalogKind?: 'lightroom' | 'folder'
+  catalogKind?: CatalogKind
   className?: string
 }
 
@@ -65,6 +66,10 @@ export function ImageTile({
   const classes = imageTileVariantClasses(variant)
   const imageType = image.image_type
   const catalogMissing = Boolean(image.catalog_missing_since)
+  // A gone photo greys only its preview; the chip and text stay readable.
+  const imageClassName = `absolute inset-0 h-full w-full object-cover${
+    catalogMissing ? ' grayscale opacity-[.55]' : ''
+  }`
   const dateDisplay = image.date_taken
     ? new Date(image.date_taken).toLocaleDateString()
     : image.created_at
@@ -85,7 +90,7 @@ export function ImageTile({
 
   return (
     <div
-      className={`group overflow-hidden rounded-card border border-border bg-bg shadow-card transition-all hover:border-border-strong hover:shadow-deep ${catalogMissing ? 'opacity-70' : ''} ${classes.root} ${className}`.trim()}
+      className={`group overflow-hidden rounded-card border border-border bg-bg shadow-card transition-all hover:border-border-strong hover:shadow-deep ${classes.root} ${className}`.trim()}
       data-testid="image-tile"
       data-image-key={image.key}
       data-image-type={imageType}
@@ -96,19 +101,19 @@ export function ImageTile({
         onClick={onClick}
         className={`block w-full text-left focus:outline-none focus:ring-2 focus:ring-accent focus:ring-inset ${classes.button}`}
       >
-        <div className={`relative bg-surface ${classes.thumb} ${catalogMissing ? 'grayscale' : ''}`}>
+        <div className={`relative bg-surface ${classes.thumb}`}>
           {scrollContainerRef ? (
             <ScrollContainerLazyImage
               scrollContainerRef={scrollContainerRef}
               src={thumbnailSrc}
               alt={thumbnailAlt}
-              className="absolute inset-0 h-full w-full object-cover"
+              className={imageClassName}
             />
           ) : (
             <img
               src={thumbnailSrc}
               alt={thumbnailAlt}
-              className="absolute inset-0 h-full w-full object-cover"
+              className={imageClassName}
               loading="lazy"
             />
           )}

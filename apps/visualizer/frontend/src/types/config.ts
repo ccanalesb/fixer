@@ -15,3 +15,8 @@ export type ConfigStackDetectionGetResponse =
   components['schemas']['ConfigStackDetectionGetResponse']
 export type ConfigStackDetectionPutResponse =
   components['schemas']['ConfigStackDetectionPutResponse']
+export type ConfigCatalogPutRequest =
+  components['schemas']['ConfigCatalogPutRequest']
+
+export type CatalogKind = ConfigCatalogGetResponse['catalog_kind']
+export type CatalogChangeMode = ConfigCatalogPutRequest['change']

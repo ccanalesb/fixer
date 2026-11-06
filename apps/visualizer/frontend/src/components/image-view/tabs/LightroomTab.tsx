@@ -9,11 +9,13 @@ import {
   LR_WRITEBACK_FLAG,
   LR_WRITEBACK_PICK,
   LR_WRITEBACK_RATING,
+  LR_WRITEBACK_REJECT,
   LR_WRITEBACK_UNDO,
   LR_WRITEBACK_UNDO_REJECT_ROW,
   LR_WRITEBACK_UNDO_STARS_ROW,
   LR_WRITEBACK_USER_CHANGED,
 } from '../../../constants/strings'
+import { isCatalogPick, isCatalogRejected } from '../../../utils/catalogPick'
 import { ActionArea, ActionRow, Fact, FactsBlock } from '../detail-blocks'
 
 function starsValue(image: ImageView, detail: LrWritebackPhotoDetailResponse | null): string {
@@ -23,8 +25,11 @@ function starsValue(image: ImageView, detail: LrWritebackPhotoDetailResponse | n
 }
 
 function flagValue(image: ImageView, detail: LrWritebackPhotoDetailResponse | null): string | null {
-  if (!detail) return image.pick ? LR_WRITEBACK_PICK : null
-  if (detail.flag.live_pick === -1) return 'Reject'
+  if (!detail) {
+    if (isCatalogRejected(image.pick)) return LR_WRITEBACK_REJECT
+    return isCatalogPick(image.pick) ? LR_WRITEBACK_PICK : null
+  }
+  if (detail.flag.live_pick === -1) return LR_WRITEBACK_REJECT
   return detail.flag.app_wrote_reject ? 'written by the app' : 'not written'
 }
 

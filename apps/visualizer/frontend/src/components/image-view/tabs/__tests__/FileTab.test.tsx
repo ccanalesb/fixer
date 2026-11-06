@@ -91,6 +91,17 @@ describe('FileTab', () => {
     expect(screen.getByText(/Not found at/)).toBeInTheDocument()
   })
 
+  it('shows the raw since value rather than "Invalid Date" when it does not parse', () => {
+    render(
+      <FileTab
+        catalogKind="lightroom"
+        image={{ image_type: 'catalog', key: 'k', catalog_missing_since: 'sometime' }}
+      />,
+    )
+    expect(screen.getByText(/since sometime\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Invalid Date/)).toBeNull()
+  })
+
   it('shows a not-in-catalog status for a Lightroom catalog', () => {
     render(
       <FileTab

@@ -1,10 +1,11 @@
-import { useId } from 'react'
-import { Button } from '../ui/Button'
+import { ConfirmModalFrame } from '../ui/ConfirmUndoAction'
 import { STATUS_LABELS } from '../../constants/strings'
 import { jobTypeLabel } from '../../utils/jobTypeLabel'
+import {
+  catalogChangeMode,
+  type SameCatalogChoice,
+} from '../../hooks/useCatalogPicker'
 import type { ConfigCatalogChangePreviewResponse } from '../../types/config'
-
-type SameChoice = 'same' | 'different'
 
 export function CatalogChangeModal({
   preview,
@@ -15,92 +16,52 @@ export function CatalogChangeModal({
   onConfirm,
 }: {
   preview: ConfigCatalogChangePreviewResponse
-  sameChoice: SameChoice | null
-  onSameChoice: (choice: SameChoice) => void
+  sameChoice: SameCatalogChoice | null
+  onSameChoice: (choice: SameCatalogChoice) => void
   saving: boolean
   onCancel: () => void
   onConfirm: () => void
 }) {
-  const titleId = useId()
   const { current, next, ask_same_or_different: askSame, jobs_to_cancel: jobs } = preview
-  const showConsequences = !askSame || sameChoice === 'different'
-  const confirmMode: 'update_path' | 'switch' | null =
-    askSame && sameChoice === 'same'
-      ? 'update_path'
-      : showConsequences && (sameChoice === 'different' || !askSame)
-        ? 'switch'
-        : null
-
-  const title = askSame
-    ? `Change the catalog to ${next.display_name}?`
-    : `Switch to ${next.display_name}?`
+  const mode = catalogChangeMode(preview, sameChoice)
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
-      onClick={onCancel}
+    <ConfirmModalFrame
+      title={askSame ? `Change the catalog to ${next.display_name}?` : `Switch to ${next.display_name}?`}
+      confirmLabel={mode === 'update_path' ? 'Update the path' : 'Switch catalog'}
+      cancelLabel="Cancel"
+      confirmVariant="primary"
+      busy={saving}
+      confirmDisabled={!mode}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-border-strong bg-bg shadow-deep"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-border p-4">
-          <h3 id={titleId} className="text-lg font-semibold text-text">
-            {title}
-          </h3>
-        </div>
-        <div className="space-y-4 overflow-y-auto p-4 text-sm text-text-secondary">
-          {askSame ? (
-            <>
-              <p>{next.display_name} has no library in Fixer yet.</p>
-              <div className="space-y-2">
-                <Choice
-                  name="same-catalog"
-                  checked={sameChoice === 'same'}
-                  onSelect={() => onSameChoice('same')}
-                  title="The same catalog"
-                  description="Moved, or written anew by a Lightroom upgrade. The library stays; only the path changes."
-                />
-                <Choice
-                  name="same-catalog"
-                  checked={sameChoice === 'different'}
-                  onSelect={() => onSameChoice('different')}
-                  title="A different catalog"
-                  description="Starts its own empty library. The current one is kept."
-                />
-              </div>
-            </>
-          ) : null}
-          {showConsequences ? (
-            <Consequences current={current} next={next} jobs={jobs} />
-          ) : null}
-          {sameChoice === 'same' ? (
-            <p>The library stays. No jobs are cancelled.</p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap justify-end gap-2 border-t border-border p-4">
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={onConfirm}
-            disabled={saving || !confirmMode}
-          >
-            {saving
-              ? 'Saving…'
-              : confirmMode === 'update_path'
-                ? 'Update the path'
-                : 'Switch catalog'}
-          </Button>
-        </div>
+      <div className="max-h-[60vh] space-y-4 overflow-y-auto text-sm text-text-secondary">
+        {askSame ? (
+          <>
+            <p>{next.display_name} has no library in Fixer yet.</p>
+            <div className="space-y-2">
+              <Choice
+                name="same-catalog"
+                checked={sameChoice === 'same'}
+                onSelect={() => onSameChoice('same')}
+                title="The same catalog"
+                description="Moved, or written anew by a Lightroom upgrade. The library stays; only the path changes."
+              />
+              <Choice
+                name="same-catalog"
+                checked={sameChoice === 'different'}
+                onSelect={() => onSameChoice('different')}
+                title="A different catalog"
+                description="Starts its own empty library. The current one is kept."
+              />
+            </div>
+          </>
+        ) : null}
+        {mode === 'switch' ? <Consequences current={current} next={next} jobs={jobs} /> : null}
+        {mode === 'update_path' ? <p>The library stays. No jobs are cancelled.</p> : null}
       </div>
-    </div>
+    </ConfirmModalFrame>
   )
 }
 

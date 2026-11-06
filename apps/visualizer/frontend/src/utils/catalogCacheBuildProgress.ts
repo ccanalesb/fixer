@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../types/config'
 import type { Job } from '../types/job'
 import {
   FIRST_RUN_STAGE_BURST_STACKS,
@@ -23,7 +24,7 @@ export const CATALOG_CACHE_BUILD_STAGE_LABELS: Record<CatalogCacheBuildStageKey,
 }
 
 export function catalogCacheBuildStageLabels(
-  catalogKind: 'lightroom' | 'folder' = 'lightroom',
+  catalogKind: CatalogKind = 'lightroom',
 ): Record<CatalogCacheBuildStageKey, string> {
   return {
     ...CATALOG_CACHE_BUILD_STAGE_LABELS,

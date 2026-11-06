@@ -6166,7 +6166,7 @@ export interface components {
             filepath?: string | null;
             date_taken?: string | null;
             rating?: number | null;
-            pick?: boolean | null;
+            pick?: components["schemas"]["CatalogPick"];
             color_label?: string | null;
             /** @default [] */
             keywords: string[];
@@ -6209,6 +6209,7 @@ export interface components {
             cull_manually_sent?: boolean | null;
             catalog_missing_since?: string | null;
         };
+        CatalogPick: -1 | 0 | 1 | null;
         CatalogSimilarResponse: {
             images: components["schemas"]["CatalogImage"][];
             total: number;
@@ -6293,7 +6294,7 @@ export interface components {
             date_taken?: string | null;
             created_at?: string | null;
             rating?: number | null;
-            pick?: boolean | null;
+            pick?: components["schemas"]["CatalogPick"];
             color_label?: string | null;
             keywords?: string[] | null;
             title?: string | null;

@@ -2,8 +2,12 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { LightroomWritebackSection } from '../LightroomWritebackSection'
-import { JobsAPI, LrWritebackAPI } from '../../../services/api'
+import { ConfigAPI, JobsAPI, LrWritebackAPI } from '../../../services/api'
+import { deleteMatching } from '../../../data/cache'
+import type { CatalogKind } from '../../../types/config'
 import {
+  FOLDER_WRITEBACK_LOADING,
+  FOLDER_WRITEBACK_STOP_WRITING_TITLE,
   FOLDER_WRITEBACK_WRITE,
   LR_WRITEBACK_CLOSE_LR,
   LR_WRITEBACK_STARS_SWITCH,
@@ -31,6 +35,27 @@ const baseSettings = {
   },
 }
 
+function mockCatalogKind(catalog_kind: CatalogKind) {
+  vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+    catalog_path: '/tmp/cat',
+    resolved_path: '/tmp/cat',
+    exists: true,
+    catalog_kind,
+    photo_count: 0,
+    folder_count: null,
+    unreadable_directories: [],
+    picker_available: false,
+  })
+}
+
+const runningWriteback = [
+  {
+    id: 'job-1',
+    type: 'lr_writeback',
+    status: 'running',
+  } as Awaited<ReturnType<typeof JobsAPI.getActive>>[number],
+]
+
 function renderSection() {
   return render(
     <MemoryRouter>
@@ -41,7 +66,31 @@ function renderSection() {
 
 describe('LightroomWritebackSection', () => {
   beforeEach(() => {
+    deleteMatching(() => true)
+    vi.restoreAllMocks()
+    mockCatalogKind('lightroom')
     vi.spyOn(JobsAPI, 'getActive').mockResolvedValue([])
+  })
+
+  it('says the folder loading text on a folder catalog before the settings arrive', async () => {
+    mockCatalogKind('folder')
+    vi.spyOn(LrWritebackAPI, 'getSettings').mockReturnValue(new Promise(() => {}))
+    renderSection()
+    expect(await screen.findByText(FOLDER_WRITEBACK_LOADING)).toBeInTheDocument()
+  })
+
+  it('asks to stop writing to the photo files on a folder catalog', async () => {
+    mockCatalogKind('folder')
+    vi.spyOn(LrWritebackAPI, 'getSettings').mockResolvedValue({
+      ...baseSettings,
+      catalog_kind: 'folder',
+      write_stars: true,
+    })
+    vi.spyOn(JobsAPI, 'getActive').mockResolvedValue(runningWriteback)
+    renderSection()
+    const [starsCheckbox] = await screen.findAllByRole('checkbox')
+    fireEvent.click(starsCheckbox!)
+    expect(await screen.findByText(FOLDER_WRITEBACK_STOP_WRITING_TITLE)).toBeInTheDocument()
   })
 
   it('shows stars switch label from strings', async () => {

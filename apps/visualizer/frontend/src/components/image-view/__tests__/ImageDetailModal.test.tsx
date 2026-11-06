@@ -60,7 +60,7 @@ function buildCatalogImage(overrides: Partial<CatalogImageInput> = {}): CatalogI
     filepath: '/one.jpg',
     date_taken: '2026-01-01',
     rating: 0,
-    pick: false,
+    pick: 0,
     color_label: '',
     keywords: [],
     title: '',

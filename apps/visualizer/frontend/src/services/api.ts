@@ -26,6 +26,7 @@ import type {
   InstagramPostedResponse,
 } from '../types/catalog'
 import type {
+  CatalogChangeMode,
   ConfigCatalogChangePreviewResponse,
   ConfigCatalogGetResponse,
   ConfigCatalogPickFolderResponse,
@@ -428,7 +429,7 @@ export const ConfigAPI = {
       body: JSON.stringify({ catalog_path: catalogPath }),
     }),
 
-  putCatalog: async (catalogPath: string, change: 'update_path' | 'switch') => {
+  putCatalog: async (catalogPath: string, change: CatalogChangeMode) => {
     const result = await request<ConfigCatalogPutResponse>('/config/catalog', {
       method: 'PUT',
       body: JSON.stringify({ catalog_path: catalogPath, change }),
@@ -1209,6 +1210,8 @@ export const CullingModelsAPI = {
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
 export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackPhotoDetailResponse']
 export type FolderXmpDetailResponse = components['schemas']['FolderXmpDetailResponse']
+export type LrWritebackTurnOnPreviewResponse =
+  paths['/api/cull/lightroom-writeback/turn-on-preview']['get']['responses'][200]['content']['application/json']
 
 export const LrWritebackAPI = {
   getSettings: () => request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings'),
@@ -1232,7 +1235,7 @@ export const LrWritebackAPI = {
     return result
   },
   turnOnPreview: (kind: 'stars' | 'reject') =>
-    request<{ new_sidecar: number; update_sidecar: number; embedded: number }>(
+    request<LrWritebackTurnOnPreviewResponse>(
       `/cull/lightroom-writeback/turn-on-preview?kind=${kind}`,
     ),
   getPhoto: (imageKey: string) =>

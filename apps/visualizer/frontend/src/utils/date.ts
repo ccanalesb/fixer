@@ -7,7 +7,8 @@ export function formatDateTime(value: DateInput): string {
 
 export function formatDate(value: DateInput): string {
   if (!value) return ''
-  return new Date(value).toLocaleDateString()
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString()
 }
 
 export function formatTime(value: DateInput): string {

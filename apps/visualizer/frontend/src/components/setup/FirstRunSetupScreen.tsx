@@ -1,8 +1,10 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input/Input'
+import { InlineNotice } from '../ui/InlineNotice'
 import { PathSummary } from '../processing/SettingRow'
+import { CatalogChangeModal } from '../processing/CatalogChangeModal'
+import { CatalogManualPath } from '../processing/CatalogManualPath'
 import { CatalogImportStageChecklist } from './CatalogImportStageChecklist'
 import { ClipModelDownloadConfirm } from './ClipModelDownloadConfirm'
 import type { useFirstRunSetup } from '../../hooks/useFirstRunSetup'
@@ -22,8 +24,6 @@ import {
   FIRST_RUN_LRCAT_CARD_BODY,
   FIRST_RUN_LRCAT_CARD_TITLE,
   FIRST_RUN_LRCAT_STATS,
-  FIRST_RUN_MANUAL_PATH_DISCLOSURE,
-  FIRST_RUN_MANUAL_PATH_LABEL,
   FIRST_RUN_PHOTOS_KEPT_IN_IMAGES,
   FIRST_RUN_REMOTE_CATALOG_HINT,
   FIRST_RUN_RETRY_IMPORT,
@@ -36,10 +36,12 @@ import {
   FIRST_RUN_USE_PATH,
   FIRST_RUN_WELCOME_SUBTITLE,
   FIRST_RUN_WELCOME_TITLE,
-  MSG_FAILED_START_JOB,
   PROCESSING_JOB_QUEUE_ROUTE,
+  SETTINGS_CATALOG_REMOTE_HINT,
 } from '../../constants/strings'
 import { catalogCacheBuildOverallPercent } from '../../utils/catalogCacheBuildProgress'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
+import type { CatalogKind } from '../../types/config'
 
 type SetupState = ReturnType<typeof useFirstRunSetup>
 
@@ -86,12 +88,8 @@ function stepShell(
   )
 }
 
-function kindHeading(kind: 'lightroom' | 'folder'): string {
-  return kind === 'folder' ? FIRST_RUN_KIND_FOLDER : FIRST_RUN_KIND_LRCAT
-}
-
 function catalogStatsLine(
-  kind: 'lightroom' | 'folder',
+  kind: CatalogKind,
   photoCount: number | null,
   folderCount: number | null,
 ): string | null {
@@ -103,6 +101,37 @@ function catalogStatsLine(
     return FIRST_RUN_LRCAT_STATS(photoCount)
   }
   return `${photoCount.toLocaleString('en-US')} photos`
+}
+
+function SetupChoiceCard({
+  title,
+  body,
+  actionLabel,
+  busy,
+  onChoose,
+}: {
+  title: string
+  body: string
+  actionLabel: string
+  busy: boolean
+  onChoose: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-2.5 rounded-card border border-border p-4 text-left">
+      <h4 className="text-base font-semibold text-text">{title}</h4>
+      <p className="flex-1 text-sm text-text-secondary">{body}</p>
+      <Button
+        type="button"
+        variant="primary"
+        size="md"
+        className="w-full"
+        onClick={onChoose}
+        disabled={busy}
+      >
+        {busy ? 'Choosing…' : actionLabel}
+      </Button>
+    </div>
+  )
 }
 
 export function FirstRunSetupScreen({
@@ -123,9 +152,6 @@ export function FirstRunSetupScreen({
     importClipDownloadFailed,
     expectClipDownloadInRun,
     catalogPhotoCount,
-    pickAndSaveFolder,
-    pickAndSaveLrcat,
-    saveCatalogPath,
     startImport,
   } = setup
 
@@ -154,12 +180,10 @@ export function FirstRunSetupScreen({
           : 'active'
 
   const overall = catalogCacheBuildOverallPercent(importJob)
-  const picking = catalog.picking || catalog.pickingFolder
+  const picking = catalog.picking || catalog.pickingFolder || catalog.saving
   const catalogError = catalog.error ?? importError
   const catalogKind = catalog.status?.catalogKind ?? 'lightroom'
-  const previewPhotos = catalog.status?.photoCount ?? 0
-  const importLabel =
-    previewPhotos > 0 ? FIRST_RUN_IMPORT_PHOTOS(previewPhotos) : FIRST_RUN_IMPORT_PHOTOS(0)
+  const importLabel = FIRST_RUN_IMPORT_PHOTOS(catalog.status?.photoCount ?? 0)
   const importHint =
     catalogKind === 'folder' ? FIRST_RUN_STEP_IMPORT_HINT_FOLDER : FIRST_RUN_STEP_IMPORT_HINT_LRCAT
 
@@ -203,77 +227,35 @@ export function FirstRunSetupScreen({
                     <p className="text-sm text-text-secondary">{FIRST_RUN_REMOTE_CATALOG_HINT}</p>
                   </>
                 ) : (
-                <>
-                  <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="flex flex-col gap-2.5 rounded-card border border-border p-4 text-left">
-                      <h4 className="text-base font-semibold text-text">{FIRST_RUN_FOLDER_CARD_TITLE}</h4>
-                      <p className="flex-1 text-sm text-text-secondary">{FIRST_RUN_FOLDER_CARD_BODY}</p>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="md"
-                        className="w-full"
-                        onClick={() => void pickAndSaveFolder()}
-                        disabled={picking}
-                      >
-                        {picking ? 'Choosing…' : FIRST_RUN_CHOOSE_FOLDER}
-                      </Button>
+                  <>
+                    <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <SetupChoiceCard
+                        title={FIRST_RUN_FOLDER_CARD_TITLE}
+                        body={FIRST_RUN_FOLDER_CARD_BODY}
+                        actionLabel={FIRST_RUN_CHOOSE_FOLDER}
+                        busy={picking}
+                        onChoose={() => void catalog.chooseFolder()}
+                      />
+                      <SetupChoiceCard
+                        title={FIRST_RUN_LRCAT_CARD_TITLE}
+                        body={FIRST_RUN_LRCAT_CARD_BODY}
+                        actionLabel={FIRST_RUN_CHOOSE_LRCAT}
+                        busy={picking}
+                        onChoose={() => void catalog.chooseLrcat()}
+                      />
                     </div>
-                    <div className="flex flex-col gap-2.5 rounded-card border border-border p-4 text-left">
-                      <h4 className="text-base font-semibold text-text">{FIRST_RUN_LRCAT_CARD_TITLE}</h4>
-                      <p className="flex-1 text-sm text-text-secondary">{FIRST_RUN_LRCAT_CARD_BODY}</p>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="md"
-                        className="w-full"
-                        onClick={() => void pickAndSaveLrcat()}
-                        disabled={picking}
-                      >
-                        {picking ? 'Choosing…' : FIRST_RUN_CHOOSE_LRCAT}
-                      </Button>
-                    </div>
-                  </div>
-                  <div>
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-accent hover:underline"
-                      onClick={() => setTypingManual((v) => !v)}
-                    >
-                      {typingManual ? '⌄' : '›'} {FIRST_RUN_MANUAL_PATH_DISCLOSURE}
-                    </button>
-                    {typingManual ? (
-                      <div className="mt-3 space-y-2">
-                        <label className="block text-sm font-medium text-text-secondary">
-                          {FIRST_RUN_MANUAL_PATH_LABEL}
-                          <Input
-                            className="mt-1.5"
-                            value={manualPath}
-                            onChange={(e) => setManualPath(e.target.value)}
-                            disabled={picking}
-                          />
-                        </label>
-                        {manualPath.trim() ? (
-                          <p className="text-xs text-text-tertiary">
-                            {manualPath.trim().toLowerCase().endsWith('.lrcat')
-                              ? 'Ends in .lrcat, so this is a Lightroom catalog.'
-                              : 'Not a .lrcat file, so this is a folder catalog.'}
-                          </p>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="md"
-                          disabled={!manualPath.trim() || picking}
-                          onClick={() => void saveCatalogPath(manualPath)}
-                        >
-                          {FIRST_RUN_USE_PATH}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                </>
+                    <CatalogManualPath
+                      open={typingManual}
+                      onToggle={() => setTypingManual((v) => !v)}
+                      busy={picking}
+                      value={manualPath}
+                      onChange={setManualPath}
+                      submitLabel={FIRST_RUN_USE_PATH}
+                      onSubmit={() => void catalog.beginChange(manualPath)}
+                      buttonSize="md"
+                    />
+                  </>
                 )
               ) : (
                 <>
@@ -291,7 +273,9 @@ export function FirstRunSetupScreen({
                     ) : null}
                   </div>
                   <div className="rounded-lg border border-border bg-surface px-3.5 py-3 text-left">
-                    <p className="text-sm font-semibold text-text">{kindHeading(catalogKind)}</p>
+                    <p className="text-sm font-semibold text-text">
+                      {forCatalogKind(catalogKind, FIRST_RUN_KIND_LRCAT, FIRST_RUN_KIND_FOLDER)}
+                    </p>
                     <p className="mt-1 text-sm text-text">
                       <PathSummary path={catalog.status?.resolvedPath ?? catalog.status?.path ?? ''} />
                     </p>
@@ -299,6 +283,9 @@ export function FirstRunSetupScreen({
                       <p className="mt-1 text-sm text-text-tertiary">{statsLine}</p>
                     ) : null}
                   </div>
+                  {readOnly ? (
+                    <p className="text-sm text-text-tertiary">{SETTINGS_CATALOG_REMOTE_HINT}</p>
+                  ) : null}
                 </>
               )}
             </>,
@@ -372,12 +359,24 @@ export function FirstRunSetupScreen({
           )}
         </div>
 
+        {catalog.notice ? <InlineNotice className="mt-4 text-left">{catalog.notice}</InlineNotice> : null}
         {catalogError ? (
           <p className="mt-4 text-left text-sm text-error" role="status">
-            {catalogError.startsWith(MSG_FAILED_START_JOB) ? catalogError : catalogError}
+            {catalogError}
           </p>
         ) : null}
       </div>
+
+      {catalog.pendingChange ? (
+        <CatalogChangeModal
+          preview={catalog.pendingChange.preview}
+          sameChoice={catalog.pendingChange.sameChoice}
+          onSameChoice={catalog.setSameChoice}
+          saving={catalog.saving}
+          onCancel={catalog.cancelChange}
+          onConfirm={() => void catalog.confirmChange()}
+        />
+      ) : null}
 
       {importConfirmOpen ? (
         <ClipModelDownloadConfirm

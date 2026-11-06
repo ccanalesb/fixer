@@ -1,6 +1,6 @@
 import { useQuery, keys } from '../data'
 import { ConfigAPI } from '../services/api'
-import type { ConfigCatalogGetResponse } from '../types/config'
+import type { CatalogKind, ConfigCatalogGetResponse } from '../types/config'
 
 type UseCatalogKindOptions = {
   /** When true, suspend until the catalog config loads instead of assuming Lightroom. */
@@ -10,9 +10,9 @@ type UseCatalogKindOptions = {
 /**
  * Catalog kind for copy that names Lightroom.
  */
-export function useCatalogKind(options: UseCatalogKindOptions & { pendingAsNull: true }): 'lightroom' | 'folder' | null
-export function useCatalogKind(options?: UseCatalogKindOptions): 'lightroom' | 'folder'
-export function useCatalogKind(options?: UseCatalogKindOptions): 'lightroom' | 'folder' | null {
+export function useCatalogKind(options: UseCatalogKindOptions & { pendingAsNull: true }): CatalogKind | null
+export function useCatalogKind(options?: UseCatalogKindOptions): CatalogKind
+export function useCatalogKind(options?: UseCatalogKindOptions): CatalogKind | null {
   const cfg = useQuery(keys.config.catalog(), () => ConfigAPI.getCatalog(), {
     ...(options?.pendingAsNull
       ? {}

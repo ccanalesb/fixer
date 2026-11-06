@@ -39,6 +39,8 @@ export const keys = {
   },
   lrWriteback: {
     photo: (imageKey: string) => ['lr-writeback.photo', imageKey] as const,
+    /** The XMP tab's read, which keeps a failed request instead of dropping it. */
+    readout: (imageKey: string) => ['lr-writeback.photo', imageKey, 'readout'] as const,
   },
   folderXmp: {
     photo: (imageKey: string) => ['folder-xmp.photo', imageKey] as const,

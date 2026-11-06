@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { JobsAPI, LrWritebackAPI, type LrWritebackSettingsResponse } from '../../services/api'
+import {
+  JobsAPI,
+  LrWritebackAPI,
+  type LrWritebackSettingsResponse,
+  type LrWritebackTurnOnPreviewResponse,
+} from '../../services/api'
+import { useCatalogKind } from '../../hooks/useCatalogKind'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
 import { Button } from '../ui/Button/Button'
 import { ConfirmModalFrame } from '../ui/ConfirmUndoAction'
 import { Spinner } from '../ui/Spinner'
@@ -16,6 +23,8 @@ import {
   FOLDER_WRITEBACK_STARS_SWITCH,
   FOLDER_WRITEBACK_STATUS_HELP,
   FOLDER_WRITEBACK_STATUS_TITLE,
+  FOLDER_WRITEBACK_STOP_WRITING_BODY,
+  FOLDER_WRITEBACK_STOP_WRITING_TITLE,
   FOLDER_WRITEBACK_TURN_ON_CANCEL,
   FOLDER_WRITEBACK_TURN_ON_CONFIRM,
   FOLDER_WRITEBACK_TURN_ON_LEAD,
@@ -59,7 +68,58 @@ type LrWritebackJobResult = {
 
 type TurnOnDialog = {
   kind: 'stars' | 'reject'
-  preview: { new_sidecar: number; update_sidecar: number; embedded: number }
+  preview: LrWritebackTurnOnPreviewResponse
+}
+
+type WritebackCopy = {
+  loading: string
+  section: string
+  sectionLead: string
+  starsSwitch: string
+  starsHelp: string
+  rejectSwitch: string
+  rejectHelp: string
+  statusTitle: string
+  statusHelp: string
+  write: string
+  writingProgress: string
+  writeResult: (n: number) => string
+  stopTitle: string
+  stopBody: string
+}
+
+const LIGHTROOM_COPY: WritebackCopy = {
+  loading: LR_WRITEBACK_LOADING,
+  section: LR_WRITEBACK_SECTION,
+  sectionLead: LR_WRITEBACK_SECTION_LEAD,
+  starsSwitch: LR_WRITEBACK_STARS_SWITCH,
+  starsHelp: LR_WRITEBACK_STARS_HELP,
+  rejectSwitch: LR_WRITEBACK_REJECT_SWITCH,
+  rejectHelp: LR_WRITEBACK_REJECT_HELP,
+  statusTitle: LR_WRITEBACK_STATUS_TITLE,
+  statusHelp: LR_WRITEBACK_STATUS_HELP,
+  write: LR_WRITEBACK_WRITE_TO_LR,
+  writingProgress: LR_WRITEBACK_WRITING_PROGRESS,
+  writeResult: LR_WRITEBACK_WRITE_RESULT,
+  stopTitle: LR_WRITEBACK_STOP_WRITING_TITLE,
+  stopBody: LR_WRITEBACK_STOP_WRITING_BODY,
+}
+
+const FOLDER_COPY: WritebackCopy = {
+  loading: FOLDER_WRITEBACK_LOADING,
+  section: FOLDER_WRITEBACK_SECTION,
+  sectionLead: FOLDER_WRITEBACK_SECTION_LEAD,
+  starsSwitch: FOLDER_WRITEBACK_STARS_SWITCH,
+  starsHelp: FOLDER_WRITEBACK_STARS_HELP,
+  rejectSwitch: FOLDER_WRITEBACK_REJECT_SWITCH,
+  rejectHelp: FOLDER_WRITEBACK_REJECT_HELP,
+  statusTitle: FOLDER_WRITEBACK_STATUS_TITLE,
+  statusHelp: FOLDER_WRITEBACK_STATUS_HELP,
+  write: FOLDER_WRITEBACK_WRITE,
+  writingProgress: FOLDER_WRITEBACK_WRITING_PROGRESS,
+  writeResult: FOLDER_WRITEBACK_WRITE_RESULT,
+  stopTitle: FOLDER_WRITEBACK_STOP_WRITING_TITLE,
+  stopBody: FOLDER_WRITEBACK_STOP_WRITING_BODY,
 }
 
 export function LightroomWritebackSection() {
@@ -74,7 +134,10 @@ export function LightroomWritebackSection() {
   const [turnOnDialog, setTurnOnDialog] = useState<TurnOnDialog | null>(null)
   const [turnOnBusy, setTurnOnBusy] = useState(false)
 
-  const isFolder = data?.catalog_kind === 'folder'
+  const configuredKind = useCatalogKind()
+  const catalogKind = data?.catalog_kind ?? configuredKind
+  const isFolder = catalogKind === 'folder'
+  const copy = forCatalogKind(catalogKind, LIGHTROOM_COPY, FOLDER_COPY)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -117,9 +180,7 @@ export function LightroomWritebackSection() {
           const result = job.result as LrWritebackJobResult | null | undefined
           if (result && job.status === 'completed') {
             const n = (result.catalog_updated_stars ?? 0) + (result.catalog_updated_reject ?? 0)
-            setWriteResult(
-              isFolder ? FOLDER_WRITEBACK_WRITE_RESULT(n) : LR_WRITEBACK_WRITE_RESULT(n),
-            )
+            setWriteResult(copy.writeResult(n))
           }
         } catch {
           /* ignore */
@@ -128,7 +189,7 @@ export function LightroomWritebackSection() {
       })()
     }
     prevJobId.current = writebackJobId
-  }, [writebackJobId, load, isFolder])
+  }, [writebackJobId, load, copy])
 
   useEffect(() => {
     if (!writebackJobId) return
@@ -213,9 +274,7 @@ export function LightroomWritebackSection() {
 
   if (loading && !data) {
     return (
-      <p className="text-sm text-text-secondary">
-        {isFolder ? FOLDER_WRITEBACK_LOADING : LR_WRITEBACK_LOADING}
-      </p>
+      <p className="text-sm text-text-secondary">{copy.loading}</p>
     )
   }
   if (!data) {
@@ -230,17 +289,6 @@ export function LightroomWritebackSection() {
   const switchesOn = data.write_stars || data.write_reject
   const writeDisabled =
     !switchesOn || jobRunning || !data.catalog_write_available || writeBusy
-
-  const sectionTitle = isFolder ? FOLDER_WRITEBACK_SECTION : LR_WRITEBACK_SECTION
-  const sectionLead = isFolder ? FOLDER_WRITEBACK_SECTION_LEAD : LR_WRITEBACK_SECTION_LEAD
-  const starsSwitch = isFolder ? FOLDER_WRITEBACK_STARS_SWITCH : LR_WRITEBACK_STARS_SWITCH
-  const starsHelp = isFolder ? FOLDER_WRITEBACK_STARS_HELP : LR_WRITEBACK_STARS_HELP
-  const rejectSwitch = isFolder ? FOLDER_WRITEBACK_REJECT_SWITCH : LR_WRITEBACK_REJECT_SWITCH
-  const rejectHelp = isFolder ? FOLDER_WRITEBACK_REJECT_HELP : LR_WRITEBACK_REJECT_HELP
-  const statusTitle = isFolder ? FOLDER_WRITEBACK_STATUS_TITLE : LR_WRITEBACK_STATUS_TITLE
-  const statusHelp = isFolder ? FOLDER_WRITEBACK_STATUS_HELP : LR_WRITEBACK_STATUS_HELP
-  const writeLabel = isFolder ? FOLDER_WRITEBACK_WRITE : LR_WRITEBACK_WRITE_TO_LR
-  const writingProgress = isFolder ? FOLDER_WRITEBACK_WRITING_PROGRESS : LR_WRITEBACK_WRITING_PROGRESS
 
   return (
     <div className="space-y-0 divide-y divide-border rounded-base border border-border bg-bg">
@@ -278,25 +326,25 @@ export function LightroomWritebackSection() {
 
       {stopDialog ? (
         <ConfirmModalFrame
-          title={LR_WRITEBACK_STOP_WRITING_TITLE}
+          title={copy.stopTitle}
           confirmLabel={LR_WRITEBACK_STOP_WRITING_CONFIRM}
           cancelLabel={LR_WRITEBACK_STOP_WRITING_CANCEL}
           onConfirm={() => void confirmStopWriting()}
           onCancel={() => setStopDialog(null)}
           busy={stopBusy}
         >
-          <p className="text-sm text-text-secondary">{LR_WRITEBACK_STOP_WRITING_BODY}</p>
+          <p className="text-sm text-text-secondary">{copy.stopBody}</p>
         </ConfirmModalFrame>
       ) : null}
 
       <div className="p-4 border-b border-border">
-        <h4 className="text-sm font-semibold text-text">{sectionTitle}</h4>
-        <p className="mt-1 text-sm text-text-secondary">{sectionLead}</p>
+        <h4 className="text-sm font-semibold text-text">{copy.section}</h4>
+        <p className="mt-1 text-sm text-text-secondary">{copy.sectionLead}</p>
       </div>
 
       <SettingRow
-        name={starsSwitch}
-        description={starsHelp}
+        name={copy.starsSwitch}
+        description={copy.starsHelp}
         control={
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
@@ -329,8 +377,8 @@ export function LightroomWritebackSection() {
       />
 
       <SettingRow
-        name={rejectSwitch}
-        description={rejectHelp}
+        name={copy.rejectSwitch}
+        description={copy.rejectHelp}
         control={
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
@@ -362,7 +410,7 @@ export function LightroomWritebackSection() {
         <div className="px-4 py-3 flex items-center gap-2 text-sm text-text-secondary">
           <Spinner sizeClass="h-4 w-4" />
           <span>
-            {writingProgress}{' '}
+            {copy.writingProgress}{' '}
             <Link to={PROCESSING_JOB_QUEUE_ROUTE} className="text-primary underline">
               {LR_WRITEBACK_WRITING_JOB_LINK}
             </Link>
@@ -372,7 +420,7 @@ export function LightroomWritebackSection() {
 
       <div className="px-4 py-3 flex flex-wrap items-center gap-3">
         <Button type="button" disabled={writeDisabled} onClick={() => void writeToCatalog()}>
-          {writeLabel}
+          {copy.write}
         </Button>
         {!isFolder && !data.catalog_write_available ? (
           <span className="text-xs text-warning">{LR_WRITEBACK_CLOSE_LR}</span>
@@ -381,8 +429,8 @@ export function LightroomWritebackSection() {
       </div>
 
       <SettingRow
-        name={statusTitle}
-        description={statusHelp}
+        name={copy.statusTitle}
+        description={copy.statusHelp}
         control={
           isFolder ? (
             <span className="hidden sm:inline" aria-hidden />

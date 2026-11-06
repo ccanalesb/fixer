@@ -1,9 +1,12 @@
-/** Catalog list/detail `pick`: 1 = pick, -1 = reject, 0 = neither (API may send numbers despite boolean schema). */
-export function isCatalogRejected(pick: unknown): boolean {
-  return pick === -1 || pick === '-1'
+import type { components } from '../types/api.gen'
+
+type CatalogPick = components['schemas']['CatalogPick'] | undefined
+
+/** The catalog's pick flag: 1 = pick, -1 = reject, 0 = neither. */
+export function isCatalogRejected(pick: CatalogPick): boolean {
+  return pick === -1
 }
 
-export function isCatalogPick(pick: unknown): boolean {
-  if (isCatalogRejected(pick)) return false
-  return pick === 1 || pick === true
+export function isCatalogPick(pick: CatalogPick): boolean {
+  return pick === 1
 }

@@ -31,8 +31,14 @@ import { StackTab } from './tabs/StackTab'
 import { frameHeldBack, frameSaysNothing, frameSubstanceQuery } from './tabs/frameSubstance'
 import { ErrorBoundary, ErrorState, imageDetailChanged, keys, stacksChanged, useQuery } from '../../data'
 import { useCatalogKind } from '../../hooks/useCatalogKind'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
 
 export type ImageDetailTab = 'culling' | 'ai' | 'lightroom' | 'file' | 'stack'
+
+/** The tab that shows the catalog's own metadata: Lightroom on a `.lrcat`, XMP on a folder. */
+type MetaTab = { label: string; Panel: (props: { image: ImageView }) => ReactNode }
+const LIGHTROOM_META_TAB: MetaTab = { label: IMAGE_DETAILS_TAB_LIGHTROOM, Panel: LightroomTab }
+const FOLDER_META_TAB: MetaTab = { label: IMAGE_DETAILS_TAB_XMP, Panel: XmpTab }
 
 interface ImageDetailModalProps {
   imageKey: string
@@ -163,19 +169,14 @@ function ImageDetailModalBody({
 
   const catalogKind = useCatalogKind({ pendingAsNull: true })
 
-  const metaTabLabel =
-    catalogKind === 'folder'
-      ? IMAGE_DETAILS_TAB_XMP
-      : catalogKind === 'lightroom'
-        ? IMAGE_DETAILS_TAB_LIGHTROOM
-        : null
+  const metaTab = catalogKind ? forCatalogKind(catalogKind, LIGHTROOM_META_TAB, FOLDER_META_TAB) : null
 
   const tabs: (TabNavItem & { id: ImageDetailTab })[] = [
     ...(showCullSection || !frameSaysNothing(frame)
       ? [{ id: 'culling' as const, label: IMAGE_DETAILS_TAB_CULLING }]
       : []),
     { id: 'ai', label: IMAGE_DETAILS_TAB_AI },
-    ...(metaTabLabel ? [{ id: 'lightroom' as const, label: metaTabLabel }] : []),
+    ...(metaTab ? [{ id: 'lightroom' as const, label: metaTab.label }] : []),
     { id: 'file', label: IMAGE_DETAILS_TAB_FILE },
     ...(hasStack ? [{ id: 'stack' as const, label: IMAGE_DETAILS_TAB_STACK(stackSize) }] : []),
   ]
@@ -186,12 +187,7 @@ function ImageDetailModalBody({
       <CullingTab imageKey={imageKey} showVerdict={showCullSection} />
     ),
     ai: () => <AiTab imageKey={imageKey} />,
-    lightroom: () =>
-      catalogKind === 'folder' ? (
-        <XmpTab image={displayImage} />
-      ) : catalogKind === 'lightroom' ? (
-        <LightroomTab image={displayImage} />
-      ) : null,
+    lightroom: () => (metaTab ? <metaTab.Panel image={displayImage} /> : null),
     file: () => <FileTab image={displayImage} catalogKind={catalogKind} onPostedChange={setPostedOverride} />,
     stack: () => (hasStack ? <StackTab stackId={stackId} imageKey={imageKey} /> : null),
   }

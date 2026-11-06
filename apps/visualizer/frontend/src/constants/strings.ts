@@ -631,7 +631,7 @@ export const CATALOG_LIBRARY_UNAVAILABLE =
 export const CATALOG_CACHE_INTRO_BODY =
   'The vision cache stores preprocessed Lightroom Classic catalog images for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
 export const CATALOG_CACHE_INTRO_BODY_FOLDER =
-  'The vision cache stores preprocessed photos from the folder for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
+  'The vision cache stores preprocessed photos from the folder for fast AI comparison. Rebuilding the cache will process every photo in the folder and may take several minutes.'
 export const CATALOG_CACHE_STAT_TOTAL_LABEL = 'Total Images'
 export const CATALOG_CACHE_STAT_TOTAL_HELPER = 'Images in Lightroom Classic catalog'
 export const CATALOG_CACHE_STAT_TOTAL_HELPER_FOLDER = 'Photos in the folder'
@@ -985,6 +985,7 @@ export const LR_WRITEBACK_STOP_WRITING_CANCEL = 'Keep writing'
 export const LR_WRITEBACK_STOP_WRITING_CONFIRM = 'Stop and turn off'
 export const LR_WRITEBACK_STARS_STRONG_FROM = 'Count a dimension as strong when it is'
 export const LR_WRITEBACK_STARS_STRONG_FROM_HELP = 'Used for the stars written to Lightroom Classic.'
+export const LR_WRITEBACK_STARS_STRONG_FROM_HELP_FOLDER = 'Used for the stars written into your photo files.'
 export const LR_WRITEBACK_STRONG_FROM_7 = '7-level set'
 export const LR_WRITEBACK_STRONG_FROM_10 = '10-level set'
 export const LR_WRITEBACK_STRONG_FROM_EVERY = 'Strong in every level set (7 and 10)'
@@ -996,12 +997,11 @@ export const LR_WRITEBACK_KEYWORDS = 'Keywords'
 export const LR_WRITEBACK_UNDO = 'Undo'
 export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
 export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom Classic after the app wrote it.'
-export const FOLDER_WRITEBACK_USER_CHANGED = (filename: string) =>
-  `You changed ${filename} after the app wrote it.`
 export const FOLDER_WRITEBACK_WRITTEN_DETAIL = (fileLabel: string, whenLabel: string) =>
   `Written to ${fileLabel} · ${whenLabel}`
 export const LR_WRITEBACK_APP_KEYWORDS = 'App keywords'
 export const LR_WRITEBACK_PICK = 'Pick'
+export const LR_WRITEBACK_REJECT = 'Reject'
 export const LR_WRITEBACK_UNDO_STARS_ROW = 'Stars written by the app'
 export const LR_WRITEBACK_UNDO_REJECT_ROW = 'Reject written by the app'
 export const XMP_DETAIL_SECTION = 'XMP and IPTC'
@@ -1010,6 +1010,7 @@ export const XMP_NO_METADATA_HINT =
 export const XMP_SECONDARY_SIDECAR = (basename: string, readAfter: string) =>
   `Also next to it: ${basename} (older, read after ${readAfter})`
 export const XMP_REJECT_LABEL = 'Reject'
+export const XMP_WRITEBACK_LOAD_ERROR = 'Could not read what the app wrote into this file:'
 export const XMP_FILE_MISSING =
   'The photo file is missing, so its XMP and IPTC cannot be read from disk.'
 export const LABEL_COLOR = 'Label'
@@ -1037,6 +1038,9 @@ export const FOLDER_WRITEBACK_TURN_ON_TITLE = (what: 'stars' | 'reject') =>
   `Write ${what === 'stars' ? 'stars' : 'the reject'} into your photo files?`
 export const FOLDER_WRITEBACK_TURN_ON_LEAD = (root: string) =>
   `Fixer will change files in ${root} when culling ends, or when you press Write to photo files:`
+export const FOLDER_WRITEBACK_STOP_WRITING_TITLE = 'Stop writing to your photo files?'
+export const FOLDER_WRITEBACK_STOP_WRITING_BODY =
+  'The running write-back job is cancelled. Photos already written keep their stars or reject; you can undo them from each photo.'
 export const FOLDER_WRITEBACK_TURN_ON_CANCEL = 'Cancel'
 export const FOLDER_WRITEBACK_TURN_ON_CONFIRM = 'Turn on'
 

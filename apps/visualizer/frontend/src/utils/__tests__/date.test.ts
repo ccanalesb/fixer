@@ -29,6 +29,10 @@ describe('formatDate', () => {
     expect(formatDate(null)).toBe('')
     expect(formatDate('')).toBe('')
   })
+
+  it('returns an empty string for a value that is not a date', () => {
+    expect(formatDate('not-a-date')).toBe('')
+  })
 })
 
 describe('formatTime', () => {

@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../../types/config'
 import type { ImageView } from '../../services/api'
 import { Badge } from '../ui/badges'
 import {
@@ -18,7 +19,7 @@ interface ImageMetadataBadgesProps {
   hidePrimaryScore?: boolean
   /** When true, omits the green "Posted" chip (e.g. when shown as overlay on the thumbnail). */
   hidePostedBadge?: boolean
-  catalogKind?: 'lightroom' | 'folder'
+  catalogKind?: CatalogKind
   className?: string
 }
 

@@ -20,6 +20,8 @@ import {
   XMP_FILE_MISSING,
   XMP_NO_METADATA_HINT,
   XMP_REJECT_LABEL,
+  XMP_SECONDARY_SIDECAR,
+  XMP_WRITEBACK_LOAD_ERROR,
 } from '../../../constants/strings'
 import { formatDateTime } from '../../../utils/date'
 import { ActionArea, ActionRow, Fact, FactsBlock, StatusBlock } from '../detail-blocks'
@@ -102,22 +104,26 @@ function rejectLine(
   )
 }
 
-async function fetchFolderXmp(imageKey: string): Promise<FolderXmpDetailResponse> {
-  return ImagesAPI.getFolderXmpDetail(imageKey)
-}
+type WritebackReadout =
+  | { detail: LrWritebackPhotoDetailResponse; error: null }
+  | { detail: null; error: string }
 
-async function fetchLrWritebackPhoto(imageKey: string): Promise<LrWritebackPhotoDetailResponse | null> {
+/** A failed read stays visible: it must not look like "nothing written". */
+async function fetchWritebackReadout(imageKey: string): Promise<WritebackReadout> {
   try {
-    return await LrWritebackAPI.getPhoto(imageKey)
-  } catch {
-    return null
+    return { detail: await LrWritebackAPI.getPhoto(imageKey), error: null }
+  } catch (e) {
+    return { detail: null, error: e instanceof Error ? e.message : String(e) }
   }
 }
 
 /** Folder catalog: ratings, labels and keywords read from XMP/IPTC, with each field's source. */
 export function XmpTab({ image }: { image: ImageView }) {
-  const detail = useQuery(keys.folderXmp.photo(image.key), () => fetchFolderXmp(image.key))
-  const writeback = useQuery(keys.lrWriteback.photo(image.key), () => fetchLrWritebackPhoto(image.key))
+  const detail = useQuery(keys.folderXmp.photo(image.key), () => ImagesAPI.getFolderXmpDetail(image.key))
+  const readout = useQuery(keys.lrWriteback.readout(image.key), () =>
+    fetchWritebackReadout(image.key),
+  )
+  const writeback = readout.detail
   const [undoError, setUndoError] = useState<string | null>(null)
 
   const undo = async (kind: 'stars' | 'reject') => {
@@ -198,15 +204,15 @@ export function XmpTab({ image }: { image: ImageView }) {
       </FactsBlock>
       {detail.secondary_sidecar_note ? (
         <p className="text-xs text-text-tertiary">
-          Also next to it:{' '}
-          <code className="rounded bg-surface px-1 font-mono text-xs">
-            {detail.secondary_sidecar_note.basename}
-          </code>{' '}
-          (older, read after{' '}
-          <code className="rounded bg-surface px-1 font-mono text-xs">
-            {detail.secondary_sidecar_note.read_after_basename}
-          </code>
-          )
+          {XMP_SECONDARY_SIDECAR(
+            detail.secondary_sidecar_note.basename,
+            detail.secondary_sidecar_note.read_after_basename,
+          )}
+        </p>
+      ) : null}
+      {readout.error ? (
+        <p className="text-xs text-error" role="alert">
+          {XMP_WRITEBACK_LOAD_ERROR} {readout.error}
         </p>
       ) : null}
       {writeback?.strong_dimensions_line ? (

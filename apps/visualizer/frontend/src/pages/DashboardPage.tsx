@@ -131,20 +131,21 @@ function DashboardPageInner() {
     if (pendingCatalogImport) catalogLibraryChanged()
   }, [pendingCatalogImport])
 
+  const { loading: setupLoading, importRunning, importStarting, startImport } = firstRun
   useEffect(() => {
-    if (!pendingCatalogImport || firstRun.loading || !showSetup) return
+    if (!pendingCatalogImport || setupLoading || !showSetup) return
     navigate(location.pathname, { replace: true, state: null })
-    if (!firstRun.importRunning && !firstRun.importStarting) {
-      void firstRun.startImport()
+    if (!importRunning && !importStarting) {
+      void startImport()
     }
   }, [
     pendingCatalogImport,
     showSetup,
     location.pathname,
-    firstRun.loading,
-    firstRun.importRunning,
-    firstRun.importStarting,
-    firstRun.startImport,
+    setupLoading,
+    importRunning,
+    importStarting,
+    startImport,
     navigate,
   ])
 

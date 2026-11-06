@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { CullingProfileEditor } from '../CullingProfileEditor'
-import { ApiRequestError } from '../../../services/api'
+import { ApiRequestError, ConfigAPI } from '../../../services/api'
+import { deleteMatching } from '../../../data/cache'
 import type { CullingModelsUsable, CullingStageUsability } from '../../../services/api'
 import {
   CULL_PROFILE_ADD_LEVEL,
@@ -32,6 +33,7 @@ import {
   CULLING_MODELS_SAVED,
   CULLING_MODELS_SAVED_JOB_WAITING,
   CULLING_MODELS_VIEW_QUEUE,
+  LR_WRITEBACK_STARS_STRONG_FROM_HELP_FOLDER,
 } from '../../../constants/strings'
 
 const saveDefinition = vi.fn()
@@ -155,6 +157,24 @@ describe('CullingProfileEditor', () => {
     expect(screen.getByRole('combobox', { name: CULL_RULE_SUBJECT_ARIA })).toBeInTheDocument()
     expect(screen.queryByText(/score forecast/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /advanced/i })).not.toBeInTheDocument()
+  })
+
+  it('says the stars go into the photo files on a folder catalog', async () => {
+    deleteMatching(() => true)
+    vi.mocked(ConfigAPI.getCatalog).mockResolvedValueOnce({
+      catalog_path: '/tmp/photos',
+      resolved_path: '/tmp/photos',
+      exists: true,
+      catalog_kind: 'folder',
+      photo_count: 0,
+      folder_count: 0,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+    render(<CullingProfileEditor profile={baseProfile} />)
+    openRule()
+    expect(await screen.findByText(LR_WRITEBACK_STARS_STRONG_FROM_HELP_FOLDER)).toBeInTheDocument()
+    deleteMatching(() => true)
   })
 
   it('surfaces validation_errors on fields', async () => {

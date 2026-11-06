@@ -110,4 +110,40 @@ describe('CatalogChangeModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch catalog' }))
     expect(onConfirm).toHaveBeenCalled()
   })
+
+  it('closes on Escape', () => {
+    const onCancel = vi.fn()
+    render(
+      <CatalogChangeModal
+        preview={switchPreview}
+        sameChoice="different"
+        onSameChoice={() => {}}
+        saving={false}
+        onCancel={onCancel}
+        onConfirm={() => {}}
+      />,
+    )
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalled()
+  })
+
+  it('asks same or different with confirm disabled, and switches once Different is chosen', () => {
+    const onSameChoice = vi.fn()
+    render(
+      <CatalogChangeModal
+        preview={sameOrDifferentPreview}
+        sameChoice={null}
+        onSameChoice={onSameChoice}
+        saving={false}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Change the catalog to new?' })).toBeInTheDocument()
+    expect(screen.queryByText(/Everything for/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: /A different catalog/ }))
+    expect(onSameChoice).toHaveBeenCalledWith('different')
+  })
 })

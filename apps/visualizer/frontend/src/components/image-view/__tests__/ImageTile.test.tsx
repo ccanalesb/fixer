@@ -262,7 +262,7 @@ describe('ImageTile', () => {
     expect(screen.getByText(expected)).toBeInTheDocument()
   })
 
-  it('greys a tile and shows a file-missing chip when catalog_missing_since is set', () => {
+  it('greys only the image and shows a file-missing chip when catalog_missing_since is set', () => {
     const { container } = render(
       <ImageTile
         image={baseImage({ catalog_missing_since: '2026-11-01T00:00:00Z' })}
@@ -273,6 +273,9 @@ describe('ImageTile', () => {
       />,
     )
     expect(screen.getByText(CATALOG_CHIP_FILE_MISSING)).toBeInTheDocument()
-    expect(container.querySelector('.grayscale')).not.toBeNull()
+    const img = container.querySelector('img')!
+    expect(img.className).toContain('grayscale')
+    expect(img.className).toContain('opacity-[.55]')
+    expect(screen.getByTestId('image-tile').className).not.toMatch(/opacity/)
   })
 })
