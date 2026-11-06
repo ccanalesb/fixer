@@ -25,6 +25,7 @@ import {
   FIRST_RUN_MANUAL_PATH_DISCLOSURE,
   FIRST_RUN_MANUAL_PATH_LABEL,
   FIRST_RUN_PHOTOS_KEPT_IN_IMAGES,
+  FIRST_RUN_REMOTE_CATALOG_HINT,
   FIRST_RUN_RETRY_IMPORT,
   FIRST_RUN_SEE_JOB_LOG,
   FIRST_RUN_STEP_CATALOG_TITLE,
@@ -134,6 +135,7 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
   }, [catalog.status?.path])
 
   const showCatalogPickers = !catalogConfigured || changingCatalog
+  const readOnly = catalog.status?.readOnly ?? false
   const step1Variant = showCatalogPickers ? 'active' : 'done'
   const step2Variant = !catalogConfigured
     ? 'locked'
@@ -189,6 +191,12 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
             step1Variant,
             <>
               {showCatalogPickers ? (
+                readOnly ? (
+                  <>
+                    <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
+                    <p className="text-sm text-text-secondary">{FIRST_RUN_REMOTE_CATALOG_HINT}</p>
+                  </>
+                ) : (
                 <>
                   <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -253,11 +261,12 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
                     ) : null}
                   </div>
                 </>
+                )
               ) : (
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
-                    {!importRunning && !importClipDownloadFailed ? (
+                    {!readOnly && !importRunning && !importClipDownloadFailed ? (
                       <button
                         type="button"
                         className="shrink-0 text-sm font-medium text-accent hover:underline"

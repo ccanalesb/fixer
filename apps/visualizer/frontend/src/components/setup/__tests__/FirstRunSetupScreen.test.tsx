@@ -5,6 +5,7 @@ import { FirstRunSetupScreen } from '../FirstRunSetupScreen'
 import {
   CLIP_CONFIRM_DOWNLOAD_IMPORT,
   CLIP_CONFIRM_TITLE_IMPORT,
+  FIRST_RUN_CHOOSE_FOLDER,
   FIRST_RUN_IMPORT_PHOTOS,
   FIRST_RUN_RETRY_IMPORT,
 } from '../../../constants/strings'
@@ -156,5 +157,27 @@ describe('FirstRunSetupScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: FIRST_RUN_RETRY_IMPORT }))
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(startImport).toHaveBeenCalledWith({ expectClipDownload: true })
+  })
+
+  it('shows read-only copy instead of pickers when the catalog is remote', () => {
+    render(
+      <MemoryRouter>
+        <FirstRunSetupScreen
+          setup={baseSetup({
+            catalogConfigured: false,
+            catalog: {
+              ...baseSetup().catalog,
+              status: {
+                ...baseSetup().catalog.status!,
+                readOnly: true,
+              },
+            },
+          })}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText(/Only on the Mac running Fixer/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: FIRST_RUN_CHOOSE_FOLDER })).not.toBeInTheDocument()
   })
 })
