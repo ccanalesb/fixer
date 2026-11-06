@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import {
+  ConfigAPI,
   CullAPI,
   CullingModelsAPI,
   DescriptionsAPI,
@@ -45,6 +46,16 @@ const DETAIL = {
 describe('Cull catalog modal cull section', () => {
   beforeEach(() => {
     deleteMatching(() => true)
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '',
+      resolved_path: '',
+      exists: false,
+      catalog_kind: 'lightroom',
+      photo_count: null,
+      folder_count: null,
+      unreadable_directories: [],
+      picker_available: false,
+    })
     vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(DETAIL)
     vi.spyOn(CullAPI, 'photoDetail')
     vi.spyOn(ProvidersAPI, 'getDefaults').mockResolvedValue({
