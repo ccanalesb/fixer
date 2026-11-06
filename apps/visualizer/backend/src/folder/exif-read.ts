@@ -6,6 +6,7 @@ import { ExifTool, type Tags } from 'exiftool-vendored';
 import { generateRecordKey } from '../lightroom/reader.js';
 import type { CatalogRecord } from '../lightroom/reader.js';
 import type { ResolvedFolderPhoto } from './walk.js';
+import { applyFolderXmpMetadata, type FolderXmpMetadata } from './xmp-metadata.js';
 
 const WALL_CLOCK_FIELDS = ['DateTimeOriginal', 'CreateDate', 'DateTimeDigitized'] as const;
 
@@ -92,6 +93,7 @@ export function folderPhotoToCatalogRecord(
   photo: ResolvedFolderPhoto,
   tags: Tags,
   fileSize = 0,
+  xmp?: FolderXmpMetadata,
 ): CatalogRecord {
   const date_taken = captureDateFromTags(tags, photo.filepath);
   const record: CatalogRecord = {
@@ -122,6 +124,7 @@ export function folderPhotoToCatalogRecord(
     orientation: null,
   };
   record.key = generateRecordKey(record);
+  if (xmp) applyFolderXmpMetadata(record, xmp);
   return record;
 }
 
@@ -130,12 +133,14 @@ export function buildFolderCatalogRecords(
   photos: readonly ResolvedFolderPhoto[],
   tagsByPath: ReadonlyMap<string, Tags>,
   sizeByPath?: ReadonlyMap<string, number>,
+  xmpByRelPath?: ReadonlyMap<string, FolderXmpMetadata>,
 ): CatalogRecord[] {
   const byKey = new Map<string, CatalogRecord>();
   for (const photo of photos) {
     const tags = tagsByPath.get(photo.filepath) ?? ({} as Tags);
     const size = sizeByPath?.get(photo.filepath) ?? 0;
-    const record = folderPhotoToCatalogRecord(photo, tags, size);
+    const xmp = xmpByRelPath?.get(photo.relPath);
+    const record = folderPhotoToCatalogRecord(photo, tags, size, xmp);
     byKey.set(record.key, record);
   }
   return [...byKey.values()];
