@@ -110,4 +110,93 @@ describe('syncFolderCatalog', () => {
       db.close();
     }
   });
+
+  it('a renamed file matching one gone photo on size and capture time keeps its key', async () => {
+    const fixed = new Date('2020-05-05T05:05:05Z');
+    writeFileSync(join(root, 'a.jpg'), 'same-bytes');
+    utimesSync(join(root, 'a.jpg'), fixed, fixed);
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      const before = db.prepare('SELECT key FROM images').get() as { key: string };
+
+      rmSync(join(root, 'a.jpg'));
+      writeFileSync(join(root, 'b.jpg'), 'same-bytes');
+      utimesSync(join(root, 'b.jpg'), fixed, fixed);
+
+      const { result } = await syncFolderCatalog(root, db, {});
+      expect(result.moved).toBe(1);
+      expect(result.added).toBe(0);
+      expect(getImageCount(db)).toBe(1);
+      const after = db.prepare('SELECT key, id, catalog_missing_since FROM images').get() as {
+        key: string;
+        id: string;
+        catalog_missing_since: string | null;
+      };
+      expect(after.key).toBe(before.key);
+      expect(after.id).toBe('b.jpg');
+      expect(after.catalog_missing_since).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('a deleted file keeps its row and is marked gone, then un-gone when it returns', async () => {
+    writeFileSync(join(root, 'keep.jpg'), 'fake-jpeg');
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      const key = (db.prepare('SELECT key FROM images').get() as { key: string }).key;
+
+      rmSync(join(root, 'keep.jpg'));
+      const gone = await syncFolderCatalog(root, db, {});
+      expect(gone.result.newly_gone).toBe(1);
+      expect(gone.result.stale).toBe(1);
+      expect(getImageCount(db)).toBe(1);
+      const row = db.prepare('SELECT catalog_missing_since FROM images WHERE key = ?').get(key) as {
+        catalog_missing_since: string | null;
+      };
+      expect(row.catalog_missing_since).not.toBeNull();
+
+      writeFileSync(join(root, 'keep.jpg'), 'fake-jpeg');
+      const back = await syncFolderCatalog(root, db, {});
+      expect(back.result.stale).toBe(0);
+      const cleared = db
+        .prepare('SELECT catalog_missing_since FROM images WHERE key = ?')
+        .get(key) as { catalog_missing_since: string | null };
+      expect(cleared.catalog_missing_since).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('a file edited in place is re-read and reported as changed', async () => {
+    const path = join(root, 'edit.jpg');
+    writeFileSync(path, 'first');
+    utimesSync(path, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'));
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+
+      writeFileSync(path, 'second-contents-different-size');
+      utimesSync(path, new Date('2021-01-01T00:00:00Z'), new Date('2021-01-01T00:00:00Z'));
+      const { result } = await syncFolderCatalog(root, db, {});
+      expect(result.changed).toBe(1);
+      expect(result.added).toBe(0);
+      expect(getImageCount(db)).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('a root that is not there is treated like "catalog not found"', async () => {
+    const db = initLibraryDb(dbPath);
+    try {
+      await expect(syncFolderCatalog(join(dir, 'missing'), db, {})).rejects.toThrow(
+        /Catalog not found/,
+      );
+    } finally {
+      db.close();
+    }
+  });
 });

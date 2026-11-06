@@ -224,6 +224,13 @@ export async function syncFolderCatalog(
       await markStaleIfPreviewPhashChanged(libDb, row.key, disk.photo.filepath);
     }
 
+    // Edits keep the key the row first got; only genuinely new files mint one.
+    const existingKeyByRel = new Map<string, string>();
+    for (const disk of plan.toRead) {
+      const row = dbRows.find((r) => r.id === disk.photo.relPath);
+      if (row) existingKeyByRel.set(disk.photo.relPath, row.key);
+    }
+
     const readQueue = [...plan.toRead, ...stillNew];
     const batches = [...batchResolvedPhotos(readQueue.map((d) => d.photo), SYNC_BATCH_SIZE)];
 
@@ -258,12 +265,22 @@ export async function syncFolderCatalog(
         mtimeByKey.set(rec.key, disk.stat.mtimeMs);
       }
 
+      const changedRelPaths = new Set<string>();
       libraryWrite(libDb, () => {
         const inserts: CatalogRecord[] = [];
         for (const record of records) {
           const rel = String(record.id);
           const disk = diskBatch.find((d) => d.photo.relPath === rel);
           if (!disk) continue;
+          // Identity is the path. An edited row keeps the key it was first given;
+          // a new path either takes an in-DB key's slot (a collision) or inserts.
+          const existingKey = existingKeyByRel.get(rel);
+          if (existingKey !== undefined) {
+            updateFolderRecordInPlace(libDb, existingKey, record, disk.stat.mtimeMs, true);
+            counters.changed += 1;
+            changedRelPaths.add(rel);
+            continue;
+          }
           if (!keysInDb.has(record.key)) {
             inserts.push(record);
             keysInDb.add(record.key);
@@ -273,6 +290,7 @@ export async function syncFolderCatalog(
           if (existing && existing.id !== rel) counters.collisions += 1;
           updateFolderRecordInPlace(libDb, record.key, record, disk.stat.mtimeMs, true);
           counters.changed += 1;
+          changedRelPaths.add(rel);
         }
         counters.added += insertFolderRecords(libDb, inserts, mtimeByKey);
       });
@@ -281,9 +299,9 @@ export async function syncFolderCatalog(
         const rel = String(record.id);
         const disk = diskBatch.find((d) => d.photo.relPath === rel);
         if (!disk) continue;
-        const existing = keysInDb.has(record.key);
-        if (existing) {
-          await markStaleIfPreviewPhashChanged(libDb, record.key, disk.photo.filepath);
+        if (changedRelPaths.has(rel)) {
+          const key = existingKeyByRel.get(rel) ?? record.key;
+          await markStaleIfPreviewPhashChanged(libDb, key, disk.photo.filepath);
         }
       }
 
