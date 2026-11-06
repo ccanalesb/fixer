@@ -21,7 +21,7 @@ import {
   syncCatalog,
   type SyncCatalogOutcome,
 } from '../../lightroom/catalog-sync.js';
-import { syncFolderCatalog, type FolderCatalogSyncResult, type SyncFolderCatalogOutcome } from '../../folder/sync.js';
+import { syncFolderCatalog, FOLDER_CATALOG_READ_PROGRESS, type FolderCatalogSyncResult, type SyncFolderCatalogOutcome } from '../../folder/sync.js';
 import type { JobRunner } from '../runner.js';
 import {
   asMetadata,
@@ -119,7 +119,7 @@ export async function runCatalogSyncPass(
     runner.updateProgress(jobId, mapPassProgress(ctx, pct), `${prefix}${message}`);
 
   const isFolder = inferCatalogKind(catalogPath) === 'folder';
-  progress(5, isFolder ? 'Reading the folder...' : 'Connecting to Lightroom Classic catalog...');
+  progress(5, isFolder ? FOLDER_CATALOG_READ_PROGRESS : 'Connecting to Lightroom Classic catalog...');
 
   let outcome: SyncCatalogOutcome | SyncFolderCatalogOutcome;
   try {

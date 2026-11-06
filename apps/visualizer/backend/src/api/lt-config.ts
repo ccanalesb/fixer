@@ -14,7 +14,11 @@ import {
   findCatalogLibrariesForPath,
   inferCatalogKind,
 } from '../catalog-library.js';
-import { folderCatalogStats, folderCatalogWalkDiagnostics } from '../folder/walk.js';
+import { folderCatalogStats, folderCatalogWalkDiagnostics, invalidateFolderCatalogWalkCache } from '../folder/walk.js';
+import {
+  connectCatalogReadOnly,
+  getImageCount as getLightroomCatalogImageCount,
+} from '../lightroom/reader.js';
 import {
   config,
   expandUserPath,
@@ -22,7 +26,7 @@ import {
   updateConfigYamlStackBurstDeltaMs,
 } from '../config.js';
 import { openLibraryDb } from '../db/connection.js';
-import { getImageCount } from '../db/library/statistics.js';
+import { getImageCount as getLibraryImageCount } from '../db/library/statistics.js';
 import { getJob, initJobsDb } from '../db/jobs/jobs.js';
 import { emitJobEvent } from '../websocket/events.js';
 import { createOpenApiApp } from './openapi.js';
@@ -81,11 +85,26 @@ function currentPhotoCount(resolved: string): number | null {
   if (!existsSync(dbPath)) return null;
   const db = openLibraryDb(dbPath, { readonly: true });
   try {
-    return getImageCount(db);
+    return getLibraryImageCount(db);
   } catch {
     return null;
   } finally {
     db.close();
+  }
+}
+
+function lightroomCatalogPhotoCount(resolved: string): number | null {
+  const libraryCount = currentPhotoCount(resolved);
+  if (libraryCount != null && libraryCount > 0) return libraryCount;
+  try {
+    const conn = connectCatalogReadOnly(resolved);
+    try {
+      return getLightroomCatalogImageCount(conn);
+    } finally {
+      conn.close();
+    }
+  } catch {
+    return libraryCount;
   }
 }
 
@@ -96,15 +115,15 @@ function catalogPhotoAndFolderCounts(
   if (!resolved || !catalogExists(resolved)) {
     return { photo_count: null, folder_count: null };
   }
-  const libraryCount = currentPhotoCount(resolved);
   if (kind === 'folder') {
+    const libraryCount = currentPhotoCount(resolved);
     const walked = folderCatalogStats(resolved);
     return {
       photo_count: libraryCount && libraryCount > 0 ? libraryCount : walked.photoCount,
       folder_count: walked.folderCount,
     };
   }
-  return { photo_count: libraryCount, folder_count: null };
+  return { photo_count: lightroomCatalogPhotoCount(resolved), folder_count: null };
 }
 
 // --- catalog ----------------------------------------------------------------

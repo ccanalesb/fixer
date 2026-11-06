@@ -139,16 +139,49 @@ export function walkFolderCatalog(root: string): FolderWalkResult {
   };
 }
 
+interface FolderWalkSummary {
+  stats: FolderWalkStats;
+  unreadableDirectories: string[];
+}
+
+const folderWalkSummaryCache = new Map<string, FolderWalkSummary>();
+
+/** Drop cached folder walks (all roots, or one resolved path). */
+export function invalidateFolderCatalogWalkCache(resolvedPath?: string): void {
+  if (resolvedPath === undefined) {
+    folderWalkSummaryCache.clear();
+    return;
+  }
+  folderWalkSummaryCache.delete(resolve(resolvedPath));
+}
+
+/** Refresh the config-route cache after a sync walk. */
+export function rememberFolderCatalogWalkSummary(
+  root: string,
+  summary: FolderWalkSummary,
+): void {
+  folderWalkSummaryCache.set(resolve(root), summary);
+}
+
+function folderWalkSummary(root: string): FolderWalkSummary {
+  const key = resolve(root);
+  const hit = folderWalkSummaryCache.get(key);
+  if (hit) return hit;
+  const { stats, unreadableDirectories } = walkFolderCatalog(root);
+  const summary = { stats, unreadableDirectories };
+  folderWalkSummaryCache.set(key, summary);
+  return summary;
+}
+
 export function folderCatalogStats(root: string): FolderWalkStats {
-  return walkFolderCatalog(root).stats;
+  return folderWalkSummary(root).stats;
 }
 
 export function folderCatalogWalkDiagnostics(root: string): {
   stats: FolderWalkStats;
   unreadableDirectories: string[];
 } {
-  const { stats, unreadableDirectories } = walkFolderCatalog(root);
-  return { stats, unreadableDirectories };
+  return folderWalkSummary(root);
 }
 
 /** Yield photo batches for streaming EXIF reads and DB writes. */

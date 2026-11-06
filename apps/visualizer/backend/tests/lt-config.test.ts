@@ -17,6 +17,8 @@ import {
 import { CATALOG_PATH_META_KEY, generateCatalogFolderName, resetCatalogLibraryModuleStateForTests } from '../src/catalog-library.js';
 import { libraryWrite } from '../src/db/library/write.js';
 import { createJob, initJobsDb } from '../src/db/jobs/jobs.js';
+import { makeFakeCatalog } from './helpers/fake-catalog.js';
+import * as walkModule from '../src/folder/walk.js';
 
 let dir: string;
 let cfgPath: string;
@@ -89,7 +91,10 @@ function seedCatalogLibrary(catalogPath: string): void {
 describe('GET /api/config/catalog', () => {
   it('reports the raw path, the expanded path, and whether it exists', async () => {
     const lrcat = join(dir, 'My Catalog.lrcat');
-    writeFileSync(lrcat, 'x');
+    makeFakeCatalog(lrcat, [
+      { id: 1, baseName: 'a' },
+      { id: 2, baseName: 'b' },
+    ]);
     writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\nworkers: 4\n`);
 
     const res = await app.request('/api/config/catalog');
@@ -99,7 +104,7 @@ describe('GET /api/config/catalog', () => {
       resolved_path: lrcat,
       exists: true,
       catalog_kind: 'lightroom',
-      photo_count: null,
+      photo_count: 2,
       folder_count: null,
       unreadable_directories: [],
       picker_available: onMac,
@@ -138,6 +143,25 @@ describe('GET /api/config/catalog', () => {
     expect(body.catalog_path).toBe('~/Pictures/Cat.lrcat');
     expect(body.resolved_path).not.toContain('~');
     expect(normalize(body.resolved_path)).toBe(normalize(join(homedir(), 'Pictures', 'Cat.lrcat')));
+  });
+
+  it('reuses cached folder stats on repeated GET requests', async () => {
+    const root = join(dir, 'photos-cache');
+    mkdirSync(join(root, '2024'), { recursive: true });
+    writeFileSync(join(root, '2024', 'a.jpg'), 'jpg');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(root)}\n`);
+    walkModule.invalidateFolderCatalogWalkCache();
+
+    const first = await json<{ photo_count: number }>(await app.request('/api/config/catalog'));
+    expect(first.photo_count).toBe(1);
+
+    writeFileSync(join(root, '2024', 'b.jpg'), 'jpg');
+    const second = await json<{ photo_count: number }>(await app.request('/api/config/catalog'));
+    expect(second.photo_count).toBe(1);
+
+    walkModule.invalidateFolderCatalogWalkCache();
+    const third = await json<{ photo_count: number }>(await app.request('/api/config/catalog'));
+    expect(third.photo_count).toBe(2);
   });
 });
 
@@ -304,6 +328,22 @@ describe('POST /api/config/catalog/pick', () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     try {
       const res = await app.request('/api/config/catalog/pick', { method: 'POST' });
+      expect(res.status).toBe(501);
+      expect(await json(res)).toEqual({
+        error: 'Native file dialog is only available on macOS',
+      });
+    } finally {
+      Object.defineProperty(process, 'platform', { value: real, configurable: true });
+    }
+  });
+});
+
+describe('POST /api/config/catalog/pick-folder', () => {
+  it('answers 501 on a platform without a native dialog', async () => {
+    const real = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    try {
+      const res = await app.request('/api/config/catalog/pick-folder', { method: 'POST' });
       expect(res.status).toBe(501);
       expect(await json(res)).toEqual({
         error: 'Native file dialog is only available on macOS',

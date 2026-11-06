@@ -28,11 +28,14 @@ import { lstatPathsParallel, type FileStatSnapshot } from './lstat-parallel.js';
 import { markStaleIfPreviewPhashChanged } from './preview-stale.js';
 import {
   batchResolvedPhotos,
+  rememberFolderCatalogWalkSummary,
   walkFolderCatalog,
   type ResolvedFolderPhoto,
 } from './walk.js';
 
 export const FOLDER_CATALOG_SYNCED_META_KEY = 'folder_catalog_synced_at';
+/** Matches the first-run import checklist label (no trailing ellipsis). */
+export const FOLDER_CATALOG_READ_PROGRESS = 'Reading the folder';
 const SYNC_BATCH_SIZE = 64;
 const UNREADABLE_PATH_LOG_LIMIT = 5;
 const UNREADABLE_DIR_LOG_LIMIT = 5;
@@ -147,6 +150,7 @@ export async function syncFolderCatalog(
 
   const walkStart = Date.now();
   const { photos, stats, unreadableDirectories } = walkFolderCatalog(catalogRoot);
+  rememberFolderCatalogWalkSummary(catalogRoot, { stats, unreadableDirectories });
   const walkMs = Date.now() - walkStart;
 
   if (await pollCancelAndYield(libDb, isCancelled, yieldState)) {
@@ -306,7 +310,7 @@ export async function syncFolderCatalog(
       }
 
       const pct = 10 + Math.trunc((80 * (batchIndex + 1)) / Math.max(batches.length, 1));
-      opts.progress?.(pct, 'Reading the folder...');
+      opts.progress?.(pct, FOLDER_CATALOG_READ_PROGRESS);
     }
 
     const movedGoneKeys = new Set(movePairs.map((m) => m.row.key));

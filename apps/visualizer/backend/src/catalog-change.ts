@@ -16,6 +16,7 @@ import {
   type CatalogKind,
   updatePinnedLibraryCatalogPath,
 } from './catalog-library.js';
+import { invalidateFolderCatalogWalkCache } from './folder/walk.js';
 import { config, expandUserPath, loadLibraryConfig, updateConfigYamlCatalogPath } from './config.js';
 import { openLibraryDb, type Db } from './db/connection.js';
 import { createJob, getActiveJobs, initJobsDb } from './db/jobs/jobs.js';
@@ -265,6 +266,7 @@ export function applyCatalogChange(
     }
     updateConfigYamlCatalogPath(configPath, validated.trimmed);
     invalidateOpenLibraryCache();
+    invalidateFolderCatalogWalkCache();
 
     return withJobsDb((jobsDb) => {
       const syncId = shouldQueueCatalogSync(preview, mode) ? queueCatalogSyncJob(jobsDb) : null;
@@ -283,6 +285,7 @@ export function applyCatalogChange(
     const cancelled = cancelCatalogJobs(jobsDb);
     updateConfigYamlCatalogPath(configPath, validated.trimmed);
     invalidateOpenLibraryCache();
+    invalidateFolderCatalogWalkCache();
     const syncId = shouldQueueCatalogSync(preview, mode) ? queueCatalogSyncJob(jobsDb) : null;
     return {
       catalog_path: validated.trimmed,

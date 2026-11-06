@@ -577,6 +577,21 @@ describe('GET /api/images/catalog/{image_key}/thumbnail', () => {
     expect(await json(res)).toEqual({ error: 'Image file not found' });
   });
 
+  it('serves the JPEG sidecar when the row filepath is a RAW', async () => {
+    const photoDir = mkdtempSync(join(tmpdir(), 'lt-raw-sidecar-'));
+    const rawPath = join(photoDir, 'pair.dng');
+    const jpegPath = join(photoDir, 'pair.jpg');
+    writeFileSync(rawPath, 'raw');
+    writeFileSync(jpegPath, 'jpeg-bytes');
+    writeFileSync(join(cfgDir, 'config.yaml'), `mount_point: ${JSON.stringify(photoDir)}\n`);
+    fx.addImage({ key: 'pair', filepath: rawPath, filename: 'pair' });
+
+    const res = await app.request('/api/images/catalog/pair/thumbnail');
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('jpeg-bytes');
+    rmSync(photoDir, { recursive: true, force: true });
+  });
+
   it('is absent from the OpenAPI document', async () => {
     // Returns a file, not JSON, so it must not appear in the OpenAPI contract.
     const doc = await json<{ paths: Record<string, unknown> }>(

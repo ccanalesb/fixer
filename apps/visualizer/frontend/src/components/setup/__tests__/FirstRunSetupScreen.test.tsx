@@ -6,6 +6,7 @@ import {
   CLIP_CONFIRM_DOWNLOAD_IMPORT,
   CLIP_CONFIRM_TITLE_IMPORT,
   FIRST_RUN_CHOOSE_FOLDER,
+  FIRST_RUN_FOLDER_CARD_TITLE,
   FIRST_RUN_IMPORT_PHOTOS,
   FIRST_RUN_RETRY_IMPORT,
 } from '../../../constants/strings'
@@ -179,5 +180,43 @@ describe('FirstRunSetupScreen', () => {
 
     expect(screen.getByText(/Only on the Mac running Fixer/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: FIRST_RUN_CHOOSE_FOLDER })).not.toBeInTheDocument()
+  })
+
+  it('shows folder cards while picking and stats once a folder catalog is chosen', () => {
+    const folderStatus = {
+      path: '/Volumes/NAS/Photos',
+      resolvedPath: '/Volumes/NAS/Photos',
+      exists: true,
+      catalogKind: 'folder' as const,
+      photoCount: 12_408,
+      folderCount: 214,
+      pickerUsable: true,
+      readOnly: false,
+    }
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <FirstRunSetupScreen
+          setup={baseSetup({
+            catalogConfigured: false,
+            catalog: { ...baseSetup().catalog, status: folderStatus },
+          })}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(FIRST_RUN_FOLDER_CARD_TITLE)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_FOLDER })).toBeInTheDocument()
+    unmount()
+
+    render(
+      <MemoryRouter>
+        <FirstRunSetupScreen
+          setup={baseSetup({
+            catalog: { ...baseSetup().catalog, status: folderStatus },
+          })}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/12,408 photos in 214 folders/)).toBeInTheDocument()
   })
 })

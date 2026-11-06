@@ -248,6 +248,13 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
                             disabled={picking}
                           />
                         </label>
+                        {manualPath.trim() ? (
+                          <p className="text-xs text-text-tertiary">
+                            {manualPath.trim().toLowerCase().endsWith('.lrcat')
+                              ? 'Ends in .lrcat, so this is a Lightroom catalog.'
+                              : 'Not a .lrcat file, so this is a folder catalog.'}
+                          </p>
+                        ) : null}
                         <Button
                           type="button"
                           variant="primary"

@@ -33,6 +33,7 @@ import { getVisionCachedImage } from '../../db/library/vision-cache.js';
 import { libraryDb, type LibraryEnv } from '../library-db.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { computeSingleImageAggregateScores } from '../../identity/aggregates.js';
+import { getViewablePathManaged } from '../../imaging/image-prep.js';
 import { resolveCatalogImageFilePath } from '../../utils/path-resolve.js';
 import { clampPagination, errorNotFound } from '../../utils/responses.js';
 import { validateScorePerspectiveExists } from '../../utils/score-perspective.js';
@@ -95,30 +96,32 @@ const imageKeyParams = z.object({ image_key: z.string() });
  *
  * Cache generation is not wired up yet. On cache miss, serve the original file.
  */
-catalogRoutes.get('/images/catalog/:image_key/thumbnail', (c) => {
+catalogRoutes.get('/images/catalog/:image_key/thumbnail', async (c) => {
   const imageKey = c.req.param('image_key');
-  {
-    const db = c.get('libraryDb');
-    const image = getImage(db, imageKey);
-    if (!image) return errorNotFound(c, 'image');
+  const db = c.get('libraryDb');
+  const image = getImage(db, imageKey);
+  if (!image) return errorNotFound(c, 'image');
 
-    const allowed = catalogThumbnailRoots();
+  const allowed = catalogThumbnailRoots();
 
-    const cached = getVisionCachedImage(db, imageKey);
-    if (cached?.compressed_path && existsSync(cached.compressed_path)) {
-      if (!isPathUnderAllowedRoots(cached.compressed_path, allowed)) {
-        return errorNotFound(c, 'file');
-      }
-      return sendFile(c, cached.compressed_path, { mimetype: 'image/jpeg' });
+  const cached = getVisionCachedImage(db, imageKey);
+  if (cached?.compressed_path && existsSync(cached.compressed_path)) {
+    if (!isPathUnderAllowedRoots(cached.compressed_path, allowed)) {
+      return errorNotFound(c, 'file');
     }
-
-    const filepath = resolveCatalogImageFilePath(String(image.filepath ?? ''));
-    if (!filepath || !existsSync(filepath)) return errorNotFound(c, 'file');
-    if (!isPathUnderAllowedRoots(filepath, allowed)) return errorNotFound(c, 'file');
-
-    // Declared mimetype is `image/jpeg` even for RAW originals; the browser sniffs content.
-    return sendFile(c, filepath, { mimetype: 'image/jpeg' });
+    return sendFile(c, cached.compressed_path, { mimetype: 'image/jpeg' });
   }
+
+  const filepath = resolveCatalogImageFilePath(String(image.filepath ?? ''));
+  if (!filepath || !existsSync(filepath)) return errorNotFound(c, 'file');
+  if (!isPathUnderAllowedRoots(filepath, allowed)) return errorNotFound(c, 'file');
+
+  const viewable = await getViewablePathManaged(filepath);
+  if (!existsSync(viewable.path)) return errorNotFound(c, 'file');
+  if (!isPathUnderAllowedRoots(viewable.path, allowed)) return errorNotFound(c, 'file');
+
+  // Declared mimetype is `image/jpeg` even for RAW originals; the browser sniffs content.
+  return sendFile(c, viewable.path, { mimetype: 'image/jpeg' });
 });
 
 // --- months -----------------------------------------------------------------
