@@ -10,6 +10,8 @@ type UseCatalogKindOptions = {
 /**
  * Catalog kind for copy that names Lightroom.
  */
+export function useCatalogKind(options: UseCatalogKindOptions & { pendingAsNull: true }): 'lightroom' | 'folder' | null
+export function useCatalogKind(options?: UseCatalogKindOptions): 'lightroom' | 'folder'
 export function useCatalogKind(options?: UseCatalogKindOptions): 'lightroom' | 'folder' | null {
   const cfg = useQuery(keys.config.catalog(), () => ConfigAPI.getCatalog(), {
     ...(options?.pendingAsNull

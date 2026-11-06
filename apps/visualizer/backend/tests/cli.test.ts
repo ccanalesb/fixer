@@ -17,11 +17,17 @@ import { stringify as stringifyYaml } from 'yaml';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadLibraryConfig, config as runtimeConfig, type LibraryConfig } from '../src/config.js';
 import { openLibraryDb } from '../src/db/connection.js';
-import { LIBRARY_SCHEMA_VERSION } from '../src/db/library/bootstrap.js';
+import {
+  initLibraryDb,
+  LIBRARY_SCHEMA_VERSION,
+  setLibraryMeta,
+} from '../src/db/library/bootstrap.js';
 import { parseArgv, preparseConfigPath, UsageError } from '../src/cli/parse.js';
 import { COMMANDS } from '../src/cli/registry.js';
 import { run } from '../src/cli/main.js';
 import {
+  CATALOG_KIND_META_KEY,
+  CATALOG_PATH_META_KEY,
   invalidateOpenLibraryCache,
   maybeUpgradeLegacyCatalogLayout,
   resetCatalogLibraryModuleStateForTests,
@@ -468,6 +474,97 @@ describe('scan and sync', () => {
     const r = await cli(['sync', '--catalog', photos]);
     expect(r.code).toBe(1);
     expect(r.text).toContain('No library for');
+  });
+
+  it('refuses --catalog on a folder with scan --limit', async () => {
+    const photos = join(fixture.dir, 'photos');
+    mkdirSync(photos, { recursive: true });
+    writeFileSync(join(photos, 'a.jpg'), 'jpeg');
+    const r = await cli(['scan', '--catalog', photos, '--db', fixture.dbPath, '--limit', '2']);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain('scan --limit is not supported for a folder catalog');
+  });
+
+  it('refuses --catalog on a folder with sync --backfill-keywords', async () => {
+    const photos = join(fixture.dir, 'photos');
+    mkdirSync(photos, { recursive: true });
+    writeFileSync(join(photos, 'a.jpg'), 'jpeg');
+    const r = await cli([
+      'sync',
+      '--catalog',
+      photos,
+      '--db',
+      fixture.dbPath,
+      '--backfill-keywords',
+    ]);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain('sync --backfill-keywords is not supported for a folder catalog');
+  });
+});
+
+/**
+ * Finding the library by the catalog it records: the pinned `--db` belongs-to
+ * guard, and the two-libraries-one-path conflict every command refuses.
+ */
+describe('library resolution', () => {
+  let dir: string;
+
+  /** A `catalogs/<name>/library.db` whose `library_meta` records `catalogPath`. */
+  function makeCatalogLibrary(name: string, catalogPath: string, kind: 'lightroom' | 'folder'): string {
+    const folder = join(dir, 'catalogs', name);
+    mkdirSync(folder, { recursive: true });
+    const dbPath = join(folder, 'library.db');
+    const db = initLibraryDb(dbPath);
+    try {
+      setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogPath);
+      setLibraryMeta(db, CATALOG_KIND_META_KEY, kind);
+    } finally {
+      db.close();
+    }
+    return dbPath;
+  }
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'lt-resolve-'));
+    delete process.env.LIBRARY_DB;
+    process.env.LT_DATA_DIR = dir;
+    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
+    writeFileSync(process.env.LT_CONFIG_YAML, stringifyYaml({}));
+    resetCatalogLibraryModuleStateForTests();
+    invalidateOpenLibraryCache();
+  });
+
+  afterEach(() => {
+    delete process.env.LT_DATA_DIR;
+    delete process.env.LT_CONFIG_YAML;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses --db when --catalog names a catalog the pinned library does not record', async () => {
+    const recorded = join(dir, 'Recorded.lrcat');
+    const other = join(dir, 'Other.lrcat');
+    writeFileSync(recorded, '');
+    writeFileSync(other, '');
+    const dbPath = makeCatalogLibrary('recorded-ab12', recorded, 'lightroom');
+
+    const r = await cli(['sync', '--db', dbPath, '--catalog', other]);
+    expect(r.code).toBe(1);
+    expect(r.text).toBe(`Error: library.db at ${dbPath} belongs to ${recorded}`);
+  });
+
+  it('every command refuses when two libraries claim one catalog path', async () => {
+    const catalog = join(dir, 'Shared.lrcat');
+    writeFileSync(catalog, '');
+    makeCatalogLibrary('shared-aaaa', catalog, 'lightroom');
+    makeCatalogLibrary('shared-bbbb', catalog, 'lightroom');
+    writeFileSync(process.env.LT_CONFIG_YAML!, stringifyYaml({ catalog_path: catalog }));
+    invalidateOpenLibraryCache();
+
+    const r = await cli(['stats']);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain('Two libraries claim the same catalog path');
+    expect(r.text).toContain('shared-aaaa');
+    expect(r.text).toContain('shared-bbbb');
   });
 });
 
