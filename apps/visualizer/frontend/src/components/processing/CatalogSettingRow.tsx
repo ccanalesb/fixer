@@ -8,6 +8,7 @@ import { CatalogChangeModal } from './CatalogChangeModal'
 import { Badge } from '../ui/badges'
 import type { ConfigCatalogChangePreviewResponse } from '../../types/config'
 import { SETTINGS_CATALOG_MANUAL_PATH_HINT, SETTINGS_CATALOG_REMOTE_HINT } from '../../constants/strings'
+import { InlineNotice } from '../ui/InlineNotice'
 
 function kindLabel(kind: 'lightroom' | 'folder'): string {
   return kind === 'folder' ? 'Folder' : 'Lightroom catalog'
@@ -170,9 +171,7 @@ export function CatalogSettingRow() {
         under={
           <>
             {notice ? (
-              <div className="mb-3 rounded-base border border-success/25 bg-success/[0.06] px-3.5 py-2.5 text-sm text-text">
-                {notice}
-              </div>
+              <InlineNotice className="mb-3">{notice}</InlineNotice>
             ) : null}
             {(error || previewError) && (
               <p className="mb-3 text-sm text-error">{error ?? previewError}</p>

@@ -79,7 +79,7 @@ import type {
   StackSuggestionAcceptResponse,
   StackSuggestionsResponse,
 } from '../types/stacks'
-import type { components } from '../types/api.gen'
+import type { components, paths } from '../types/api.gen'
 import type {
   IdentityBestPhotoItem,
   IdentityBestPhotosMeta,
@@ -454,6 +454,10 @@ export const ConfigAPI = {
 }
 
 /** Query params shared by catalog list and CLIP similar (backend mirrors filters). */
+type CatalogListQueryFromOpenApi = NonNullable<
+  paths['/api/images/catalog']['get']['parameters']['query']
+>
+
 export type CatalogListQueryParams = {
   posted?: boolean
   analyzed?: boolean | null
@@ -474,8 +478,7 @@ export type CatalogListQueryParams = {
   limit?: number
   offset?: number
   cull_catalog?: boolean
-  catalog_presence?: 'present' | 'missing'
-}
+} & Pick<CatalogListQueryFromOpenApi, 'catalog_presence'>
 
 function appendCatalogListSearchParams(
   searchParams: URLSearchParams,

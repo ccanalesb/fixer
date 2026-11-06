@@ -55,4 +55,40 @@ describe('CatalogSettingRow', () => {
     expect(screen.queryByRole('button', { name: 'Choose .lrcat…' })).not.toBeInTheDocument()
     expect(screen.queryByText('Enter a path manually')).not.toBeInTheDocument()
   })
+
+  it('shows the reopened-library notice in the shared success banner', () => {
+    const notice =
+      'Reopened Holiday: 4,300 photos with their descriptions, scores and culling. A catalog sync is queued.'
+    mockUseCatalogPicker.mockReturnValue({
+      status: {
+        path: '/Volumes/Photos/Holiday',
+        resolvedPath: '/Volumes/Photos/Holiday',
+        exists: true,
+        catalogKind: 'folder',
+        photoCount: 4300,
+        folderCount: 12,
+        pickerUsable: true,
+        readOnly: false,
+      },
+      draftPath: '/Volumes/Photos/Holiday',
+      setDraftPath: vi.fn(),
+      changesCatalog: false,
+      loading: false,
+      picking: false,
+      pickingFolder: false,
+      saving: false,
+      error: null,
+      notice,
+      pickLrcat: vi.fn(),
+      pickFolder: vi.fn(),
+      previewChange: vi.fn(),
+      applyChange: vi.fn(),
+    })
+
+    render(<CatalogSettingRow />)
+
+    const banner = screen.getByRole('status')
+    expect(banner).toHaveAttribute('data-tone', 'success')
+    expect(banner).toHaveTextContent(notice)
+  })
 })

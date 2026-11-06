@@ -42,6 +42,7 @@ import { createOpenApiApp } from '../openapi.js';
 import { jsonBody, withValidationError } from '../route-helpers.js';
 import {
   type CatalogImage,
+  CatalogListQuery,
   CatalogListResponse,
   CatalogMonthsResponse,
   CatalogSimilarResponse,
@@ -209,12 +210,14 @@ const listSlashRoute = createRoute({
   method: 'get',
   path: '/images/catalog/',
   tags: ['images-catalog'],
+  request: { query: CatalogListQuery },
   responses: listResponses,
 });
 const listBareRoute = createRoute({
   method: 'get',
   path: '/images/catalog',
   tags: ['images-catalog'],
+  request: { query: CatalogListQuery },
   responses: listResponses,
 });
 

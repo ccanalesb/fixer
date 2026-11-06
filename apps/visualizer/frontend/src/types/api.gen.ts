@@ -468,7 +468,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    catalog_presence?: "present" | "missing";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -521,7 +523,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    catalog_presence?: "present" | "missing";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;

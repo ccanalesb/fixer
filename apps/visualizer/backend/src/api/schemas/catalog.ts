@@ -84,6 +84,13 @@ export const InstagramPostedResponse = z
   .strict()
   .openapi('InstagramPostedResponse');
 
+export const CatalogListQuery = z
+  .object({
+    catalog_presence: z.enum(['present', 'missing']).optional(),
+  })
+  .passthrough()
+  .openapi('CatalogListQuery');
+
 export const CatalogListResponse = z
   .object({ total: z.int(), images: z.array(CatalogImage) })
   .strict()
