@@ -1,0 +1,217 @@
+import type { ReactNode } from 'react'
+import { LrWritebackAPI, ImagesAPI, type FolderXmpDetailResponse, type ImageView, type LrWritebackPhotoDetailResponse } from '../../../services/api'
+import { keys, useQuery } from '../../../data'
+import { Button } from '../../ui/Button/Button'
+import {
+  LABEL_CAPTION,
+  LABEL_COLOR,
+  LABEL_COPYRIGHT,
+  LABEL_KEYWORDS,
+  LABEL_TITLE,
+  LR_WRITEBACK_APP_KEYWORDS,
+  LR_WRITEBACK_BEFORE_NO_RATING,
+  LR_WRITEBACK_RATING,
+  LR_WRITEBACK_UNDO,
+  LR_WRITEBACK_UNDO_REJECT_ROW,
+  LR_WRITEBACK_UNDO_STARS_ROW,
+  LR_WRITEBACK_USER_CHANGED,
+  XMP_DETAIL_SECTION,
+  XMP_FILE_MISSING,
+  XMP_REJECT_LABEL,
+  XMP_SECONDARY_SIDECAR,
+} from '../../../constants/strings'
+import { ActionArea, ActionRow, Fact, FactsBlock, StatusBlock } from '../detail-blocks'
+
+function ValueWithSource({ value, source }: { value: ReactNode; source?: string | null }) {
+  return (
+    <>
+      {value}
+      {source ? <span className="mt-0.5 block text-xs text-text-tertiary">{source}</span> : null}
+    </>
+  )
+}
+
+function ratingLine(
+  detail: FolderXmpDetailResponse,
+  writeback: LrWritebackPhotoDetailResponse | null,
+): ReactNode {
+  let display = detail.rating.display
+  if (writeback?.rating.live != null && writeback.rating.live > 0) {
+    display = `${writeback.rating.live}★`
+  }
+  const extras: ReactNode[] = []
+  if (writeback?.rating.app_wrote) {
+    extras.push(
+      <span key="app" className="ml-2 text-text-tertiary">
+        written by the app
+      </span>,
+    )
+  }
+  const before =
+    writeback?.rating.before_label ??
+    (writeback?.rating.app_wrote && writeback.rating.live === null ? LR_WRITEBACK_BEFORE_NO_RATING : null)
+  if (before) {
+    extras.push(
+      <span key="before" className="ml-2 text-text-tertiary">
+        {before}
+      </span>,
+    )
+  }
+  return (
+    <ValueWithSource
+      source={detail.rating.source}
+      value={
+        <>
+          {display}
+          {extras}
+        </>
+      }
+    />
+  )
+}
+
+function rejectLine(
+  detail: FolderXmpDetailResponse,
+  writeback: LrWritebackPhotoDetailResponse | null,
+): ReactNode | null {
+  if (!detail.reject.display) return null
+  return (
+    <ValueWithSource
+      source={detail.reject.source}
+      value={
+        <>
+          {detail.reject.display}
+          {writeback?.flag.app_wrote_reject ? (
+            <span className="ml-2 text-text-tertiary">written by the app</span>
+          ) : null}
+        </>
+      }
+    />
+  )
+}
+
+async function fetchFolderXmp(imageKey: string): Promise<FolderXmpDetailResponse> {
+  return ImagesAPI.getFolderXmpDetail(imageKey)
+}
+
+async function fetchLrWritebackPhoto(imageKey: string): Promise<LrWritebackPhotoDetailResponse | null> {
+  try {
+    return await LrWritebackAPI.getPhoto(imageKey)
+  } catch {
+    return null
+  }
+}
+
+/** Folder catalog: ratings, labels and keywords read from XMP/IPTC, with each field's source. */
+export function XmpTab({ image }: { image: ImageView }) {
+  const detail = useQuery(keys.folderXmp.photo(image.key), () => fetchFolderXmp(image.key))
+  const writeback = useQuery(keys.lrWriteback.photo(image.key), () => fetchLrWritebackPhoto(image.key))
+
+  const undo = async (kind: 'stars' | 'reject') => {
+    await LrWritebackAPI.undo(image.key, kind)
+  }
+
+  const appKeywords = writeback && writeback.keywords.length > 0 ? writeback.keywords.join(', ') : null
+
+  return (
+    <>
+      {detail.file_missing ? (
+        <StatusBlock tone="warning" title={XMP_FILE_MISSING} />
+      ) : null}
+      {detail.no_metadata_hint ? (
+        <p className="text-sm text-text-secondary">
+          This file has no rating, label or keywords. They are read from its{' '}
+          <code className="rounded bg-surface px-1 font-mono text-xs">.xmp</code> or from inside the file, as
+          your editor writes them.
+        </p>
+      ) : null}
+      <FactsBlock title={XMP_DETAIL_SECTION}>
+        <Fact label={LR_WRITEBACK_RATING} value={ratingLine(detail, writeback)} />
+        <Fact label={XMP_REJECT_LABEL} value={rejectLine(detail, writeback)} />
+        <Fact
+          label={LABEL_COLOR}
+          value={
+            detail.label.value ? (
+              <ValueWithSource value={detail.label.value} source={detail.label.source} />
+            ) : null
+          }
+        />
+        <Fact
+          label={LABEL_KEYWORDS}
+          value={
+            detail.keywords.values.length > 0 ? (
+              <ValueWithSource
+                source={detail.keywords.source}
+                value={
+                  <span className="flex flex-wrap gap-1">
+                    {detail.keywords.values.map((k) => (
+                      <span key={k} className="rounded bg-surface px-1.5 text-xs">
+                        {k}
+                      </span>
+                    ))}
+                  </span>
+                }
+              />
+            ) : null
+          }
+        />
+        <Fact label={LR_WRITEBACK_APP_KEYWORDS} value={appKeywords} />
+        <Fact
+          label={LABEL_TITLE}
+          value={
+            detail.title.value ? (
+              <ValueWithSource value={detail.title.value} source={detail.title.source} />
+            ) : null
+          }
+        />
+        <Fact
+          label={LABEL_CAPTION}
+          value={
+            detail.caption.value ? (
+              <ValueWithSource value={detail.caption.value} source={detail.caption.source} />
+            ) : null
+          }
+        />
+        <Fact
+          label={LABEL_COPYRIGHT}
+          value={
+            detail.copyright.value ? (
+              <ValueWithSource value={detail.copyright.value} source={detail.copyright.source} />
+            ) : null
+          }
+        />
+      </FactsBlock>
+      {detail.secondary_sidecar_note ? (
+        <p className="text-xs text-text-tertiary">
+          {XMP_SECONDARY_SIDECAR(
+            detail.secondary_sidecar_note.basename,
+            detail.secondary_sidecar_note.read_after_basename,
+          )}
+        </p>
+      ) : null}
+      {writeback?.strong_dimensions_line ? (
+        <p className="text-xs text-text-secondary">{writeback.strong_dimensions_line}</p>
+      ) : null}
+      {writeback?.rating.user_changed || writeback?.flag.user_changed ? (
+        <p className="text-xs text-warning">{LR_WRITEBACK_USER_CHANGED}</p>
+      ) : null}
+
+      <ActionArea>
+        {writeback?.rating.undo_available ? (
+          <ActionRow label={LR_WRITEBACK_UNDO_STARS_ROW}>
+            <Button type="button" size="sm" variant="secondary" onClick={() => void undo('stars')}>
+              {LR_WRITEBACK_UNDO}
+            </Button>
+          </ActionRow>
+        ) : null}
+        {writeback?.flag.undo_available ? (
+          <ActionRow label={LR_WRITEBACK_UNDO_REJECT_ROW}>
+            <Button type="button" size="sm" variant="secondary" onClick={() => void undo('reject')}>
+              {LR_WRITEBACK_UNDO}
+            </Button>
+          </ActionRow>
+        ) : null}
+      </ActionArea>
+    </>
+  )
+}

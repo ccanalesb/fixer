@@ -37,12 +37,43 @@ describe('FileTab', () => {
           filepath: '/Volumes/Photos/L1004434.DNG',
           width: 6000,
           height: 4000,
+          title: 'My title',
+          caption: 'My caption',
         }}
       />,
     )
     expect(screen.getByText('L1004434.DNG')).toBeInTheDocument()
+    expect(screen.getByText('My title')).toBeInTheDocument()
+    expect(screen.getByText('My caption')).toBeInTheDocument()
     expect(screen.getByText('/Volumes/Photos/L1004434.DNG')).toBeInTheDocument()
     expect(screen.getByText('6000 × 4000')).toBeInTheDocument()
+  })
+
+  it('omits title and caption on a folder catalog', async () => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/photos',
+      resolved_path: '/photos',
+      exists: true,
+      catalog_kind: 'folder',
+      photo_count: 1,
+      folder_count: 1,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+    render(
+      <FileTab
+        image={{
+          image_type: 'catalog',
+          key: 'k',
+          filename: 'a.jpg',
+          title: 'Hidden',
+          caption: 'Also hidden',
+        }}
+      />,
+    )
+    await waitFor(() => expect(screen.queryByText('Hidden')).toBeNull())
+    expect(screen.queryByText('Also hidden')).toBeNull()
+    expect(screen.getByText('a.jpg')).toBeInTheDocument()
   })
 
   it('toggles posted via the API and tells the modal at once', async () => {

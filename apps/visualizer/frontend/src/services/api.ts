@@ -592,6 +592,11 @@ export const ImagesAPI = {
     )
   },
 
+  getFolderXmpDetail: (image_key: string) =>
+    request<FolderXmpDetailResponse>(
+      `/images/catalog/${encodeURIComponent(image_key)}/xmp`,
+    ),
+
   listCatalogSimilarityGroups: (params?: { limit?: number; offset?: number }) => {
     const sp = new URLSearchParams()
     if (params?.limit !== undefined) sp.set('limit', String(params.limit))
@@ -1200,6 +1205,7 @@ export const CullingModelsAPI = {
 
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
 export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackPhotoDetailResponse']
+export type FolderXmpDetailResponse = components['schemas']['FolderXmpDetailResponse']
 
 export const LrWritebackAPI = {
   getSettings: () => request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings'),

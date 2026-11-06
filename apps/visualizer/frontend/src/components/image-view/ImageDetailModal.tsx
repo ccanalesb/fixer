@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ImageView } from '../../services/api'
-import { CullAPI, ImagesAPI } from '../../services/api'
+import { ConfigAPI, CullAPI, ImagesAPI } from '../../services/api'
 import { useBodyScrollLock, useFocusTrap } from '../../hooks'
 import {
   CULL_FILTERED,
@@ -14,6 +14,7 @@ import {
   IMAGE_DETAILS_TAB_CULLING,
   IMAGE_DETAILS_TAB_FILE,
   IMAGE_DETAILS_TAB_LIGHTROOM,
+  IMAGE_DETAILS_TAB_XMP,
   IMAGE_DETAILS_TAB_STACK,
 } from '../../constants/strings'
 import { Button } from '../ui/Button/Button'
@@ -25,6 +26,7 @@ import { AiTab } from './tabs/AiTab'
 import { CullingTab } from './tabs/CullingTab'
 import { FileTab } from './tabs/FileTab'
 import { LightroomTab } from './tabs/LightroomTab'
+import { XmpTab } from './tabs/XmpTab'
 import { StackTab } from './tabs/StackTab'
 import { frameHeldBack, frameSaysNothing, frameSubstanceQuery } from './tabs/frameSubstance'
 import { ErrorBoundary, ErrorState, imageDetailChanged, keys, stacksChanged, useQuery } from '../../data'
@@ -158,12 +160,25 @@ function ImageDetailModalBody({
   const stackSize = image.stack_member_count ?? 0
   const hasStack = stackId != null && !Number.isNaN(stackId) && stackSize >= 2
 
+  const [catalogKind, setCatalogKind] = useState<'lightroom' | 'folder'>('lightroom')
+  useEffect(() => {
+    let cancelled = false
+    void ConfigAPI.getCatalog().then((cfg) => {
+      if (!cancelled) setCatalogKind(cfg.catalog_kind ?? 'lightroom')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const metaTabLabel = catalogKind === 'folder' ? IMAGE_DETAILS_TAB_XMP : IMAGE_DETAILS_TAB_LIGHTROOM
+
   const tabs: (TabNavItem & { id: ImageDetailTab })[] = [
     ...(showCullSection || !frameSaysNothing(frame)
       ? [{ id: 'culling' as const, label: IMAGE_DETAILS_TAB_CULLING }]
       : []),
     { id: 'ai', label: IMAGE_DETAILS_TAB_AI },
-    { id: 'lightroom', label: IMAGE_DETAILS_TAB_LIGHTROOM },
+    { id: 'lightroom', label: metaTabLabel },
     { id: 'file', label: IMAGE_DETAILS_TAB_FILE },
     ...(hasStack ? [{ id: 'stack' as const, label: IMAGE_DETAILS_TAB_STACK(stackSize) }] : []),
   ]
@@ -174,7 +189,8 @@ function ImageDetailModalBody({
       <CullingTab imageKey={imageKey} showVerdict={showCullSection} />
     ),
     ai: () => <AiTab imageKey={imageKey} />,
-    lightroom: () => <LightroomTab image={displayImage} />,
+    lightroom: () =>
+      catalogKind === 'folder' ? <XmpTab image={displayImage} /> : <LightroomTab image={displayImage} />,
     file: () => <FileTab image={displayImage} onPostedChange={setPostedOverride} />,
     stack: () => (hasStack ? <StackTab stackId={stackId} imageKey={imageKey} /> : null),
   }

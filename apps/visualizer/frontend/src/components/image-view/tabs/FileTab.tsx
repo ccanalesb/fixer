@@ -98,14 +98,14 @@ export function FileTab({
       {missingBlock}
       <FactsBlock title={IMAGE_DETAILS_FILE}>
         <Fact label={LABEL_FILENAME} value={image.filename ?? image.key} />
-        <Fact label={LABEL_TITLE} value={image.title} />
+        {catalogKind === 'lightroom' ? <Fact label={LABEL_TITLE} value={image.title} /> : null}
         <Fact
           label={LABEL_DATE}
           value={image.date_taken ? new Date(image.date_taken).toLocaleString() : DATE_NO_DATE}
         />
         <Fact label={LABEL_PATH} value={image.filepath} mono />
         <Fact label={LABEL_DIMENSIONS} value={dimensions} />
-        <Fact label={LABEL_CAPTION} value={image.caption} />
+        {catalogKind === 'lightroom' ? <Fact label={LABEL_CAPTION} value={image.caption} /> : null}
         <Fact label={IMAGE_DETAILS_POSTED} value={posted ? IMAGE_DETAILS_YES : IMAGE_DETAILS_NO} />
       </FactsBlock>
 

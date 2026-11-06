@@ -40,6 +40,9 @@ export const keys = {
   lrWriteback: {
     photo: (imageKey: string) => ['lr-writeback.photo', imageKey] as const,
   },
+  folderXmp: {
+    photo: (imageKey: string) => ['folder-xmp.photo', imageKey] as const,
+  },
   jobs: {
     listAll: () => ['jobs.list'] as const,
     list: (params?: { status?: string; limit?: number; offset?: number }) =>
@@ -221,6 +224,7 @@ export function cullingProfilesChanged(): void {
 
 const LIGHTROOM_WRITTEN_PREFIXES: readonly (readonly unknown[])[] = [
   prefixOf(keys.lrWriteback.photo(''), 1),
+  prefixOf(keys.folderXmp.photo(''), 1),
   prefixOf(keys.images.catalogMonths(), 1),
   prefixOf(keys.images.detail('catalog', '', ''), 1),
   keys.cull.summary(),

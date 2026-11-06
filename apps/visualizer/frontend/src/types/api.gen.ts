@@ -741,6 +741,61 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/images/catalog/{image_key}/xmp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    image_key: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description XMP/IPTC values and sources */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FolderXmpDetailResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/images/catalog/{image_key}": {
         parameters: {
             query?: never;
@@ -6130,6 +6185,48 @@ export interface components {
         };
         InstagramPostedRequest: {
             posted: boolean;
+        };
+        FolderXmpDetailResponse: {
+            image_key: string;
+            file_missing: boolean;
+            no_metadata_hint: boolean;
+            /** @default [] */
+            sidecar_order: {
+                basename: string;
+                read_order: number;
+            }[];
+            secondary_sidecar_note: {
+                basename: string;
+                read_after_basename: string;
+            } | null;
+            rating: {
+                source: string | null;
+                display: string;
+            };
+            reject: {
+                source: string | null;
+                display: string | null;
+            };
+            label: {
+                source: string | null;
+                value: string | null;
+            };
+            keywords: {
+                source: string | null;
+                values: string[];
+            };
+            title: {
+                source: string | null;
+                value: string | null;
+            };
+            caption: {
+                source: string | null;
+                value: string | null;
+            };
+            copyright: {
+                source: string | null;
+                value: string | null;
+            };
         };
         ImageView: {
             /** @enum {string} */

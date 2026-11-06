@@ -41,6 +41,7 @@ export const IMAGE_DETAILS_PERSPECTIVE_ANALYSIS = 'Perspective analysis'
 export const IMAGE_DETAILS_TAB_CULLING = 'Culling'
 export const IMAGE_DETAILS_TAB_AI = 'AI'
 export const IMAGE_DETAILS_TAB_LIGHTROOM = 'Lightroom'
+export const IMAGE_DETAILS_TAB_XMP = 'XMP'
 export const IMAGE_DETAILS_TAB_FILE = 'File'
 export const IMAGE_DETAILS_TAB_STACK = (n: number) => `Stack · ${n}`
 export const IMAGE_DETAILS_FILE = 'File'
@@ -84,6 +85,7 @@ export const LABEL_TITLE = 'Title'
 export const LABEL_PATH = 'Path'
 export const LABEL_DIMENSIONS = 'Dimensions'
 export const LABEL_CAPTION = 'Caption'
+export const LABEL_COPYRIGHT = 'Copyright'
 export const LABEL_KEYWORDS = 'Keywords'
 
 // Status Display
@@ -976,6 +978,15 @@ export const LR_WRITEBACK_APP_KEYWORDS = 'App keywords'
 export const LR_WRITEBACK_PICK = 'Pick'
 export const LR_WRITEBACK_UNDO_STARS_ROW = 'Stars written by the app'
 export const LR_WRITEBACK_UNDO_REJECT_ROW = 'Reject written by the app'
+export const XMP_DETAIL_SECTION = 'XMP and IPTC'
+export const XMP_NO_METADATA_HINT =
+  'This file has no rating, label or keywords. They are read from its .xmp or from inside the file, as your editor writes them.'
+export const XMP_SECONDARY_SIDECAR = (basename: string, readAfter: string) =>
+  `Also next to it: ${basename} (older, read after ${readAfter})`
+export const XMP_REJECT_LABEL = 'Reject'
+export const XMP_FILE_MISSING =
+  'The photo file is missing, so its XMP and IPTC cannot be read from disk.'
+export const LABEL_COLOR = 'Label'
 export const LR_WRITEBACK_LOADING = 'Loading Lightroom Classic write-back…'
 
 // Processing → Settings → Culling models

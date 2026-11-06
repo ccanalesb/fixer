@@ -51,7 +51,9 @@ import {
   InstagramPostedResponse,
 } from '../schemas/catalog.js';
 import { ErrorBody } from '../schemas/errors.js';
+import { FolderXmpDetailResponse } from '../schemas/folder-xmp.js';
 import { catalogThumbnailRoots, isPathUnderAllowedRoots } from './common.js';
+import { buildFolderXmpDetail } from '../../folder/xmp-detail.js';
 import { registerFrameSubstanceRoutes } from './frame-substance.js';
 import { parseCatalogListParams, parseCatalogSimilarParams } from './query-params.js';
 import {
@@ -396,6 +398,27 @@ catalogRoutes.openapi(instagramPostedRoute, (c) => {
   // rows changed is not treated as a failure — writing the value it already had is
   // a successful no-op.
   return c.json({ key: imageKey, instagram_posted: posted }, 200);
+});
+
+// --- folder XMP detail (read live from files) --------------------------------
+
+const folderXmpRoute = createRoute({
+  method: 'get',
+  path: '/images/catalog/{image_key}/xmp',
+  tags: ['images-catalog'],
+  request: { params: imageKeyParams },
+  responses: withValidationError({
+    200: { description: 'XMP/IPTC values and sources', content: jsonBody(FolderXmpDetailResponse) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+catalogRoutes.openapi(folderXmpRoute, async (c) => {
+  const imageKey = c.req.valid('param').image_key;
+  const db = c.get('libraryDb');
+  const detail = await buildFolderXmpDetail(db, imageKey);
+  if (!detail) return errorNotFound(c, 'image');
+  return c.json(detail, 200);
 });
 
 // --- detail -----------------------------------------------------------------
