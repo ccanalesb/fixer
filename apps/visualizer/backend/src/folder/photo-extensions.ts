@@ -9,6 +9,8 @@ const RASTER_EXTENSIONS = new Set([
   '.tiff',
   '.webp',
   '.avif',
+  '.heic',
+  '.heif',
 ]);
 
 export function photoExtension(filename: string): string {

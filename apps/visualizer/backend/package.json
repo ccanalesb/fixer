@@ -30,6 +30,7 @@
     "@huggingface/transformers": "^4.2.0",
     "better-sqlite3": "^13.0.3",
     "exiftool-vendored": "^39.1.0",
+    "heic-decode": "^2.1.0",
     "hono": "^4.13.5",
     "libraw-wasm": "^1.6.0",
     "onnxruntime-node": "1.24.3",

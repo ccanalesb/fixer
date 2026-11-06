@@ -40,6 +40,14 @@ describe('shouldSkipEntryName', () => {
 });
 
 describe('walkFolderCatalog', () => {
+  it('counts HEIC and HEIF extensions in any case', () => {
+    writeFileSync(join(dir, 'iphone.HEIC'), 'heic');
+    writeFileSync(join(dir, 'other.HeIf'), 'heif');
+    const { stats, photos } = walkFolderCatalog(dir);
+    expect(stats.photoCount).toBe(2);
+    expect(photos.map((p) => p.relPath).sort()).toEqual(['iphone.HEIC', 'other.HeIf']);
+  });
+
   it('counts photos and folders in sorted order and skips dot entries', () => {
     mkdirSync(join(dir, 'nested'));
     writeFileSync(join(dir, 'a.jpg'), 'jpeg');
