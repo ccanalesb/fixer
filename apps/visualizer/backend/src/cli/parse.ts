@@ -26,7 +26,7 @@ export interface FlagSpec {
  * the subcommand win.
  */
 export const GLOBAL_FLAGS: readonly FlagSpec[] = [
-  { name: 'catalog', short: 'c', kind: 'string', help: 'Path to .lrcat file' },
+  { name: 'catalog', short: 'c', kind: 'string', help: 'Path to a .lrcat file or a folder' },
   { name: 'db', short: 'd', kind: 'string', help: 'Path to SQLite database' },
   { name: 'config', kind: 'string', help: 'Path to config.yaml' },
   { name: 'workers', short: 'w', kind: 'int', help: 'Parallel workers (default: 4)' },

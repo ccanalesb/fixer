@@ -8,7 +8,6 @@ import type { FlagSpec, ParsedArgs } from './parse.js';
 import { cmdScan, cmdSync } from './commands/catalog.js';
 import { cmdCullCheck } from './commands/cull.js';
 import { cmdEnrichCatalog } from './commands/enrich.js';
-import { cmdInit } from './commands/init.js';
 import { cmdExport, cmdSearch, cmdStats } from './commands/query.js';
 
 export interface CommandContext {
@@ -42,7 +41,7 @@ const DB_FLAG: FlagSpec = {
 const CATALOG_FLAG: FlagSpec = {
   name: 'catalog',
   kind: 'string',
-  help: 'Path to .lrcat file (overrides global)',
+  help: 'Path to a .lrcat file or a folder',
 };
 
 const LIMIT_FLAG: FlagSpec = { name: 'limit', kind: 'int', help: 'Limit results' };
@@ -78,6 +77,7 @@ export const COMMANDS: readonly CliCommand[] = [
     help: 'Search indexed images',
     flags: [
       DB_FLAG,
+      CATALOG_FLAG,
       { name: 'keyword', kind: 'string', help: 'Search by keyword' },
       { name: 'rating', kind: 'int', help: 'Minimum rating (0-5)' },
       { name: 'color-label', kind: 'string', help: 'Filter by color label' },
@@ -92,6 +92,7 @@ export const COMMANDS: readonly CliCommand[] = [
     help: 'Export to JSON/CSV',
     flags: [
       DB_FLAG,
+      CATALOG_FLAG,
       { name: 'output', short: 'o', kind: 'string', help: 'Output file path', required: true },
       {
         name: 'format',
@@ -106,15 +107,9 @@ export const COMMANDS: readonly CliCommand[] = [
     handler: cmdExport,
   },
   {
-    name: 'init',
-    help: 'Initialize database',
-    flags: [DB_FLAG],
-    handler: cmdInit,
-  },
-  {
     name: 'stats',
     help: 'Show database statistics',
-    flags: [DB_FLAG],
+    flags: [DB_FLAG, CATALOG_FLAG],
     handler: cmdStats,
   },
   {
@@ -122,7 +117,7 @@ export const COMMANDS: readonly CliCommand[] = [
     help: 'Warm the vision cache for catalog images',
     flags: [
       DB_FLAG,
-      { ...CATALOG_FLAG, help: 'Path to .lrcat file (no effect)' },
+      CATALOG_FLAG,
       { name: 'limit', kind: 'int', help: 'Limit number of images to process' },
       { name: 'cache-only', kind: 'boolean', help: 'Warm vision cache only (always on)' },
     ],

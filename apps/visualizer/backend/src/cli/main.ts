@@ -6,6 +6,7 @@
  */
 import { config as runtimeConfig, loadLibraryConfig, type LibraryConfig } from '../config.js';
 import { CliError } from './library-db.js';
+import { CatalogLibraryConflictError } from './library-resolution.js';
 import { helpText, parseArgv, preparseConfigPath, UsageError } from './parse.js';
 import { COMMANDS, type CommandContext } from './registry.js';
 
@@ -44,6 +45,10 @@ export async function run(argv: readonly string[], opts: RunOptions = {}): Promi
   try {
     return await command.handler(ctx);
   } catch (e) {
+    if (e instanceof CatalogLibraryConflictError) {
+      out(`Error: ${e.message}`);
+      return 1;
+    }
     out(`Error: ${e instanceof CliError || e instanceof Error ? e.message : String(e)}`);
     return 1;
   }

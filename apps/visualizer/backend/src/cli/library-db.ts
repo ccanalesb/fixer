@@ -4,8 +4,7 @@
 import { existsSync } from 'node:fs';
 import { openLibraryDb, type Db } from '../db/connection.js';
 import { initLibraryDb, upgradeLibrarySchema } from '../db/library/bootstrap.js';
-import { config } from '../config.js';
-import { resolveOpenLibraryPathsForCli } from '../open-library.js';
+import { resolveCliLibrary } from './library-resolution.js';
 import type { CommandContext } from './registry.js';
 import { stringFlag } from './parse.js';
 
@@ -14,13 +13,16 @@ const MISSING_DB_PATH_MSG = 'No database path provided. Use --db or config.yaml'
 /** A failure the user can read and act on; printed without a stack trace. */
 export class CliError extends Error {}
 
+export interface WithLibraryDbOpts {
+  mustExist: boolean;
+  /** Only `scan` / `sync` without `--catalog` may create a library for `config.yaml`'s catalog. */
+  allowCreateLibrary?: boolean;
+}
+
 /** `--db` if given, else the library the catalog lookup finds. */
-export function resolveLibraryDbPath(ctx: CommandContext, opts: { mustExist: boolean }): string {
-  const { libraryDbPath: dbPath } = resolveOpenLibraryPathsForCli(
-    ctx.config,
-    stringFlag(ctx.args, 'db') ?? undefined,
-    config.LT_CONFIG_YAML,
-  );
+export function resolveLibraryDbPath(ctx: CommandContext, opts: WithLibraryDbOpts): string {
+  const { paths } = resolveCliLibrary(ctx, opts.allowCreateLibrary ?? false);
+  const dbPath = paths.libraryDbPath;
   if (!dbPath) throw new CliError(MISSING_DB_PATH_MSG);
   if (opts.mustExist && !existsSync(dbPath)) {
     throw new CliError(`Database not found: ${dbPath}`);
@@ -30,7 +32,17 @@ export function resolveLibraryDbPath(ctx: CommandContext, opts: { mustExist: boo
 
 /** Open for a command. An existing database is brought up to the current schema. */
 function openForCommand(dbPath: string, mustExist: boolean): Db {
-  if (!mustExist) return initLibraryDb(dbPath);
+  if (!mustExist && !existsSync(dbPath)) return initLibraryDb(dbPath);
+  if (!mustExist && existsSync(dbPath)) {
+    const db = openLibraryDb(dbPath);
+    try {
+      upgradeLibrarySchema(db);
+    } catch (e) {
+      db.close();
+      throw e;
+    }
+    return db;
+  }
   const db = openLibraryDb(dbPath);
   try {
     upgradeLibrarySchema(db);
@@ -44,13 +56,11 @@ function openForCommand(dbPath: string, mustExist: boolean): Db {
 /**
  * Run `body` against an open library DB, closing it whatever happens.
  *
- * `mustExist: false` bootstraps the schema (`init`, `scan`, `sync`). Other commands
- * refuse a missing path instead of opening an empty database — applying the schema
- * on open would make read-only commands writers.
+ * `mustExist: false` bootstraps the schema when the path is missing (`scan`, `sync`).
  */
 export function withLibraryDb<T>(
   ctx: CommandContext,
-  opts: { mustExist: boolean },
+  opts: WithLibraryDbOpts,
   body: (db: Db, dbPath: string) => T,
 ): T {
   const dbPath = resolveLibraryDbPath(ctx, opts);
@@ -62,15 +72,9 @@ export function withLibraryDb<T>(
   }
 }
 
-/**
- * `withLibraryDb` for a body that awaits.
- *
- * A separate function rather than a union return, because the synchronous version's
- * `finally` would close the connection the moment an async body returned its promise.
- */
 export async function withLibraryDbAsync<T>(
   ctx: CommandContext,
-  opts: { mustExist: boolean },
+  opts: WithLibraryDbOpts,
   body: (db: Db, dbPath: string) => Promise<T>,
 ): Promise<T> {
   const dbPath = resolveLibraryDbPath(ctx, opts);
@@ -80,4 +84,9 @@ export async function withLibraryDbAsync<T>(
   } finally {
     db.close();
   }
+}
+
+/** Whether the CLI pinned a library with `--db`. */
+export function cliLibraryPinned(ctx: CommandContext): boolean {
+  return stringFlag(ctx.args, 'db') != null;
 }

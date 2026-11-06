@@ -1,53 +1,99 @@
 /**
- * The two commands that read a `.lrcat` into `library.db`: `scan` and `sync`.
- *
- * `scan` reads the whole catalog and upserts every row; `sync` diffs catalog ids
- * against the ones already indexed and fetches only what is missing. Both run on
- * drivers the visualizer's `catalog_sync` job already uses.
+ * The two commands that read a catalog into `library.db`: `scan` and `sync`.
  */
 import { existsSync } from 'node:fs';
 import { storeImagesBatch } from '../../db/library/catalog.js';
 import { libraryWrite } from '../../db/library/write.js';
+import { syncFolderCatalog } from '../../folder/sync.js';
 import { syncCatalog } from '../../lightroom/catalog-sync.js';
 import {
   connectCatalogReadOnly,
   getImageCount,
   getImageRecords,
 } from '../../lightroom/reader.js';
-import { CliError, withLibraryDb, withLibraryDbAsync } from '../library-db.js';
-import { boolFlag, intFlag, stringFlag } from '../parse.js';
+import {
+  catalogKindAtPath,
+  resolveCliLibrary,
+  resolvePinnedScanSyncCatalog,
+} from '../library-resolution.js';
+import { CliError, cliLibraryPinned, withLibraryDbAsync } from '../library-db.js';
+import { boolFlag, intFlag } from '../parse.js';
 import type { CommandContext } from '../registry.js';
 
-/** `--catalog` if given, else the configured `.lrcat` from `config.yaml`, and it must exist. */
-function resolveCliConfiguredCatalogPath(ctx: CommandContext): string {
-  const catalogPath = stringFlag(ctx.args, 'catalog') ?? ctx.config.catalogPath;
-  if (!catalogPath) {
+const UNREADABLE_LOG_LIMIT = 5;
+
+function resolveScanSyncCatalogPath(ctx: CommandContext, dbPath: string, db: import('../../db/connection.js').Db): string {
+  if (cliLibraryPinned(ctx)) {
+    return resolvePinnedScanSyncCatalog(db, dbPath, ctx);
+  }
+  const resolved = resolveCliLibrary(ctx, true);
+  if (!resolved.catalogPath) {
     throw new CliError('No catalog path provided. Use --catalog or config.yaml');
   }
-  if (!existsSync(catalogPath)) throw new CliError(`Catalog not found: ${catalogPath}`);
-  return catalogPath;
+  return resolved.catalogPath;
 }
 
-export function cmdScan(ctx: CommandContext): number {
-  const catalogPath = resolveCliConfiguredCatalogPath(ctx);
-  ctx.out(`Scanning catalog: ${catalogPath}`);
-
-  // Read-only, as `connect_catalog` is: a scan must not be able to mutate a file
-  // Lightroom owns.
-  const catalog = connectCatalogReadOnly(catalogPath);
-  let records;
-  try {
-    const total = getImageCount(catalog);
-    if (boolFlag(ctx.args, 'verbose')) ctx.out(`Total images in catalog: ${total}`);
-    records = getImageRecords(catalog, intFlag(ctx.args, 'limit'));
-  } finally {
-    catalog.close();
+function refuseFolderOnlyFlags(ctx: CommandContext, catalogPath: string): void {
+  if (catalogKindAtPath(catalogPath) !== 'folder') return;
+  if (intFlag(ctx.args, 'limit') != null) {
+    throw new CliError('scan --limit is not supported for a folder catalog');
   }
+  if (boolFlag(ctx.args, 'backfill-keywords')) {
+    throw new CliError('sync --backfill-keywords is not supported for a folder catalog');
+  }
+}
 
-  ctx.out(`Retrieved ${records.length} image records`);
+async function runFolderSyncCli(
+  ctx: CommandContext,
+  catalogPath: string,
+  db: import('../../db/connection.js').Db,
+): Promise<number> {
+  ctx.out(`Syncing folder: ${catalogPath}`);
+  const logLines: string[] = [];
+  const { result, unreadablePaths } = await syncFolderCatalog(catalogPath, db, {
+    log: (_level, message) => {
+      logLines.push(message);
+    },
+  });
+  for (const line of logLines) {
+    if (line.startsWith('[cache] [sync]')) ctx.out(line.slice('[cache] [sync]'.length).trimStart());
+  }
+  if (unreadablePaths.length) {
+    const sample = unreadablePaths.slice(0, UNREADABLE_LOG_LIMIT).join(', ');
+    ctx.out(`Unreadable (${unreadablePaths.length}): ${sample}`);
+  }
+  ctx.out(
+    `Added ${result.added}; ${result.stale} stale; ${result.changed} changed; ` +
+      `${result.metadata_changed} metadata changed; ${result.moved} moved; ` +
+      `${result.newly_gone} newly gone; ${result.unreadable} unreadable ` +
+      `(walk_ms=${result.walk_ms}, stat_ms=${result.stat_ms})`,
+  );
+  return 0;
+}
 
-  return withLibraryDb(ctx, { mustExist: false }, (db, dbPath) => {
-    // One transaction for the whole batch — an interrupted run leaves the library untouched.
+export async function cmdScan(ctx: CommandContext): Promise<number> {
+  return withLibraryDbAsync(ctx, { mustExist: false, allowCreateLibrary: true }, async (db, dbPath) => {
+    const catalogPath = resolveScanSyncCatalogPath(ctx, dbPath, db);
+    refuseFolderOnlyFlags(ctx, catalogPath);
+
+    if (catalogKindAtPath(catalogPath) === 'folder') {
+      return runFolderSyncCli(ctx, catalogPath, db);
+    }
+
+    if (!existsSync(catalogPath)) throw new CliError(`Catalog not found: ${catalogPath}`);
+    ctx.out(`Scanning catalog: ${catalogPath}`);
+
+    const catalog = connectCatalogReadOnly(catalogPath);
+    let records;
+    try {
+      const total = getImageCount(catalog);
+      if (boolFlag(ctx.args, 'verbose')) ctx.out(`Total images in catalog: ${total}`);
+      records = getImageRecords(catalog, intFlag(ctx.args, 'limit'));
+    } finally {
+      catalog.close();
+    }
+
+    ctx.out(`Retrieved ${records.length} image records`);
     const count = libraryWrite(db, () => storeImagesBatch(db, records));
     ctx.out(`Indexed ${count} images to ${dbPath}`);
     return 0;
@@ -55,12 +101,16 @@ export function cmdScan(ctx: CommandContext): number {
 }
 
 export async function cmdSync(ctx: CommandContext): Promise<number> {
-  const catalogPath = resolveCliConfiguredCatalogPath(ctx);
+  return withLibraryDbAsync(ctx, { mustExist: false, allowCreateLibrary: true }, async (db, dbPath) => {
+    const catalogPath = resolveScanSyncCatalogPath(ctx, dbPath, db);
+    refuseFolderOnlyFlags(ctx, catalogPath);
 
-  return withLibraryDbAsync(ctx, { mustExist: false }, async (db) => {
+    if (catalogKindAtPath(catalogPath) === 'folder') {
+      return runFolderSyncCli(ctx, catalogPath, db);
+    }
+
+    if (!existsSync(catalogPath)) throw new CliError(`Catalog not found: ${catalogPath}`);
     ctx.out(`Syncing catalog: ${catalogPath}`);
-    // No progress or cancellation callbacks: this is a foreground command, and
-    // the driver only reports through them when a job runner is listening.
     const { result } = await syncCatalog(catalogPath, db, {
       backfillKeywords: boolFlag(ctx.args, 'backfill-keywords'),
     });
