@@ -468,7 +468,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    catalog_presence?: "present" | "missing";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -521,7 +523,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    catalog_presence?: "present" | "missing";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -739,6 +743,61 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/api/images/catalog/{image_key}/xmp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    image_key: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description XMP/IPTC values and sources */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FolderXmpDetailResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/images/catalog/{image_key}": {
@@ -2172,6 +2231,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/catalog/change-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConfigCatalogChangePreviewRequest"];
+                };
+            };
+            responses: {
+                /** @description What changing the catalog would do */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConfigCatalogChangePreviewResponse"];
+                    };
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config/catalog/pick": {
         parameters: {
             query?: never;
@@ -2197,6 +2313,77 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ConfigCatalogPickResponse"];
+                    };
+                };
+                /** @description A dialog is already open */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+                /** @description The dialog failed to open */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description This host has no native dialog */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/catalog/pick-folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Chosen folder, or null */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConfigCatalogPickFolderResponse"];
                     };
                 };
                 /** @description A dialog is already open */
@@ -3765,6 +3952,56 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["LrWritebackPhotoDetailResponse"];
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cull/lightroom-writeback/turn-on-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    kind: "stars" | "reject";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Dry-run file counts for turning a switch on */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            new_sidecar: number;
+                            update_sidecar: number;
+                            embedded: number;
+                        };
                     };
                 };
                 /** @description Unprocessable Content */
@@ -5929,7 +6166,7 @@ export interface components {
             filepath?: string | null;
             date_taken?: string | null;
             rating?: number | null;
-            pick?: boolean | null;
+            pick?: components["schemas"]["CatalogPick"];
             color_label?: string | null;
             /** @default [] */
             keywords: string[];
@@ -5970,7 +6207,9 @@ export interface components {
             thumbnail_url?: string | null;
             score?: number | null;
             cull_manually_sent?: boolean | null;
+            catalog_missing_since?: string | null;
         };
+        CatalogPick: -1 | 0 | 1 | null;
         CatalogSimilarResponse: {
             images: components["schemas"]["CatalogImage"][];
             total: number;
@@ -6002,6 +6241,48 @@ export interface components {
         InstagramPostedRequest: {
             posted: boolean;
         };
+        FolderXmpDetailResponse: {
+            image_key: string;
+            file_missing: boolean;
+            no_metadata_hint: boolean;
+            /** @default [] */
+            sidecar_order: {
+                basename: string;
+                read_order: number;
+            }[];
+            secondary_sidecar_note: {
+                basename: string;
+                read_after_basename: string;
+            } | null;
+            rating: {
+                source: string | null;
+                display: string;
+            };
+            reject: {
+                source: string | null;
+                display: string | null;
+            };
+            label: {
+                source: string | null;
+                value: string | null;
+            };
+            keywords: {
+                source: string | null;
+                values: string[];
+            };
+            title: {
+                source: string | null;
+                value: string | null;
+            };
+            caption: {
+                source: string | null;
+                value: string | null;
+            };
+            copyright: {
+                source: string | null;
+                value: string | null;
+            };
+        };
         ImageView: {
             /** @enum {string} */
             image_type: "catalog";
@@ -6013,7 +6294,7 @@ export interface components {
             date_taken?: string | null;
             created_at?: string | null;
             rating?: number | null;
-            pick?: boolean | null;
+            pick?: components["schemas"]["CatalogPick"];
             color_label?: string | null;
             keywords?: string[] | null;
             title?: string | null;
@@ -6067,6 +6348,7 @@ export interface components {
             processed_at?: string | null;
             vision_result?: string | null;
             vision_score?: number | null;
+            catalog_missing_since?: string | null;
         };
         IdentityPerPerspectiveScore: {
             perspective_slug: string;
@@ -6333,19 +6615,65 @@ export interface components {
             catalog_path: string;
             resolved_path: string;
             exists: boolean;
+            /** @enum {string} */
+            catalog_kind: "lightroom" | "folder";
+            photo_count: number | null;
+            folder_count: number | null;
+            unreadable_directories: string[];
             picker_available: boolean;
-            synced_catalog_path: string | null;
-            needs_catalog_sync: boolean;
+        };
+        ConfigCatalogChangePreviewResponse: {
+            unchanged: boolean;
+            current: {
+                catalog_path: string;
+                resolved_path: string;
+                /** @enum {string} */
+                catalog_kind: "lightroom" | "folder";
+                display_name: string;
+                exists: boolean;
+                library_photo_count: number | null;
+                has_library: boolean;
+            };
+            next: {
+                catalog_path: string;
+                resolved_path: string;
+                /** @enum {string} */
+                catalog_kind: "lightroom" | "folder";
+                display_name: string;
+                exists: boolean;
+                library_photo_count: number | null;
+                has_library: boolean;
+            };
+            ask_same_or_different: boolean;
+            jobs_to_cancel: {
+                id: string;
+                type: string;
+                status: string;
+            }[];
+        };
+        ConfigCatalogChangePreviewRequest: {
+            catalog_path: string;
         };
         ConfigCatalogPickResponse: {
             catalog_path: string | null;
         };
+        ConfigCatalogPickFolderResponse: {
+            catalog_path: string | null;
+        };
         ConfigCatalogPutResponse: {
             catalog_path: string;
+            /** @enum {string} */
+            change: "update_path" | "switch";
+            reopened_library: boolean;
+            library_photo_count: number | null;
+            catalog_sync_job_id: string | null;
+            cancelled_job_ids: string[];
             ok: boolean;
         };
         ConfigCatalogPutRequest: {
             catalog_path: string;
+            /** @enum {string} */
+            change: "update_path" | "switch";
         };
         ConfigStackDetectionGetResponse: {
             stack_burst_delta_ms: number;
@@ -6573,16 +6901,21 @@ export interface components {
                 slug: string;
                 name: string;
             }[];
+            /** @enum {string} */
+            catalog_kind: "lightroom" | "folder";
+            catalog_path: string | null;
             catalog_write_available: boolean;
             catalog_write_unavailable_reason: string | null;
             counts: {
                 stars: {
                     pending: number;
                     written: number;
+                    skipped: number;
                 };
                 reject: {
                     pending: number;
                     written: number;
+                    skipped: number;
                 };
             };
         };
@@ -6606,6 +6939,9 @@ export interface components {
             };
             keywords: string[];
             strong_dimensions_line: string | null;
+            written_at: string | null;
+            written_file_label: string | null;
+            user_changed_message: string | null;
         };
         AppModelsListResponse: {
             models: components["schemas"]["AppModel"][];

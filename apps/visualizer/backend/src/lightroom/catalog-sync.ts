@@ -13,11 +13,14 @@ import {
   getLibraryMeta,
   KEYWORDS_BACKFILL_META_KEY,
   setLibraryMeta,
-  SYNCED_CATALOG_META_KEY,
   upgradeLibrarySchema,
 } from '../db/library/bootstrap.js';
 import { storeImagesBatch, updateImageKeywordsBatch } from '../db/library/catalog.js';
 import { libraryWrite } from '../db/library/write.js';
+import {
+  markNewlyRemovedLightroomPhotos,
+  noteRankingStaleAfterLightroomSync,
+} from '../db/library/ranking-stale.js';
 import { createEventLoopYieldState, pollCancelAndYield } from '../utils/yield.js';
 import {
   catalogReadonlyUriEnabled,
@@ -59,6 +62,8 @@ export interface CatalogSyncResult {
   orientations_updated: number;
   /** Of those, images whose outputs were marked stale and whose cache JPEG must be rebuilt. */
   orientation_stale: number;
+  /** Rows whose id no longer appears in the catalog and were marked missing this run. */
+  newly_gone: number;
 }
 
 function isCatalogLockedError(e: unknown): boolean {
@@ -260,16 +265,12 @@ export async function syncCatalog(
       }
     }
 
-    // Only a run that reached the end can claim the library mirrors this catalog.
-    // A cancelled one leaves the previous claim standing, which is the truth.
-    if (!cancelled) {
-      libraryWrite(libDb, () => setLibraryMeta(libDb, SYNCED_CATALOG_META_KEY, catalogPath));
-    }
-
     opts.progress?.(100, 'Catalog sync complete');
+    const newlyGone = markNewlyRemovedLightroomPhotos(libDb, catalogIds);
+    noteRankingStaleAfterLightroomSync(libDb, added, newlyGone);
     log(
       'info',
-      `[catalog-sync] complete added=${added} stale=${staleCount} ` +
+      `[catalog-sync] complete added=${added} stale=${staleCount} newly_gone=${newlyGone} ` +
         `keywords_backfilled=${keywordsBackfilled} locking_mode=${lockingMode}`,
     );
 
@@ -284,6 +285,7 @@ export async function syncCatalog(
         keywords_backfilled: keywordsBackfilled,
         orientations_updated: orientation.updated,
         orientation_stale: orientation.stale,
+        newly_gone: newlyGone,
       },
       cancelled,
     };

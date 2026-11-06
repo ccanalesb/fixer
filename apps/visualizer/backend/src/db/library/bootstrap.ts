@@ -14,6 +14,8 @@ import { openLibraryDb, type Db } from '../connection.js';
 import { resourcesRoot } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { upgradeDefaultProfileSlug } from './cull-default-profile-v18.js';
+import { upgradeFolderCatalogSyncColumns } from './folder-catalog-v19.js';
+import { upgradeFolderCatalogSidecarSigColumn } from './folder-catalog-v20.js';
 import { syncCurrentStagesAfterLibraryWrite } from './cull-sync-stages.js';
 import { seedCullingDefaults } from './cull-profiles.js';
 import { markdownMarksOptional } from './scores.js';
@@ -21,23 +23,13 @@ import { SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
 import { libraryWrite } from './write.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 18;
+export const LIBRARY_SCHEMA_VERSION = 20;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 17;
 
 /** Set after the one-time Lightroom keyword backfill in `catalog_sync`. */
 export const KEYWORDS_BACKFILL_META_KEY = 'keywords_backfilled_v1';
-
-/**
- * The catalog `catalog_sync` last read, resolved and absolute.
- *
- * What `library.db` actually mirrors, as opposed to what `config.yaml` points at
- * now. The two diverge the moment the catalog path is changed and stay diverged
- * until a sync runs, which is the window the settings UI has to warn about.
- * Absent on a library synced before this key existed.
- */
-export const SYNCED_CATALOG_META_KEY = 'synced_catalog_path';
 
 /** Set when the first `catalog_cache_build` finishes; the Insights setup screen reads it. */
 export const FIRST_CATALOG_IMPORT_META_KEY = 'first_catalog_import_completed';
@@ -259,7 +251,10 @@ CREATE TABLE IF NOT EXISTS images (
     catalog_path TEXT DEFAULT '',
     -- Lightroom's Adobe_images.orientation. Last because version 10 added it with
     -- ALTER TABLE, and column order is the key order of a SELECT * row.
-    orientation TEXT
+    orientation TEXT,
+    catalog_missing_since TEXT,
+    catalog_file_mtime REAL,
+    catalog_sidecar_sig TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_images_filepath ON images(filepath);
@@ -510,6 +505,11 @@ export function setLibraryMeta(db: Db, key: string, value: string): void {
   ).run(key, value);
 }
 
+/** Remove one `library_meta` row. Does NOT commit — call inside `libraryWrite`. */
+export function deleteLibraryMeta(db: Db, key: string): void {
+  db.prepare('DELETE FROM library_meta WHERE key = ?').run(key);
+}
+
 /** Whether the Insights first-run setup should stay hidden. */
 export function firstCatalogImportCompleted(db: Db): boolean {
   return getLibraryMeta(db, FIRST_CATALOG_IMPORT_META_KEY) !== null;
@@ -558,6 +558,8 @@ export function upgradeLibrarySchema(db: Db): void {
     const version = userVersion(db);
     if (version >= LIBRARY_SCHEMA_VERSION) return;
     if (version < 18) upgradeDefaultProfileSlug(db);
+    if (version < 19) upgradeFolderCatalogSyncColumns(db);
+    if (version < 20) upgradeFolderCatalogSidecarSigColumn(db);
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
     backfillFirstCatalogImportMeta(db);
   }).immediate();

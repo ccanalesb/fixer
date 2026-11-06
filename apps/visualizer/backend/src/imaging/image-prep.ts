@@ -12,8 +12,10 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { applyOrientation, UPRIGHT, type OrientationCode } from './orientation.js';
 import { convertRawToJpg, isRawPath } from './raw-decode.js';
+import { decodeHeicToJpegPath, isHeicPath } from './heic-decode.js';
 
 export { RAW_EXTENSIONS, VIDEO_EXTENSIONS, isRawPath, isVideoPath } from './raw-decode.js';
+export { isHeicPath } from './heic-decode.js';
 
 /** Longest edge of the image handed to a vision model. */
 export const VISION_MAX_DIMENSION = Number(process.env.VISION_MAX_DIMENSION ?? '1024');
@@ -121,6 +123,12 @@ export interface ViewablePath {
  * other tools write `.jpg`.
  */
 export async function getViewablePathManaged(imagePath: string): Promise<ViewablePath> {
+  if (isHeicPath(imagePath)) {
+    const decoded = await decodeHeicToJpegPath(imagePath, makeTempJpgPath);
+    if (decoded) return { path: decoded, isTemp: true, orientation: UPRIGHT };
+    return { path: imagePath, isTemp: false, orientation: UPRIGHT };
+  }
+
   if (!isRawPath(imagePath)) return { path: imagePath, isTemp: false, orientation: UPRIGHT };
 
   const stem = imagePath.slice(0, imagePath.lastIndexOf('.'));

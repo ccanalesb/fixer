@@ -1,4 +1,6 @@
 import type { CullProfileDetail } from '../../services/api'
+import { useCatalogKind } from '../../hooks/useCatalogKind'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
 import {
   CULL_RULE_HIGH,
   CULL_RULE_LEVEL_ARIA,
@@ -18,6 +20,7 @@ import {
   CULL_RULE_COMBINE_ARIA,
   LR_WRITEBACK_STARS_STRONG_FROM,
   LR_WRITEBACK_STARS_STRONG_FROM_HELP,
+  LR_WRITEBACK_STARS_STRONG_FROM_HELP_FOLDER,
   LR_WRITEBACK_STRONG_FROM_10,
   LR_WRITEBACK_STRONG_FROM_7,
   LR_WRITEBACK_STRONG_FROM_ANY,
@@ -49,6 +52,7 @@ export function CullingProfileRuleFields({
   draft: Draft
   setRule: (fn: (r: Rule) => Rule) => void
 }) {
+  const catalogKind = useCatalogKind()
   const rule = draft.rule
   const dims = draft.definition.dimensions
   const sets = draft.definition.level_sets
@@ -190,7 +194,12 @@ export function CullingProfileRuleFields({
 
       <label className="block max-w-md">
         <span className="font-medium">{LR_WRITEBACK_STARS_STRONG_FROM}</span>
-        <p className="text-xs text-text-secondary mb-1">{LR_WRITEBACK_STARS_STRONG_FROM_HELP}</p>
+        <p className="text-xs text-text-secondary mb-1">{forCatalogKind(
+            catalogKind,
+            LR_WRITEBACK_STARS_STRONG_FROM_HELP,
+            LR_WRITEBACK_STARS_STRONG_FROM_HELP_FOLDER,
+          )}
+        </p>
         <select
           className="w-full border border-border rounded-base px-2 py-1 bg-bg"
           value={rule.stars_strong_from ?? 'every'}

@@ -149,7 +149,7 @@ jobsRoutes.openapi(createRouteDef, (c) => {
       return c.json(
         {
           error: (
-            `Cannot enqueue '${jobType}': Lightroom Classic catalog database is unavailable. ` +
+            `Cannot enqueue '${jobType}': the catalog library is unavailable. ` +
             `${status.reason ?? ''}`
           ).trim(),
           code: 'catalog_unavailable' as const,

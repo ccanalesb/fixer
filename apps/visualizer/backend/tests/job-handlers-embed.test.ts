@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import sharp from 'sharp';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
@@ -96,7 +96,7 @@ const logMessages = (job: { logs: { message: string }[] }): string[] =>
  * vector in `library.db` was computed from, so embedding the original instead
  * would drift the new vectors away from the corpus they have to rank against.
  */
-const cachedPath = (key: string): string => join(dir, 'vision', `${key}.jpg`);
+const cachedPath = (key: string): string => join(dirname(fx.dbPath), 'vision-cache', `${key}.jpg`);
 
 const embeddedKeys = (): string[] =>
   fx

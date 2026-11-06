@@ -8,6 +8,8 @@
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { dirname, sep } from 'node:path';
 import { config, expandUserPath, loadLibraryConfig } from '../../config.js';
+import { inferCatalogKind } from '../../catalog-library.js';
+import { resolveOpenLibraryPaths } from '../../open-library.js';
 
 /** Fully resolve a path: trim, expand `~`, then follow symlinks. `null` if unusable. */
 export function canonicalPath(path: string | null | undefined): string | null {
@@ -66,9 +68,10 @@ export function isPathUnderAllowedRoots(filePath: string, roots: readonly string
  */
 export function catalogThumbnailRoots(): string[] {
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
+  const { visionCacheDir } = resolveOpenLibraryPaths();
   const roots: string[] = [];
 
-  const vc = canonicalPath(cfg.visionCacheDir);
+  const vc = canonicalPath(visionCacheDir);
   if (vc) roots.push(vc);
 
   const mp = (cfg.mountPoint ?? '').trim();
@@ -78,8 +81,20 @@ export function catalogThumbnailRoots(): string[] {
   }
 
   for (const p of [cfg.catalogPathRaw, cfg.smallCatalogPath]) {
-    const par = parentDirIfExists(p);
-    if (par && !roots.includes(par)) roots.push(par);
+    const trimmed = (p ?? '').trim();
+    if (!trimmed) continue;
+    const resolved = expandUserPath(trimmed);
+    if (inferCatalogKind(resolved) === 'folder') {
+      const root = canonicalPath(resolved);
+      try {
+        if (root && statSync(root).isDirectory() && !roots.includes(root)) roots.push(root);
+      } catch {
+        /* missing folder */
+      }
+    } else {
+      const par = parentDirIfExists(trimmed);
+      if (par && !roots.includes(par)) roots.push(par);
+    }
   }
 
   return [...new Set(roots)];

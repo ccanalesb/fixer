@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClipModelDownloadConfirm } from '../setup/ClipModelDownloadConfirm';
 import { useClipModelStatus } from '../../hooks/useClipModelStatus';
+import { useCatalogKind } from '../../hooks/useCatalogKind';
+import { forCatalogKind } from '../../utils/catalogKindCopy';
 import { catalogCacheChanged, keys, useQuery } from '../../data';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -25,6 +27,7 @@ import {
   CATALOG_CACHE_EMBED_CATALOG_HELPER,
   CATALOG_CACHE_EMBED_CATALOG_LABEL,
   CATALOG_CACHE_INTRO_BODY,
+  CATALOG_CACHE_INTRO_BODY_FOLDER,
   CATALOG_CACHE_LAST_RUN_LABEL,
   CATALOG_CACHE_LAST_RUN_NEVER,
   CATALOG_CACHE_LOCATION_PREFIX,
@@ -53,6 +56,7 @@ import {
   CATALOG_CACHE_STAT_SIZE_HELPER,
   CATALOG_CACHE_STAT_SIZE_LABEL,
   CATALOG_CACHE_STAT_TOTAL_HELPER,
+  CATALOG_CACHE_STAT_TOTAL_HELPER_FOLDER,
   CATALOG_CACHE_STAT_TOTAL_LABEL,
   PROCESSING_EMBED_CATALOG_QUEUED,
   PROCESSING_JOB_QUEUE_ROUTE,
@@ -95,6 +99,7 @@ export interface CatalogCacheTabProps {
 }
 
 export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
+  const catalogKind = useCatalogKind();
   const [showPipeline, setShowPipeline] = useState(false);
   const stats = useQuery(keys.catalog.cache.stats(), fetchCacheStats);
   const catalogSimilarity = useQuery(
@@ -215,7 +220,9 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
           <CardTitle>{CATALOG_CACHE_CARD_TITLE}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-text-secondary mb-6">{CATALOG_CACHE_INTRO_BODY}</p>
+          <p className="text-sm text-text-secondary mb-6">
+            {forCatalogKind(catalogKind, CATALOG_CACHE_INTRO_BODY, CATALOG_CACHE_INTRO_BODY_FOLDER)}
+          </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div className="p-4 bg-surface rounded-base border border-border">
@@ -223,7 +230,13 @@ export function CatalogCacheTab({ onOpenJobQueue }: CatalogCacheTabProps) {
                 <span className="text-sm text-text-secondary">{CATALOG_CACHE_STAT_TOTAL_LABEL}</span>
                 <Badge variant="default">{stats.total_images.toLocaleString()}</Badge>
               </div>
-              <p className="text-xs text-text-tertiary">{CATALOG_CACHE_STAT_TOTAL_HELPER}</p>
+              <p className="text-xs text-text-tertiary">
+                {forCatalogKind(
+                  catalogKind,
+                  CATALOG_CACHE_STAT_TOTAL_HELPER,
+                  CATALOG_CACHE_STAT_TOTAL_HELPER_FOLDER,
+                )}
+              </p>
             </div>
 
             <div className="p-4 bg-surface rounded-base border border-border">

@@ -9,11 +9,17 @@ import sharp from 'sharp';
 import { stringify as stringifyYaml } from 'yaml';
 import { makeFakeCatalog, type CatalogFile } from './helpers/fake-catalog.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
-import type { Db } from '../src/db/connection.js';
+import { openLibraryDb, type Db } from '../src/db/connection.js';
+import { syncCatalog } from '../src/lightroom/catalog-sync.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { ensureCatalogCache } from '../src/jobs/handlers/catalog-cache.js';
+import {
+  CHANGED_SINCE_RANKING_META_KEY,
+  markChangedSinceRanking,
+} from '../src/db/library/ranking-stale.js';
+import { libraryWrite } from '../src/db/library/write.js';
 
 vi.unmock('../src/jobs/handlers/catalog-cache.js');
 
@@ -43,6 +49,15 @@ let jobsDbPath: string;
 function withJobsDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   const db = initJobsDb(jobsDbPath);
   return fn(db).finally(() => db.close());
+}
+
+async function withLibraryAsync<T>(fn: (db: Db) => Promise<T>): Promise<T> {
+  const db = openLibraryDb(fx.dbPath);
+  try {
+    return await fn(db);
+  } finally {
+    db.close();
+  }
 }
 
 async function seedCatalog(names: string[]): Promise<void> {
@@ -96,6 +111,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete process.env.DATABASE_PATH;
   delete process.env.LT_CONFIG_YAML;
   fx.cleanup();
@@ -140,6 +156,97 @@ describe('the catalog cache check', () => {
     expect(enc.encoded).toBe(0);
     expect(messages).toContain('[cache] cache up to date');
     expect(messages.some((m) => m.includes('stage=stack'))).toBe(false);
+  });
+
+  it('recomputes stacks when an earlier sync left the changed-since-ranking mark', async () => {
+    await seedCatalog(['shot-a', 'shot-b']);
+    await check();
+    enc.encoded = 0;
+    fx.withDb((db) => {
+      libraryWrite(db, () => markChangedSinceRanking(db));
+    });
+
+    const { messages } = await check();
+
+    expect(messages.some((m) => m.includes('[cache] stage=stack status=start'))).toBe(true);
+    expect(messages.some((m) => m.includes('[cache] stage=similarity status=start'))).toBe(true);
+    const mark = fx.query<{ value: string }>(
+      `SELECT value FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`,
+    );
+    expect(mark).toHaveLength(0);
+  });
+
+  it('leaves the changed-since-ranking mark when stack detection fails', async () => {
+    await seedCatalog(['shot-a']);
+    await check();
+    fx.withDb((db) => {
+      libraryWrite(db, () => markChangedSinceRanking(db));
+    });
+
+    await withLibraryAsync(async (db) => {
+      await withJobsDb(async (jobsDb) => {
+        const runner = new JobRunner(jobsDb);
+        const jobId = createJob(jobsDb, 'batch_cull_photos_before_scoring', {
+          delta_ms: 'nonsense',
+        });
+        runner.startJob(jobId, 'batch_cull_photos_before_scoring');
+        const { runStackDetectPass } = await import('../src/jobs/handlers/stacks.js');
+        const { OWN_JOB } = await import('../src/jobs/handlers/common.js');
+        const result = await runStackDetectPass(
+          runner,
+          jobId,
+          { delta_ms: 'nonsense' },
+          db,
+          OWN_JOB,
+        );
+        expect(result).toBeNull();
+        expect(getJob(jobsDb, jobId)!.status).toBe('failed');
+      });
+    });
+
+    expect(
+      fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`),
+    ).toHaveLength(1);
+  });
+
+  it('leaves the changed-since-ranking mark when similarity detection fails', async () => {
+    await seedCatalog(['shot-a']);
+    await check();
+    fx.withDb((db) => {
+      libraryWrite(db, () => markChangedSinceRanking(db));
+    });
+
+    const clip = await import('../src/clip/similarity.js');
+    vi.spyOn(clip, 'runClipSimilarForSeed').mockImplementation(() => {
+      throw new Error('simulated similarity failure');
+    });
+
+    const { ready } = await check();
+    expect(ready).toBe(false);
+    expect(
+      fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`),
+    ).toHaveLength(1);
+  });
+
+  it('recomputes stacks after a standalone sync found a photo newly gone', async () => {
+    await seedCatalog(['shot-a', 'shot-b']);
+    await check();
+    enc.encoded = 0;
+
+    // A standalone sync (no ranking after it) with one photo removed: it marks the
+    // row gone and leaves the changed-since-ranking mark set.
+    await seedCatalog(['shot-a']);
+    const standalone = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(standalone.result.newly_gone).toBe(1);
+    expect(fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`))
+      .toHaveLength(1);
+
+    // The next job's own sync finds nothing new, but the mark still forces a recompute.
+    const { messages } = await check();
+
+    expect(messages.some((m) => m.includes('[cache] stage=stack status=start'))).toBe(true);
+    expect(fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`))
+      .toHaveLength(0);
   });
 
   it('builds what a photo added in Lightroom is missing', async () => {

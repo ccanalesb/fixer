@@ -1,40 +1,34 @@
 import { getWritebackState, type LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
-import {
-  AUTO_STARS_KEYWORD,
-  clearStarsFromCatalog,
-  removeKeywordByKey,
-  replaceRatingIfMatches,
-  writeStarsToCatalog,
-} from './writer.js';
 import { nowIsoUtc } from '../utils/datetime.js';
 import {
   adoptWrittenStarsState,
   catalogHasAppStars,
   liveMatchesWritten,
   notFoundState,
+  stayPendingOnFileWriteFailure,
   syncWrittenFromLiveCatalog,
   userChangedAfterWrite,
   type WritebackPlanPhoto,
   type WritebackPlanRun,
 } from './writeback-shared.js';
 
-export function planStarsPhoto(
+export async function planStarsPhoto(
   run: WritebackPlanRun,
   photo: WritebackPlanPhoto,
-): Omit<LrWritebackStateRow, 'updated_at'> | null {
-  const { db, conn, tally, starsVersionId } = run;
+): Promise<Omit<LrWritebackStateRow, 'updated_at'> | null> {
+  const { db, catalog, tally, starsVersionId } = run;
   const { imageKey, live, writeNow, decision } = photo;
   const row = getWritebackState(db, imageKey, 'stars');
   const rating = decision.stars.rating;
 
-  if (conn && live === null) {
+  if (catalog && live === null) {
     return notFoundState(imageKey, 'stars', row, tally);
   }
 
   if (live && row && userChangedAfterWrite('stars', live, row)) {
     if (live.rating !== null) return { ...row, status: 'skipped' };
     // Clearing the app's stars in Lightroom is an undo: not written again until the profile changes.
-    if (conn && writeNow) removeKeywordByKey(conn, imageKey, AUTO_STARS_KEYWORD);
+    if (catalog && writeNow) await Promise.resolve(catalog.removeAutoStarsKeyword(imageKey));
     return { ...row, status: 'undone', written_rating: null, written_at: null };
   }
 
@@ -43,8 +37,8 @@ export function planStarsPhoto(
   }
 
   if (rating === null) {
-    if (row?.status === 'written' && live && liveMatchesWritten('stars', live, row) && conn && writeNow) {
-      clearStarsFromCatalog(conn, imageKey, row.written_rating!);
+    if (row?.status === 'written' && live && liveMatchesWritten('stars', live, row) && catalog && writeNow) {
+      await Promise.resolve(catalog.clearStars(imageKey, row.written_rating!));
       tally.catalog_cleared_stars += 1;
       return { ...row, status: 'pending', written_rating: null, written_at: null };
     }
@@ -54,9 +48,9 @@ export function planStarsPhoto(
     return null;
   }
 
-  if (live && conn && rating !== null) {
+  if (live && catalog && rating !== null) {
     const synced = syncWrittenFromLiveCatalog(
-      conn,
+      catalog,
       'stars',
       imageKey,
       rating,
@@ -89,14 +83,17 @@ export function planStarsPhoto(
 
   // Only stars the app put on an unrated photo are its own to replace; the user's stays theirs under the keyword.
   if (
-    conn &&
+    catalog &&
     writeNow &&
     row?.before_rating === null &&
     row.written_rating !== null &&
     row.written_rating !== rating &&
-    catalogHasAppStars(conn, imageKey, row.written_rating)
+    catalogHasAppStars(catalog, imageKey, row.written_rating)
   ) {
-    const result = replaceRatingIfMatches(conn, imageKey, row.written_rating, rating);
+    const result = await Promise.resolve(catalog.replaceStars(imageKey, row.written_rating, rating));
+    if (result === 'mtime_conflict' || result === 'readonly_error') {
+      return stayPendingOnFileWriteFailure(imageKey, 'stars', row, tally, result, starsVersionId);
+    }
     if (result === 'updated') {
       tally.catalog_updated_stars += 1;
       return {
@@ -114,7 +111,7 @@ export function planStarsPhoto(
   }
 
   if (live.rating !== null) {
-    if (conn && rating !== null && catalogHasAppStars(conn, imageKey, rating)) {
+    if (catalog && rating !== null && catalogHasAppStars(catalog, imageKey, rating)) {
       return adoptWrittenStarsState(imageKey, rating, starsVersionId, row);
     }
     if (rating !== null && live.rating !== rating) {
@@ -132,7 +129,7 @@ export function planStarsPhoto(
     }
   }
 
-  if (!writeNow || !conn) {
+  if (!writeNow || !catalog) {
     return {
       image_key: imageKey,
       kind: 'stars',
@@ -147,10 +144,13 @@ export function planStarsPhoto(
   }
 
   const beforeRating = live.rating;
-  const result = writeStarsToCatalog(conn, imageKey, rating);
+  const result = await Promise.resolve(catalog.writeStars(imageKey, rating));
   if (result === 'image_not_found') return notFoundState(imageKey, 'stars', row, tally);
+  if (result === 'mtime_conflict' || result === 'readonly_error') {
+    return stayPendingOnFileWriteFailure(imageKey, 'stars', row, tally, result, starsVersionId);
+  }
   if (result !== 'updated') {
-    if (conn && catalogHasAppStars(conn, imageKey, rating)) {
+    if (catalogHasAppStars(catalog, imageKey, rating)) {
       return adoptWrittenStarsState(imageKey, rating, starsVersionId, row);
     }
     return {

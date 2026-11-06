@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keys, useQuery } from '../data'
-import { ConfigAPI, JobsAPI, SystemAPI } from '../services/api'
-import { pickCatalogPath } from '../utils/nativeFilePickers'
-import type { Job } from '../types/job'
+import { JobsAPI, SystemAPI } from '../services/api'
 import { useCatalogPicker } from './useCatalogPicker'
+import type { Job } from '../types/job'
 import { useJobSocket } from './useJobSocket'
 import {
   catalogCacheBuildSyncComplete,
@@ -116,18 +115,6 @@ export function useFirstRunSetup() {
   const showImagesImportBanner =
     importRunning && catalogPhotoCount > 0 && !firstCatalogImportCompleted
 
-  const pickAndSaveCatalog = useCallback(async () => {
-    setImportError(null)
-    try {
-      const chosen = await pickCatalogPath()
-      if (!chosen) return
-      await ConfigAPI.putCatalog(chosen)
-      await catalog.refresh()
-    } catch (e) {
-      setImportError(e instanceof Error ? e.message : String(e))
-    }
-  }, [catalog])
-
   const runImportJob = useCallback(async () => {
     if (!catalogSavedAndValid || importRunning) return
     setImportStarting(true)
@@ -178,7 +165,6 @@ export function useFirstRunSetup() {
     showImagesEmpty,
     showImagesReadingCatalog,
     showImagesImportBanner,
-    pickAndSaveCatalog,
     startImport,
   }
 }

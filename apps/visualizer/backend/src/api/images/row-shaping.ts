@@ -3,9 +3,6 @@
  *
  * Shared by the catalog list, visual similarity, similarity groups, stack
  * suggestions and stack members, so the shaping lives here or the endpoints drift.
- *
- * `pick` goes out as the raw `0`/`1` from SQLite even though the schema declares a
- * boolean. Clients read it truthily; correcting the type would be a breaking change.
  */
 import type { Row } from '../../db/library/catalog.js';
 import type { CatalogImage } from '../schemas/catalog.js';

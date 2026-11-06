@@ -3,7 +3,7 @@
  * under temp dirs.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -15,6 +15,7 @@ import {
   REPO_ROOT,
   resourcesRoot,
 } from '../src/config.js';
+import { invalidateOpenLibraryCache, resetCatalogLibraryModuleStateForTests } from '../src/catalog-library.js';
 import { describeLibraryDb, resolveLibraryDbLocation } from '../src/library-db-path.js';
 import { initLibraryDb, LIBRARY_SCHEMA_VERSION } from '../src/db/library/bootstrap.js';
 import { openLibraryDb } from '../src/db/connection.js';
@@ -145,20 +146,25 @@ describe('roots set', () => {
 });
 
 describe('library.db resolution', () => {
-  beforeEach(clearRoots);
-
-  it('matches between config.LIBRARY_DB and describeLibraryDb via db_path', () => {
-    const db = join(dir, 'from-config.db');
-    writeFileSync(db, '');
-    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
-    writeFileSync(process.env.LT_CONFIG_YAML, `db_path: ${db}\n`);
-
-    expect(config.LIBRARY_DB).toBe(db);
-    expect(describeLibraryDb()).toMatchObject({ path: db, source: 'config', exists: true });
+  beforeEach(() => {
+    clearRoots();
+    resetCatalogLibraryModuleStateForTests();
+    invalidateOpenLibraryCache();
   });
 
-  it('uses the data folder default when LT_DATA_DIR is set and nothing else names a db', () => {
+  it('resolves LIBRARY_DB when the env var is set', () => {
+    const db = join(dir, 'from-env.db');
+    writeFileSync(db, '');
+    process.env.LIBRARY_DB = db;
+
+    expect(config.LIBRARY_DB).toBe(db);
+    expect(describeLibraryDb()).toMatchObject({ path: db, source: 'env', exists: true });
+  });
+
+  it('uses the data folder default when LT_DATA_DIR is set and no catalog is configured', () => {
     process.env.LT_DATA_DIR = join(dir, 'data');
+    process.env.LT_CONFIG_YAML = join(dir, 'config.yaml');
+    writeFileSync(process.env.LT_CONFIG_YAML, 'workers: 4\n');
     const expected = join(process.env.LT_DATA_DIR, 'library.db');
     expect(config.LIBRARY_DB).toBe(expected);
     expect(describeLibraryDb()).toMatchObject({ path: expected, source: 'default', exists: false });
@@ -170,20 +176,19 @@ describe('packaged first start', () => {
     clearRoots();
     process.env.LT_DATA_DIR = join(dir, 'data');
     delete process.env.LIBRARY_DB;
+    resetCatalogLibraryModuleStateForTests();
+    invalidateOpenLibraryCache();
   });
 
-  it('creates an empty upgraded library.db at the resolved path', () => {
+  it('creates a catalog library when catalog_path is configured on first resolve', () => {
+    mkdirSync(process.env.LT_DATA_DIR!, { recursive: true });
+    const lrcat = join(process.env.LT_DATA_DIR!, 'cat.lrcat');
+    writeFileSync(lrcat, '');
+    process.env.LT_CONFIG_YAML = join(process.env.LT_DATA_DIR!, 'config.yaml');
+    writeFileSync(process.env.LT_CONFIG_YAML, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+
     const dbPath = config.LIBRARY_DB;
-    expect(existsSync(dbPath)).toBe(false);
-
-    initLibraryDb(dbPath).close();
-
     expect(existsSync(dbPath)).toBe(true);
-    const db = openLibraryDb(dbPath, { readonly: true });
-    try {
-      expect(db.pragma('user_version', { simple: true })).toBe(LIBRARY_SCHEMA_VERSION);
-    } finally {
-      db.close();
-    }
+    expect(dbPath).toContain('catalogs');
   });
 });

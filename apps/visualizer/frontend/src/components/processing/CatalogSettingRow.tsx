@@ -1,10 +1,23 @@
-import { useState } from 'react';
-import { useCatalogPicker } from '../../hooks';
-import { Button } from '../ui/Button/Button';
-import { Input } from '../ui/Input/Input';
-import { PathSummary, SettingRow } from './SettingRow';
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useCatalogPicker } from '../../hooks/useCatalogPicker'
+import { Button } from '../ui/Button/Button'
+import { PathSummary, SettingRow } from './SettingRow'
+import { CatalogChangeModal } from './CatalogChangeModal'
+import { CatalogManualPath } from './CatalogManualPath'
+import { Badge } from '../ui/badges'
+import {
+  FIRST_RUN_CHOOSE_FOLDER,
+  FIRST_RUN_CHOOSE_LRCAT,
+  FIRST_RUN_KIND_FOLDER,
+  FIRST_RUN_KIND_LRCAT,
+  SETTINGS_CATALOG_REMOTE_HINT,
+} from '../../constants/strings'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
+import { InlineNotice } from '../ui/InlineNotice'
 
 export function CatalogSettingRow() {
+  const navigate = useNavigate()
   const {
     status,
     draftPath,
@@ -12,156 +25,139 @@ export function CatalogSettingRow() {
     changesCatalog,
     loading,
     picking,
+    pickingFolder,
     saving,
     error,
-    pick,
-    save,
-  } = useCatalogPicker();
-  // `null` means the user has not touched the disclosure, so it follows whether
-  // there is a dialog to prefer over it.
-  const [typing, setTyping] = useState<boolean | null>(null);
+    notice,
+    chooseLrcat,
+    chooseFolder,
+    beginChange,
+    pendingChange,
+    setSameChoice,
+    cancelChange,
+    confirmChange,
+  } = useCatalogPicker()
+
+  const [typing, setTyping] = useState<boolean | null>(null)
 
   if (loading) {
-    return <SettingRow name="Lightroom Classic catalog" description="Loading…" control={null} />;
+    return <SettingRow name="Catalog" description="Loading…" control={null} />
   }
 
-  // No status and not loading means the read failed. Without this the row would
-  // sit on "Loading…" forever and the error would have nowhere to go.
   if (!status) {
     return (
       <SettingRow
-        name="Lightroom Classic catalog"
+        name="Catalog"
         description={<span className="text-error">{error ?? 'Could not read the setting'}</span>}
         control={null}
       />
-    );
+    )
   }
 
-  // Typing is the fallback where a dialog is on offer and the only way in where
-  // it is not, so with no usable dialog the field starts open.
-  const manual = typing ?? !status.pickerUsable;
-  const busy = picking || saving;
+  const manual = typing ?? !status.pickerUsable
+  const busy = picking || pickingFolder || saving
 
-  // Only a saved path closes the field: on failure the value stays where the
-  // user can correct it.
-  const commit = async () => {
-    if (await save()) setTyping(null);
-  };
+  const submitTyped = async () => {
+    if (await beginChange(draftPath)) setTyping(null)
+  }
 
-  const cancel = () => {
-    setDraftPath(status.path);
-    setTyping(null);
-  };
+  const confirm = async () => {
+    const result = await confirmChange()
+    if (result?.change === 'switch' && !result.reopened_library) {
+      navigate('/', { state: { startCatalogImport: true } })
+    }
+  }
 
-  const saveButton = (
-    <Button
-      type="button"
-      size="sm"
-      variant="primary"
-      onClick={commit}
-      disabled={busy || !changesCatalog}
-    >
-      {saving ? 'Saving…' : 'Save'}
-    </Button>
-  );
+  const photoSuffix =
+    status.photoCount != null
+      ? ` · ${status.photoCount.toLocaleString('en-US')} photos`
+      : ''
 
-  const cancelButton = (
-    <Button type="button" size="sm" variant="ghost" onClick={cancel} disabled={saving}>
-      Cancel
-    </Button>
-  );
+  const description = (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+      <Badge>
+        {forCatalogKind(status.catalogKind, FIRST_RUN_KIND_LRCAT, FIRST_RUN_KIND_FOLDER)}
+      </Badge>
+      <PathSummary path={status.resolvedPath || status.path} />
+      {photoSuffix ? <span className="text-text-tertiary">{photoSuffix}</span> : null}
+    </span>
+  )
+
+  if (status.readOnly) {
+    return (
+      <SettingRow
+        name="Catalog"
+        description={description}
+        control={null}
+        under={
+          <p className="text-sm text-text-tertiary">{SETTINGS_CATALOG_REMOTE_HINT}</p>
+        }
+      />
+    )
+  }
 
   return (
-    <SettingRow
-      name="Lightroom Classic catalog"
-      description={
-        changesCatalog ? (
-          <span className="flex min-w-0 text-warning">
-            <PathSummary path={draftPath} />
-            <span className="flex-shrink-0">&nbsp;— not saved</span>
-          </span>
-        ) : status.exists ? (
-          <PathSummary path={status.resolvedPath} />
-        ) : (
-          <span className="text-error">
-            {status.path ? 'No file at this path — catalog sync will fail' : 'Not set'}
-          </span>
-        )
-      }
-      control={
-        <>
-          {status.pickerUsable && (
-            // One way in at a time: with the field open, the dialog would
-            // overwrite what is being typed.
-            <Button
-              type="button"
-              size="sm"
-              variant={status.exists || changesCatalog ? 'secondary' : 'primary'}
-              onClick={pick}
-              disabled={manual || busy}
-            >
-              {picking ? 'Choosing…' : 'Choose…'}
-            </Button>
-          )}
-          {!manual && changesCatalog && (
+    <>
+      <SettingRow
+        name="Catalog"
+        description={description}
+        control={
+          status.pickerUsable ? (
             <>
-              {saveButton}
-              {cancelButton}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void chooseFolder()}
+                disabled={manual || busy}
+              >
+                {pickingFolder ? 'Choosing…' : FIRST_RUN_CHOOSE_FOLDER}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void chooseLrcat()}
+                disabled={manual || busy}
+              >
+                {picking ? 'Choosing…' : FIRST_RUN_CHOOSE_LRCAT}
+              </Button>
             </>
-          )}
-        </>
-      }
-      under={
-        <>
-          {/* Two warnings, because saving does not end the problem: the draft one
-              says a sync will be needed, and `needsSync` says it still is. */}
-          {changesCatalog ? (
-            <p className="mb-3 text-sm text-warning">
-              A different catalog than the library database was built from. Run a catalog sync after
-              saving, or what you see stays out of date.
-            </p>
-          ) : (
-            status.needsSync && (
-              <p className="mb-3 text-sm text-warning">
-                The library database was built from a different catalog. Run a catalog sync, or what
-                you see stays out of date.
-              </p>
-            )
-          )}
-          {error && <p className="mb-3 text-sm text-error">{error}</p>}
-          <details open={manual} className="group">
-            <summary
-              // Locked while the dialog is open or a save is in flight: opening
-              // the field then would let the dialog's answer land on top of
-              // whatever was being typed.
-              aria-disabled={busy}
-              onClick={(e) => {
-                e.preventDefault();
-                if (busy) return;
-                setTyping(!manual);
+          ) : null
+        }
+        under={
+          <>
+            {notice ? (
+              <InlineNotice className="mb-3">{notice}</InlineNotice>
+            ) : null}
+            {error ? <p className="mb-3 text-sm text-error">{error}</p> : null}
+            <CatalogManualPath
+              open={manual}
+              onToggle={() => setTyping(!manual)}
+              busy={busy}
+              value={draftPath}
+              onChange={setDraftPath}
+              submitLabel="Save"
+              submitDisabled={!changesCatalog}
+              onSubmit={() => void submitTyped()}
+              onCancel={() => {
+                setDraftPath(status.path)
+                setTyping(null)
               }}
-              className={`inline-flex list-none items-center gap-1 text-sm [&::-webkit-details-marker]:hidden ${
-                busy ? 'cursor-default text-text-tertiary' : 'cursor-pointer text-accent'
-              }`}
-            >
-              <span className="inline-block transition-transform group-open:rotate-90">›</span>
-              Enter a path manually
-            </summary>
-            <div className="mt-3 space-y-3">
-              <Input
-                label="Catalog path (.lrcat)"
-                value={draftPath}
-                onChange={(e) => setDraftPath(e.target.value)}
-                fullWidth
-              />
-              <div className="flex flex-wrap gap-2">
-                {saveButton}
-                {cancelButton}
-              </div>
-            </div>
-          </details>
-        </>
-      }
-    />
-  );
+            />
+          </>
+        }
+      />
+      {pendingChange ? (
+        <CatalogChangeModal
+          preview={pendingChange.preview}
+          sameChoice={pendingChange.sameChoice}
+          onSameChoice={setSameChoice}
+          saving={saving}
+          onCancel={cancelChange}
+          onConfirm={() => void confirm()}
+        />
+      ) : null}
+    </>
+  )
 }

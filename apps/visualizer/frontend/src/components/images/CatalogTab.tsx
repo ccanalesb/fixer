@@ -28,12 +28,19 @@ import {
   FILTER_LABEL_SORT_DATE,
   FILTER_SORT_DATE_NEWEST,
   FILTER_SORT_DATE_OLDEST,
+  CATALOG_FILTER_PRESENCE_ALL,
   CATALOG_FILTER_POSTED_ALL,
   CATALOG_FILTER_POSTED,
   CATALOG_FILTER_NOT_POSTED,
   CATALOG_FILTER_ANALYZED_ALL,
   CATALOG_FILTER_ANALYZED_ONLY,
   CATALOG_FILTER_NOT_ANALYZED,
+  CATALOG_FILTER_LABEL_FILE,
+  CATALOG_FILTER_LABEL_CATALOG,
+  CATALOG_FILTER_FILE_PRESENT,
+  CATALOG_FILTER_FILE_MISSING,
+  CATALOG_FILTER_CATALOG_IN,
+  CATALOG_FILTER_CATALOG_REMOVED,
   CATALOG_FILTER_MIN_RATING_ANY,
   CATALOG_FILTER_SCORE_ANY,
   CATALOG_FILTER_SORT_NONE,
@@ -44,21 +51,29 @@ import {
   FILTER_DESCRIPTION_SEARCH_LABEL,
   FILTER_DESCRIPTION_SEARCH_PLACEHOLDER,
   FILTER_DESCRIPTION_SEARCH_ARIA,
+  FILTER_DESCRIPTION_SEARCH_ARIA_FOLDER,
   CATALOG_FILTER_COLOR_PLACEHOLDER,
   CATALOG_FILTER_COLOR_ARIA,
   msgShowingOf,
   INSIGHTS_KPI_BURST_STACKS,
   CATALOG_FILTER_LABEL_FRAME_SUBSTANCE,
   CATALOG_FILTER_FRAME_SUBSTANCE_ONLY,
+  CATALOG_MIN_RATING_CLEAR,
+  CATALOG_MIN_RATING_EMPTY_INTRO,
+  CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER,
+  CATALOG_MIN_RATING_EMPTY_SOURCE_LIGHTROOM,
   CULL_SENT_BY_HAND,
 } from '../../constants/strings';
 import { Badge } from '../ui/badges';
+import { Button } from '../ui/Button/Button';
 import { formatMonth } from '../../utils/date';
 import { useFilters } from '../../hooks/useFilters';
 import { FilterBar } from '../filters/FilterBar';
 import type { FilterSchema } from '../filters/types';
 import { FILTER_PERSIST_KEYS } from '../../stores/pageUiStore';
 import { stableSerializeRecord } from '../../utils/stableQueryKey';
+import { forCatalogKind } from '../../utils/catalogKindCopy';
+import { useCatalogKind } from '../../hooks/useCatalogKind';
 
 const LIMIT = 50;
 
@@ -83,13 +98,42 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const perspectivesRows = useQuery(keys.perspectives.active(), () =>
     PerspectivesAPI.list({ active_only: true }),
   );
+  const catalogKind = useCatalogKind();
+  const missingCountQuery = useQuery(
+    keys.images.catalogList({ catalog_presence: 'missing', limit: 0, offset: 0 }),
+    () => ImagesAPI.listCatalog({ catalog_presence: 'missing', limit: 0, offset: 0 }),
+  );
+  const missingCount = missingCountQuery.total;
+  const ratedCountQuery = useQuery(
+    keys.images.catalogList({ min_rating: 1, limit: 0, offset: 0 }),
+    () => ImagesAPI.listCatalog({ min_rating: 1, limit: 0, offset: 0 }),
+  );
+  const hasAnyRated = ratedCountQuery.total > 0;
   const scorePerspectives = useMemo(() => {
     const sorted = [...perspectivesRows].sort((a, b) => a.slug.localeCompare(b.slug));
     return sorted.map((r) => ({ slug: r.slug, display_name: r.display_name }));
   }, [perspectivesRows]);
 
   const catalogSchema = useMemo<FilterSchema>(() => {
+    const missingLabel =
+      catalogKind === 'folder' ? CATALOG_FILTER_FILE_MISSING : CATALOG_FILTER_CATALOG_REMOVED;
+    const missingOption =
+      missingCount > 0 ? `${missingLabel} (${missingCount})` : missingLabel;
     return [
+      {
+        type: 'select',
+        key: 'catalogPresence',
+        paramName: 'catalog_presence',
+        label: catalogKind === 'folder' ? CATALOG_FILTER_LABEL_FILE : CATALOG_FILTER_LABEL_CATALOG,
+        options: [
+          { value: '', label: CATALOG_FILTER_PRESENCE_ALL },
+          {
+            value: 'present',
+            label: catalogKind === 'folder' ? CATALOG_FILTER_FILE_PRESENT : CATALOG_FILTER_CATALOG_IN,
+          },
+          { value: 'missing', label: missingOption },
+        ],
+      },
       {
         type: 'toggle',
         key: 'posted',
@@ -139,7 +183,11 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
         paramName: 'description_search',
         debounceMs: 350,
         placeholder: FILTER_DESCRIPTION_SEARCH_PLACEHOLDER,
-        ariaLabel: FILTER_DESCRIPTION_SEARCH_ARIA,
+        ariaLabel: forCatalogKind(
+          catalogKind,
+          FILTER_DESCRIPTION_SEARCH_ARIA,
+          FILTER_DESCRIPTION_SEARCH_ARIA_FOLDER,
+        ),
         className: 'h-9 min-w-[10rem] w-44',
       },
       {
@@ -253,7 +301,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
         ],
       },
     ];
-  }, [availableMonths, scorePerspectives]);
+  }, [availableMonths, scorePerspectives, catalogKind, missingCount]);
 
   const filters = useFilters(catalogSchema, { persistKey: FILTER_PERSIST_KEYS.imagesCatalog });
   const { values: filterValues, rawValues: filterRawValues, toQueryParams, activeCount, setValues } = filters;
@@ -309,6 +357,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
     startTransition(() => setPage(1));
   }, [
     filterValues.posted,
+    filterValues.catalogPresence,
     filterValues.analyzed,
     filterValues.month,
     filterValues.minRating,
@@ -340,6 +389,16 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   }, [filterValues.keyword, filterValues.colorLabel, filterValues.descriptionSearch]);
 
   const hasActiveFilters = activeCount > 0;
+
+  const minRatingFilter = (() => {
+    const raw = filterValues.minRating;
+    if (raw === '' || raw === undefined || raw === null) return 0;
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  })();
+
+  const showMinRatingEmpty =
+    total === 0 && hasActiveFilters && minRatingFilter > 0 && !hasAnyRated;
 
   const noFiltersAndEmptyDb = total === 0 && !hasActiveFilters;
 
@@ -384,6 +443,28 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
             Your catalog database is empty or not yet indexed.
           </p>
         </div>
+      ) : showMinRatingEmpty ? (
+        <div className="text-center py-12">
+          <h3 className="text-sm font-medium text-text">No Images Found</h3>
+          <p className="mt-2 text-sm text-text-secondary">
+            {CATALOG_MIN_RATING_EMPTY_INTRO(minRatingFilter)}
+            {forCatalogKind(
+              catalogKind,
+              CATALOG_MIN_RATING_EMPTY_SOURCE_LIGHTROOM,
+              CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER,
+            )}
+          </p>
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setValues({ minRating: '' })}
+            >
+              {CATALOG_MIN_RATING_CLEAR}
+            </Button>
+          </div>
+        </div>
       ) : total === 0 && hasActiveFilters ? (
         <div className="text-center py-12">
           <svg
@@ -412,6 +493,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
                   image={fromCatalogListRow(image)}
                   variant="grid"
                   primaryScoreSource="catalog"
+                  catalogKind={catalogKind}
                   overlayBadges={
                     cullCatalog && image.cull_manually_sent ? (
                       <Badge variant="default">{CULL_SENT_BY_HAND}</Badge>

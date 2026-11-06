@@ -6,9 +6,11 @@
  * order, so a subtle transposition would still return *some* rows.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 import { createApp } from '../src/app.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
@@ -575,6 +577,36 @@ describe('GET /api/images/catalog/{image_key}/thumbnail', () => {
     const res = await app.request('/api/images/catalog/a/thumbnail');
     expect(res.status).toBe(404);
     expect(await json(res)).toEqual({ error: 'Image file not found' });
+  });
+
+  it('serves the JPEG sidecar when the row filepath is a RAW', async () => {
+    const photoDir = mkdtempSync(join(tmpdir(), 'lt-raw-sidecar-'));
+    const rawPath = join(photoDir, 'pair.dng');
+    const jpegPath = join(photoDir, 'pair.jpg');
+    writeFileSync(rawPath, 'raw');
+    writeFileSync(jpegPath, 'jpeg-bytes');
+    writeFileSync(join(cfgDir, 'config.yaml'), `mount_point: ${JSON.stringify(photoDir)}\n`);
+    fx.addImage({ key: 'pair', filepath: rawPath, filename: 'pair' });
+
+    const res = await app.request('/api/images/catalog/pair/thumbnail');
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('jpeg-bytes');
+    rmSync(photoDir, { recursive: true, force: true });
+  });
+
+  it('serves a decoded JPEG for a HEIC original on a cache miss', async () => {
+    const photoDir = mkdtempSync(join(tmpdir(), 'lt-heic-thumb-'));
+    const heicPath = join(photoDir, 'IMG_0001.HEIC');
+    const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'example.heic');
+    copyFileSync(fixture, heicPath);
+    writeFileSync(join(cfgDir, 'config.yaml'), `mount_point: ${JSON.stringify(photoDir)}\n`);
+    fx.addImage({ key: 'heic', filepath: heicPath, filename: 'IMG_0001' });
+
+    const res = await app.request('/api/images/catalog/heic/thumbnail');
+    expect(res.status).toBe(200);
+    const bytes = Buffer.from(await res.arrayBuffer());
+    expect((await sharp(bytes).metadata()).format).toBe('jpeg');
+    rmSync(photoDir, { recursive: true, force: true });
   });
 
   it('is absent from the OpenAPI document', async () => {

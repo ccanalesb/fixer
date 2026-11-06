@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE — choosing a Lightroom catalog or a folder</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  PROTOTYPE, throwaway. Three variants of how the user chooses the catalog now that it has two kinds
+  (Lightroom catalog, folder catalog), on the first-run setup screen and in Processing → Settings.
+  Switch with ?variant=A|B|C, the bottom bar, or ← →. Nothing is saved; reload resets.
+-->
+<style>
+  /* Tokens copied verbatim from apps/visualizer/frontend/src/index.css — do not invent values here. */
+  :root {
+    --color-background:#ffffff; --color-surface:#f6f5f4; --color-surface-hover:#f1f0ed;
+    --color-text-primary:rgba(0,0,0,0.95); --color-text-secondary:#4a4642; --color-text-tertiary:#847f7a;
+    --color-border:rgba(0,0,0,0.12); --color-border-strong:rgba(0,0,0,0.2);
+    --color-accent:#0075de; --color-accent-hover:#005bab; --color-accent-light:#f2f9ff;
+    --color-success:#1aae39; --color-warning:#dd5b00; --color-error:#e03e3e;
+  }
+  .dark {
+    --color-background:#191919; --color-surface:#31302e; --color-surface-hover:#3d3b38;
+    --color-text-primary:#f7f6f5; --color-text-secondary:#b8b7b4; --color-text-tertiary:#8a8985;
+    --color-border:rgba(255,255,255,0.12); --color-border-strong:rgba(255,255,255,0.25);
+    --color-accent:#4A9EFF; --color-accent-hover:#7AB8FF; --color-accent-light:rgba(74,158,255,0.15);
+    --color-success:#3db39a; --color-warning:#ff8c42; --color-error:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,system-ui,'Segoe UI',sans-serif;
+    background:var(--color-background);color:var(--color-text-primary);
+    -webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5;padding-bottom:90px}
+  p{margin:0}
+  code{background:var(--color-surface);padding:1px 5px;border-radius:4px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em}
+
+  /* --- real chrome: Layout.tsx --- */
+  header.app{position:sticky;top:0;z-index:50;background:var(--color-background);
+    border-bottom:1px solid var(--color-border)}
+  .container{max-width:80rem;margin:0 auto;padding:0 2rem}
+  .hdr{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .hdr-left{display:flex;align-items:center;gap:2rem}
+  .brand{font-size:18px;font-weight:600;margin:0}
+  nav.pills{display:flex;align-items:center;gap:4px}
+  nav.pills a{padding:6px 12px;border-radius:8px;font-size:14px;font-weight:500;text-decoration:none;
+    color:var(--color-text-secondary)}
+  nav.pills a.on{background:var(--color-accent);color:#fff;font-weight:600}
+  main{max-width:80rem;margin:0 auto;padding:2rem}
+
+  .tabstrip{border-bottom:1px solid var(--color-border);margin-bottom:24px}
+  .tabstrip nav{display:flex;gap:4px}
+  .tabstrip span{padding:8px 16px;font-size:14px;font-weight:600;border-bottom:3px solid transparent;opacity:.6}
+  .tabstrip span.on{border-bottom-color:var(--color-accent);color:var(--color-accent);opacity:1}
+
+  .card{background:var(--color-background);border:1px solid var(--color-border);border-radius:12px;
+    box-shadow:rgba(0,0,0,.04) 0 4px 18px,rgba(0,0,0,.027) 0 2.025px 7.84688px,
+      rgba(0,0,0,.02) 0 .8px 2.925px,rgba(0,0,0,.01) 0 .175px 1.04062px}
+  .s{font-size:14px} .s2{font-size:14px;color:var(--color-text-secondary)}
+  .t3{font-size:12px;color:var(--color-text-tertiary)} .t3s{font-size:14px;color:var(--color-text-tertiary)}
+  .warn{color:var(--color-warning)} .err{color:var(--color-error)}
+  .b{font-weight:600}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .stack > * + *{margin-top:12px}
+  .stack6 > * + *{margin-top:24px}
+
+  .badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:9999px;
+    font-size:12px;font-weight:600;border:1px solid var(--color-border);
+    background:var(--color-surface);color:var(--color-text-secondary);white-space:nowrap}
+  .badge.accent{background:var(--color-accent-light);color:var(--color-accent);border-color:rgba(0,117,222,.25)}
+
+  button.btn{font:500 14px Inter,sans-serif;border-radius:8px;padding:6px 12px;cursor:pointer;
+    background:var(--color-surface);color:var(--color-text-primary);
+    border:1px solid var(--color-border);transition:all .15s}
+  button.btn:hover:not(:disabled){background:var(--color-surface-hover);border-color:var(--color-border-strong)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  button.btn.primary{background:var(--color-accent);color:#fff;border:2px solid var(--color-background);font-weight:600}
+  button.btn.primary:hover:not(:disabled){background:var(--color-accent-hover)}
+  button.btn.ghost{background:transparent;border-color:transparent}
+  button.btn.md{font-size:16px;padding:8px 16px}
+  button.link{background:none;border:0;padding:0;font:500 14px Inter,sans-serif;color:var(--color-accent);cursor:pointer}
+  button.link:hover{text-decoration:underline}
+
+  input.in{font:400 14px Inter,sans-serif;border:1px solid var(--color-border);border-radius:8px;
+    padding:8px 12px;background:var(--color-background);color:var(--color-text-primary);width:100%}
+  input.in:focus{outline:2px solid var(--color-accent);outline-offset:-1px;border-color:transparent}
+  label.fld > span{display:block;font-size:14px;font-weight:500;color:var(--color-text-secondary);margin-bottom:6px}
+
+  /* PathSummary: directory truncates, filename does not */
+  .path{display:inline-flex;min-width:0;max-width:100%}
+  .path .dir{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-text-tertiary)}
+  .path .file{flex-shrink:0}
+
+  /* FirstRunSetupScreen stepShell */
+  .setup{max-width:36rem;margin:24px auto 0;text-align:center}
+  .setup h1{font-size:32px;font-weight:700;letter-spacing:-.625px;margin:0 0 8px}
+  .steps{margin-top:32px;text-align:left}
+  .steps > * + *{margin-top:12px}
+  .step{display:flex;gap:16px;border:1px solid var(--color-border);border-radius:12px;padding:20px}
+  .step.active{border-color:var(--color-accent);box-shadow:0 0 0 3px var(--color-accent-light)}
+  .step.locked{opacity:.5}
+  .num{flex:none;width:28px;height:28px;border-radius:9999px;display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:700;background:var(--color-surface)}
+  .step.active .num{background:var(--color-accent);color:#fff}
+  .step.done .num{background:var(--color-success);color:#fff}
+  .step .body{flex:1;min-width:0}
+  .step .body > * + *{margin-top:12px}
+
+  .bar{height:6px;border-radius:9999px;background:var(--color-surface);overflow:hidden}
+  .bar > div{height:100%;background:var(--color-accent);border-radius:9999px;transition:width .3s}
+  .stages > * + *{margin-top:6px}
+  .stage{display:flex;align-items:center;gap:10px;font-size:14px}
+  .dot{width:18px;height:18px;flex:none;border-radius:9999px;border:2px solid var(--color-border);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+  .dot.done{background:var(--color-success);border-color:var(--color-success)}
+  .dot.current{border-color:var(--color-accent);border-top-color:transparent;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* A: two doors */
+  .doors{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .door{border:1px solid var(--color-border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
+  .door h4{margin:0;font-size:16px;font-weight:600}
+  .door .s2{flex:1}
+
+  /* C: segmented */
+  .seg{display:inline-flex;border:1px solid var(--color-border);border-radius:8px;padding:2px;background:var(--color-surface)}
+  .seg button{font:500 14px Inter,sans-serif;border:0;background:none;padding:5px 12px;border-radius:6px;cursor:pointer;
+    color:var(--color-text-secondary)}
+  .seg button.on{background:var(--color-background);color:var(--color-text-primary);font-weight:600;
+    box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .seg button:disabled{cursor:not-allowed;opacity:.6}
+  .inset{background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:12px 14px}
+
+  /* Settings list (SettingsTab) */
+  .list{border:1px solid var(--color-border);border-radius:8px;background:var(--color-background)}
+  .list > .srow + .srow{border-top:1px solid var(--color-border)}
+  .srow{padding:16px}
+  .srow .top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .srow .name{font-size:14px;font-weight:500}
+  .srow .desc{font-size:14px;color:var(--color-text-secondary);margin-top:2px;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .srow .ctl{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative}
+  .srow .under{margin-top:12px}
+  .disc{font-size:14px;color:var(--color-accent);cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
+  .menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;min-width:260px;padding:4px;
+    background:var(--color-background);border:1px solid var(--color-border-strong);border-radius:8px;
+    box-shadow:rgba(0,0,0,.01) 0 1px 3px,rgba(0,0,0,.02) 0 3px 7px,rgba(0,0,0,.02) 0 7px 15px,rgba(0,0,0,.04) 0 14px 28px,rgba(0,0,0,.05) 0 23px 52px}
+  .menu button{display:block;width:100%;text-align:left;font:500 14px Inter,sans-serif;background:none;border:0;
+    padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--color-text-primary)}
+  .menu button:hover{background:var(--color-surface)}
+  .menu .t3{display:block;font-weight:400}
+  .panel{border:1px solid var(--color-border);border-radius:8px;padding:14px;background:var(--color-surface)}
+  .panel > * + *{margin-top:10px}
+  .choice{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--color-border);
+    border-radius:8px;cursor:pointer;background:var(--color-background)}
+  .choice.on{border-color:var(--color-accent);box-shadow:0 0 0 3px var(--color-accent-light)}
+  .choice input{margin:4px 0 0}
+  .banner{border:1px solid rgba(0,117,222,.25);background:var(--color-accent-light);border-radius:8px;padding:10px 14px}
+  .notice{border:1px solid rgba(26,174,57,.25);background:rgba(26,174,57,.06);border-radius:8px;padding:10px 14px;font-size:14px}
+  .ghostsec{border:1px dashed var(--color-border);border-radius:12px;padding:16px;color:var(--color-text-tertiary);font-size:14px}
+
+  /* Modal */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:80;display:flex;align-items:center;justify-content:center;padding:16px}
+  .modal{max-width:32rem;width:100%;background:var(--color-background);border:1px solid var(--color-border-strong);
+    border-radius:12px;padding:24px;box-shadow:rgba(0,0,0,.01) 0 1px 3px,rgba(0,0,0,.02) 0 3px 7px,rgba(0,0,0,.02) 0 7px 15px,rgba(0,0,0,.04) 0 14px 28px,rgba(0,0,0,.05) 0 23px 52px}
+  .modal h3{font-size:22px;font-weight:700;letter-spacing:-.25px;margin:0 0 12px}
+  .modal .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+  ul.plain{margin:6px 0 0;padding-left:18px;font-size:14px;color:var(--color-text-secondary)}
+
+  /* simulated native dialog — deliberately not the design system */
+  .native{width:30rem;background:#ececec;color:#111;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.45);
+    font:13px -apple-system,system-ui,sans-serif;overflow:hidden}
+  .native .tt{padding:10px 14px;border-bottom:1px solid #d0d0d0;font-weight:600;display:flex;justify-content:space-between}
+  .native .tt em{font-weight:400;font-style:normal;color:#888}
+  .native .li{display:block;width:100%;text-align:left;border:0;background:#fff;padding:9px 14px;
+    border-bottom:1px solid #eee;cursor:pointer;font:13px -apple-system,system-ui,sans-serif}
+  .native .li:hover{background:#0a64d8;color:#fff}
+  .native .li small{display:block;opacity:.65}
+  .native .ft{padding:10px 14px;display:flex;justify-content:flex-end}
+  .native .ft button{font:13px -apple-system,system-ui,sans-serif;padding:3px 14px;border-radius:5px;border:1px solid #bbb;background:#fff;cursor:pointer}
+
+  /* prototype chrome — deliberately unlike the design system */
+  .protobar{background:#111;color:#fff;font:600 12px Inter,sans-serif;padding:8px 2rem;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .protobar .grp{display:flex;gap:4px;align-items:center}
+  .protobar .grp > span{opacity:.6;margin-right:4px}
+  .protobar button{font:600 12px Inter,sans-serif;background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:6px;padding:3px 9px;cursor:pointer}
+  .protobar button.on{background:#fff;color:#111}
+  .switcher{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:100;
+    display:flex;align-items:center;gap:2px;padding:5px;border-radius:9999px;
+    background:#111;color:#fff;box-shadow:0 8px 28px rgba(0,0,0,.35);font:600 13px Inter,sans-serif}
+  .switcher button{background:none;border:0;color:#fff;cursor:pointer;font:700 15px Inter,sans-serif;width:30px;height:30px;border-radius:9999px}
+  .switcher button:hover{background:rgba(255,255,255,.15)}
+  .switcher .lbl{padding:0 12px;white-space:nowrap}
+  .switcher .lbl em{font-style:normal;opacity:.55;font-weight:500}
+  .notes{border-left:3px solid var(--color-border-strong);padding:2px 0 2px 14px;color:var(--color-text-secondary);font-size:14px}
+  .notes b{color:var(--color-text-primary)}
+  table.copy{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px}
+  table.copy td,table.copy th{border-top:1px solid var(--color-border);padding:6px 8px;text-align:left;vertical-align:top}
+  table.copy th{font-weight:600;color:var(--color-text-secondary)}
+  table.copy td:first-child{color:var(--color-text-tertiary);white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="protobar" id="protobar"></div>
+
+<header class="app">
+  <div class="container"><div class="hdr">
+    <div class="hdr-left">
+      <h1 class="brand">Fixer</h1>
+      <nav class="pills" id="nav"></nav>
+    </div>
+    <button class="btn ghost" data-a="theme">Theme</button>
+  </div></div>
+</header>
+
+<main>
+  <div id="screen"></div>
+  <div class="card" style="padding:24px;margin-top:48px" id="notes"></div>
+</main>
+
+<div id="overlay"></div>
+<div class="switcher" id="switcher"></div>
+
+<script>
+/* ---------- fixtures ---------- */
+const HOME = '/Users/ccanales';
+const E = {
+  photos2026: { kind: 'folder', path: HOME + '/Pictures/Photos 2026', found: 12408, folders: 214, library: null },
+  nas:        { kind: 'folder', path: '/Volumes/NAS/Photos', found: 30112, folders: 1022, library: 30112 },
+  lrFolder:   { kind: 'folder', path: HOME + '/Pictures/Lightroom', found: 3, folders: 2, library: null,
+                holdsLrcat: HOME + '/Pictures/Lightroom/Lightroom Catalog.lrcat' },
+  v13:        { kind: 'lrcat', path: HOME + '/lightroom/FinalCatalog-v13-3.lrcat', found: 43794, library: 43794 },
+  v14:        { kind: 'lrcat', path: HOME + '/lightroom/FinalCatalog-v14.lrcat', found: 43794, library: null },
+  lrDefault:  { kind: 'lrcat', path: HOME + '/Pictures/Lightroom/Lightroom Catalog.lrcat', found: 212, library: 212 },
+};
+const DIALOG = {
+  folder: { title: 'Choose a folder', items: ['photos2026', 'nas', 'lrFolder'] },
+  lrcat:  { title: 'Choose a Lightroom Classic catalog', items: ['v13', 'v14', 'lrDefault'] },
+};
+const JOBS = [
+  { name: 'Describe 1,204 photos', state: 'running, 38%' },
+  { name: 'Score for Street', state: 'queued' },
+];
+const STAGES = (kind) => [
+  [kind === 'folder' ? 'Reading the folder' : 'Reading the catalog', 25],
+  ['Computing image embeddings', 70],
+  ['Detecting burst stacks', 85],
+  ['Grouping near-duplicates', 100],
+];
+
+/* ---------- state ---------- */
+let S;
+function seed() {
+  const settings = S0.surface === 'settings';
+  return {
+    page: settings ? 'settings' : 'setup',
+    current: settings ? { ...E.v13 } : null,
+    jobs: settings ? JOBS.slice() : [],
+    dialog: null,          // 'folder' | 'lrcat' — the simulated native dialog
+    pending: null,         // a chosen catalog waiting on the questions
+    same: null,            // null | 'same' | 'different'
+    stepA: null,           // A: 'same' | 'confirm' — which modal is up
+    menu: false,           // B: Change… menu
+    typing: false,         // manual path field open
+    typed: '',
+    typedErr: null,
+    seg: settings ? 'lrcat' : 'folder', // C
+    importing: false, pct: 0, imported: false,
+    notice: null,
+    lrHint: false,         // B: chosen folder holds a .lrcat
+  };
+}
+const S0 = { surface: 'setup', remote: false };
+
+/* ---------- helpers ---------- */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const n = x => typeof x === 'number' ? x.toLocaleString('en-US') : x;
+const base = p => p.slice(p.lastIndexOf('/') + 1).replace(/\.lrcat$/, '');
+const kindWord = k => k === 'folder' ? 'Folder' : 'Lightroom catalog';
+function path(p) {
+  const cut = p.lastIndexOf('/');
+  return '<span class="path" title="' + esc(p) + '"><span class="dir">' + esc(p.slice(0, cut + 1)) +
+    '</span><span class="file">' + esc(p.slice(cut + 1)) + '</span></span>';
+}
+function inferKind(p) { return /\.lrcat$/i.test(p.trim()) ? 'lrcat' : 'folder'; }
+function entryForPath(p, kind) {
+  const hit = Object.values(E).find(e => e.path === p.trim());
+  if (hit) return { ...hit };
+  return { kind, path: p.trim(), found: '—', folders: '—', library: null };
+}
+function stagesHtml(kind) {
+  let prev = 0;
+  return '<div class="stages">' + STAGES(kind).map(([label, end]) => {
+    const st = S.pct >= end ? 'done' : S.pct >= prev ? 'current' : 'pending';
+    prev = end;
+    return '<div class="stage"><span class="dot ' + st + '">' + (st === 'done' ? '✓' : '') + '</span>' +
+      '<span class="' + (st === 'pending' ? 't3s' : '') + '">' + label + '</span></div>';
+  }).join('') + '</div>';
+}
+function progressHtml(kind) {
+  return '<div class="bar"><div style="width:' + S.pct + '%"></div></div>' + stagesHtml(kind) +
+    '<p class="t3">You can keep using the app; Images fills in after the first step.</p>';
+}
+
+/* ---------- shared flow ---------- */
+function choose(entry) {
+  S.dialog = null; S.menu = false; S.notice = null; S.lrHint = false;
+  if (S.page === 'setup') {
+    S.current = entry; S.imported = false;
+    if (entry.holdsLrcat) S.lrHint = true;
+    return;
+  }
+  if (S.current && entry.path === S.current.path) return;
+  S.pending = entry;
+  const ask = S.current && S.current.kind === 'lrcat' && entry.kind === 'lrcat' && !entry.library;
+  S.same = ask ? null : 'different';
+  S.stepA = ask ? 'same' : 'confirm';
+}
+function cancelPending() { S.pending = null; S.same = null; S.stepA = null; }
+function commitPending(v) {
+  const p = S.pending, old = S.current, same = S.same === 'same';
+  cancelPending();
+  S.typing = false; S.typed = '';
+  if (same) {
+    S.current = { ...p, library: old.library, found: old.found };
+    S.notice = 'Path updated to ' + base(p.path) + '. The library stays; a catalog sync is queued.';
+    return;
+  }
+  S.jobs = [];
+  S.current = p;
+  if (p.library) {
+    S.notice = 'Reopened ' + base(p.path) + ': ' + n(p.library) +
+      ' photos with their descriptions, scores and culling. A catalog sync is queued.';
+    return;
+  }
+  S.importing = true; S.pct = 0; S.imported = false;
+  if (v === 'A' || v === 'D') S.page = 'setup';
+}
+setInterval(() => {
+  if (!S.importing) return;
+  S.pct = Math.min(100, S.pct + 1);
+  if (S.pct >= 100) { S.importing = false; S.imported = true; }
+  render();
+}, 250);
+
+/* ---------- confirmation copy (same facts in every variant) ---------- */
+function consequences(p, old, jobs) {
+  const lines = [];
+  lines.push(p.library
+    ? '<b>' + esc(base(p.path)) + '</b> reopens with the library you had for it: ' + n(p.library) + ' photos, their descriptions, scores and culling.'
+    : '<b>' + esc(base(p.path)) + '</b> starts empty. Fixer reads it as soon as you switch.');
+  lines.push('Everything for <b>' + esc(base(old.path)) + '</b> is kept and comes back if you choose it again.');
+  let html = '<div class="stack s">' + lines.map(l => '<p>' + l + '</p>').join('');
+  if (jobs.length) {
+    html += '<div><p>Switching cancels ' + jobs.length + ' job' + (jobs.length > 1 ? 's' : '') + ' on photos:</p><ul class="plain">' +
+      jobs.map(j => '<li>' + esc(j.name) + ' — ' + j.state + '</li>').join('') + '</ul></div>';
+  }
+  return html + '</div>';
+}
+function sameChoices(name) {
+  return [
+    ['same', 'The same catalog', 'Moved, or written anew by a Lightroom upgrade. The library stays; only the path changes.'],
+    ['different', 'A different catalog', 'Starts its own empty library. The current one is kept.'],
+  ].map(([k, t, d]) =>
+    '<label class="choice' + (S.same === k ? ' on' : '') + '" data-a="same" data-k="' + k + '">' +
+    '<input type="radio" name="same"' + (S.same === k ? ' checked' : '') + '><span><span class="s b">' + t +
+    '</span><br><span class="s2">' + d + '</span></span></label>').join('');
+}
+
+/* ---------- typed path (fallback, and the only way from another device) ---------- */
+function typedPanel(opts) {
+  const kind = opts.kind || inferKind(S.typed);
+  const label = opts.label || 'Folder or catalog path';
+  let hint = '';
+  if (opts.infer && S.typed.trim()) {
+    hint = '<p class="t3">' + (kind === 'lrcat' ? 'Ends in .lrcat, so this is a Lightroom catalog.'
+      : 'Not a .lrcat file, so this is a folder catalog.') + '</p>';
+  }
+  return '<div class="stack">' +
+    '<label class="fld"><span>' + label + '</span><input class="in" data-field="typed" value="' + esc(S.typed) +
+    '" placeholder="' + esc(opts.placeholder || '/Volumes/NAS/Photos or …/Catalog.lrcat') + '"></label>' + hint +
+    (S.typedErr ? '<p class="s err">' + esc(S.typedErr) + '</p>' : '') +
+    '<p class="t3">A path on the Mac running Fixer. In Finder, ⌥⌘C copies it.</p>' +
+    '<div class="row"><button class="btn primary" data-a="typed-save" data-kind="' + (opts.kind || '') + '"' +
+    (S.typed.trim() ? '' : ' disabled') + '>' + (opts.save || 'Save') + '</button>' +
+    (opts.cancel === false ? '' : '<button class="btn ghost" data-a="typed-cancel">Cancel</button>') + '</div></div>';
+}
+
+/* ==========================================================================
+   Setup screen (FirstRunSetupScreen) — variant decides step 1
+   ========================================================================== */
+function setupScreen(v) {
+  const cur = S.current;
+  const s1 = cur ? 'done' : 'active';
+  const s2 = !cur ? 'locked' : S.imported ? 'done' : 'active';
+  const copy = COPY[v];
+  const step2Body = !cur ? '<p class="b">Import it</p>'
+    : S.importing ? '<p class="b">Import it</p>' + progressHtml(cur.kind)
+    : S.imported ? '<p class="b">Import it</p><p class="s2">' + n(cur.found) + ' photos imported. They are in Images.</p>'
+    : '<p class="b">Import it</p><p class="s2">' + (cur.kind === 'folder' ? copy.importHintFolder : copy.importHintLr) + '</p>' +
+      '<button class="btn primary md" data-a="import">' + copy.importBtn(cur) + '</button>';
+  return '<div class="setup"><h1>Welcome to Fixer</h1><p class="s2" style="font-size:16px">' + copy.subtitle + '</p>' +
+    '<div class="steps">' +
+    '<div class="step ' + s1 + '"><div class="num">' + (s1 === 'done' ? '✓' : 1) + '</div><div class="body">' + VARIANTS_BY[v].step1(cur) + '</div></div>' +
+    '<div class="step ' + s2 + '"><div class="num">' + (s2 === 'done' ? '✓' : 2) + '</div><div class="body">' + step2Body + '</div></div>' +
+    '</div></div>';
+}
+
+/* ==========================================================================
+   Settings tab — variant decides the Catalog row and where the questions go
+   ========================================================================== */
+function settingsScreen(v) {
+  return '<div class="tabstrip"><nav>' + ['Analyze', 'Perspectives', 'Catalog Cache', 'Job Queue', 'Providers', 'Settings']
+      .map(t => '<span class="' + (t === 'Settings' ? 'on' : '') + '">' + t + '</span>').join('') + '</nav></div>' +
+    '<div class="stack6">' +
+    '<div><h3 style="font-size:22px;font-weight:700;letter-spacing:-.25px;margin:0 0 8px">General Settings</h3>' +
+    '<p class="s2">' + COPY[v].settingsSub + '</p></div>' +
+    (VARIANTS_BY[v].aboveList ? VARIANTS_BY[v].aboveList() : '') +
+    (S.notice ? '<div class="notice">' + esc(S.notice) + '</div>' : '') +
+    '<div class="list">' +
+      '<div class="srow"><div class="top"><div><div class="name">Local port</div><div class="desc">Loopback port for the bundled backend. Changes apply after you restart the app.</div></div>' +
+        '<div class="ctl"><input class="in" type="number" value="5173" style="width:6rem" aria-label="Local port"><button class="btn primary" disabled>Save</button></div></div></div>' +
+      VARIANTS_BY[v].row() +
+      '<div class="srow"><div class="top"><div><div class="name">Stack detection</div><div class="desc">Shots within 2000 ms are treated as one burst by <code>batch_stack_detect</code></div></div>' +
+        '<div class="ctl"><input class="in" type="number" value="2000" style="width:6rem" aria-label="Burst time window (milliseconds)"><span class="s2">ms</span><button class="btn primary" disabled>Save</button></div></div></div>' +
+    '</div>' +
+    '<div class="ghostsec">Culling models, Write to Lightroom, About, Delete all data — unchanged here.</div>' +
+    '</div>';
+}
+
+/* ==========================================================================
+   Variant A — Two doors
+   ========================================================================== */
+const A = {
+  key: 'A', name: 'Two doors',
+  step1(cur) {
+    if (S0.remote && !cur) return '<p class="b">Choose where your photos are</p>' +
+      '<p class="s2">Only on the Mac running Fixer. Open Fixer there to choose a folder or a Lightroom catalog; from here you can browse what has been imported.</p>';
+    if (cur) return '<p class="b">Choose where your photos are</p><div class="between"><span class="row s" style="min-width:0">' +
+      '<span class="badge">' + kindWord(cur.kind) + '</span>' + path(cur.path) + '<span class="t3s">· ' + n(cur.found) + ' photos found</span></span>' +
+      (S.importing || S0.remote ? '' : '<button class="link" data-a="reset-cur">Change…</button>') + '</div>';
+    return '<p class="b">Choose where your photos are</p><div class="doors">' +
+      '<div class="door"><h4>A folder of photos</h4><p class="s2">Any folder on this Mac or a drive. Fixer looks in every folder inside and reads the pixels and EXIF.</p>' +
+      '<button class="btn primary" data-a="dialog" data-k="folder">Choose folder…</button></div>' +
+      '<div class="door"><h4>A Lightroom Classic catalog</h4><p class="s2">The .lrcat file, usually in Pictures › Lightroom. Brings ratings, picks and keywords too.</p>' +
+      '<button class="btn primary" data-a="dialog" data-k="lrcat">Choose .lrcat…</button></div></div>';
+  },
+  row() {
+    const c = S.current;
+    const desc = '<span class="badge">' + kindWord(c.kind) + '</span>' + path(c.path) + '<span class="t3s">· ' + n(c.found) + ' photos</span>';
+    if (S0.remote) return '<div class="srow"><div class="top"><div style="min-width:0"><div class="name">Catalog</div><div class="desc">' + desc + '</div></div></div>' +
+      '<div class="under"><p class="t3s">The catalog is chosen on the Mac running Fixer.</p></div></div>';
+    return '<div class="srow"><div class="top"><div style="min-width:0"><div class="name">Catalog</div><div class="desc">' + desc + '</div></div>' +
+      '<div class="ctl"><button class="btn" data-a="dialog" data-k="folder"' + (S.typing ? ' disabled' : '') + '>Choose folder…</button>' +
+      '<button class="btn" data-a="dialog" data-k="lrcat"' + (S.typing ? ' disabled' : '') + '>Choose .lrcat…</button></div></div>' +
+      '<div class="under"><button class="disc" data-a="typing">' + (S.typing ? '⌄' : '›') + ' Enter a path manually</button>' +
+      (S.typing ? '<div style="margin-top:12px">' + typedPanel({ infer: true }) + '</div>' : '') + '</div></div>';
+  },
+  modal() {
+    if (!S.pending) return '';
+    const p = S.pending, old = S.current;
+    if (S.stepA === 'same') return '<div class="scrim"><div class="modal"><h3>Is this the same catalog?</h3>' +
+      '<p class="s2">' + esc(base(p.path)) + ' has no library in Fixer yet. If it is ' + esc(base(old.path)) +
+      ' moved, or upgraded by Lightroom, Fixer keeps everything and only changes the path.</p>' +
+      '<div class="acts"><button class="btn ghost" data-a="cancel">Cancel</button>' +
+      '<button class="btn" data-a="a-different">A different catalog</button>' +
+      '<button class="btn primary" data-a="a-same">The same catalog</button></div></div></div>';
+    return '<div class="scrim"><div class="modal"><h3>Switch to ' + esc(base(p.path)) + '?</h3>' + consequences(p, old, S.jobs) +
+      '<div class="acts"><button class="btn ghost" data-a="cancel">Cancel</button><button class="btn primary" data-a="commit">Switch catalog</button></div></div></div>';
+  },
+};
+
+/* ==========================================================================
+   Variant B — Folder first, Lightroom as the side door; questions inline
+   ========================================================================== */
+const B = {
+  key: 'B', name: 'Folder first, inline',
+  step1(cur) {
+    if (S0.remote && !cur) return '<p class="b">Choose your photos</p>' +
+      typedPanel({ infer: true, save: 'Use this path', cancel: false });
+    if (cur) {
+      let html = '<p class="b">Choose your photos</p><div class="between"><span class="s" style="min-width:0;display:flex">' + path(cur.path) + '</span>' +
+        (S.importing ? '' : '<button class="link" data-a="reset-cur">Change…</button>') + '</div>';
+      if (S.lrHint && !S.importing) html += '<div class="panel"><p class="s">This folder holds <b>' + esc(base(cur.holdsLrcat)) +
+        '.lrcat</b>, a Lightroom Classic catalog.</p><p class="s2">Using the catalog brings ratings, picks and keywords; the folder alone gives pixels and EXIF.</p>' +
+        '<div class="row"><button class="btn" data-a="use-lrcat">Use the Lightroom catalog</button><button class="btn ghost" data-a="keep-folder">Keep the folder</button></div></div>';
+      return html;
+    }
+    return '<p class="b">Choose your photos</p><p class="s2">A folder with your photos in it. Fixer looks in every folder inside.</p>' +
+      '<button class="btn primary md" data-a="dialog" data-k="folder">Choose folder…</button>' +
+      '<p class="t3s">Using Lightroom Classic? <button class="link" data-a="dialog" data-k="lrcat">Choose your .lrcat instead</button></p>';
+  },
+  row() {
+    const c = S.current;
+    const desc = '<span>' + kindWord(c.kind) + ' ·</span>' + path(c.path);
+    let ctl = '';
+    if (S0.remote) ctl = '<button class="btn" data-a="typing"' + (S.pending ? ' disabled' : '') + '>Type a path…</button>';
+    else ctl = '<button class="btn" data-a="menu"' + (S.pending || S.importing ? ' disabled' : '') + '>Change…</button>' + (S.menu ? '<div class="menu">' +
+      '<button data-a="dialog" data-k="folder">A folder…<span class="t3">Pixels and EXIF from every photo inside</span></button>' +
+      '<button data-a="dialog" data-k="lrcat">A Lightroom Classic catalog…<span class="t3">The .lrcat file; brings ratings, picks, keywords</span></button>' +
+      '<button data-a="typing">Type a path…</button></div>' : '');
+    let under = '';
+    if (S.typing && !S.pending) under = '<div class="panel">' + typedPanel({ infer: true }) + '</div>';
+    if (S.pending) {
+      const p = S.pending, old = S.current;
+      under = '<div class="panel"><p class="s b">' + kindWord(p.kind) + ' · ' + esc(p.path) + '</p>';
+      if (S.same !== 'different' || S.stepA === 'same') {
+        under += '<p class="s2">' + esc(base(p.path)) + ' has no library in Fixer yet. Is it ' + esc(base(old.path)) + '?</p>' + sameChoices();
+      }
+      if (S.same === 'different') under += consequences(p, old, S.jobs);
+      if (S.same === 'same') under += '<p class="s2">The library stays. No jobs are cancelled.</p>';
+      under += '<div class="row"><button class="btn primary" data-a="commit"' + (S.same ? '' : ' disabled') + '>' +
+        (S.same === 'same' ? 'Update the path' : 'Switch catalog') + '</button><button class="btn ghost" data-a="cancel">Cancel</button></div></div>';
+    }
+    if (S.importing || (S.imported && S.page === 'settings')) {
+      under = '<div class="panel"><p class="s b">' + (S.importing ? 'Importing ' + esc(base(c.path)) : esc(base(c.path)) + ' imported') + '</p>' +
+        (S.importing ? progressHtml(c.kind) : '<p class="s2">' + n(c.found) + ' photos are in Images.</p>') + '</div>';
+    }
+    return '<div class="srow"><div class="top"><div style="min-width:0"><div class="name">Catalog</div><div class="desc">' + desc + '</div></div>' +
+      '<div class="ctl">' + ctl + '</div></div>' + (under ? '<div class="under">' + under + '</div>' : '') + '</div>';
+  },
+  modal() { return ''; },
+};
+
+/* ==========================================================================
+   Variant C — Kind as an explicit choice, then one Choose…; one modal
+   ========================================================================== */
+const C = {
+  key: 'C', name: 'Kind first, one modal',
+  segHtml(disabled) {
+    return '<div class="seg">' + [['folder', 'Folder'], ['lrcat', 'Lightroom catalog']].map(([k, t]) =>
+      '<button data-a="seg" data-k="' + k + '" class="' + (S.seg === k ? 'on' : '') + '"' + (disabled ? ' disabled' : '') + '>' + t + '</button>').join('') + '</div>';
+  },
+  summary(cur) {
+    return '<div class="inset"><p class="s b">' + kindWord(cur.kind) + '</p><p class="s" style="display:flex;min-width:0">' + path(cur.path) + '</p>' +
+      '<p class="t3s">' + (cur.kind === 'folder' ? n(cur.found) + ' photos in ' + n(cur.folders) + ' folders' : n(cur.found) + ' photos in the catalog') + '</p></div>';
+  },
+  step1(cur) {
+    if (cur) return '<div class="between"><p class="b">Where are your photos?</p>' + (S.importing ? '' : '<button class="link" data-a="reset-cur">Change…</button>') + '</div>' + this.summary(cur);
+    const explain = S.seg === 'folder'
+      ? 'Any folder on this Mac or a drive, and every folder inside it. Fixer reads the pixels and EXIF.'
+      : 'Your Lightroom Classic .lrcat. Ratings, picks and keywords come along.';
+    if (S0.remote) return '<p class="b">Where are your photos?</p>' + this.segHtml(false) + '<p class="s2">' + explain + '</p>' +
+      typedPanel({ kind: S.seg, label: S.seg === 'folder' ? 'Folder path' : 'Catalog path (.lrcat)', save: 'Use this path', cancel: false,
+        placeholder: S.seg === 'folder' ? '/Volumes/NAS/Photos' : HOME + '/lightroom/Catalog.lrcat' });
+    return '<p class="b">Where are your photos?</p>' + this.segHtml(false) + '<p class="s2">' + explain + '</p>' +
+      '<button class="btn primary md" data-a="dialog" data-k="' + S.seg + '">' + (S.seg === 'folder' ? 'Choose folder…' : 'Choose catalog…') + '</button>';
+  },
+  aboveList() {
+    if (!S.importing && !(S.imported && S.page === 'settings')) return '';
+    const c = S.current;
+    return '<div class="banner between"><span class="s"><b>' + (S.importing ? 'Importing ' : 'Imported ') + esc(base(c.path)) + '</b> — ' +
+      (S.importing ? STAGES(c.kind).find(([, end]) => S.pct < end)[0] + ' · ' + S.pct + '%' : n(c.found) + ' photos are in Images') +
+      '</span><button class="link" data-a="go-insights">See progress</button></div>';
+  },
+  row() {
+    const c = S.current;
+    const desc = '<span class="b" style="font-weight:500;color:var(--color-text-primary)">' + kindWord(c.kind) + '</span>' + path(c.path) +
+      '<span class="t3s">· ' + n(c.found) + ' photos</span>';
+    const label = S.seg === 'folder' ? 'Folder path' : 'Catalog path (.lrcat)';
+    if (S0.remote) return '<div class="srow"><div class="top"><div style="min-width:0"><div class="name">Catalog</div><div class="desc">' + desc + '</div></div>' +
+      '<div class="ctl">' + this.segHtml(false) + '</div></div><div class="under">' +
+      typedPanel({ kind: S.seg, label, cancel: false, placeholder: S.seg === 'folder' ? '/Volumes/NAS/Photos' : HOME + '/lightroom/Catalog.lrcat' }) + '</div></div>';
+    return '<div class="srow"><div class="top"><div style="min-width:0"><div class="name">Catalog</div><div class="desc">' + desc + '</div></div>' +
+      '<div class="ctl">' + this.segHtml(S.importing) + '<button class="btn" data-a="dialog" data-k="' + S.seg + '"' + (S.typing || S.importing ? ' disabled' : '') + '>Choose…</button></div></div>' +
+      '<div class="under"><button class="disc" data-a="typing">' + (S.typing ? '⌄' : '›') + ' Enter a path manually</button>' +
+      (S.typing ? '<div style="margin-top:12px">' + typedPanel({ kind: S.seg, label }) + '</div>' : '') + '</div></div>';
+  },
+  modal() {
+    if (!S.pending) return '';
+    const p = S.pending, old = S.current;
+    const ask = S.stepA === 'same';
+    let body = '';
+    if (ask) body += '<p class="s2" style="margin-bottom:10px">' + esc(base(p.path)) + ' has no library in Fixer yet.</p><div class="stack">' + sameChoices() + '</div>';
+    if (S.same === 'different') body += '<div style="margin-top:16px">' + consequences(p, old, S.jobs) + '</div>';
+    if (S.same === 'same') body += '<p class="s2" style="margin-top:16px">The library stays. No jobs are cancelled.</p>';
+    return '<div class="scrim"><div class="modal"><h3>' + (ask ? 'Change the catalog to ' : 'Switch to ') + esc(base(p.path)) + '?</h3>' + body +
+      '<div class="acts"><button class="btn ghost" data-a="cancel">Cancel</button><button class="btn primary" data-a="commit"' + (S.same ? '' : ' disabled') + '>' +
+      (S.same === 'same' ? 'Update the path' : 'Switch catalog') + '</button></div></div></div>';
+  },
+};
+
+/* ==========================================================================
+   Variant D — the mix chosen from A–C: A's doors, C's summary, C's one modal,
+   A's jump to Insights after switching, A's read-only view from another device
+   ========================================================================== */
+const D = {
+  key: 'D', name: 'Chosen mix',
+  step1(cur) {
+    if (!cur) return A.step1(cur);
+    return '<div class="between"><p class="b">Choose where your photos are</p>' +
+      (S.importing || S0.remote ? '' : '<button class="link" data-a="reset-cur">Change…</button>') + '</div>' + C.summary(cur);
+  },
+  row() {
+    const c = S.current;
+    const desc = '<span class="b" style="font-weight:500;color:var(--color-text-primary)">' + kindWord(c.kind) + '</span>' + path(c.path) +
+      '<span class="t3s">· ' + n(c.found) + ' photos</span>';
+    if (S0.remote) return '<div class="srow"><div class="top"><div style="min-width:0"><div class="name">Catalog</div><div class="desc">' + desc + '</div></div></div>' +
+      '<div class="under"><p class="t3s">The catalog is chosen on the Mac running Fixer.</p></div></div>';
+    return '<div class="srow"><div class="top"><div style="min-width:0"><div class="name">Catalog</div><div class="desc">' + desc + '</div></div>' +
+      '<div class="ctl"><button class="btn" data-a="dialog" data-k="folder"' + (S.typing ? ' disabled' : '') + '>Choose folder…</button>' +
+      '<button class="btn" data-a="dialog" data-k="lrcat"' + (S.typing ? ' disabled' : '') + '>Choose .lrcat…</button></div></div>' +
+      '<div class="under"><button class="disc" data-a="typing">' + (S.typing ? '⌄' : '›') + ' Enter a path manually</button>' +
+      (S.typing ? '<div style="margin-top:12px">' + typedPanel({ infer: true }) + '</div>' : '') + '</div></div>';
+  },
+  modal() { return C.modal(); },
+};
+
+const VARIANTS = [A, B, C, D];
+const VARIANTS_BY = { A, B, C, D };
+
+/* ---------- copy per variant (strings that say .lrcat / Lightroom today) ---------- */
+const COPY = {
+  A: {
+    subtitle: 'Fixer works on a folder of photos or a Lightroom Classic catalog. Two steps and your photos are here.',
+    importHintFolder: 'Reads every photo in the folder and the folders inside it, then prepares them for culling. Large folders take a while.',
+    importHintLr: 'Reads your photos, then prepares them for culling. Large catalogs take a while.',
+    importBtn: c => 'Import ' + n(c.found) + ' photos',
+    settingsSub: 'Configure the catalog and application preferences',
+    imagesEmpty: 'Choose a folder or your Lightroom Classic catalog to browse your photos.',
+  },
+  B: {
+    subtitle: 'Point Fixer at your photos. Two steps and they are here.',
+    importHintFolder: 'Reads your photos, then prepares them for culling. Large folders take a while.',
+    importHintLr: 'Reads your photos, then prepares them for culling. Large catalogs take a while.',
+    importBtn: () => 'Import photos',
+    settingsSub: 'Configure where your photos come from and application preferences',
+    imagesEmpty: 'Choose your photos to browse them.',
+  },
+  C: {
+    subtitle: 'Fixer works on your photos, from a folder or from Lightroom Classic. Two steps and they are here.',
+    importHintFolder: 'Reads your photos, then prepares them for culling. Large folders take a while.',
+    importHintLr: 'Reads your photos, then prepares them for culling. Large catalogs take a while.',
+    importBtn: c => c.kind === 'folder' ? 'Import folder' : 'Import catalog',
+    settingsSub: 'Configure the catalog and application preferences',
+    imagesEmpty: 'Choose and import a folder or your Lightroom Classic catalog to browse your photos.',
+  },
+};
+COPY.D = COPY.A;
+const COPY_TODAY = {
+  subtitle: 'Fixer works on your Lightroom Classic catalog. Two steps and your photos are here.',
+  step1: 'Choose your catalog / The .lrcat file, usually in Pictures › Lightroom. / Choose catalog…',
+  importBtn: 'Import catalog',
+  row: 'Lightroom Classic catalog · input “Catalog path (.lrcat)”',
+  settingsSub: 'Configure catalog path and application preferences',
+  imagesEmpty: 'Choose and import your Lightroom Classic catalog to browse your photos.',
+  stage: 'Reading the catalog',
+};
+const COPY_ROWS = {
+  A: { step1: 'Choose where your photos are / two cards: “A folder of photos”, “A Lightroom Classic catalog” / Choose folder…, Choose .lrcat…',
+       row: 'Catalog · kind badge · Choose folder…, Choose .lrcat… · input “Folder or catalog path”', stage: 'Reading the folder | Reading the catalog' },
+  B: { step1: 'Choose your photos / A folder with your photos in it… / Choose folder… · “Using Lightroom Classic? Choose your .lrcat instead”',
+       row: 'Catalog · “Folder · path” · Change… menu (A folder… / A Lightroom Classic catalog… / Type a path…)', stage: 'Reading the folder | Reading the catalog' },
+  C: { step1: 'Where are your photos? / [Folder | Lightroom catalog] / Choose folder… | Choose catalog…',
+       row: 'Catalog · [Folder | Lightroom catalog] Choose… · input “Folder path” | “Catalog path (.lrcat)”', stage: 'Reading the folder | Reading the catalog' },
+  D: { step1: 'Choose where your photos are / two cards: “A folder of photos”, “A Lightroom Classic catalog” / Choose folder…, Choose .lrcat… · once chosen: kind, path, photo and folder count',
+       row: 'Catalog · kind, path, photo count · Choose folder…, Choose .lrcat… · input “Folder or catalog path”', stage: 'Reading the folder | Reading the catalog' },
+};
+
+/* ---------- notes ---------- */
+function notesHtml(v) {
+  const c = COPY[v], r = COPY_ROWS[v];
+  return '<h4 style="margin:0 0 8px;font-size:16px;font-weight:600">What to compare</h4>' +
+    '<div class="stack">' +
+    (v === 'D' ? '<p class="notes"><b>D is the mix picked from A–C:</b> A’s two doors and two buttons, C’s summary of the chosen catalog, C’s one modal, A’s jump to Insights after switching, A’s read-only view from another device. The setup summary carries the folder count; the Settings row line has kind, path and photo count, as C’s row does.</p>' : '') +
+    '<p class="notes"><b>How the kind is chosen.</b> A: two equal doors, each opening its own dialog. B: a folder is the default and Lightroom is the side door; picking a folder that holds a .lrcat offers the catalog instead. C: the kind is an explicit switch first, then one Choose… that follows it.</p>' +
+    '<p class="notes"><b>What is shown about the chosen one.</b> A: kind badge, path and a photo count from a quick walk (or the .lrcat) before import. B: kind word and path only; the count comes with the import. C: a summary with kind, path, photo count and folder count.</p>' +
+    '<p class="notes"><b>Where the change questions go.</b> A: modals, in sequence — “Is this the same catalog?” then “Switch to …?”. B: inline under the row, no modal. C: one modal, the same/different question on top and the consequences below it.</p>' +
+    '<p class="notes"><b>After switching to an empty catalog.</b> A: takes you to Insights, which is the setup screen again with the import running. B: the import checklist runs inside the row. C: a banner on Settings with a link to Insights.</p>' +
+    '<p class="notes"><b>From another device.</b> A: read-only — “the catalog is chosen on the Mac running Fixer”. B: a typed path, its kind read from the path (.lrcat or not). C: a typed path under the kind switch. Toggle “Seen from” in the black bar.</p>' +
+    '<p class="notes"><b>No “one dialog for either”.</b> osascript has <code>choose file</code> and <code>choose folder</code>, and the Tauri dialog takes <code>directory: true|false</code>: a single dialog that accepts a folder or a .lrcat needs native code of our own, so every variant opens a dialog of one kind.</p>' +
+    '<p class="notes"><b>Assumed, not decided.</b> “The same catalog” also queues a catalog sync and cancels no jobs. Choosing a catalog during setup saves at once with no confirmation, as today (the library is empty). Drift lines are gone from Settings in every variant.</p>' +
+    '<p class="notes"><b>Try.</b> Settings: choose FinalCatalog-v14 (no library yet, asks same/different), Photos 2026 (new folder, starts empty), /Volumes/NAS/Photos (used before, reopens). Setup in B: choose ~/Pictures/Lightroom (a folder holding a .lrcat).</p>' +
+    '</div>' +
+    '<h4 style="margin:24px 0 0;font-size:16px;font-weight:600">Copy in ' + v + '</h4>' +
+    '<table class="copy"><tr><th></th><th>Today</th><th>' + v + '</th></tr>' +
+    '<tr><td>Welcome</td><td>' + esc(COPY_TODAY.subtitle) + '</td><td>' + esc(c.subtitle) + '</td></tr>' +
+    '<tr><td>Step 1</td><td>' + esc(COPY_TODAY.step1) + '</td><td>' + esc(r.step1) + '</td></tr>' +
+    '<tr><td>Import button</td><td>' + esc(COPY_TODAY.importBtn) + '</td><td>' + esc(c.importBtn({ found: 12408, kind: 'folder' })) + ' (folder)</td></tr>' +
+    '<tr><td>First stage</td><td>' + esc(COPY_TODAY.stage) + '</td><td>' + esc(r.stage) + '</td></tr>' +
+    '<tr><td>Settings row</td><td>' + esc(COPY_TODAY.row) + '</td><td>' + esc(r.row) + '</td></tr>' +
+    '<tr><td>Settings subtitle</td><td>' + esc(COPY_TODAY.settingsSub) + '</td><td>' + esc(c.settingsSub) + '</td></tr>' +
+    '<tr><td>Images empty</td><td>' + esc(COPY_TODAY.imagesEmpty) + '</td><td>' + esc(c.imagesEmpty) + '</td></tr>' +
+    '</table>';
+}
+
+/* ---------- render ---------- */
+let variantIndex = (function () {
+  const k = new URLSearchParams(location.search).get('variant');
+  const i = VARIANTS.findIndex(v => v.key === String(k || '').toUpperCase());
+  return i === -1 ? 0 : i;
+})();
+let focused = null;
+
+function nativeDialog() {
+  if (!S.dialog) return '';
+  const d = DIALOG[S.dialog];
+  return '<div class="scrim" style="z-index:90"><div class="native"><div class="tt">' + d.title + '<em>native dialog (simulated)</em></div>' +
+    d.items.map(k => {
+      const e = E[k];
+      const cur = S.current && S.current.path === e.path;
+      const what = cur ? 'current catalog' : e.library ? 'used before — has a library in Fixer' : 'no library in Fixer yet';
+      return '<button class="li" data-a="pick" data-k="' + k + '">' + esc(e.path.replace(HOME, '~')) + '<small>' + what + '</small></button>';
+    }).join('') +
+    '<div class="ft"><button data-a="dialog-cancel">Cancel</button></div></div></div>';
+}
+
+function render() {
+  const v = VARIANTS[variantIndex].key;
+  document.getElementById('protobar').innerHTML =
+    '<span>PROTOTYPE</span>' +
+    '<div class="grp"><span>Surface</span>' +
+      '<button data-a="surface" data-k="setup" class="' + (S0.surface === 'setup' ? 'on' : '') + '">First-run setup</button>' +
+      '<button data-a="surface" data-k="settings" class="' + (S0.surface === 'settings' ? 'on' : '') + '">Settings (has a Lightroom catalog)</button></div>' +
+    '<div class="grp"><span>Seen from</span>' +
+      '<button data-a="remote" data-k="0" class="' + (!S0.remote ? 'on' : '') + '">this Mac</button>' +
+      '<button data-a="remote" data-k="1" class="' + (S0.remote ? 'on' : '') + '">another device</button></div>' +
+    '<button data-a="reset">Reset</button>';
+  const onSetup = S.page === 'setup';
+  document.getElementById('nav').innerHTML = ['Insights', 'Images', 'Identity', 'Processing']
+    .map(t => '<a class="' + ((onSetup ? t === 'Insights' : t === 'Processing') ? 'on' : '') + '">' + t + '</a>').join('');
+  document.getElementById('screen').innerHTML = onSetup ? setupScreen(v) : settingsScreen(v);
+  document.getElementById('overlay').innerHTML = VARIANTS_BY[v].modal() + nativeDialog();
+  document.getElementById('notes').innerHTML = notesHtml(v);
+  document.getElementById('switcher').innerHTML =
+    '<button data-a="prev" aria-label="Previous variant">&#8249;</button>' +
+    '<span class="lbl">' + v + ' <em>&mdash; ' + esc(VARIANTS[variantIndex].name) + '</em></span>' +
+    '<button data-a="next" aria-label="Next variant">&#8250;</button>';
+  if (focused) {
+    const el = document.querySelector('[data-field="' + focused.field + '"]');
+    if (el) { el.focus(); try { el.setSelectionRange(focused.caret, focused.caret); } catch (_) {} }
+  }
+}
+
+function setVariant(i) {
+  variantIndex = (i + VARIANTS.length) % VARIANTS.length;
+  const u = new URL(location.href);
+  u.searchParams.set('variant', VARIANTS[variantIndex].key);
+  history.replaceState(null, '', u);
+  S = seed(); focused = null; render();
+}
+
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key === 'ArrowLeft') setVariant(variantIndex - 1);
+  if (e.key === 'ArrowRight') setVariant(variantIndex + 1);
+});
+
+document.addEventListener('input', e => {
+  if (e.target.getAttribute('data-field') !== 'typed') return;
+  focused = { field: 'typed', caret: e.target.selectionStart };
+  S.typed = e.target.value.replace(/^\s*'(.*)'\s*$/, '$1');
+  S.typedErr = null;
+  render();
+});
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-a]');
+  if (!b) { if (S.menu) { S.menu = false; render(); } return; }
+  const a = b.getAttribute('data-a'), k = b.getAttribute('data-k');
+  const v = VARIANTS[variantIndex].key;
+  focused = null;
+  if (a === 'prev') return setVariant(variantIndex - 1);
+  if (a === 'next') return setVariant(variantIndex + 1);
+  if (a === 'theme') document.documentElement.classList.toggle('dark');
+  if (a === 'surface') { S0.surface = k; S = seed(); }
+  if (a === 'remote') { S0.remote = k === '1'; S = seed(); }
+  if (a === 'reset') S = seed();
+  if (a !== 'menu' && a !== 'dialog') S.menu = false;
+  if (a === 'menu') S.menu = !S.menu;
+  if (a === 'dialog') { S.menu = false; S.dialog = k; }
+  if (a === 'dialog-cancel') S.dialog = null;
+  if (a === 'pick') choose({ ...E[k] });
+  if (a === 'reset-cur') { S.current = null; S.lrHint = false; S.imported = false; }
+  if (a === 'use-lrcat') { S.current = { ...E.lrDefault, library: null }; S.lrHint = false; }
+  if (a === 'keep-folder') S.lrHint = false;
+  if (a === 'import') { S.importing = true; S.pct = 0; }
+  if (a === 'typing') { S.menu = false; S.typing = !S.typing; S.typed = ''; S.typedErr = null; if (S.typing) focused = { field: 'typed', caret: 0 }; }
+  if (a === 'typed-cancel') { S.typing = false; S.typed = ''; S.typedErr = null; }
+  if (a === 'typed-save') {
+    const forced = b.getAttribute('data-kind');
+    const kind = forced || inferKind(S.typed);
+    if (forced === 'lrcat' && !/\.lrcat$/i.test(S.typed)) { S.typedErr = 'Not a .lrcat file. Choose “Folder” for a folder of photos.'; render(); return; }
+    if (forced === 'folder' && /\.lrcat$/i.test(S.typed)) { S.typedErr = 'That is a .lrcat file. Choose “Lightroom catalog” to use it.'; render(); return; }
+    S.typing = false;
+    choose(entryForPath(S.typed, kind));
+    S.typed = '';
+  }
+  if (a === 'cancel') cancelPending();
+  if (a === 'same') { S.same = k; }
+  if (a === 'a-same') { S.same = 'same'; commitPending(v); }
+  if (a === 'a-different') { S.same = 'different'; S.stepA = 'confirm'; }
+  if (a === 'commit') { if (!S.same) return; commitPending(v); }
+  if (a === 'seg') { S.seg = k; S.typed = ''; S.typedErr = null; }
+  if (a === 'go-insights') S.page = 'setup';
+  render();
+});
+
+S = seed();
+render();
+</script>
+</body>
+</html>

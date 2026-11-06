@@ -13,12 +13,12 @@ import { makeFakeCatalog, type CatalogFile } from './helpers/fake-catalog.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { openLibraryDb, type Db } from '../src/db/connection.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
-import {
-  getLibraryMeta,
-  setLibraryMeta,
-  SYNCED_CATALOG_META_KEY,
-} from '../src/db/library/bootstrap.js';
+import { getLibraryMeta } from '../src/db/library/bootstrap.js';
 import { libraryWrite } from '../src/db/library/write.js';
+import {
+  clearChangedSinceRanking,
+  hasChangedSinceRanking,
+} from '../src/db/library/ranking-stale.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import {
@@ -239,6 +239,58 @@ describe('syncCatalog', () => {
     expect(syncedImages()).toHaveLength(1);
   });
 
+  it('marks the library changed-since-ranking when a photo is newly gone', async () => {
+    makeFakeCatalog(lrcatPath, []);
+    seedLibraryImage('gone', '42');
+
+    const { result } = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(result).toMatchObject({ newly_gone: 1 });
+    withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(true));
+  });
+
+  it('marks the library changed-since-ranking when a photo is added', async () => {
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'new-shot' }]);
+
+    const { result } = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(result.added).toBe(1);
+    withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(true));
+  });
+
+  it('does not re-mark a photo that was already gone', async () => {
+    makeFakeCatalog(lrcatPath, []);
+    seedLibraryImage('gone', '42');
+
+    await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    withLibrary((db) => libraryWrite(db, () => clearChangedSinceRanking(db)));
+
+    const { result } = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(result).toMatchObject({ newly_gone: 0 });
+    withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(false));
+  });
+
+  it('clears the gone mark when a photo is back in the catalog', async () => {
+    makeFakeCatalog(lrcatPath, []);
+    seedLibraryImage('gone', '42');
+
+    await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(
+      fx.query<{ catalog_missing_since: string | null }>(
+        'SELECT catalog_missing_since FROM images WHERE key = ?',
+        'gone',
+      )[0]!.catalog_missing_since,
+    ).not.toBeNull();
+
+    rmSync(lrcatPath);
+    makeFakeCatalog(lrcatPath, [{ id: 42, baseName: 'gone' }]);
+    await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(
+      fx.query<{ catalog_missing_since: string | null }>(
+        'SELECT catalog_missing_since FROM images WHERE key = ?',
+        'gone',
+      )[0]!.catalog_missing_since,
+    ).toBeNull();
+  });
+
   it('diffs ids numerically, not lexicographically', async () => {
     makeFakeCatalog(lrcatPath, [
       { id: 38887, baseName: 'have' },
@@ -359,7 +411,7 @@ describe('syncCatalog', () => {
     expect(logs[0]).toContain('catalog_total=2 library_total=0 missing=2 stale=0');
     expect(logs[1]).toContain('orientation updated=0 stale=0');
     expect(logs[2]).toContain('keyword_backfill mode=auto rows=2');
-    expect(logs[3]).toContain('complete added=2 stale=0 keywords_backfilled=2');
+    expect(logs[3]).toContain('complete added=2 stale=0 newly_gone=0 keywords_backfilled=2');
   });
 
   it('stops on cancellation and keeps what it already fetched', async () => {
@@ -383,34 +435,10 @@ describe('syncCatalog', () => {
     expect(syncedImages()).toHaveLength(2);
   });
 
-  it('records the catalog it read, so the settings row can spot a changed one', async () => {
+  it('does not write synced_catalog_path when a sync completes', async () => {
     makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'img1' }]);
     await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
-    expect(withLibrary((db) => getLibraryMeta(db, SYNCED_CATALOG_META_KEY))).toBe(lrcatPath);
-  });
-
-  it('leaves the previous catalog recorded when the run is cancelled', async () => {
-    // A half-finished run did not make the library mirror the new catalog, so
-    // claiming it did would silence the very warning the user needs.
-    makeFakeCatalog(
-      lrcatPath,
-      [1, 2, 3, 4].map((id) => ({ id, baseName: `img${id}` })),
-    );
-    withLibrary((db) =>
-      libraryWrite(db, () => setLibraryMeta(db, SYNCED_CATALOG_META_KEY, '/old.lrcat')),
-    );
-
-    let seen = 0;
-    await withLibraryAsync((db) =>
-      syncCatalog(lrcatPath, db, {
-        isCancelled: () => {
-          seen += 1;
-          return seen > 2;
-        },
-      }),
-    );
-
-    expect(withLibrary((db) => getLibraryMeta(db, SYNCED_CATALOG_META_KEY))).toBe('/old.lrcat');
+    expect(withLibrary((db) => getLibraryMeta(db, 'synced_catalog_path'))).toBeNull();
   });
 });
 

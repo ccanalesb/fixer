@@ -6,7 +6,7 @@
  * into a catalog Lightroom Classic has open.
  */
 import { statSync } from 'node:fs';
-import { config, loadLibraryConfig } from '../config.js';
+import { config, resolveConfiguredCatalogPath } from '../config.js';
 import { raiseIfCatalogLocked } from '../lightroom/writer.js';
 
 export interface LrCatalogWriteStatus {
@@ -25,8 +25,7 @@ function isFile(path: string): boolean {
 
 /** Whether the configured Lightroom Classic catalog can accept keyword writes, and why not. */
 export function describeLrCatalogWriteStatus(): LrCatalogWriteStatus {
-  const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
-  const path = (cfg.catalogPath ?? '').trim();
+  const path = (resolveConfiguredCatalogPath(config.LT_CONFIG_YAML) ?? '').trim();
   if (!path) {
     return { available: false, path: null, reason: 'No Lightroom Classic catalog configured.' };
   }

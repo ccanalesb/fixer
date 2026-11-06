@@ -41,6 +41,7 @@ export const IMAGE_DETAILS_PERSPECTIVE_ANALYSIS = 'Perspective analysis'
 export const IMAGE_DETAILS_TAB_CULLING = 'Culling'
 export const IMAGE_DETAILS_TAB_AI = 'AI'
 export const IMAGE_DETAILS_TAB_LIGHTROOM = 'Lightroom'
+export const IMAGE_DETAILS_TAB_XMP = 'XMP'
 export const IMAGE_DETAILS_TAB_FILE = 'File'
 export const IMAGE_DETAILS_TAB_STACK = (n: number) => `Stack · ${n}`
 export const IMAGE_DETAILS_FILE = 'File'
@@ -84,6 +85,7 @@ export const LABEL_TITLE = 'Title'
 export const LABEL_PATH = 'Path'
 export const LABEL_DIMENSIONS = 'Dimensions'
 export const LABEL_CAPTION = 'Caption'
+export const LABEL_COPYRIGHT = 'Copyright'
 export const LABEL_KEYWORDS = 'Keywords'
 
 // Status Display
@@ -152,11 +154,14 @@ export const INSIGHTS_TOP_PHOTOS_TAB_ALL = 'All'
 export const INSIGHTS_TOP_PHOTOS_REGION_ARIA = 'Top scored photos'
 export const INSIGHTS_FOOTER_TIMEZONE =
   'Timestamps on catalog images follow Lightroom Classic capture metadata where available.'
+export const INSIGHTS_FOOTER_TIMEZONE_FOLDER =
+  "Timestamps follow each file's capture date, else its modification date."
 export const INSIGHTS_QUICK_IDENTITY_TITLE = 'Identity'
 export const INSIGHTS_QUICK_IDENTITY_DESC = 'Mirror signature, and post-next suggestions.'
 export const INSIGHTS_QUICK_PROCESSING_TITLE = 'Processing'
 export const INSIGHTS_QUICK_PROCESSING_DESC = 'Matching, descriptions, scoring jobs, and perspectives.'
 export const INSIGHTS_KPI_CATALOG_DESC = 'Lightroom Classic catalog entries'
+export const INSIGHTS_KPI_CATALOG_DESC_FOLDER = 'Photos in the folder'
 export const CATALOG_FILTER_LABEL_MIN_SCORE_ACTIVE = 'Min score (any active perspective)'
 export const INSIGHTS_KPI_SCORING_9_PLUS = 'Scoring 9+'
 export const INSIGHTS_KPI_SCORING_9_PLUS_DESC = 'Best on an active perspective'
@@ -189,19 +194,43 @@ export const STACK_SUGGESTIONS_TIME_GAP_SECONDS = (seconds: number) =>
 // First-run setup (Insights catalog import)
 export const FIRST_RUN_WELCOME_TITLE = 'Welcome to Fixer'
 export const FIRST_RUN_WELCOME_SUBTITLE =
-  'Fixer works on your Lightroom Classic catalog. Two steps and your photos are here.'
-export const FIRST_RUN_STEP_CATALOG_TITLE = 'Choose your catalog'
-export const FIRST_RUN_STEP_CATALOG_HINT =
-  'The .lrcat file, usually in Pictures › Lightroom.'
-export const FIRST_RUN_CHOOSE_CATALOG = 'Choose catalog…'
+  'Fixer works on a folder of photos or a Lightroom Classic catalog. Two steps and your photos are here.'
+export const FIRST_RUN_STEP_CATALOG_TITLE = 'Choose where your photos are'
+export const FIRST_RUN_FOLDER_CARD_TITLE = 'A folder of photos'
+export const FIRST_RUN_FOLDER_CARD_BODY =
+  'Any folder on this Mac or a drive. Fixer looks in every folder inside and reads the pixels and EXIF.'
+export const FIRST_RUN_LRCAT_CARD_TITLE = 'A Lightroom Classic catalog'
+export const FIRST_RUN_LRCAT_CARD_BODY =
+  'The .lrcat file, usually in Pictures › Lightroom. Brings ratings, picks and keywords too.'
+export const FIRST_RUN_CHOOSE_FOLDER = 'Choose folder…'
+export const FIRST_RUN_CHOOSE_LRCAT = 'Choose .lrcat…'
+export const FIRST_RUN_MANUAL_PATH_DISCLOSURE = 'Enter a path manually'
+export const FIRST_RUN_MANUAL_PATH_LABEL = 'Folder or catalog path'
+export const SETTINGS_CATALOG_MANUAL_PATH_HINT =
+  'A path on the Mac running Fixer. In Finder, ⌥⌘C copies it.'
+export const FIRST_RUN_REMOTE_CATALOG_HINT =
+  'Only on the Mac running Fixer. Open Fixer there to choose a folder or a Lightroom catalog; from here you can browse what has been imported.'
+export const SETTINGS_CATALOG_REMOTE_HINT =
+  'The catalog is chosen on the Mac running Fixer.'
+export const FIRST_RUN_USE_PATH = 'Use this path'
+export const FIRST_RUN_KIND_FOLDER = 'Folder'
+export const FIRST_RUN_KIND_LRCAT = 'Lightroom catalog'
+export const FIRST_RUN_FOLDER_STATS = (photos: number, folders: number) =>
+  `${photos.toLocaleString('en-US')} photos in ${folders.toLocaleString('en-US')} folders`
+export const FIRST_RUN_LRCAT_STATS = (photos: number) =>
+  `${photos.toLocaleString('en-US')} photos in the catalog`
 export const FIRST_RUN_CHANGE_CATALOG = 'Change…'
 export const FIRST_RUN_STEP_IMPORT_TITLE = 'Import it'
-export const FIRST_RUN_STEP_IMPORT_HINT =
+export const FIRST_RUN_STEP_IMPORT_HINT_FOLDER =
+  'Reads every photo in the folder and the folders inside it, then prepares them for culling. Large folders take a while.'
+export const FIRST_RUN_STEP_IMPORT_HINT_LRCAT =
   'Reads your photos, then prepares them for culling. Large catalogs take a while.'
-export const FIRST_RUN_IMPORT_CATALOG = 'Import catalog'
+export const FIRST_RUN_IMPORT_PHOTOS = (count: number) =>
+  `Import ${count.toLocaleString('en-US')} photos`
 export const FIRST_RUN_IMPORT_WHILE_BUSY = 'Importing…'
 export const FIRST_RUN_IMPORT_KEEP_USING =
   'You can keep using the app; Images fills in after the first step.'
+export const FIRST_RUN_STAGE_READ_FOLDER = 'Reading the folder'
 export const FIRST_RUN_STAGE_READ_CATALOG = 'Reading the catalog'
 export const FIRST_RUN_STAGE_EMBEDDINGS = 'Computing image embeddings'
 export const FIRST_RUN_STAGE_BURST_STACKS = 'Detecting burst stacks'
@@ -209,11 +238,11 @@ export const FIRST_RUN_STAGE_NEAR_DUPLICATES = 'Grouping near-duplicates'
 export const FIRST_RUN_LIBRARY_EMPTY_TITLE = 'Your library is empty'
 export const FIRST_RUN_GO_TO_SETUP = 'Go to setup'
 export const FIRST_RUN_IMAGES_EMPTY_HINT =
-  'Choose and import your Lightroom Classic catalog to browse your photos.'
+  'Choose a folder or your Lightroom Classic catalog to browse your photos.'
 export const FIRST_RUN_IDENTITY_EMPTY_HINT =
-  'Identity is built from scores on your photos. Start by importing your catalog.'
+  'Identity is built from scores on your photos. Start by choosing where your photos are.'
 export const FIRST_RUN_READING_CATALOG =
-  'Reading your catalog… photos appear here when that step finishes.'
+  'Reading your photos… they appear here when that step finishes.'
 export const FIRST_RUN_IMPORT_STILL_RUNNING = 'Import still running —'
 export const FIRST_RUN_SEE_PROGRESS = 'see progress'
 export const FIRST_RUN_SETUP_ROUTE = '/'
@@ -331,6 +360,7 @@ export const FILTER_SORT_DATE_NEWEST = 'Newest first'
 export const FILTER_SORT_DATE_OLDEST = 'Oldest first'
 
 export const CATALOG_FILTER_POSTED_ALL = 'All Images'
+export const CATALOG_FILTER_PRESENCE_ALL = 'All'
 export const CATALOG_FILTER_POSTED = 'Posted'
 export const CATALOG_FILTER_NOT_POSTED = 'Not Posted'
 
@@ -340,6 +370,29 @@ export const IMAGE_DETAIL_POSTED_ARIA = 'Mark whether this photo has been posted
 export const CATALOG_FILTER_ANALYZED_ALL = 'All'
 export const CATALOG_FILTER_ANALYZED_ONLY = 'Analyzed only'
 export const CATALOG_FILTER_NOT_ANALYZED = 'Not analyzed'
+
+export const CATALOG_FILTER_LABEL_FILE = 'File'
+export const CATALOG_FILTER_LABEL_CATALOG = 'Catalog'
+export const CATALOG_FILTER_FILE_PRESENT = 'Present'
+export const CATALOG_FILTER_FILE_MISSING = 'Missing'
+export const CATALOG_FILTER_CATALOG_IN = 'In catalog'
+export const CATALOG_FILTER_CATALOG_REMOVED = 'Removed'
+export const CATALOG_CHIP_FILE_MISSING = 'File missing'
+export const CATALOG_CHIP_NOT_IN_CATALOG = 'Not in catalog'
+export const CATALOG_CHIP_REJECTED = '✕ Rejected'
+
+export const CATALOG_MIN_RATING_EMPTY_INTRO = (min: number) =>
+  `No photo has ${min}★ or more. No photo in this catalog has a rating yet: ratings come from `
+export const CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER =
+  "each file's .xmp or its embedded XMP."
+export const CATALOG_MIN_RATING_EMPTY_SOURCE_LIGHTROOM = 'Lightroom Classic.'
+export const CATALOG_MIN_RATING_CLEAR = 'Clear Min rating'
+export const FILE_MISSING_STATUS_TITLE = 'File missing'
+export const FILE_MISSING_STATUS_BODY = (path: string, since: string) =>
+  `Not found at ${path} since ${since}. If the file comes back, or turns up moved with the same size and capture time, it is this photo again. Its descriptions, scores and culling are kept.`
+export const LR_MISSING_STATUS_TITLE = 'Not in the catalog'
+export const LR_MISSING_STATUS_BODY = (since: string) =>
+  `Removed from the Lightroom Classic catalog since ${since}. Its descriptions, scores and culling are kept.`
 
 export const CATALOG_FILTER_MIN_RATING_ANY = 'Any'
 export const CATALOG_FILTER_SCORE_ANY = 'Any'
@@ -353,6 +406,8 @@ export const FILTER_DESCRIPTION_SEARCH_LABEL = 'Description search'
 export const FILTER_DESCRIPTION_SEARCH_PLACEHOLDER = 'Search AI description…'
 export const FILTER_DESCRIPTION_SEARCH_ARIA =
   'Search AI-generated description (summary and subjects), not Lightroom Classic keywords'
+export const FILTER_DESCRIPTION_SEARCH_ARIA_FOLDER =
+  'Search AI-generated description (summary and subjects), not the keywords in your files'
 export const CATALOG_FILTER_COLOR_PLACEHOLDER = 'e.g. Red'
 export const CATALOG_FILTER_COLOR_ARIA = 'Color label'
 
@@ -570,10 +625,16 @@ export const CATALOG_CACHE_BUILD_CTA = 'Build catalog cache'
 export const CATALOG_CACHE_BUILD_SUCCESS =
   'Catalog cache build started! Check the Job Queue tab for progress.'
 export const CATALOG_CACHE_CARD_TITLE = 'Catalog Vision Cache'
+/** Shown when the jobs health endpoint reports no library without a specific reason. */
+export const CATALOG_LIBRARY_UNAVAILABLE =
+  'The catalog library is unavailable. Catalog-dependent jobs cannot run.'
 export const CATALOG_CACHE_INTRO_BODY =
   'The vision cache stores preprocessed Lightroom Classic catalog images for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
+export const CATALOG_CACHE_INTRO_BODY_FOLDER =
+  'The vision cache stores preprocessed photos from the folder for fast AI comparison. Rebuilding the cache will process every photo in the folder and may take several minutes.'
 export const CATALOG_CACHE_STAT_TOTAL_LABEL = 'Total Images'
 export const CATALOG_CACHE_STAT_TOTAL_HELPER = 'Images in Lightroom Classic catalog'
+export const CATALOG_CACHE_STAT_TOTAL_HELPER_FOLDER = 'Photos in the folder'
 export const CATALOG_CACHE_STAT_CACHED_LABEL = 'Cached Images'
 export const CATALOG_CACHE_STAT_CACHED_HELPER = 'Processed for AI matching'
 export const CATALOG_CACHE_STAT_MISSING_LABEL = 'Missing'
@@ -800,6 +861,8 @@ export const CULL_RULE_SAVE_NOTE =
   'Saving re-checks every photo from stored answers (no new model run).'
 export const CULL_REDECIDE_CONFIRM_BODY =
   'A re-decide job starts: every photo is checked again from its stored answers. No model runs; verdicts and Lightroom Classic stars may change when it finishes.'
+export const CULL_REDECIDE_CONFIRM_BODY_FOLDER =
+  'A re-decide job starts: every photo is checked again from its stored answers. No model runs; verdicts and the stars written into your files may change when it finishes.'
 export const CULL_RULE_SAVE_CONFIRM_TITLE = 'Save the rule?'
 export const CULL_RULE_SAVE_CONFIRM = 'Save and start job'
 export const CULL_PROFILE_ACTIVATE_CONFIRM_TITLE = 'Activate this profile?'
@@ -922,6 +985,7 @@ export const LR_WRITEBACK_STOP_WRITING_CANCEL = 'Keep writing'
 export const LR_WRITEBACK_STOP_WRITING_CONFIRM = 'Stop and turn off'
 export const LR_WRITEBACK_STARS_STRONG_FROM = 'Count a dimension as strong when it is'
 export const LR_WRITEBACK_STARS_STRONG_FROM_HELP = 'Used for the stars written to Lightroom Classic.'
+export const LR_WRITEBACK_STARS_STRONG_FROM_HELP_FOLDER = 'Used for the stars written into your photo files.'
 export const LR_WRITEBACK_STRONG_FROM_7 = '7-level set'
 export const LR_WRITEBACK_STRONG_FROM_10 = '10-level set'
 export const LR_WRITEBACK_STRONG_FROM_EVERY = 'Strong in every level set (7 and 10)'
@@ -933,11 +997,52 @@ export const LR_WRITEBACK_KEYWORDS = 'Keywords'
 export const LR_WRITEBACK_UNDO = 'Undo'
 export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
 export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom Classic after the app wrote it.'
+export const FOLDER_WRITEBACK_WRITTEN_DETAIL = (fileLabel: string, whenLabel: string) =>
+  `Written to ${fileLabel} · ${whenLabel}`
 export const LR_WRITEBACK_APP_KEYWORDS = 'App keywords'
 export const LR_WRITEBACK_PICK = 'Pick'
+export const LR_WRITEBACK_REJECT = 'Reject'
 export const LR_WRITEBACK_UNDO_STARS_ROW = 'Stars written by the app'
 export const LR_WRITEBACK_UNDO_REJECT_ROW = 'Reject written by the app'
+export const XMP_DETAIL_SECTION = 'XMP and IPTC'
+export const XMP_NO_METADATA_HINT =
+  'This file has no rating, label or keywords. They are read from its .xmp or from inside the file, as your editor writes them.'
+export const XMP_SECONDARY_SIDECAR = (basename: string, readAfter: string) =>
+  `Also next to it: ${basename} (older, read after ${readAfter})`
+export const XMP_REJECT_LABEL = 'Reject'
+export const XMP_WRITEBACK_LOAD_ERROR = 'Could not read what the app wrote into this file:'
+export const XMP_FILE_MISSING =
+  'The photo file is missing, so its XMP and IPTC cannot be read from disk.'
+export const LABEL_COLOR = 'Label'
 export const LR_WRITEBACK_LOADING = 'Loading Lightroom Classic write-back…'
+
+export const FOLDER_WRITEBACK_SECTION = 'Write-back to your photo files'
+export const FOLDER_WRITEBACK_SECTION_LEAD =
+  'What culling writes into your photo files, where Lightroom, darktable, digiKam and other editors read it. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'
+export const FOLDER_WRITEBACK_STARS_SWITCH = 'Write stars into the photo files'
+export const FOLDER_WRITEBACK_STARS_HELP =
+  "Stars from the culling profile's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos whose file has no rating; ratings you set are never touched. Void frames get none. Marked with the keyword lrt-auto-stars."
+export const FOLDER_WRITEBACK_REJECT_SWITCH = 'Write the reject into the photo files'
+export const FOLDER_WRITEBACK_REJECT_HELP =
+  'Photos the culling profile filtered, and void frames, are marked rejected (rating −1, as Lightroom and darktable read it), only when the file has no rating; ratings and rejects you set are never touched. Photos filtered by the Score forecast are not marked. Marked with the keyword lrt-auto-reject.'
+export const FOLDER_WRITEBACK_STATUS_TITLE = 'Write-back to your photo files'
+export const FOLDER_WRITEBACK_STATUS_HELP =
+  'Written automatically when culling ends. Turning a switch on writes nothing until then, or until you press Write to photo files. A file that is read-only, or that changed while Fixer was writing, is skipped and stays pending.'
+export const FOLDER_WRITEBACK_WRITE = 'Write to photo files'
+export const FOLDER_WRITEBACK_WRITE_RESULT = (n: number) =>
+  `Wrote ${n.toLocaleString('en-US')} photos to your files`
+export const FOLDER_WRITEBACK_WRITING_PROGRESS = 'Writing to your photo files… ·'
+export const FOLDER_WRITEBACK_LOADING = 'Loading write-back settings…'
+export const FOLDER_WRITEBACK_SKIPPED = 'skipped'
+export const FOLDER_WRITEBACK_TURN_ON_TITLE = (what: 'stars' | 'reject') =>
+  `Write ${what === 'stars' ? 'stars' : 'the reject'} into your photo files?`
+export const FOLDER_WRITEBACK_TURN_ON_LEAD = (root: string) =>
+  `Fixer will change files in ${root} when culling ends, or when you press Write to photo files:`
+export const FOLDER_WRITEBACK_STOP_WRITING_TITLE = 'Stop writing to your photo files?'
+export const FOLDER_WRITEBACK_STOP_WRITING_BODY =
+  'The running write-back job is cancelled. Photos already written keep their stars or reject; you can undo them from each photo.'
+export const FOLDER_WRITEBACK_TURN_ON_CANCEL = 'Cancel'
+export const FOLDER_WRITEBACK_TURN_ON_CONFIRM = 'Turn on'
 
 // Processing → Settings → Culling models
 export const CULLING_MODELS_SECTION = 'Culling'
@@ -975,10 +1080,14 @@ export const CULLING_MODELS_NOT_SAVED = 'Not saved'
 export const CULLING_PROFILE_STAGE = 'Culling profile'
 export const CULLING_PROFILE_STAGE_HELP =
   "Every photo answers the culling profile's questions. It gives the stars and reject written to Lightroom Classic."
+export const CULLING_PROFILE_STAGE_HELP_FOLDER =
+  "Every photo answers the culling profile's questions. It gives the stars and reject written into your photo files."
 export const CULLING_PROFILE_FILTER = "Filter with the culling profile's rule"
 export const CULLING_PROFILE_FILTER_ON = 'On — a photo its rule filters is not described or scored.'
 export const CULLING_PROFILE_FILTER_OFF =
   'Off — the rule still gives the reject written to Lightroom Classic, but filters nothing.'
+export const CULLING_PROFILE_FILTER_OFF_FOLDER =
+  'Off — the rule still gives the reject written into your photo files, but filters nothing.'
 export const CULLING_PROFILE_FILTER_UNAVAILABLE = 'Available while the culling profile is on.'
 export const SCORE_FORECAST_STAGE = 'Score forecast'
 export const SCORE_FORECAST_STAGE_HELP =
@@ -1192,9 +1301,13 @@ export const SETTINGS_ABOUT_NOT_AFFILIATED =
 export const SETTINGS_DELETE_ALL_HEADING = 'Delete all data and quit'
 export const SETTINGS_DELETE_ALL_DESCRIPTION =
   'Remove everything Fixer stored on this computer — its data folder, logs and web browser data — then quit. Your Lightroom Classic catalog, anything written to it, and your photos are not touched.'
+export const SETTINGS_DELETE_ALL_DESCRIPTION_FOLDER =
+  'Remove everything Fixer stored on this computer — its data folder, logs and web browser data — then quit. Your photo files, and the ratings Fixer wrote into them, are not touched.'
 export const SETTINGS_DELETE_ALL_BUTTON = 'Delete all data and quit…'
 export const SETTINGS_DELETE_ALL_CONFIRM_TITLE = 'Delete all data and quit?'
 export const SETTINGS_DELETE_ALL_CONFIRM_BODY =
   'This removes Fixer’s data folder, log files and web browser data from this computer, then quits the app. Your Lightroom Classic catalog, ratings and keywords in it, and your photo files are not changed.'
+export const SETTINGS_DELETE_ALL_CONFIRM_BODY_FOLDER =
+  'This removes Fixer’s data folder, log files and web browser data from this computer, then quits the app. Your photo files and the ratings Fixer wrote into them are not changed.'
 export const SETTINGS_DELETE_ALL_CONFIRM_BUTTON = 'Delete and quit'
 export const SETTINGS_DELETE_ALL_WORKING = 'Deleting…'

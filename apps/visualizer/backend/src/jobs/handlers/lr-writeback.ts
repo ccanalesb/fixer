@@ -7,7 +7,10 @@ import type { Db } from '../../db/connection.js';
 import { createJob, getActiveJobs, getJob, getPendingJobs, initJobsDb, type JobRow } from '../../db/jobs/jobs.js';
 import { getLrWritebackSettings } from '../../db/library/lr-writeback-settings.js';
 import { emitJobEvent } from '../../websocket/events.js';
-import { describeLrCatalogWriteStatus } from '../../utils/lr-catalog-write.js';
+import { describeCatalogWriteStatus } from '../../utils/catalog-write-status.js';
+import { CATALOG_KIND_META_KEY } from '../../catalog-library.js';
+import { getLibraryMeta } from '../../db/library/bootstrap.js';
+import { syncFolderCatalog } from '../../folder/sync.js';
 import { reconcileLrWriteback } from '../../lightroom/writeback.js';
 import { signalCancel } from '../processor.js';
 import type { JobRunner } from '../runner.js';
@@ -92,7 +95,7 @@ export async function handleLrWriteback(
     const dbPath = resolveLibraryDbOrFail(runner, jobId);
     if (dbPath === null) return;
     await withLibraryDb(dbPath, async (db) => {
-      const catalogBefore = describeLrCatalogWriteStatus();
+      const catalogBefore = describeCatalogWriteStatus(db);
       const result = await reconcileLrWriteback(db, {
         trigger: 'job',
         imageKeys,
@@ -103,7 +106,13 @@ export async function handleLrWriteback(
         runner.finalizeCancelled(jobId);
         return;
       }
-      const catalogAfter = describeLrCatalogWriteStatus();
+      const isFolder = getLibraryMeta(db, CATALOG_KIND_META_KEY) === 'folder';
+      const wrote =
+        (result.catalog_updated_stars ?? 0) + (result.catalog_updated_reject ?? 0) > 0;
+      if (isFolder && wrote && catalogBefore.path) {
+        await syncFolderCatalog(catalogBefore.path, db, {});
+      }
+      const catalogAfter = describeCatalogWriteStatus(db);
       const pendingTotal = result.stars.pending + result.reject.pending;
       let pendingNote = '';
       if (pendingTotal > 0 && !catalogAfter.available) {
@@ -115,6 +124,7 @@ export async function handleLrWriteback(
         `[lr_writeback] status=complete stars_written=${result.stars.written} reject_written=${result.reject.written} ` +
           `stars_pending=${result.stars.pending} reject_pending=${result.reject.pending} ` +
           `stars_skipped=${result.stars.skipped} reject_skipped=${result.reject.skipped} ` +
+          `stars_file_error=${result.stars.file_error} reject_file_error=${result.reject.file_error} ` +
           `catalog_stars=${result.catalog_updated_stars} catalog_reject=${result.catalog_updated_reject} ` +
           `cloud_pushed=${result.cloud.pushed} cloud_not_synced=${result.cloud.not_synced} ` +
           `cloud_unreadable=${result.cloud.unreadable}` +

@@ -12,7 +12,8 @@
  * reports them as a stage result the chain logs and steps over.
  */
 import { existsSync } from 'node:fs';
-import { config, loadLibraryConfig } from '../../config.js';
+import { config, resolveConfiguredCatalogPath } from '../../config.js';
+import { inferCatalogKind } from '../../catalog-library.js';
 import type { Db } from '../../db/connection.js';
 import {
   CATALOG_LOCKED_MSG,
@@ -20,6 +21,7 @@ import {
   syncCatalog,
   type SyncCatalogOutcome,
 } from '../../lightroom/catalog-sync.js';
+import { syncFolderCatalog, FOLDER_CATALOG_READ_PROGRESS, type FolderCatalogSyncResult, type SyncFolderCatalogOutcome } from '../../folder/sync.js';
 import type { JobRunner } from '../runner.js';
 import {
   asMetadata,
@@ -51,13 +53,21 @@ export interface CatalogSyncStageResult {
   /** Set when the catalog exists but could not be read. */
   failed?: true;
   error?: string;
+  changed?: number;
+  metadata_changed?: number;
+  moved?: number;
+  newly_gone?: number;
+  collisions?: number;
+  unreadable?: number;
+  walk_ms?: number;
+  stat_ms?: number;
 }
 
 /** `catalog_path` from the job's metadata, else from `config.yaml`. */
-function resolveCatalogPath(metadata: Record<string, unknown>): string | null {
+function resolveSyncCatalogPath(metadata: Record<string, unknown>): string | null {
   const fromMetadata = metadata['catalog_path'];
   if (fromMetadata) return String(fromMetadata);
-  return loadLibraryConfig(config.LT_CONFIG_YAML).catalogPath;
+  return resolveConfiguredCatalogPath(config.LT_CONFIG_YAML);
 }
 
 /** Refresh `library.db` from the Lightroom Classic catalog, additions only. */
@@ -100,7 +110,7 @@ export async function runCatalogSyncPass(
     return { skipped: true, error: message, added: 0, stale: 0 };
   };
 
-  const catalogPath = resolveCatalogPath(metadata);
+  const catalogPath = resolveSyncCatalogPath(metadata);
   if (!catalogPath) {
     return unrunnable('No catalog path configured. Set catalog_path in config.yaml.');
   }
@@ -108,16 +118,27 @@ export async function runCatalogSyncPass(
 
   const progress = (pct: number, message: string): void =>
     runner.updateProgress(jobId, mapPassProgress(ctx, pct), `${prefix}${message}`);
-  progress(5, 'Connecting to Lightroom Classic catalog...');
 
-  let outcome: SyncCatalogOutcome;
+  const isFolder = inferCatalogKind(catalogPath) === 'folder';
+  progress(5, isFolder ? FOLDER_CATALOG_READ_PROGRESS : 'Connecting to Lightroom Classic catalog...');
+
+  let outcome: SyncCatalogOutcome | SyncFolderCatalogOutcome;
   try {
-    outcome = await syncCatalog(catalogPath, libDb, {
-      log: (level, message) => runner.log(jobId, jobLogLevel(level), `${prefix}${message}`),
-      progress,
-      isCancelled: () => runner.isCancelled(jobId),
-      backfillKeywords: metadata['backfill_keywords'] === true,
-    });
+    if (isFolder) {
+      const folderOutcome = await syncFolderCatalog(catalogPath, libDb, {
+        log: (level, message) => runner.log(jobId, jobLogLevel(level), `${prefix}${message}`),
+        progress,
+        isCancelled: () => runner.isCancelled(jobId),
+      });
+      outcome = folderOutcome;
+    } else {
+      outcome = await syncCatalog(catalogPath, libDb, {
+        log: (level, message) => runner.log(jobId, jobLogLevel(level), `${prefix}${message}`),
+        progress,
+        isCancelled: () => runner.isCancelled(jobId),
+        backfillKeywords: metadata['backfill_keywords'] === true,
+      });
+    }
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     // A `CatalogSyncError`'s message is the whole value of the type, so an empty
@@ -137,7 +158,26 @@ export async function runCatalogSyncPass(
     runner.finalizeCancelled(jobId);
     return null;
   }
-  if (ctx.settle === 'stage') return outcome.result;
+  if (ctx.settle === 'stage') {
+    if (isFolder) {
+      const folderResult = outcome.result as FolderCatalogSyncResult;
+      return { ...folderResult, ...folderReportFields(folderResult) };
+    }
+    return outcome.result;
+  }
   runner.completeJob(jobId, outcome.result);
   return null;
+}
+
+function folderReportFields(result: FolderCatalogSyncResult): Partial<CatalogSyncStageResult> {
+  return {
+    changed: result.changed,
+    metadata_changed: result.metadata_changed,
+    moved: result.moved,
+    newly_gone: result.newly_gone,
+    collisions: result.collisions,
+    unreadable: result.unreadable,
+    walk_ms: result.walk_ms,
+    stat_ms: result.stat_ms,
+  };
 }

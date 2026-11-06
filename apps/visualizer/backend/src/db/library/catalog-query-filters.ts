@@ -46,6 +46,8 @@ export interface CatalogImageFilters {
   dominantColors?: readonly string[] | null;
   moodTags?: readonly string[] | null;
   hasRepetition?: boolean | null;
+  /** `present` — on disk or in the catalog; `missing` — gone from folder or Lightroom catalog. */
+  catalogPresence?: 'present' | 'missing' | null;
 }
 
 /**
@@ -65,6 +67,9 @@ export function appendQueryCatalogImageFilters(
   f: CatalogImageFilters = {},
 ): void {
   if (f.cullCatalog === true) clauses.push(CULL_CATALOG_SQL);
+
+  if (f.catalogPresence === 'present') clauses.push('i.catalog_missing_since IS NULL');
+  else if (f.catalogPresence === 'missing') clauses.push('i.catalog_missing_since IS NOT NULL');
 
   if (f.posted === true) clauses.push('i.instagram_posted = 1');
   else if (f.posted === false) clauses.push('i.instagram_posted = 0');

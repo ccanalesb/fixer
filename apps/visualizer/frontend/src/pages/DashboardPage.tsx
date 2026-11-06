@@ -1,4 +1,5 @@
-import { Suspense, useMemo } from 'react'
+import { Suspense, useEffect, useMemo } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { FirstRunSetupScreen } from '../components/setup/FirstRunSetupScreen'
 import { useFirstRunSetup } from '../hooks/useFirstRunSetup'
 import type { FilterSchema } from '../components/filters/types'
@@ -12,6 +13,7 @@ import { TabNav } from '../components/ui/Tabs'
 import {
   IDENTITY_BEST_PHOTOS_EMPTY_FALLBACK,
   INSIGHTS_FOOTER_TIMEZONE,
+  INSIGHTS_FOOTER_TIMEZONE_FOLDER,
   INSIGHTS_PAGE_SUBTITLE,
   INSIGHTS_PAGE_TITLE,
   INSIGHTS_SECTION_EXPLORE,
@@ -23,9 +25,11 @@ import {
   INSIGHTS_TOP_PHOTOS_TAB_POSTED,
   INSIGHTS_TOP_PHOTOS_TAB_UNPOSTED,
 } from '../constants/strings'
-import { ErrorBoundary, ErrorState, useQuery } from '../data'
+import { ErrorBoundary, ErrorState, catalogLibraryChanged, useQuery } from '../data'
 import { keys } from '../data/keys'
 import { useFilters } from '../hooks/useFilters'
+import { useCatalogKind } from '../hooks/useCatalogKind'
+import { forCatalogKind } from '../utils/catalogKindCopy'
 import {
   IdentityAPI,
   SystemAPI,
@@ -115,18 +119,48 @@ const dashboardSuspenseFallback = (
 
 function DashboardPageInner() {
   const firstRun = useFirstRunSetup()
+  const location = useLocation()
+  const navigate = useNavigate()
 
-  if (firstRun.showInsightsSetup) {
+  const locationState = location.state as { startCatalogImport?: boolean } | null
+  const pendingCatalogImport = Boolean(locationState?.startCatalogImport)
+  const showSetup =
+    firstRun.showInsightsSetup || (pendingCatalogImport && !firstRun.loading)
+
+  useEffect(() => {
+    if (pendingCatalogImport) catalogLibraryChanged()
+  }, [pendingCatalogImport])
+
+  const { loading: setupLoading, importRunning, importStarting, startImport } = firstRun
+  useEffect(() => {
+    if (!pendingCatalogImport || setupLoading || !showSetup) return
+    navigate(location.pathname, { replace: true, state: null })
+    if (!importRunning && !importStarting) {
+      void startImport()
+    }
+  }, [
+    pendingCatalogImport,
+    showSetup,
+    location.pathname,
+    setupLoading,
+    importRunning,
+    importStarting,
+    startImport,
+    navigate,
+  ])
+
+  if (showSetup) {
     if (firstRun.loading) {
       return dashboardSuspenseFallback
     }
-    return <FirstRunSetupScreen setup={firstRun} />
+    return <FirstRunSetupScreen setup={firstRun} forceCatalogImport={pendingCatalogImport} />
   }
 
   return <DashboardInsightsView />
 }
 
 function DashboardInsightsView() {
+  const catalogKind = useCatalogKind()
   const dashboardTopPhotosSchema = useMemo<FilterSchema>(
     () => [
       {
@@ -190,6 +224,7 @@ function DashboardInsightsView() {
         summary={insights}
         loading={loadingInsights}
         error={errInsights}
+        catalogKind={catalogKind}
       />
 
       {a11yErrors ? (
@@ -250,7 +285,13 @@ function DashboardInsightsView() {
       </section>
 
       <footer className="border-t border-border pt-6 text-xs text-text-tertiary">
-        <p>{INSIGHTS_FOOTER_TIMEZONE}</p>
+        <p>
+          {forCatalogKind(
+            catalogKind,
+            INSIGHTS_FOOTER_TIMEZONE,
+            INSIGHTS_FOOTER_TIMEZONE_FOLDER,
+          )}
+        </p>
       </footer>
     </div>
   )

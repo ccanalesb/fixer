@@ -5,12 +5,17 @@ import { MemoryRouter } from 'react-router-dom'
 import { CatalogTab } from '../CatalogTab'
 import {
   CATALOG_FILTER_LABEL_KEYWORD,
+  CATALOG_FILTER_LABEL_CATALOG,
+  CATALOG_FILTER_LABEL_MIN_RATING,
+  CATALOG_MIN_RATING_CLEAR,
+  CATALOG_MIN_RATING_EMPTY_INTRO,
+  CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER,
   FILTER_DESCRIPTION_SEARCH_ARIA,
   formatStackCountBadge,
 } from '../../../constants/strings'
 import type { CatalogImageInput } from '../../../services/api'
-import { deleteMatching } from '../../../data/cache'
-import { cullingChanged } from '../../../data/keys'
+import { deleteMatching, setEntry } from '../../../data/cache'
+import { keys, cullingChanged } from '../../../data/keys'
 import { CULL_MODAL_NEXT, CULL_MODAL_PREV } from '../../../constants/strings'
 import {
   clickModalNav,
@@ -24,6 +29,7 @@ import {
 const apiMocks = vi.hoisted(() => ({
   listCatalogMock: vi.fn(),
   getCatalogMonthsMock: vi.fn(),
+  getCatalogMock: vi.fn(),
   getStackMembersMock: vi.fn(),
   splitStackMemberMock: vi.fn(),
   setStackRepresentativeMock: vi.fn(),
@@ -48,6 +54,10 @@ vi.mock('../../../services/api', async (importOriginal) => {
       ...actual.PerspectivesAPI,
       list: (...args: unknown[]) => apiMocks.perspectivesListMock(...args),
     },
+    ConfigAPI: {
+      ...actual.ConfigAPI,
+      getCatalog: (...args: unknown[]) => apiMocks.getCatalogMock(...args),
+    },
   }
 })
 
@@ -59,7 +69,7 @@ function stackRepAndMember(): { rep: CatalogImageInput; member: CatalogImageInpu
     filepath: '/a/b/seed.jpg',
     date_taken: '2024-01-01',
     rating: 3,
-    pick: false,
+    pick: 0,
     color_label: 'none',
     keywords: [],
     title: '',
@@ -90,7 +100,7 @@ function catalogRow(key: string, id: number): CatalogImageInput {
     filepath: `/${key}.jpg`,
     date_taken: '2024-01-01',
     rating: 3,
-    pick: false,
+    pick: 0,
     color_label: 'none',
     keywords: [],
     title: '',
@@ -105,12 +115,31 @@ function catalogRow(key: string, id: number): CatalogImageInput {
   }
 }
 
+function seedFulfilledQuery(key: readonly unknown[], value: unknown): void {
+  setEntry(JSON.stringify(key), {
+    status: 'fulfilled',
+    promise: Promise.resolve(value),
+    value,
+  })
+}
+
 describe('CatalogTab', () => {
   beforeEach(() => {
+    localStorage.clear()
     deleteMatching(() => true)
     vi.clearAllMocks()
     apiMocks.listCatalogMock.mockResolvedValue({ images: [], total: 0 })
     apiMocks.getCatalogMonthsMock.mockResolvedValue({ months: [] })
+    apiMocks.getCatalogMock.mockResolvedValue({
+      catalog_path: '/test.lrcat',
+      resolved_path: '/test.lrcat',
+      exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 0,
+      folder_count: null,
+      unreadable_directories: [],
+      picker_available: false,
+    })
     apiMocks.getStackMembersMock.mockResolvedValue({ items: [] })
     apiMocks.perspectivesListMock.mockResolvedValue([])
     apiMocks.splitStackMemberMock.mockResolvedValue({
@@ -142,6 +171,69 @@ describe('CatalogTab', () => {
     })
   })
 
+  it('shows folder Min rating empty copy in the grid when nothing is rated', async () => {
+    const folderCatalog = {
+      catalog_path: '/photos',
+      resolved_path: '/photos',
+      exists: true,
+      catalog_kind: 'folder' as const,
+      photo_count: 2,
+      folder_count: 1,
+      unreadable_directories: [],
+      picker_available: false,
+    }
+    apiMocks.getCatalogMock.mockResolvedValue(folderCatalog)
+    seedFulfilledQuery(keys.config.catalog(), folderCatalog)
+    seedFulfilledQuery(keys.images.catalogList({ min_rating: 1, limit: 0, offset: 0 }), {
+      images: [],
+      total: 0,
+    })
+    seedFulfilledQuery(keys.images.catalogList({ catalog_presence: 'missing', limit: 0, offset: 0 }), {
+      images: [],
+      total: 0,
+    })
+    apiMocks.listCatalogMock.mockImplementation(async (params: Record<string, unknown> = {}) => {
+      const limit = params.limit
+      const minRating = params.min_rating
+      if (limit === 0) {
+        return { images: [], total: 0 }
+      }
+      if (minRating != null && Number(minRating) >= 1) {
+        return { images: [], total: 0 }
+      }
+      return {
+        images: [
+          { ...catalogRow('unrated-a', 1), rating: 0 },
+          { ...catalogRow('unrated-b', 2), rating: 0 },
+        ],
+        total: 2,
+      }
+    })
+
+    render(
+      <MemoryRouter>
+        <Suspense fallback={null}>
+          <CatalogTab />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('image-tile')).toHaveLength(2)
+    })
+
+    const minRatingSelect = screen.getByLabelText(CATALOG_FILTER_LABEL_MIN_RATING)
+    await act(async () => {
+      fireEvent.change(minRatingSelect, { target: { value: '3' } })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: CATALOG_MIN_RATING_CLEAR })).toBeInTheDocument()
+    })
+    expect(screen.getByText(CATALOG_MIN_RATING_EMPTY_INTRO(3), { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER, { exact: false })).toBeInTheDocument()
+  })
+
   it('renders catalog filter labels and calls listCatalog with pagination defaults', async () => {
     render(
       <MemoryRouter>
@@ -154,18 +246,23 @@ describe('CatalogTab', () => {
     // Keyword filter label is rendered once schema mounts.
     await waitFor(() => {
       expect(screen.getAllByText(CATALOG_FILTER_LABEL_KEYWORD).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(CATALOG_FILTER_LABEL_CATALOG).length).toBeGreaterThan(0)
     })
 
-    // Initial load fires listCatalog with limit + offset only (no filters set).
     await waitFor(() => {
       expect(apiMocks.listCatalogMock).toHaveBeenCalled()
     })
-    const firstCall = apiMocks.listCatalogMock.mock.calls[0]?.[0] ?? {}
-    expect(firstCall.limit).toBe(50)
-    expect(firstCall.offset).toBe(0)
-    expect(firstCall).not.toHaveProperty('posted')
-    expect(firstCall).not.toHaveProperty('analyzed')
-    expect(firstCall).not.toHaveProperty('keyword')
+    const pageCall = apiMocks.listCatalogMock.mock.calls.find(
+      (call) =>
+        (call[0] as { limit?: number; offset?: number; catalog_presence?: string }).limit === 50 &&
+        (call[0] as { offset?: number }).offset === 0 &&
+        !(call[0] as { catalog_presence?: string }).catalog_presence,
+    )
+    expect(pageCall).toBeTruthy()
+    const params = pageCall![0] as Record<string, unknown>
+    expect(params).not.toHaveProperty('posted')
+    expect(params).not.toHaveProperty('analyzed')
+    expect(params).not.toHaveProperty('keyword')
   })
 
   it('sends description_search in listCatalog after debounce when description search is committed', async () => {

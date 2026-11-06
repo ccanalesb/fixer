@@ -64,6 +64,11 @@ object, branded type or selector union is introduced.
   dialog on its own screen. `POST /api/config/catalog/pick` does exactly that,
   via `osascript`, and is macOS-only; typing a path stays as the fallback for
   every other host and for a UI reached from another device.
+- **Choosing the catalog is read-only from another device.** A client that is not
+  on the backend host may show the current catalog path and photo count, but not
+  the folder or `.lrcat` buttons or a typed path field. The first-run setup
+  screen follows the same rule: remote viewers see the configured catalog or the
+  read-only explanation, not local pickers.
 - **The client has to judge co-location itself, and only loopback proves it.**
   `picker_available` answers whether the backend's OS has a dialog, not whether
   anyone is in front of it, so a phone talking to a Mac would still be offered

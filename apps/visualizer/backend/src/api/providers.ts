@@ -9,6 +9,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
+import { resolveOpenLibraryPaths } from '../open-library.js';
 import { openDb, openLibraryDb, type Db } from '../db/connection.js';
 import {
   countPhotosForProviderAddressChange,
@@ -387,8 +388,9 @@ providersRoutes.openapi(addressChangeImpactRoute, async (c) => {
     name: s.name,
   }));
   let photos = 0;
-  if (existsSync(config.LIBRARY_DB)) {
-    const db = openLibraryDb(config.LIBRARY_DB, { readonly: true });
+  const { libraryDbPath } = resolveOpenLibraryPaths();
+  if (existsSync(libraryDbPath)) {
+    const db = openLibraryDb(libraryDbPath, { readonly: true });
     try {
       photos = countPhotosForProviderAddressChange(db, providerId);
     } finally {

@@ -43,6 +43,7 @@ export function fromCatalogListRow(row: CatalogImageInput): ImageView {
     stack_id: row.stack_id,
     stack_member_count: row.stack_member_count,
     is_stack_representative: row.is_stack_representative,
+    catalog_missing_since: row.catalog_missing_since ?? null,
     // Identity fields intentionally omitted — list does not carry them.
   }
 }

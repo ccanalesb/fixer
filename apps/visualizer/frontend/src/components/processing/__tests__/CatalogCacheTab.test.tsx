@@ -10,6 +10,7 @@ import {
   CLIP_CONFIRM_TITLE_JOB,
   CATALOG_CACHE_BUILD_CTA,
   CATALOG_CACHE_BUILD_SUCCESS,
+  CATALOG_CACHE_INTRO_BODY_FOLDER,
   CATALOG_CACHE_EMBED_CATALOG_HELPER,
   CATALOG_CACHE_EMBED_CATALOG_LABEL,
   CATALOG_CACHE_LAST_RUN_NEVER,
@@ -108,6 +109,12 @@ describe('CatalogCacheTab', () => {
           }),
         });
       }
+      if (url.includes('/config/catalog')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ catalog_kind: 'lightroom' }),
+        });
+      }
       return Promise.reject(new Error(`Unhandled fetch in test: ${url}`));
     });
   });
@@ -115,6 +122,41 @@ describe('CatalogCacheTab', () => {
   it('renders primary Build catalog cache CTA', async () => {
     renderCatalogCacheTab();
     expect(await screen.findByRole('button', { name: CATALOG_CACHE_BUILD_CTA })).toBeTruthy();
+  });
+
+  it('shows folder-specific vision cache intro on a folder catalog', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input);
+      if (url.includes('/cache/pipeline-status')) {
+        return Promise.resolve({ ok: true, json: async () => pipelineStatusBody });
+      }
+      if (url.includes('/cache/status')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            total_images: 10,
+            cached_images: 5,
+            missing: 5,
+            cache_size_mb: 100,
+            cache_dir: '/tmp/cache',
+          }),
+        });
+      }
+      if (url.includes('/config/catalog')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ catalog_kind: 'folder' }),
+        });
+      }
+      return Promise.reject(new Error(`Unhandled fetch in test: ${url}`));
+    });
+    renderCatalogCacheTab();
+    expect(await screen.findByText(CATALOG_CACHE_INTRO_BODY_FOLDER)).toBeTruthy();
   });
 
   it('links NAS troubleshooting copy to storage mount docs', async () => {
@@ -216,7 +258,7 @@ describe('CatalogCacheTab', () => {
             filepath: '/tmp/s.jpg',
             date_taken: '2024-01-01',
             rating: 5,
-            pick: false,
+            pick: 0,
             color_label: '',
             keywords: [],
             title: '',
@@ -234,7 +276,7 @@ describe('CatalogCacheTab', () => {
               filepath: '/tmp/c.jpg',
               date_taken: '2024-01-02',
               rating: 5,
-              pick: false,
+              pick: 0,
               color_label: '',
               keywords: [],
               title: '',

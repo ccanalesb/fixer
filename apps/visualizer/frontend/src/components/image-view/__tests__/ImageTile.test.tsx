@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { useRef } from 'react'
 import type { ImageView } from '../../../services/api'
+import { CATALOG_CHIP_FILE_MISSING } from '../../../constants/strings'
 import { ImageTile } from '../ImageTile'
 import { Badge } from '../../ui/badges'
 
@@ -259,5 +260,22 @@ describe('ImageTile', () => {
     )
     const expected = new Date('2024-06-15T00:00:00Z').toLocaleDateString()
     expect(screen.getByText(expected)).toBeInTheDocument()
+  })
+
+  it('greys only the image and shows a file-missing chip when catalog_missing_since is set', () => {
+    const { container } = render(
+      <ImageTile
+        image={baseImage({ catalog_missing_since: '2026-11-01T00:00:00Z' })}
+        variant="grid"
+        primaryScoreSource="none"
+        catalogKind="folder"
+        onClick={() => {}}
+      />,
+    )
+    expect(screen.getByText(CATALOG_CHIP_FILE_MISSING)).toBeInTheDocument()
+    const img = container.querySelector('img')!
+    expect(img.className).toContain('grayscale')
+    expect(img.className).toContain('opacity-[.55]')
+    expect(screen.getByTestId('image-tile').className).not.toMatch(/opacity/)
   })
 })

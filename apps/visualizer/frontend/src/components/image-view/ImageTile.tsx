@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../../types/config'
 import type { ReactNode, RefObject } from 'react'
 import { ScrollContainerLazyImage } from '../ui/ScrollContainerLazyImage'
 import type { ImageView } from '../../services/api'
@@ -28,6 +29,8 @@ interface ImageTileProps {
   /** Pass the horizontal scroll container ref for strip tiles so thumbnails
    *  load via IntersectionObserver instead of native lazy loading. */
   scrollContainerRef?: RefObject<HTMLElement | null>
+  /** Folder vs Lightroom catalog — labels the missing-from-catalog chip. */
+  catalogKind?: CatalogKind
   className?: string
 }
 
@@ -57,10 +60,16 @@ export function ImageTile({
   footer,
   hidePostedMetadataBadge = false,
   scrollContainerRef,
+  catalogKind = 'lightroom',
   className = '',
 }: ImageTileProps) {
   const classes = imageTileVariantClasses(variant)
   const imageType = image.image_type
+  const catalogMissing = Boolean(image.catalog_missing_since)
+  // A gone photo greys only its preview; the chip and text stay readable.
+  const imageClassName = `absolute inset-0 h-full w-full object-cover${
+    catalogMissing ? ' grayscale opacity-[.55]' : ''
+  }`
   const dateDisplay = image.date_taken
     ? new Date(image.date_taken).toLocaleDateString()
     : image.created_at
@@ -98,13 +107,13 @@ export function ImageTile({
               scrollContainerRef={scrollContainerRef}
               src={thumbnailSrc}
               alt={thumbnailAlt}
-              className="absolute inset-0 h-full w-full object-cover"
+              className={imageClassName}
             />
           ) : (
             <img
               src={thumbnailSrc}
               alt={thumbnailAlt}
-              className="absolute inset-0 h-full w-full object-cover"
+              className={imageClassName}
               loading="lazy"
             />
           )}
@@ -129,6 +138,7 @@ export function ImageTile({
           image={image}
           primaryScoreSource={primaryScoreSource}
           hidePostedBadge={hidePostedMetadataBadge}
+          catalogKind={catalogKind}
         />
         {footer}
       </div>

@@ -1,8 +1,11 @@
+import type { CatalogKind } from '../../../types/config'
 import { useEffect, useState } from 'react'
 import type { ImageView } from '../../../services/api'
 import { ImagesAPI } from '../../../services/api'
 import {
   DATE_NO_DATE,
+  FILE_MISSING_STATUS_BODY,
+  FILE_MISSING_STATUS_TITLE,
   IMAGE_DETAILS_FILE,
   IMAGE_DETAILS_NO,
   IMAGE_DETAILS_POSTED,
@@ -15,14 +18,23 @@ import {
   LABEL_FILENAME,
   LABEL_PATH,
   LABEL_TITLE,
+  LR_MISSING_STATUS_BODY,
+  LR_MISSING_STATUS_TITLE,
 } from '../../../constants/strings'
-import { ActionArea, ActionRow, Fact, FactsBlock } from '../detail-blocks'
+import { formatDate } from '../../../utils/date'
+import { ActionArea, ActionRow, Fact, FactsBlock, StatusBlock } from '../detail-blocks'
+
+function formatMissingSince(since: string): string {
+  return formatDate(since) || since
+}
 
 export function FileTab({
   image,
+  catalogKind,
   onPostedChange,
 }: {
   image: ImageView
+  catalogKind: CatalogKind | null
   /** Optimistic posted flag for the badges under the photo. */
   onPostedChange?: (posted: boolean) => void
 }) {
@@ -53,19 +65,32 @@ export function FileTab({
   }
 
   const dimensions = image.width && image.height ? `${image.width} × ${image.height}` : null
+  const missingSince = image.catalog_missing_since
+  const missingBlock =
+    missingSince != null ? (
+      <StatusBlock
+        tone="warning"
+        title={catalogKind === 'folder' ? FILE_MISSING_STATUS_TITLE : LR_MISSING_STATUS_TITLE}
+      >
+        {catalogKind === 'folder'
+          ? FILE_MISSING_STATUS_BODY(image.filepath ?? image.key, formatMissingSince(missingSince))
+          : LR_MISSING_STATUS_BODY(formatMissingSince(missingSince))}
+      </StatusBlock>
+    ) : null
 
   return (
     <>
+      {missingBlock}
       <FactsBlock title={IMAGE_DETAILS_FILE}>
         <Fact label={LABEL_FILENAME} value={image.filename ?? image.key} />
-        <Fact label={LABEL_TITLE} value={image.title} />
+        {catalogKind === 'lightroom' ? <Fact label={LABEL_TITLE} value={image.title} /> : null}
         <Fact
           label={LABEL_DATE}
           value={image.date_taken ? new Date(image.date_taken).toLocaleString() : DATE_NO_DATE}
         />
         <Fact label={LABEL_PATH} value={image.filepath} mono />
         <Fact label={LABEL_DIMENSIONS} value={dimensions} />
-        <Fact label={LABEL_CAPTION} value={image.caption} />
+        {catalogKind === 'lightroom' ? <Fact label={LABEL_CAPTION} value={image.caption} /> : null}
         <Fact label={IMAGE_DETAILS_POSTED} value={posted ? IMAGE_DETAILS_YES : IMAGE_DETAILS_NO} />
       </FactsBlock>
 

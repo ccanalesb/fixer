@@ -4,6 +4,7 @@ export { invalidate, invalidateAll } from './invalidate'
 export {
   catalogCacheBuildSignalsChanged,
   catalogCacheChanged,
+  catalogLibraryChanged,
   clipModelChanged,
   cullingChanged,
   cullingModelsChanged,

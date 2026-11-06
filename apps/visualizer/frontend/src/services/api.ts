@@ -1,5 +1,6 @@
 import {
   catalogCacheBuildSignalsChanged,
+  catalogLibraryChanged,
   cullingChanged,
   cullingModelsChanged,
   cullingProfilesChanged,
@@ -25,7 +26,10 @@ import type {
   InstagramPostedResponse,
 } from '../types/catalog'
 import type {
+  CatalogChangeMode,
+  ConfigCatalogChangePreviewResponse,
   ConfigCatalogGetResponse,
+  ConfigCatalogPickFolderResponse,
   ConfigCatalogPickResponse,
   ConfigCatalogPutResponse,
   ConfigStackDetectionGetResponse,
@@ -76,7 +80,7 @@ import type {
   StackSuggestionAcceptResponse,
   StackSuggestionsResponse,
 } from '../types/stacks'
-import type { components } from '../types/api.gen'
+import type { components, paths } from '../types/api.gen'
 import type {
   IdentityBestPhotoItem,
   IdentityBestPhotosMeta,
@@ -412,15 +416,25 @@ export const ConfigAPI = {
       CATALOG_PICK_TIMEOUT_MS,
     ),
 
-  putCatalog: async (catalogPath: string) => {
+  pickFolderCatalog: () =>
+    request<ConfigCatalogPickFolderResponse>(
+      '/config/catalog/pick-folder',
+      { method: 'POST' },
+      CATALOG_PICK_TIMEOUT_MS,
+    ),
+
+  previewCatalogChange: (catalogPath: string) =>
+    request<ConfigCatalogChangePreviewResponse>('/config/catalog/change-preview', {
+      method: 'POST',
+      body: JSON.stringify({ catalog_path: catalogPath }),
+    }),
+
+  putCatalog: async (catalogPath: string, change: CatalogChangeMode) => {
     const result = await request<ConfigCatalogPutResponse>('/config/catalog', {
       method: 'PUT',
-      body: JSON.stringify({ catalog_path: catalogPath }),
+      body: JSON.stringify({ catalog_path: catalogPath, change }),
     })
-    invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
-    invalidateAll(keys.catalog.cache.stats())
-    invalidateAll(prefixOf(keys.jobs.health(), 1))
-    invalidateAll(keys.dashboard())
+    catalogLibraryChanged()
     return result
   },
 
@@ -441,6 +455,10 @@ export const ConfigAPI = {
 }
 
 /** Query params shared by catalog list and CLIP similar (backend mirrors filters). */
+type CatalogListQueryFromOpenApi = NonNullable<
+  paths['/api/images/catalog']['get']['parameters']['query']
+>
+
 export type CatalogListQueryParams = {
   posted?: boolean
   analyzed?: boolean | null
@@ -461,7 +479,7 @@ export type CatalogListQueryParams = {
   limit?: number
   offset?: number
   cull_catalog?: boolean
-}
+} & Pick<CatalogListQueryFromOpenApi, 'catalog_presence'>
 
 function appendCatalogListSearchParams(
   searchParams: URLSearchParams,
@@ -501,6 +519,7 @@ function appendCatalogListSearchParams(
   if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
   if (params.offset !== undefined) searchParams.set('offset', String(params.offset))
   if (params.cull_catalog === true) searchParams.set('cull_catalog', 'true')
+  if (params.catalog_presence) searchParams.set('catalog_presence', params.catalog_presence)
 }
 
 export const SystemAPI = {
@@ -576,6 +595,11 @@ export const ImagesAPI = {
       `/images/${image_type}/${encodeURIComponent(image_key)}${qs}`,
     )
   },
+
+  getFolderXmpDetail: (image_key: string) =>
+    request<FolderXmpDetailResponse>(
+      `/images/catalog/${encodeURIComponent(image_key)}/xmp`,
+    ),
 
   listCatalogSimilarityGroups: (params?: { limit?: number; offset?: number }) => {
     const sp = new URLSearchParams()
@@ -1185,6 +1209,9 @@ export const CullingModelsAPI = {
 
 export type LrWritebackSettingsResponse = components['schemas']['LrWritebackSettingsResponse']
 export type LrWritebackPhotoDetailResponse = components['schemas']['LrWritebackPhotoDetailResponse']
+export type FolderXmpDetailResponse = components['schemas']['FolderXmpDetailResponse']
+export type LrWritebackTurnOnPreviewResponse =
+  paths['/api/cull/lightroom-writeback/turn-on-preview']['get']['responses'][200]['content']['application/json']
 
 export const LrWritebackAPI = {
   getSettings: () => request<LrWritebackSettingsResponse>('/cull/lightroom-writeback/settings'),
@@ -1207,6 +1234,10 @@ export const LrWritebackAPI = {
     lightroomWritten()
     return result
   },
+  turnOnPreview: (kind: 'stars' | 'reject') =>
+    request<LrWritebackTurnOnPreviewResponse>(
+      `/cull/lightroom-writeback/turn-on-preview?kind=${kind}`,
+    ),
   getPhoto: (imageKey: string) =>
     request<LrWritebackPhotoDetailResponse>(
       `/cull/lightroom-writeback/photos/${encodeURIComponent(imageKey)}`,

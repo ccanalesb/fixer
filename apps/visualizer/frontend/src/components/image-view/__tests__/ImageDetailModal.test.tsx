@@ -29,13 +29,16 @@ vi.mock('../tabs/FileTab', () => ({
 vi.mock('../tabs/LightroomTab', () => ({
   LightroomTab: () => <div data-testid="lightroom-tab" />,
 }))
+vi.mock('../tabs/XmpTab', () => ({
+  XmpTab: () => <div data-testid="xmp-tab" />,
+}))
 vi.mock('../tabs/CullingTab', () => ({
   CullingTab: () => <div data-testid="culling-tab" />,
 }))
 
 import { ImageDetailModal } from '../ImageDetailModal'
 import { modalPropsFor } from '../modalView'
-import { CullAPI, FrameSubstanceAPI, ImagesAPI } from '../../../services/api'
+import { CullAPI, ConfigAPI, FrameSubstanceAPI, ImagesAPI } from '../../../services/api'
 
 function buildDetail(overrides: Partial<ImageView> = {}): ImageDetailResponse {
   return {
@@ -57,7 +60,7 @@ function buildCatalogImage(overrides: Partial<CatalogImageInput> = {}): CatalogI
     filepath: '/one.jpg',
     date_taken: '2026-01-01',
     rating: 0,
-    pick: false,
+    pick: 0,
     color_label: '',
     keywords: [],
     title: '',
@@ -104,7 +107,51 @@ describe('ImageDetailModal', () => {
   beforeEach(() => {
     deleteMatching(() => true)
     vi.restoreAllMocks()
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '',
+      resolved_path: '',
+      exists: false,
+      catalog_kind: 'lightroom',
+      photo_count: null,
+      folder_count: null,
+      unreadable_directories: [],
+      picker_available: false,
+    })
     vi.spyOn(FrameSubstanceAPI, 'get').mockResolvedValue(frame())
+  })
+
+  it('shows the XMP tab for a folder catalog and opens XmpTab', async () => {
+    vi.mocked(ConfigAPI.getCatalog).mockResolvedValue({
+      catalog_path: '/photos',
+      resolved_path: '/photos',
+      exists: true,
+      catalog_kind: 'folder',
+      photo_count: 1,
+      folder_count: 1,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue({
+      image_key: 'k1',
+      file_missing: false,
+      no_metadata_hint: false,
+      sidecar_order: [],
+      secondary_sidecar_note: null,
+      rating: { display: 'no rating', source: null },
+      reject: { display: null, source: null },
+      label: { value: null, source: null },
+      keywords: { values: [], source: null },
+      title: { value: null, source: null },
+      caption: { value: null, source: null },
+      copyright: { value: null, source: null },
+    })
+    vi.spyOn(ImagesAPI, 'getImageDetail').mockResolvedValue(buildDetail())
+    renderModal()
+    await screen.findByTestId('ai-tab')
+    expect(screen.getByRole('tab', { name: 'XMP' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'XMP' }))
+    expect(screen.getByTestId('xmp-tab')).toBeInTheDocument()
+    expect(screen.queryByTestId('lightroom-tab')).toBeNull()
   })
 
   it('fetches detail on mount and opens on the AI tab', async () => {

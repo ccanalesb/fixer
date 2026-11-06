@@ -33,7 +33,8 @@ import { getVisionCachedImage } from '../../db/library/vision-cache.js';
 import { libraryDb, type LibraryEnv } from '../library-db.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { computeSingleImageAggregateScores } from '../../identity/aggregates.js';
-import { resolveCatalogPath } from '../../utils/path-resolve.js';
+import { getViewablePathManaged } from '../../imaging/image-prep.js';
+import { resolveCatalogImageFilePath } from '../../utils/path-resolve.js';
 import { clampPagination, errorNotFound } from '../../utils/responses.js';
 import { validateScorePerspectiveExists } from '../../utils/score-perspective.js';
 import { sendFile } from '../../utils/send-file.js';
@@ -41,6 +42,7 @@ import { createOpenApiApp } from '../openapi.js';
 import { jsonBody, withValidationError } from '../route-helpers.js';
 import {
   type CatalogImage,
+  CatalogListQuery,
   CatalogListResponse,
   CatalogMonthsResponse,
   CatalogSimilarResponse,
@@ -50,7 +52,9 @@ import {
   InstagramPostedResponse,
 } from '../schemas/catalog.js';
 import { ErrorBody } from '../schemas/errors.js';
+import { FolderXmpDetailResponse } from '../schemas/folder-xmp.js';
 import { catalogThumbnailRoots, isPathUnderAllowedRoots } from './common.js';
+import { buildFolderXmpDetail } from '../../folder/xmp-detail.js';
 import { registerFrameSubstanceRoutes } from './frame-substance.js';
 import { parseCatalogListParams, parseCatalogSimilarParams } from './query-params.js';
 import {
@@ -95,30 +99,37 @@ const imageKeyParams = z.object({ image_key: z.string() });
  *
  * Cache generation is not wired up yet. On cache miss, serve the original file.
  */
-catalogRoutes.get('/images/catalog/:image_key/thumbnail', (c) => {
+catalogRoutes.get('/images/catalog/:image_key/thumbnail', async (c) => {
   const imageKey = c.req.param('image_key');
-  {
-    const db = c.get('libraryDb');
-    const image = getImage(db, imageKey);
-    if (!image) return errorNotFound(c, 'image');
+  const db = c.get('libraryDb');
+  const image = getImage(db, imageKey);
+  if (!image) return errorNotFound(c, 'image');
 
-    const allowed = catalogThumbnailRoots();
+  const allowed = catalogThumbnailRoots();
 
-    const cached = getVisionCachedImage(db, imageKey);
-    if (cached?.compressed_path && existsSync(cached.compressed_path)) {
-      if (!isPathUnderAllowedRoots(cached.compressed_path, allowed)) {
-        return errorNotFound(c, 'file');
-      }
-      return sendFile(c, cached.compressed_path, { mimetype: 'image/jpeg' });
+  const cached = getVisionCachedImage(db, imageKey);
+  if (cached?.compressed_path && existsSync(cached.compressed_path)) {
+    if (!isPathUnderAllowedRoots(cached.compressed_path, allowed)) {
+      return errorNotFound(c, 'file');
     }
-
-    const filepath = resolveCatalogPath(String(image.filepath ?? ''));
-    if (!filepath || !existsSync(filepath)) return errorNotFound(c, 'file');
-    if (!isPathUnderAllowedRoots(filepath, allowed)) return errorNotFound(c, 'file');
-
-    // Declared mimetype is `image/jpeg` even for RAW originals; the browser sniffs content.
-    return sendFile(c, filepath, { mimetype: 'image/jpeg' });
+    return sendFile(c, cached.compressed_path, { mimetype: 'image/jpeg' });
   }
+
+  const filepath = resolveCatalogImageFilePath(String(image.filepath ?? ''));
+  if (!filepath || !existsSync(filepath)) return errorNotFound(c, 'file');
+  if (!isPathUnderAllowedRoots(filepath, allowed)) return errorNotFound(c, 'file');
+
+  const viewable = await getViewablePathManaged(filepath);
+  if (!existsSync(viewable.path)) return errorNotFound(c, 'file');
+  // A temp file is one we just decoded from an allowed original (RAW, HEIC); it
+  // lives outside the allowed roots by construction, so the boundary check only
+  // applies to paths we hand back untouched.
+  if (!viewable.isTemp && !isPathUnderAllowedRoots(viewable.path, allowed)) {
+    return errorNotFound(c, 'file');
+  }
+
+  // Declared mimetype is `image/jpeg` even for RAW originals; the browser sniffs content.
+  return sendFile(c, viewable.path, { mimetype: 'image/jpeg' });
 });
 
 // --- months -----------------------------------------------------------------
@@ -199,12 +210,14 @@ const listSlashRoute = createRoute({
   method: 'get',
   path: '/images/catalog/',
   tags: ['images-catalog'],
+  request: { query: CatalogListQuery },
   responses: listResponses,
 });
 const listBareRoute = createRoute({
   method: 'get',
   path: '/images/catalog',
   tags: ['images-catalog'],
+  request: { query: CatalogListQuery },
   responses: listResponses,
 });
 
@@ -388,6 +401,27 @@ catalogRoutes.openapi(instagramPostedRoute, (c) => {
   // rows changed is not treated as a failure — writing the value it already had is
   // a successful no-op.
   return c.json({ key: imageKey, instagram_posted: posted }, 200);
+});
+
+// --- folder XMP detail (read live from files) --------------------------------
+
+const folderXmpRoute = createRoute({
+  method: 'get',
+  path: '/images/catalog/{image_key}/xmp',
+  tags: ['images-catalog'],
+  request: { params: imageKeyParams },
+  responses: withValidationError({
+    200: { description: 'XMP/IPTC values and sources', content: jsonBody(FolderXmpDetailResponse) },
+    404: { description: 'Not Found', content: jsonBody(ErrorBody) },
+  }),
+});
+
+catalogRoutes.openapi(folderXmpRoute, async (c) => {
+  const imageKey = c.req.valid('param').image_key;
+  const db = c.get('libraryDb');
+  const detail = await buildFolderXmpDetail(db, imageKey);
+  if (!detail) return errorNotFound(c, 'image');
+  return c.json(detail, 200);
 });
 
 // --- detail -----------------------------------------------------------------

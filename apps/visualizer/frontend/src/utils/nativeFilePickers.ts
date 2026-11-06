@@ -12,6 +12,18 @@ function pathFromOpenResult(selected: string | string[] | null): string | null {
   return Array.isArray(selected) ? (selected[0] ?? null) : selected
 }
 
+export async function pickFolderCatalogPath(): Promise<string | null> {
+  if (isTauri()) {
+    const selected = await open({
+      multiple: false,
+      directory: true,
+    })
+    return pathFromOpenResult(selected)
+  }
+  const { catalog_path } = await ConfigAPI.pickFolderCatalog()
+  return catalog_path
+}
+
 export async function pickCatalogPath(): Promise<string | null> {
   if (isTauri()) {
     const selected = await open({

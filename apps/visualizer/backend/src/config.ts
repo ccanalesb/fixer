@@ -12,6 +12,8 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { CatalogLibraryConflictError } from './catalog-library.js';
+import { resolveOpenLibraryPaths } from './open-library.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** Monorepo root — `apps/visualizer/backend/src` → four levels up. */
@@ -289,6 +291,11 @@ export function updateConfigYamlCatalogPath(configFile: string, catalogPath: str
   updateConfigYaml(configFile, 'catalog_path', stripped);
 }
 
+/** The configured catalog path from `config.yaml` — a `.lrcat` file or a folder — if any. */
+export function resolveConfiguredCatalogPath(configPath = defaultConfigYamlPath()): string | null {
+  return loadLibraryConfig(configPath).catalogPath;
+}
+
 /** Write `stack_burst_delta_ms` into `config.yaml`, preserving other keys. */
 export function updateConfigYamlStackBurstDeltaMs(configFile: string, value: number): void {
   const intValue = Math.trunc(value);
@@ -316,7 +323,7 @@ export function getDescriptionModel(): string {
   return process.env.DESCRIPTION_VISION_MODEL ?? getVisionModel();
 }
 
-export type LibraryDbSource = 'env' | 'config' | 'default';
+export type LibraryDbSource = 'env' | 'default';
 
 export interface LibraryDbStatus {
   path: string;
@@ -341,21 +348,28 @@ export function resolveLibraryDbLocation(): { path: string; source: LibraryDbSou
     return { path: resolvePath(envValue, pathBase()), source: 'env' };
   }
 
-  const configPath = defaultConfigYamlPath();
-  const cfg = loadLibraryConfig(configPath);
-  if (cfg.dbPath) {
-    return { path: cfg.dbPath, source: 'config' };
-  }
-
   return {
-    path: resolveDataPath('library.db', 'library.db'),
+    path: resolveOpenLibraryPaths().libraryDbPath,
     source: 'default',
   };
 }
 
 /** Resolve the library DB path and report whether it exists. */
 export function describeLibraryDb(): LibraryDbStatus {
-  const location = resolveLibraryDbLocation();
+  let location: { path: string; source: LibraryDbSource };
+  try {
+    location = resolveLibraryDbLocation();
+  } catch (e) {
+    if (e instanceof CatalogLibraryConflictError) {
+      return {
+        path: '',
+        source: 'default',
+        exists: false,
+        reason: e.message,
+      };
+    }
+    throw e;
+  }
   const exists = libraryDbIsFile(location.path);
   return {
     path: location.path,
@@ -363,13 +377,9 @@ export function describeLibraryDb(): LibraryDbStatus {
     exists,
     reason: exists
       ? null
-      : location.source === 'env'
+        : location.source === 'env'
         ? `LIBRARY_DB is set to '${location.path}' but that file does not exist.`
-        : location.source === 'config'
-          ? `config.yaml db_path is '${location.path}' but that file does not exist. ` +
-            'Run the catalog import to create it, or set LIBRARY_DB to override.'
-          : 'No LIBRARY_DB env var, no db_path in config.yaml, and no library.db under the ' +
-            'data folder. Set LIBRARY_DB or configure db_path in config.yaml.',
+        : 'No library for the configured catalog yet. Set catalog_path in config.yaml.',
   };
 }
 

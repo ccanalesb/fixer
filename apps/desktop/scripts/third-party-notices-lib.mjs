@@ -21,6 +21,7 @@ export const SECTION_HEADERS = {
   onnxruntime: 'ONNX Runtime',
   sharpLibvips: 'sharp-libvips (libvips and bundled native libraries)',
   librawWasm: 'libraw-wasm and LibRaw',
+  heicLibheif: 'heic-decode and libheif-js (HEIC/HEIF decode)',
   uv: 'uv (model conversion tool)',
   conversion: 'Model conversion (downloaded on first use)',
 };
@@ -701,6 +702,17 @@ export async function buildThirdPartyNotices(options) {
     fetchImpl,
   );
 
+  const heicDecodeDir = resolvePackageDir(backendNm, 'heic-decode');
+  if (!heicDecodeDir) {
+    throw new Error('heic-decode not found in staged backend node_modules');
+  }
+  const heicDecodePkg = await resolveNpmPackageLicense(heicDecodeDir, fetchImpl, npmCache);
+  const libheifDir = resolvePackageDir(backendNm, 'libheif-js');
+  if (!libheifDir) {
+    throw new Error('libheif-js not found in staged backend node_modules');
+  }
+  const libheifPkg = await resolveNpmPackageLicense(libheifDir, fetchImpl, npmCache);
+
   const ortPkg = await resolveNpmPackageLicense(
     resolvePackageDir(backendNm, 'onnxruntime-node'),
     fetchImpl,
@@ -759,6 +771,13 @@ export async function buildThirdPartyNotices(options) {
         librawUpstream.librawLicenseText.trimEnd(),
         '',
       ].join('\n'),
+    ),
+    formatSection(
+      SECTION_HEADERS.heicLibheif,
+      [
+        formatPackageBlock('npm package', heicDecodePkg),
+        formatPackageBlock('npm package (WASM libheif)', libheifPkg),
+      ].join('\n\n'),
     ),
     formatSection(
       SECTION_HEADERS.uv,

@@ -13,6 +13,8 @@ export type ConfirmModalFrameProps = {
   onConfirm: () => void
   onCancel: () => void
   busy?: boolean
+  /** Disables only the confirm button, e.g. until a required choice is made. */
+  confirmDisabled?: boolean
   confirmVariant?: 'danger' | 'primary'
 }
 
@@ -29,6 +31,7 @@ export function ConfirmModalFrame({
   onConfirm,
   onCancel,
   busy = false,
+  confirmDisabled = false,
   confirmVariant = 'danger',
 }: ConfirmModalFrameProps) {
   const titleId = useId()
@@ -65,13 +68,19 @@ export function ConfirmModalFrame({
             <button
               type="button"
               onClick={onConfirm}
-              disabled={busy}
+              disabled={busy || confirmDisabled}
               className="px-4 py-2 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
             >
               {busy ? '…' : confirmLabel}
             </button>
           ) : (
-            <Button type="button" variant="primary" size="md" disabled={busy} onClick={onConfirm}>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              disabled={busy || confirmDisabled}
+              onClick={onConfirm}
+            >
               {busy ? '…' : confirmLabel}
             </Button>
           )}

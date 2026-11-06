@@ -1,31 +1,47 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../ui/Button'
+import { InlineNotice } from '../ui/InlineNotice'
 import { PathSummary } from '../processing/SettingRow'
+import { CatalogChangeModal } from '../processing/CatalogChangeModal'
+import { CatalogManualPath } from '../processing/CatalogManualPath'
 import { CatalogImportStageChecklist } from './CatalogImportStageChecklist'
 import { ClipModelDownloadConfirm } from './ClipModelDownloadConfirm'
 import type { useFirstRunSetup } from '../../hooks/useFirstRunSetup'
 import { useClipModelStatus } from '../../hooks/useClipModelStatus'
 import {
   FIRST_RUN_CHANGE_CATALOG,
-  FIRST_RUN_CHOOSE_CATALOG,
-  FIRST_RUN_IMPORT_CATALOG,
+  FIRST_RUN_CHOOSE_FOLDER,
+  FIRST_RUN_CHOOSE_LRCAT,
+  FIRST_RUN_FOLDER_CARD_BODY,
+  FIRST_RUN_FOLDER_CARD_TITLE,
+  FIRST_RUN_FOLDER_STATS,
+  FIRST_RUN_IMPORT_PHOTOS,
   FIRST_RUN_IMPORT_KEEP_USING,
   FIRST_RUN_IMPORT_WHILE_BUSY,
+  FIRST_RUN_KIND_FOLDER,
+  FIRST_RUN_KIND_LRCAT,
+  FIRST_RUN_LRCAT_CARD_BODY,
+  FIRST_RUN_LRCAT_CARD_TITLE,
+  FIRST_RUN_LRCAT_STATS,
   FIRST_RUN_PHOTOS_KEPT_IN_IMAGES,
+  FIRST_RUN_REMOTE_CATALOG_HINT,
   FIRST_RUN_RETRY_IMPORT,
   FIRST_RUN_SEE_JOB_LOG,
-  FIRST_RUN_STEP_CATALOG_HINT,
   FIRST_RUN_STEP_CATALOG_TITLE,
-  FIRST_RUN_STEP_IMPORT_HINT,
+  FIRST_RUN_STEP_IMPORT_HINT_FOLDER,
+  FIRST_RUN_STEP_IMPORT_HINT_LRCAT,
   FIRST_RUN_STEP_IMPORT_STOPPED,
   FIRST_RUN_STEP_IMPORT_TITLE,
+  FIRST_RUN_USE_PATH,
   FIRST_RUN_WELCOME_SUBTITLE,
   FIRST_RUN_WELCOME_TITLE,
-  MSG_FAILED_START_JOB,
   PROCESSING_JOB_QUEUE_ROUTE,
+  SETTINGS_CATALOG_REMOTE_HINT,
 } from '../../constants/strings'
 import { catalogCacheBuildOverallPercent } from '../../utils/catalogCacheBuildProgress'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
+import type { CatalogKind } from '../../types/config'
 
 type SetupState = ReturnType<typeof useFirstRunSetup>
 
@@ -72,7 +88,59 @@ function stepShell(
   )
 }
 
-export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
+function catalogStatsLine(
+  kind: CatalogKind,
+  photoCount: number | null,
+  folderCount: number | null,
+): string | null {
+  if (photoCount == null) return null
+  if (kind === 'folder' && folderCount != null) {
+    return FIRST_RUN_FOLDER_STATS(photoCount, folderCount)
+  }
+  if (kind === 'lightroom' && photoCount != null) {
+    return FIRST_RUN_LRCAT_STATS(photoCount)
+  }
+  return `${photoCount.toLocaleString('en-US')} photos`
+}
+
+function SetupChoiceCard({
+  title,
+  body,
+  actionLabel,
+  busy,
+  onChoose,
+}: {
+  title: string
+  body: string
+  actionLabel: string
+  busy: boolean
+  onChoose: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-2.5 rounded-card border border-border p-4 text-left">
+      <h4 className="text-base font-semibold text-text">{title}</h4>
+      <p className="flex-1 text-sm text-text-secondary">{body}</p>
+      <Button
+        type="button"
+        variant="primary"
+        size="md"
+        className="w-full"
+        onClick={onChoose}
+        disabled={busy}
+      >
+        {busy ? 'Choosing…' : actionLabel}
+      </Button>
+    </div>
+  )
+}
+
+export function FirstRunSetupScreen({
+  setup,
+  forceCatalogImport = false,
+}: {
+  setup: SetupState
+  forceCatalogImport?: boolean
+}) {
   const {
     catalog,
     catalogConfigured,
@@ -84,28 +152,40 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
     importClipDownloadFailed,
     expectClipDownloadInRun,
     catalogPhotoCount,
-    pickAndSaveCatalog,
     startImport,
   } = setup
 
   const clipStatus = useClipModelStatus()
   const modelOnDisk = clipStatus.model_on_disk
   const [importConfirmOpen, setImportConfirmOpen] = useState(false)
+  const [typingManual, setTypingManual] = useState(false)
+  const [manualPath, setManualPath] = useState('')
+  const [changingCatalog, setChangingCatalog] = useState(false)
 
-  const step1Variant = catalogConfigured ? 'done' : 'active'
+  useEffect(() => {
+    setChangingCatalog(false)
+  }, [catalog.status?.path])
+
+  const showCatalogPickers = !catalogConfigured || changingCatalog
+  const readOnly = catalog.status?.readOnly ?? false
+  const step1Variant = showCatalogPickers ? 'active' : 'done'
   const step2Variant = !catalogConfigured
     ? 'locked'
     : importClipDownloadFailed
       ? 'error'
       : importRunning || importStarting
         ? 'active'
-        : setup.firstCatalogImportCompleted
+        : setup.firstCatalogImportCompleted && !forceCatalogImport
           ? 'done'
           : 'active'
 
   const overall = catalogCacheBuildOverallPercent(importJob)
-  const picking = catalog.picking
+  const picking = catalog.picking || catalog.pickingFolder || catalog.saving
   const catalogError = catalog.error ?? importError
+  const catalogKind = catalog.status?.catalogKind ?? 'lightroom'
+  const importLabel = FIRST_RUN_IMPORT_PHOTOS(catalog.status?.photoCount ?? 0)
+  const importHint =
+    catalogKind === 'folder' ? FIRST_RUN_STEP_IMPORT_HINT_FOLDER : FIRST_RUN_STEP_IMPORT_HINT_LRCAT
 
   const handleImportClick = () => {
     if (!catalogSavedAndValid || importRunning) return
@@ -125,6 +205,10 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
     ? FIRST_RUN_STEP_IMPORT_STOPPED
     : FIRST_RUN_STEP_IMPORT_TITLE
 
+  const statsLine = catalog.status
+    ? catalogStatsLine(catalogKind, catalog.status.photoCount, catalog.status.folderCount)
+    : null
+
   return (
     <>
       <div className="mx-auto mt-6 max-w-xl text-center">
@@ -136,35 +220,72 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
             1,
             step1Variant,
             <>
-              <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
-              {catalogConfigured ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="min-w-0 text-sm">
-                    <PathSummary path={catalog.status?.resolvedPath ?? catalog.status?.path ?? ''} />
-                  </span>
-                  {!importRunning && !importClipDownloadFailed ? (
-                    <button
-                      type="button"
-                      className="shrink-0 text-sm font-medium text-accent hover:underline"
-                      onClick={() => void pickAndSaveCatalog()}
-                      disabled={picking}
-                    >
-                      {FIRST_RUN_CHANGE_CATALOG}
-                    </button>
-                  ) : null}
-                </div>
+              {showCatalogPickers ? (
+                readOnly ? (
+                  <>
+                    <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
+                    <p className="text-sm text-text-secondary">{FIRST_RUN_REMOTE_CATALOG_HINT}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <SetupChoiceCard
+                        title={FIRST_RUN_FOLDER_CARD_TITLE}
+                        body={FIRST_RUN_FOLDER_CARD_BODY}
+                        actionLabel={FIRST_RUN_CHOOSE_FOLDER}
+                        busy={picking}
+                        onChoose={() => void catalog.chooseFolder()}
+                      />
+                      <SetupChoiceCard
+                        title={FIRST_RUN_LRCAT_CARD_TITLE}
+                        body={FIRST_RUN_LRCAT_CARD_BODY}
+                        actionLabel={FIRST_RUN_CHOOSE_LRCAT}
+                        busy={picking}
+                        onChoose={() => void catalog.chooseLrcat()}
+                      />
+                    </div>
+                    <CatalogManualPath
+                      open={typingManual}
+                      onToggle={() => setTypingManual((v) => !v)}
+                      busy={picking}
+                      value={manualPath}
+                      onChange={setManualPath}
+                      submitLabel={FIRST_RUN_USE_PATH}
+                      onSubmit={() => void catalog.beginChange(manualPath)}
+                      buttonSize="md"
+                    />
+                  </>
+                )
               ) : (
                 <>
-                  <p className="text-sm text-text-secondary">{FIRST_RUN_STEP_CATALOG_HINT}</p>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="md"
-                    onClick={() => void pickAndSaveCatalog()}
-                    disabled={picking}
-                  >
-                    {picking ? 'Choosing…' : FIRST_RUN_CHOOSE_CATALOG}
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-semibold text-text">{FIRST_RUN_STEP_CATALOG_TITLE}</p>
+                    {!readOnly && !importRunning && !importClipDownloadFailed ? (
+                      <button
+                        type="button"
+                        className="shrink-0 text-sm font-medium text-accent hover:underline"
+                        onClick={() => setChangingCatalog(true)}
+                        disabled={picking}
+                      >
+                        {FIRST_RUN_CHANGE_CATALOG}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface px-3.5 py-3 text-left">
+                    <p className="text-sm font-semibold text-text">
+                      {forCatalogKind(catalogKind, FIRST_RUN_KIND_LRCAT, FIRST_RUN_KIND_FOLDER)}
+                    </p>
+                    <p className="mt-1 text-sm text-text">
+                      <PathSummary path={catalog.status?.resolvedPath ?? catalog.status?.path ?? ''} />
+                    </p>
+                    {statsLine ? (
+                      <p className="mt-1 text-sm text-text-tertiary">{statsLine}</p>
+                    ) : null}
+                  </div>
+                  {readOnly ? (
+                    <p className="text-sm text-text-tertiary">{SETTINGS_CATALOG_REMOTE_HINT}</p>
+                  ) : null}
                 </>
               )}
             </>,
@@ -186,6 +307,7 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
                   <CatalogImportStageChecklist
                     job={importJob}
                     expectClipDownloadInRun={expectClipDownloadInRun}
+                    catalogKind={catalogKind}
                   />
                   <p className="text-xs text-text-tertiary">{FIRST_RUN_IMPORT_KEEP_USING}</p>
                 </>
@@ -194,6 +316,7 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
                   <CatalogImportStageChecklist
                     job={importJob}
                     expectClipDownloadInRun={expectClipDownloadInRun}
+                    catalogKind={catalogKind}
                   />
                   {catalogPhotoCount > 0 ? (
                     <p className="text-sm text-text-secondary">
@@ -220,7 +343,7 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
                 </>
               ) : (
                 <>
-                  <p className="text-sm text-text-secondary">{FIRST_RUN_STEP_IMPORT_HINT}</p>
+                  <p className="text-sm text-text-secondary">{importHint}</p>
                   <Button
                     type="button"
                     variant="primary"
@@ -228,7 +351,7 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
                     onClick={handleImportClick}
                     disabled={!catalogSavedAndValid || importStarting}
                   >
-                    {importStarting ? FIRST_RUN_IMPORT_WHILE_BUSY : FIRST_RUN_IMPORT_CATALOG}
+                    {importStarting ? FIRST_RUN_IMPORT_WHILE_BUSY : importLabel}
                   </Button>
                 </>
               )}
@@ -236,12 +359,24 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
           )}
         </div>
 
+        {catalog.notice ? <InlineNotice className="mt-4 text-left">{catalog.notice}</InlineNotice> : null}
         {catalogError ? (
           <p className="mt-4 text-left text-sm text-error" role="status">
-            {catalogError.startsWith(MSG_FAILED_START_JOB) ? catalogError : catalogError}
+            {catalogError}
           </p>
         ) : null}
       </div>
+
+      {catalog.pendingChange ? (
+        <CatalogChangeModal
+          preview={catalog.pendingChange.preview}
+          sameChoice={catalog.pendingChange.sameChoice}
+          onSameChoice={catalog.setSameChoice}
+          saving={catalog.saving}
+          onCancel={catalog.cancelChange}
+          onConfirm={() => void catalog.confirmChange()}
+        />
+      ) : null}
 
       {importConfirmOpen ? (
         <ClipModelDownloadConfirm

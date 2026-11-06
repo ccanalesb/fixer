@@ -1,9 +1,11 @@
+import type { CatalogKind } from '../types/config'
 import type { Job } from '../types/job'
 import {
   FIRST_RUN_STAGE_BURST_STACKS,
   FIRST_RUN_STAGE_EMBEDDINGS,
   FIRST_RUN_STAGE_NEAR_DUPLICATES,
   FIRST_RUN_STAGE_READ_CATALOG,
+  FIRST_RUN_STAGE_READ_FOLDER,
 } from '../constants/strings'
 
 /** Progress band lower bounds — must match `catalog-cache.ts` chain stages. */
@@ -19,6 +21,16 @@ export const CATALOG_CACHE_BUILD_STAGE_LABELS: Record<CatalogCacheBuildStageKey,
   embed: FIRST_RUN_STAGE_EMBEDDINGS,
   stack: FIRST_RUN_STAGE_BURST_STACKS,
   similarity: FIRST_RUN_STAGE_NEAR_DUPLICATES,
+}
+
+export function catalogCacheBuildStageLabels(
+  catalogKind: CatalogKind = 'lightroom',
+): Record<CatalogCacheBuildStageKey, string> {
+  return {
+    ...CATALOG_CACHE_BUILD_STAGE_LABELS,
+    sync:
+      catalogKind === 'folder' ? FIRST_RUN_STAGE_READ_FOLDER : FIRST_RUN_STAGE_READ_CATALOG,
+  }
 }
 
 export const CATALOG_CACHE_BUILD_STAGE_ORDER: CatalogCacheBuildStageKey[] = [

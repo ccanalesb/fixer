@@ -57,32 +57,37 @@ curl -X POST localhost:5001/api/jobs/ -H 'Content-Type: application/json' \
 
 ## Quick Start (CLI)
 
+Set `catalog_path` in `config.yaml` to your `.lrcat` file or photo folder, or pass `--catalog` on each command. The CLI finds that catalog's `library.db` under your data folder (`catalogs/<name>/`); use `--db` only to pin a specific library file.
+
 ```bash
-# Initialize library.db (scan also creates it if missing)
-fixer init --db library.db
+# Index or refresh the configured catalog (creates the library when missing)
+fixer scan
 
-# Index catalog metadata into library.db
-fixer scan --catalog "/path/to/Catalog.lrcat" --db library.db
+# Incremental sync (Lightroom catalog or folder)
+fixer sync
 
-# Search by Lightroom Classic metadata or AI descriptions (FTS5)
-fixer search --keyword "landscape" --db library.db
+# Pin a library and sync the catalog it records (or set catalog_path in config.yaml)
+fixer sync --db /path/to/catalogs/MyCatalog-ab12/library.db
 
-# Export or inspect
-fixer export --db library.db --output export.json
-fixer stats --db library.db
+# Open another catalog's existing library only
+fixer sync --catalog "/path/to/other/Catalog.lrcat"
+
+fixer search --keyword "landscape"
+fixer export --output export.json
+fixer stats
 ```
 
-Incremental catalog updates (additions only):
+Incremental updates for one catalog:
 
 ```bash
-fixer sync --catalog "/path/to/Catalog.lrcat" --db library.db
+fixer sync --catalog "/path/to/Catalog.lrcat"
 ```
 
 ## Web UI
 
 ```bash
 cp apps/visualizer/backend/.env.example apps/visualizer/backend/.env
-# Edit .env: set LIBRARY_DB to the absolute path of library.db
+# The app opens the library for config.yaml's catalog_path. Set LIBRARY_DB in .env only to pin one library.db.
 
 make dev
 # Open http://localhost:5173
@@ -116,8 +121,7 @@ Legacy URLs (`/search`, `/analytics`, `/instagram`, `/matching`, `/jobs`) redire
 Edit `config.yaml` at the repo root (or pass `--config`):
 
 ```yaml
-catalog_path: "/path/to/Catalog.lrcat"
-db_path: "./library.db"
+catalog_path: "/path/to/Catalog.lrcat"   # or a folder of photos: "/path/to/Photos"
 mount_point: "/mnt/nas"
 workers: 4
 vision_model: "gemma3:27b"

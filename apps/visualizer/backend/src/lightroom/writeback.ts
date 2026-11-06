@@ -1,7 +1,7 @@
 /**
  * Reconcile cull verdicts → Lightroom pick/rating/keywords with guards and per-photo state.
  */
-import { config, loadLibraryConfig } from '../config.js';
+import { config, resolveConfiguredCatalogPath } from '../config.js';
 import type { WritebackReconcileCounts } from './writeback-types.js';
 import { WRITE_CHUNK_SIZE } from './writeback-types.js';
 import type { Db } from '../db/connection.js';
@@ -14,15 +14,18 @@ import {
 } from '../db/library/lr-writeback-settings.js';
 import { libraryWrite } from '../db/library/write.js';
 import { createEventLoopYieldState, EVENT_LOOP_YIELD_BUDGET_MS, pollCancelAndYield } from '../utils/yield.js';
-import { describeLrCatalogWriteStatus } from '../utils/lr-catalog-write.js';
+import { describeCatalogWriteStatus } from '../utils/catalog-write-status.js';
 import {
   backupCatalogIfNeeded,
-  connectCatalog,
-  getImageLocalId,
   isCatalogLocked,
   raiseIfCatalogLocked,
-  readPickRating,
 } from './writer.js';
+import {
+  openFolderWritebackWriterSession,
+} from '../folder/xmp-writeback-writer.js';
+import { CATALOG_KIND_META_KEY, inferCatalogKind } from '../catalog-library.js';
+import { getLibraryMeta } from '../db/library/bootstrap.js';
+import { openWritebackCatalogWriter, type WritebackCatalogWriter, type WritebackCatalogWriterSession } from './writeback-catalog-writer.js';
 import {
   closeCloudDocstore,
   openCloudDocstore,
@@ -46,8 +49,7 @@ export { undoWritebackKind } from './writeback-undo.js';
 export { buildWritebackPhotoDetail } from './writeback-detail.js';
 
 function catalogPathFromConfig(): string | null {
-  const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
-  const path = (cfg.catalogPath ?? '').trim();
+  const path = (resolveConfiguredCatalogPath(config.LT_CONFIG_YAML) ?? '').trim();
   return path || null;
 }
 
@@ -59,12 +61,14 @@ function countsFromDb(db: Db, tally: ReconcileRunTally): Pick<WritebackReconcile
       written: by.stars.written,
       skipped: by.stars.skipped,
       image_not_found: tally.image_not_found_stars,
+      file_error: tally.file_error_stars,
     },
     reject: {
       pending: by.reject.pending,
       written: by.reject.written,
       skipped: by.reject.skipped,
       image_not_found: tally.image_not_found_reject,
+      file_error: tally.file_error_reject,
     },
   };
 }
@@ -77,7 +81,8 @@ function countsFromDb(db: Db, tally: ReconcileRunTally): Pick<WritebackReconcile
 function carryToCloud(
   db: Db,
   cloud: CloudDocstore,
-  conn: Db,
+  catalogConn: Db,
+  writer: WritebackCatalogWriter,
   imageKey: string,
   settings: LrWritebackSettings,
   counts: WritebackReconcileCounts['cloud'],
@@ -87,9 +92,9 @@ function carryToCloud(
     flag: settings.write_reject && getWritebackState(db, imageKey, 'reject') !== null,
   };
   if (!fields.rating && !fields.flag) return;
-  const imageId = getImageLocalId(conn, imageKey);
+  const imageId = writer.imageLocalId(imageKey);
   if (imageId === null) return;
-  const result = pushPhotoToCloud(cloud, conn, imageId, fields);
+  const result = pushPhotoToCloud(cloud, catalogConn, imageId, fields);
   if (result !== 'unchanged') counts[result] += 1;
 }
 
@@ -110,8 +115,12 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const catalogPath = opts.catalogPath ?? catalogPathFromConfig();
   if (!catalogPath) return { ...base, ...mutations };
 
-  const lrStatus = describeLrCatalogWriteStatus();
-  let canWrite = lrStatus.available && lrStatus.path === catalogPath;
+  const writeStatus = describeCatalogWriteStatus(db);
+  const catalogKind =
+    getLibraryMeta(db, CATALOG_KIND_META_KEY) ?? inferCatalogKind(catalogPath);
+  const isFolder = catalogKind === 'folder';
+
+  let canWrite = writeStatus.available && writeStatus.path === catalogPath;
   const keys = listVerdictImageKeys(db, opts.imageKeys);
   const starsSlug = resolveStarsProfileSlug(db, settings);
   const starsProfile = starsSlug ? getCullProfile(db, starsSlug) : null;
@@ -119,20 +128,28 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const yieldState = createEventLoopYieldState();
   const isCancelled = opts.isCancelled ?? (() => false);
 
-  let conn: ReturnType<typeof connectCatalog> | null = null;
+  let lrcatSession: WritebackCatalogWriterSession | null = null;
+  let folderSession: Awaited<ReturnType<typeof openFolderWritebackWriterSession>> | null = null;
   let cloud: CloudDocstore | null = null;
   if (canWrite) {
-    raiseIfCatalogLocked(catalogPath);
-    backupCatalogIfNeeded(catalogPath);
-    conn = connectCatalog(catalogPath, db);
-    cloud = openCloudDocstore(conn, catalogPath);
+    if (isFolder) {
+      folderSession = await openFolderWritebackWriterSession(catalogPath, db);
+    } else {
+      raiseIfCatalogLocked(catalogPath);
+      backupCatalogIfNeeded(catalogPath);
+      lrcatSession = openWritebackCatalogWriter(catalogPath, db);
+      cloud = openCloudDocstore(lrcatSession.catalogConn, catalogPath);
+    }
   }
+  const catalogWriter: WritebackCatalogWriter | null = lrcatSession?.writer ?? folderSession?.writer ?? null;
 
   let lockStopped = false;
+  const folderWriter = folderSession?.writer ?? null;
+  const progressLabel = isFolder ? 'Photo file write-back' : 'Lightroom Classic write-back';
 
   const run: WritebackPlanRun = {
     db,
-    conn,
+    catalog: catalogWriter,
     tally,
     starsVersionId,
   };
@@ -144,8 +161,11 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
       const done = Math.min(i + chunk.length, keys.length);
       opts.onProgress?.(
         keys.length ? Math.round((done / keys.length) * 100) : 100,
-        `Lightroom Classic write-back (${done}/${keys.length})`,
+        `${progressLabel} (${done}/${keys.length})`,
       );
+      if (folderWriter) {
+        await folderWriter.prefetch(chunk);
+      }
       for (const imageKey of chunk) {
         if (
           Date.now() - yieldState.lastYieldAt >= EVENT_LOOP_YIELD_BUDGET_MS &&
@@ -153,30 +173,36 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
         ) {
           break outer;
         }
-        if (canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
-        const writeNow = canWrite && !lockStopped && conn !== null;
-        const live = conn ? readPickRating(conn, imageKey) : null;
+        if (!isFolder && canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
+        const writeNow = canWrite && !lockStopped && catalogWriter !== null;
+        let live = catalogWriter?.readPickRating(imageKey) ?? null;
+        if (folderWriter && writeNow) {
+          live = await folderWriter.refreshLiveFromDisk(imageKey);
+        }
         const decision = decideWriteback(db, settings, imageKey, starsSlug);
         const photo = { imageKey, live, writeNow, decision };
 
         if (settings.write_reject) {
-          const row = planRejectPhoto(run, photo);
+          const row = await planRejectPhoto(run, photo);
           if (row) {
             libraryWrite(db, () => upsertWritebackState(db, row));
           }
         }
         if (settings.write_stars) {
-          const row = planStarsPhoto(run, photo);
+          const row = await planStarsPhoto(run, photo);
           if (row) {
             libraryWrite(db, () => upsertWritebackState(db, row));
           }
         }
-        if (writeNow && cloud && conn) carryToCloud(db, cloud, conn, imageKey, settings, mutations.cloud);
+        if (writeNow && cloud && lrcatSession) {
+          carryToCloud(db, cloud, lrcatSession.catalogConn, lrcatSession.writer, imageKey, settings, mutations.cloud);
+        }
       }
     }
   } finally {
     closeCloudDocstore(cloud);
-    conn?.close();
+    lrcatSession?.close();
+    await folderSession?.close();
   }
 
   mutations.catalog_updated_stars = tally.catalog_updated_stars;

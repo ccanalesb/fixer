@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE — what a folder catalog shows where the app has Lightroom things</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  PROTOTYPE, throwaway. Six questions about what a folder catalog shows where the app has Lightroom things
+  today. Each question has its own variants. Pick the question in the black bar; switch variants with the
+  bottom pill or ← →. URL: ?q=writeback|modal|reject|minrating|gone|words&variant=A|B|C&kind=lightroom|folder.
+  Nothing is saved; reload resets.
+-->
+<style>
+  /* Tokens copied from apps/visualizer/frontend/src/index.css. */
+  :root {
+    --color-background:#ffffff; --color-surface:#f6f5f4; --color-surface-hover:#f1f0ed;
+    --color-text-primary:rgba(0,0,0,0.95); --color-text-secondary:#4a4642; --color-text-tertiary:#847f7a;
+    --color-border:rgba(0,0,0,0.12); --color-border-strong:rgba(0,0,0,0.2);
+    --color-accent:#0075de; --color-accent-hover:#005bab; --color-accent-light:#f2f9ff;
+    --color-success:#1aae39; --color-warning:#dd5b00; --color-error:#e03e3e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,system-ui,'Segoe UI',sans-serif;
+    background:var(--color-background);color:var(--color-text-primary);
+    -webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5;padding-bottom:90px}
+  p{margin:0}
+  code{background:var(--color-surface);padding:1px 5px;border-radius:4px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em}
+
+  header.app{position:sticky;top:0;z-index:50;background:var(--color-background);border-bottom:1px solid var(--color-border)}
+  .container{max-width:80rem;margin:0 auto;padding:0 2rem}
+  .hdr{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .hdr-left{display:flex;align-items:center;gap:2rem}
+  .brand{font-size:18px;font-weight:600;margin:0}
+  nav.pills{display:flex;align-items:center;gap:4px}
+  nav.pills a{padding:6px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--color-text-secondary)}
+  nav.pills a.on{background:var(--color-accent);color:#fff;font-weight:600}
+  main{max-width:80rem;margin:0 auto;padding:2rem}
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:32px;align-items:start}
+
+  .tabstrip{border-bottom:1px solid var(--color-border);margin-bottom:20px}
+  .tabstrip nav{display:flex;gap:4px}
+  .tabstrip span{padding:8px 16px;font-size:14px;font-weight:600;border-bottom:3px solid transparent;opacity:.6;cursor:pointer}
+  .tabstrip span.on{border-bottom-color:var(--color-accent);color:var(--color-accent);opacity:1}
+
+  .s{font-size:14px} .s2{font-size:14px;color:var(--color-text-secondary)}
+  .t3{font-size:12px;color:var(--color-text-tertiary)} .xs2{font-size:12px;color:var(--color-text-secondary)}
+  .warn{color:var(--color-warning)} .err{color:var(--color-error)} .ok{color:var(--color-success)}
+  .b{font-weight:600}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .stack > * + *{margin-top:12px}
+  h4{font-size:14px;font-weight:600;margin:0}
+
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:9999px;font-size:12px;font-weight:600;
+    border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-secondary);white-space:nowrap}
+  .badge.accent{background:var(--color-accent-light);color:var(--color-accent);border-color:rgba(0,117,222,.25)}
+  .badge.success{background:rgba(26,174,57,.08);color:var(--color-success);border-color:rgba(26,174,57,.25)}
+  .badge.warning{background:rgba(221,91,0,.08);color:var(--color-warning);border-color:rgba(221,91,0,.25)}
+  .badge.error{background:rgba(224,62,62,.08);color:var(--color-error);border-color:rgba(224,62,62,.25)}
+
+  button.btn{font:500 14px Inter,sans-serif;border-radius:8px;padding:6px 12px;cursor:pointer;background:var(--color-surface);
+    color:var(--color-text-primary);border:1px solid var(--color-border)}
+  button.btn:hover:not(:disabled){background:var(--color-surface-hover);border-color:var(--color-border-strong)}
+  button.btn:disabled{opacity:.5;cursor:not-allowed}
+  button.btn.primary{background:var(--color-accent);color:#fff;border-color:var(--color-accent);font-weight:600}
+  button.btn.sm{font-size:13px;padding:3px 10px}
+  button.link{background:none;border:0;padding:0;font:500 14px Inter,sans-serif;color:var(--color-accent);cursor:pointer}
+  button.link:hover{text-decoration:underline}
+  select{font:400 14px Inter,sans-serif;border:1px solid var(--color-border);border-radius:8px;padding:6px 10px;background:var(--color-background);height:36px}
+  select:disabled{opacity:.5;cursor:not-allowed}
+  input.srch{font:400 14px Inter,sans-serif;border:1px solid var(--color-border);border-radius:8px;padding:6px 10px;height:36px;width:9rem}
+
+  /* LightroomWritebackSection */
+  .wb{border:1px solid var(--color-border);border-radius:8px}
+  .wb > div{padding:14px 16px}
+  .wb > div + div{border-top:1px solid var(--color-border)}
+  .srow{display:flex;gap:16px;justify-content:space-between;align-items:flex-start}
+  .srow .nm{font-size:14px;font-weight:500}
+  .srow .ds{font-size:13px;color:var(--color-text-secondary);margin-top:2px;max-width:40rem}
+  .counts{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--color-text-secondary);margin-top:8px}
+  .warnbox{border:1px solid rgba(221,91,0,.3);background:rgba(221,91,0,.06);border-radius:8px;padding:10px 14px;font-size:14px}
+  .tool{border:1px dashed var(--color-border-strong);border-radius:8px;padding:12px 16px}
+  .bh{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-tertiary);margin:0 0 8px}
+  table.brk{border-collapse:collapse;font-size:13px;width:100%}
+  table.brk td{padding:4px 0;border-top:1px solid var(--color-border);vertical-align:top}
+  table.brk td:last-child{text-align:right;font-weight:600;white-space:nowrap;padding-left:16px}
+
+  /* Image detail modal */
+  .dmodal{border:1px solid var(--color-border-strong);border-radius:12px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);
+    overflow:hidden;box-shadow:rgba(0,0,0,.04) 0 14px 28px,rgba(0,0,0,.05) 0 23px 52px;background:var(--color-background)}
+  .dmodal .pic{min-height:440px;position:relative}
+  .dmodal .side{padding:20px 24px;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .dmodal .side h3{margin:0;font-size:18px;font-weight:600}
+  .mtabs{display:flex;gap:2px;border-bottom:1px solid var(--color-border)}
+  .mtabs span{padding:6px 10px;font-size:13px;font-weight:600;opacity:.55;border-bottom:2px solid transparent;cursor:pointer}
+  .mtabs span.on{opacity:1;color:var(--color-accent);border-bottom-color:var(--color-accent)}
+  dl.facts{display:grid;grid-template-columns:7rem 1fr;gap:6px 12px;font-size:14px;margin:0}
+  dl.facts dt{color:var(--color-text-tertiary)}
+  dl.facts dd{margin:0;min-width:0;word-break:break-word}
+  dl.facts dd.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:20px}
+  .src{display:block;font-size:11px;color:var(--color-text-tertiary)}
+  .kw{display:inline-block;background:var(--color-surface);border-radius:4px;padding:0 6px;font-size:12px;margin:0 4px 4px 0}
+  .actions{border-top:1px solid var(--color-border);padding-top:14px}
+  .actions > * + *{margin-top:10px}
+  .arow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;color:var(--color-text-secondary)}
+  .statusb{border:1px solid var(--color-border);border-radius:8px;padding:10px 14px}
+  .statusb p.h{display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600}
+  .statusb p.h i{width:8px;height:8px;border-radius:9999px;display:inline-block}
+
+  /* Grid */
+  .filters{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+  .filters label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:500;color:var(--color-text-secondary)}
+  .seg{display:inline-flex;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;height:36px}
+  .seg button{font:500 13px Inter,sans-serif;border:0;background:var(--color-background);padding:0 10px;cursor:pointer;color:var(--color-text-secondary)}
+  .seg button.on{background:var(--color-accent-light);color:var(--color-accent);font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}
+  .tile{border:1px solid var(--color-border);border-radius:12px;overflow:hidden;cursor:pointer;background:var(--color-background);
+    box-shadow:rgba(0,0,0,.04) 0 4px 18px}
+  .tile:hover{border-color:var(--color-border-strong)}
+  .thumb{aspect-ratio:4/3;position:relative}
+  .thumb .ov{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+  .thumb .ovl{position:absolute;top:8px;left:8px}
+  .tile .bd{padding:10px 12px}
+  .tile .fn{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dim .thumb > .img{opacity:.35}
+  .gray .thumb > .img{filter:grayscale(1);opacity:.55}
+  .img{position:absolute;inset:0}
+  .xmark{width:26px;height:26px;border-radius:9999px;background:rgba(0,0,0,.65);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .empty{border:1px dashed var(--color-border);border-radius:12px;padding:32px;text-align:center;color:var(--color-text-secondary);font-size:14px}
+  .bannerline{font-size:14px;color:var(--color-text-secondary);margin-bottom:12px}
+
+  /* Modal overlay */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:80;display:flex;align-items:center;justify-content:center;padding:24px}
+  .scrim .dmodal{max-width:60rem;width:100%}
+  .cmodal{max-width:32rem;width:100%;background:var(--color-background);border:1px solid var(--color-border-strong);border-radius:12px;padding:24px}
+  .cmodal h3{font-size:22px;font-weight:700;margin:0 0 12px}
+  .cmodal .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+  ul.plain{margin:6px 0 0;padding-left:18px;font-size:14px;color:var(--color-text-secondary)}
+  ul.plain li + li{margin-top:4px}
+
+  /* Words table */
+  table.copy{border-collapse:collapse;width:100%;font-size:13px}
+  table.copy td,table.copy th{border-top:1px solid var(--color-border);padding:8px;text-align:left;vertical-align:top}
+  table.copy th{font-weight:600;color:var(--color-text-secondary);font-size:12px}
+  table.copy td.k{color:var(--color-text-tertiary);font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:nowrap}
+  table.copy td.old{color:var(--color-text-tertiary)}
+  .hl{background:var(--color-accent-light);border-radius:3px;padding:0 2px}
+
+  /* prototype chrome */
+  .protobar{background:#111;color:#fff;font:600 12px Inter,sans-serif;padding:8px 2rem;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .protobar .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .protobar .grp > span{opacity:.6;margin-right:4px}
+  .protobar button{font:600 12px Inter,sans-serif;background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:6px;padding:3px 9px;cursor:pointer}
+  .protobar button.on{background:#fff;color:#111}
+  .switcher{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:2px;padding:5px;
+    border-radius:9999px;background:#111;color:#fff;box-shadow:0 8px 28px rgba(0,0,0,.35);font:600 13px Inter,sans-serif}
+  .switcher button{background:none;border:0;color:#fff;cursor:pointer;font:700 15px Inter,sans-serif;width:30px;height:30px;border-radius:9999px}
+  .switcher button:hover{background:rgba(255,255,255,.15)}
+  .switcher .lbl{padding:0 12px;white-space:nowrap}
+  .switcher .lbl em{font-style:normal;opacity:.55;font-weight:500}
+  .notes{border-left:3px solid var(--color-border-strong);padding:2px 0 2px 14px;color:var(--color-text-secondary);font-size:14px}
+  .notes > * + *{margin-top:10px}
+  .notes b{color:var(--color-text-primary)}
+  .notes h5{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-tertiary)}
+  .notes ul{margin:0;padding-left:18px}
+</style>
+</head>
+<body>
+
+<div class="protobar" id="protobar"></div>
+<header class="app"><div class="container"><div class="hdr"><div class="hdr-left">
+  <h1 class="brand">Fixer</h1><nav class="pills" id="nav"></nav>
+</div></div></div></header>
+<main><div class="layout"><div id="screen"></div><aside class="notes" id="notes"></aside></div></main>
+<div id="overlay"></div>
+<div class="switcher" id="switcher"></div>
+
+<script>
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------- sample photos ---------- */
+const PHOTOS = [
+  { f: 'DSCF4021.RAF', date: 'Oct 12, 2026', hue: 205, rating: 2, pick: 0, lrPick: 1, label: '', kw: ['street', 'lisbon'], appKw: ['lrt-auto-stars'],
+    appStars: true, sidecars: ['DSCF4021.RAF.xmp'], src: { rating: 'sidecar DSCF4021.RAF.xmp', kw: 'sidecar DSCF4021.RAF.xmp' }, title: '', caption: '', copyright: '', gone: false },
+  { f: 'IMG_3381.HEIC', date: 'Oct 14, 2026', hue: 28, rating: 4, pick: 0, lrPick: 0, label: 'Red', kw: ['family', 'beach', 'ana'], appKw: [],
+    sidecars: [], src: { rating: 'embedded XMP', label: 'embedded XMP', kw: 'IPTC Keywords', title: 'embedded XMP', caption: 'IPTC Caption-Abstract', copyright: 'embedded XMP' },
+    title: 'Ana at Caparica', caption: 'Late afternoon, low tide.', copyright: '© C. Canales', gone: false },
+  { f: 'IMG_3390.JPG', date: 'Oct 14, 2026', hue: 110, rating: 0, pick: -1, lrPick: -1, label: '', kw: [], appKw: ['lrt-auto-reject'],
+    appReject: true, sidecars: [], src: { rating: 'embedded XMP (written by the app)' }, title: '', caption: '', copyright: '', gone: false },
+  { f: 'DSCF4100.RAF', date: 'Oct 19, 2026', hue: 260, rating: 0, pick: 0, lrPick: 0, label: '', kw: [], appKw: [], sidecars: [], src: {}, title: '', caption: '', copyright: '', gone: false },
+  { f: 'P1020455.RW2', date: 'Sep 02, 2026', hue: 330, rating: 5, pick: 0, lrPick: 1, label: 'Green', kw: ['portrait'], appKw: [], sidecars: ['P1020455.xmp'],
+    src: { rating: 'sidecar P1020455.xmp' }, title: '', caption: '', copyright: '', gone: true, goneSince: 'Nov 3' },
+  { f: 'IMG_3402.JPG', date: 'Oct 21, 2026', hue: 170, rating: 0, pick: -1, lrPick: -1, label: '', kw: ['blurry'], appKw: [], sidecars: ['IMG_3402.xmp'],
+    src: { rating: 'sidecar IMG_3402.xmp' }, title: '', caption: '', copyright: '', gone: false, userReject: true },
+  { f: 'DSCF4133.RAF', date: 'Oct 22, 2026', hue: 55, rating: 1, pick: 0, lrPick: 0, label: '', kw: [], appKw: [], sidecars: ['DSCF4133.RAF.xmp'],
+    src: { rating: 'sidecar DSCF4133.RAF.xmp' }, title: '', caption: '', copyright: '', gone: true, goneSince: 'Nov 4' },
+  { f: 'IMG_3410.PNG', date: 'Oct 23, 2026', hue: 0, rating: 0, pick: 0, lrPick: 0, label: '', kw: [], appKw: [], sidecars: [], src: {}, title: '', caption: '', copyright: '', gone: false },
+];
+const ROOT = '~/Pictures/Photos/2026';
+const thumbBg = p => `linear-gradient(135deg,hsl(${p.hue} 45% 62%),hsl(${(p.hue + 40) % 360} 38% 32%))`;
+
+/* ---------- state ---------- */
+const url = new URL(location.href);
+let S0 = {
+  q: url.searchParams.get('q') || 'writeback',
+  kind: url.searchParams.get('kind') || 'folder',
+  rated: true,
+  lrGone: url.searchParams.get('lrgone') || 'own',
+};
+const variantByQ = {};
+let S;
+function seed() {
+  return { stars: false, reject: false, ack: false, confirm: null, wrote: null, modal: null, minRating: '', fileFilter: 'all',
+    showGone: false, photo: 0, tab: null };
+}
+
+const isFolder = () => S0.kind === 'folder';
+const ratingOf = p => (S0.rated ? p.rating : 0);
+const pickOf = p => (isFolder() ? p.pick : p.lrPick);
+
+/* ---------- shared pieces ---------- */
+function stars(n) { return n > 0 ? n + '★' : ''; }
+
+function badges(p, opts = {}) {
+  const r = ratingOf(p), pk = pickOf(p);
+  let h = '';
+  if (r > 0) h += '<span class="badge accent">' + r + '★</span>';
+  if (opts.reject === 'today') { if (pk) h += '<span class="badge accent">Pick</span>'; }
+  else {
+    if (pk === 1) h += '<span class="badge accent">Pick</span>';
+    if (pk === -1 && opts.reject === 'chip') h += '<span class="badge">✕ Rejected</span>';
+  }
+  if (opts.missing && p.gone) h += '<span class="badge warning">' + goneWords().chip + '</span>';
+  return '<div class="row" style="gap:6px;margin-top:4px">' + h + '</div>';
+}
+
+function goneWords() {
+  if (isFolder()) return { chip: 'File missing', filter: 'File', present: 'Present', gone: 'Missing', modal: 'File missing' };
+  if (S0.lrGone === 'gone') return { chip: 'Gone', filter: 'Gone', present: 'Present', gone: 'Gone', modal: 'Gone' };
+  return { chip: 'Not in catalog', filter: 'Catalog', present: 'In catalog', gone: 'Removed', modal: 'Not in the catalog' };
+}
+const lrUnmarked = () => !isFolder() && S0.lrGone === 'none';
+
+function tile(p, i, opts = {}) {
+  const pk = pickOf(p);
+  const cls = ['tile'];
+  if (opts.reject === 'dim' && pk === -1) cls.push('dim');
+  if (opts.missing && p.gone) cls.push('gray');
+  const ovl = opts.reject === 'dim' && pk === -1 ? '<div class="ovl"><div class="xmark" title="Rejected">✕</div></div>' : '';
+  return '<div class="' + cls.join(' ') + '" data-a="open" data-k="' + i + '"><div class="thumb"><div class="img" style="background:' + thumbBg(p) + '"></div>' + ovl + '</div>' +
+    '<div class="bd"><p class="fn">' + esc(p.f) + '</p><p class="t3">' + p.date + '</p>' + badges(p, opts) + '</div></div>';
+}
+
+function factsHtml(rows) {
+  return '<dl class="facts">' + rows.filter(r => r[1] !== null && r[1] !== '' && r[1] !== undefined)
+    .map(r => '<dt>' + r[0] + '</dt><dd' + (r[2] ? ' class="mono"' : '') + '>' + r[1] + '</dd>').join('') + '</dl>';
+}
+const kwHtml = list => list.length ? list.map(k => '<span class="kw">' + esc(k) + '</span>').join('') : null;
+const srcTag = s => (s ? '<span class="src">' + esc(s) + '</span>' : '');
+
+function statusBlock(tone, title, body) {
+  const col = { warning: 'var(--color-warning)', error: 'var(--color-error)', success: 'var(--color-success)', neutral: 'var(--color-text-tertiary)' }[tone];
+  return '<div class="statusb"><p class="h" style="color:' + col + '"><i style="background:' + col + '"></i>' + title + '</p>' +
+    (body ? '<div class="s2" style="margin-top:4px">' + body + '</div>' : '') + '</div>';
+}
+
+function detailModal(p, tabs, activeTab, content) {
+  return '<div class="dmodal"><div class="pic" style="background:' + thumbBg(p) + '"></div><div class="side">' +
+    '<div><h3>' + esc(p.f) + '</h3><p class="t3">' + p.date + '</p>' + badges(p, { reject: 'chip' }) + '</div>' +
+    '<div class="mtabs">' + tabs.map(t => '<span data-a="tab" data-k="' + t.id + '" class="' + (t.id === activeTab ? 'on' : '') + '">' + t.label + '</span>').join('') + '</div>' +
+    content + '</div></div>';
+}
+
+function fileTabFacts(p, extra = []) {
+  return factsHtml([
+    ['Filename', esc(p.f)], ['Title', esc(p.title)], ['Date', p.date + ', 14:02:11'],
+    ['Path', esc((isFolder() ? ROOT : '/Volumes/Photos/2026') + '/' + p.f), true], ['Dimensions', '6240 × 4160'],
+    ['Caption', esc(p.caption)], ['Posted', 'No'], ...extra,
+  ]);
+}
+
+/* ---------- Q1: write-back ---------- */
+const COUNTS = { starsPending: 84, starsWritten: 212, rejectPending: 36, rejectWritten: 97 };
+const BREAKDOWN = { newSidecar: 61, updSidecar: 33, inside: 26 };
+
+function lightroomWriteback() {
+  return '<div class="wb">' +
+    '<div><h4>Lightroom Classic write-back</h4><p class="s2" style="margin-top:4px">What culling writes back to your Lightroom Classic catalog. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).</p></div>' +
+    switchRow('stars', 'Write stars to Lightroom Classic', 'Stars from the culling profile\'s strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos with no rating; photos you rated are never touched. Void frames get none. Marked with the keyword lrt-auto-stars.') +
+    switchRow('reject', 'Write the reject flag to Lightroom Classic', 'Photos the culling profile filtered, and void frames, get the reject flag, only when they have no flag; flags you set are never touched. Photos filtered by the Score forecast are not flagged. Marked with the keyword lrt-auto-reject.', true) +
+    '<div class="row"><button class="btn" data-a="write" ' + (S.stars || S.reject ? '' : 'disabled') + '>Write to Lightroom Classic</button>' + (S.wrote ? '<span class="xs2">' + S.wrote + '</span>' : '') + '</div>' +
+    '<div class="srow"><div><p class="nm">Lightroom Classic write-back</p><p class="ds">Written automatically when culling ends, if Lightroom Classic is closed. Turning a switch on writes nothing until then, or until you press Write to Lightroom Classic.</p>' +
+    '<div class="counts"><span>photos pending <b>' + (COUNTS.starsPending + COUNTS.rejectPending) + '</b></span><span>photos written <b>' + (COUNTS.starsWritten + COUNTS.rejectWritten) + '</b></span></div></div>' +
+    '<span class="s ok b">Lightroom Classic is closed</span></div></div>';
+}
+
+function switchRow(kind, name, desc, withCounts) {
+  const on = S[kind];
+  const counts = withCounts ? '<div class="counts"><span>photos pending (stars): <b>' + COUNTS.starsPending + '</b></span><span>photos written (stars): <b>' + COUNTS.starsWritten +
+    '</b></span><span>photos pending (reject): <b>' + COUNTS.rejectPending + '</b></span><span>photos written (reject): <b>' + COUNTS.rejectWritten + '</b></span></div>' : '';
+  return '<div class="srow"><div><p class="nm">' + name + '</p><p class="ds">' + desc + '</p>' + counts + '</div>' +
+    '<input type="checkbox" data-a="switch" data-k="' + kind + '" ' + (on ? 'checked' : '') + ' style="margin-top:4px"></div>';
+}
+
+const FOLDER_STARS_HELP = 'Stars from the culling profile\'s strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos whose file has no rating; ratings you set are never touched. Void frames get none. Marked with the keyword lrt-auto-stars.';
+const FOLDER_REJECT_HELP = 'Photos the culling profile filtered, and void frames, are marked rejected (rating −1, as Lightroom and darktable read it), only when the file has no rating; ratings and rejects you set are never touched. Photos filtered by the Score forecast are not marked. Marked with the keyword lrt-auto-reject.';
+
+function folderWriteback(v) {
+  const lead = 'What culling writes into your photo files, where Lightroom, darktable, digiKam and other editors read it. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).';
+  const warnA = '<div class="warnbox"><b class="warn">Fixer changes your photo files.</b> <span class="s2">A RAW photo gets a <code>.xmp</code> file next to it, or its existing one is updated. A JPEG, HEIC, TIFF or DNG with no <code>.xmp</code> next to it has the rating written inside the file. No backup copies are kept.</span></div>';
+  const breakdown = '<div class="tool"><p class="bh">The next write changes</p><table class="brk">' +
+    '<tr><td>RAW photos that get a new <code>.xmp</code> next to them</td><td>' + BREAKDOWN.newSidecar + '</td></tr>' +
+    '<tr><td>Existing <code>.xmp</code> files updated</td><td>' + BREAKDOWN.updSidecar + '</td></tr>' +
+    '<tr><td>JPEG, HEIC, TIFF, DNG files rewritten with the rating inside</td><td>' + BREAKDOWN.inside + '</td></tr>' +
+    '</table><p class="t3" style="margin-top:8px">Only photos whose file has no rating. No backup copies. Each file is written in one step, so a crash leaves it as it was.</p></div>';
+  return '<div class="wb">' +
+    '<div class="stack"><div><h4>Write-back to your photo files</h4><p class="s2" style="margin-top:4px">' + lead + '</p></div>' + (v === 'A' ? warnA : '') + '</div>' +
+    switchRow('stars', 'Write stars into the photo files', FOLDER_STARS_HELP) +
+    switchRow('reject', 'Write the reject into the photo files', FOLDER_REJECT_HELP, true) +
+    (v === 'C' ? '<div>' + breakdown + '</div>' : '') +
+    '<div class="row"><button class="btn" data-a="write" ' + (S.stars || S.reject ? '' : 'disabled') + '>Write to photo files</button>' + (S.wrote ? '<span class="xs2">' + S.wrote + '</span>' : '') + '</div>' +
+    '<div class="srow"><div><p class="nm">Write-back to your photo files</p><p class="ds">Written automatically when culling ends. Turning a switch on writes nothing until then, or until you press Write to photo files. A file that is read-only, or that changed while Fixer was writing, is skipped and stays pending.</p>' +
+    '<div class="counts"><span>photos pending <b>' + (COUNTS.starsPending + COUNTS.rejectPending) + '</b></span><span>photos written <b>' + (COUNTS.starsWritten + COUNTS.rejectWritten) + '</b></span><span>skipped <b>3</b></span></div></div>' +
+    '<span class="t3">' + esc(ROOT) + '</span></div></div>';
+}
+
+function confirmTurnOn(kind) {
+  const what = kind === 'stars' ? 'stars' : 'the reject';
+  return '<div class="scrim"><div class="cmodal"><h3>Write ' + what + ' into your photo files?</h3>' +
+    '<p class="s2">Fixer will change files in <code>' + esc(ROOT) + '</code> when culling ends, or when you press Write to photo files:</p>' +
+    '<ul class="plain"><li><b>' + BREAKDOWN.newSidecar + '</b> RAW photos get a new <code>.xmp</code> file next to them</li>' +
+    '<li><b>' + BREAKDOWN.updSidecar + '</b> existing <code>.xmp</code> files are updated</li>' +
+    '<li><b>' + BREAKDOWN.inside + '</b> JPEG, HEIC, TIFF or DNG files are rewritten with the rating inside</li></ul>' +
+    '<p class="s2" style="margin-top:12px">Photos you rated are never touched. No backup copies are kept. You can undo each photo from its detail.</p>' +
+    '<div class="acts"><button class="btn" data-a="confirm-cancel">Cancel</button><button class="btn primary" data-a="confirm-ok">Turn on</button></div></div></div>';
+}
+
+function screenWriteback(v) {
+  return '<div class="tabstrip"><nav><span>Analyze</span><span>Job Queue</span><span class="on">Settings</span></nav></div>' +
+    '<p class="t3" style="margin-bottom:12px">Processing → Settings · catalog: ' + (isFolder() ? 'folder <code>' + esc(ROOT) + '</code>' : '<code>~/Pictures/Lightroom/Main.lrcat</code>') + '</p>' +
+    (isFolder() ? folderWriteback(v) : lightroomWriteback());
+}
+
+/* ---------- Q2: image modal ---------- */
+function lightroomTabToday(p) {
+  const r = ratingOf(p);
+  const flag = p.lrPick === -1 ? (p.appReject ? 'written by the app' : 'Reject') : p.lrPick === 1 ? 'Pick' : null;
+  return factsHtml([
+    ['Rating', r ? stars(r) + (p.appStars ? '<span class="t3" style="margin-left:8px">before: no rating</span>' : '') : 'no rating'],
+    ['Flag', flag], ['Keywords', kwHtml(p.kw)], ['App keywords', p.appKw.length ? p.appKw.join(', ') : null],
+  ]) + undoArea(p);
+}
+
+function undoArea(p, extra = '') {
+  let h = '';
+  if (p.appStars) h += '<div class="arow"><span>Stars written by the app</span><button class="btn sm">Undo</button></div>';
+  if (p.appReject) h += '<div class="arow"><span>Reject written by the app</span><button class="btn sm">Undo</button></div>';
+  h += extra;
+  return h ? '<div class="actions">' + h + '</div>' : '';
+}
+
+function sourceLine(p) {
+  if (p.sidecars.length) return p.sidecars.map(s => '<code>' + esc(s) + '</code>').join(' ');
+  if (Object.keys(p.src).length) return 'inside the file';
+  return null;
+}
+
+function folderMetaFacts(p, withSrc) {
+  const r = ratingOf(p);
+  const t = k => (withSrc ? srcTag(p.src[k] || (p.src.rating && (k === 'rating' || k === 'reject') ? p.src.rating : '')) : '');
+  const rating = r ? stars(r) + (p.appStars ? '<span class="t3" style="margin-left:8px">written by the app · before: no rating</span>' : '') : 'no rating';
+  const reject = p.pick === -1 ? (p.appReject ? 'Rejected <span class="t3">written by the app</span>' : 'Rejected') : null;
+  return [
+    ['Rating', rating + t('rating')], ['Reject', reject ? reject + t('rating') : null], ['Label', p.label ? esc(p.label) + t('label') : null],
+    ['Keywords', p.kw.length ? kwHtml(p.kw) + t('kw') : null], ['App keywords', p.appKw.length ? p.appKw.join(', ') : null],
+  ];
+}
+
+function noXmpLine(p) {
+  return !p.sidecars.length && !Object.keys(p.src).length
+    ? '<p class="s2">This file has no rating, label or keywords. They are read from its <code>.xmp</code> or from inside the file, as your editor writes them.</p>' : '';
+}
+
+function screenModal(v) {
+  const p = PHOTOS[S.photo];
+  const pick = '<div class="row" style="margin-bottom:12px"><span class="t3">Photo:</span>' + [0, 1, 2, 3].map(i =>
+    '<button class="btn sm' + (S.photo === i ? ' primary' : '') + '" data-a="photo" data-k="' + i + '">' + esc(PHOTOS[i].f) + '</button>').join('') + '</div>';
+  const base = [{ id: 'culling', label: 'Culling' }, { id: 'ai', label: 'AI' }];
+  let tabs, defaultTab, content;
+  const filler = '<p class="s2">(not part of this question)</p>';
+
+  if (!isFolder()) {
+    tabs = [...base, { id: 'meta', label: 'Lightroom' }, { id: 'file', label: 'File' }];
+    defaultTab = 'meta';
+    content = id => id === 'meta' ? '<div><p class="bh">Lightroom Classic</p>' + lightroomTabToday(p) + '</div>' : id === 'file' ? fileTabFacts(p) : filler;
+  } else if (v === 'A') {
+    tabs = [...base, { id: 'meta', label: 'Ratings' }, { id: 'file', label: 'File' }];
+    defaultTab = 'meta';
+    content = id => id === 'meta'
+      ? '<div class="stack"><p class="bh" style="margin:0">In the photo file</p>' + noXmpLine(p) + factsHtml([...folderMetaFacts(p, false), ['Read from', sourceLine(p)]]) + undoArea(p) + '</div>'
+      : id === 'file' ? fileTabFacts(p) : filler;
+  } else if (v === 'B') {
+    tabs = [...base, { id: 'file', label: 'File' }];
+    defaultTab = 'file';
+    content = id => id === 'file'
+      ? '<div class="stack"><p class="bh" style="margin:0">File</p>' + fileTabFacts(p, [...folderMetaFacts(p, false), ['Copyright', esc(p.copyright)], ['.xmp', p.sidecars.length ? p.sidecars.map(esc).join(', ') : 'none', true]]) +
+        undoArea(p, '<div class="arow"><span>Posted to Instagram</span><input type="checkbox"></div>') + '</div>'
+      : filler;
+  } else {
+    tabs = [...base, { id: 'meta', label: 'XMP' }, { id: 'file', label: 'File' }];
+    defaultTab = 'meta';
+    const others = p.f === 'DSCF4021.RAF' ? '<p class="t3">Also next to it: <code>DSCF4021.xmp</code> (older, read after <code>DSCF4021.RAF.xmp</code>)</p>' : '';
+    content = id => id === 'meta'
+      ? '<div class="stack"><p class="bh" style="margin:0">XMP and IPTC</p>' + noXmpLine(p) +
+        factsHtml([...folderMetaFacts(p, true), ['Title', p.title ? esc(p.title) + srcTag(p.src.title) : null], ['Caption', p.caption ? esc(p.caption) + srcTag(p.src.caption) : null],
+          ['Copyright', p.copyright ? esc(p.copyright) + srcTag(p.src.copyright) : null]]) + others + undoArea(p) + '</div>'
+      : id === 'file' ? factsHtml([['Filename', esc(p.f)], ['Date', p.date + ', 14:02:11'], ['Path', esc(ROOT + '/' + p.f), true], ['Dimensions', '6240 × 4160'], ['Posted', 'No']]) : filler;
+  }
+  const active = tabs.some(t => t.id === S.tab) ? S.tab : defaultTab;
+  return pick + detailModal(p, tabs, active, content(active));
+}
+
+/* ---------- Q3 / Q4 / Q5: Images grid ---------- */
+function gridChrome(filtersHtml, bodyHtml) {
+  return '<div class="tabstrip"><nav><span class="on">Catalog</span><span>Instagram</span><span>Matches</span></nav></div>' +
+    '<div class="filters">' + filtersHtml + '</div>' + bodyHtml;
+}
+
+function stdFilters(minRatingHtml, extra = '') {
+  return '<label>Status<div class="seg"><button class="on">All</button><button>Posted</button><button>Not posted</button></div></label>' + extra +
+    '<label>Keyword<input class="srch" placeholder="Keyword"></label>' + minRatingHtml +
+    '<label>Color<input class="srch" style="width:6rem" placeholder="Label"></label>';
+}
+
+function minRatingSelect(disabled) {
+  return '<label>Min rating<select data-a="minrating" ' + (disabled ? 'disabled' : '') + '><option value="">Any</option>' +
+    [1, 2, 3, 4, 5].map(n => '<option value="' + n + '"' + (String(S.minRating) === String(n) ? ' selected' : '') + '>' + '★'.repeat(n) + '</option>').join('') + '</select></label>';
+}
+
+function screenReject(v) {
+  const opts = { reject: v === 'A' ? 'chip' : v === 'B' ? 'dim' : 'none' };
+  const list = PHOTOS.map((p, i) => tile(p, i, opts)).join('');
+  return gridChrome(stdFilters(minRatingSelect(false)), '<div class="grid">' + list + '</div>');
+}
+
+function screenMinRating(v) {
+  const anyRated = PHOTOS.some(p => ratingOf(p) > 0);
+  let mr = minRatingSelect(false), hint = '';
+  if (!anyRated && v === 'B') mr = '';
+  if (!anyRated && v === 'C') {
+    mr = minRatingSelect(true).replace('</select></label>', '</select><span class="t3" style="font-weight:400;max-width:12rem">No photo in this catalog has a rating yet</span></label>');
+  }
+  const min = Number(S.minRating || 0);
+  const shown = PHOTOS.map((p, i) => [p, i]).filter(([p]) => !min || ratingOf(p) >= min);
+  let body;
+  if (shown.length) body = '<div class="grid">' + shown.map(([p, i]) => tile(p, i, { reject: 'chip' })).join('') + '</div>';
+  else body = '<div class="empty">' + (anyRated ? 'No photos match these filters.' :
+    'No photo has ' + min + '★ or more. No photo in this catalog has a rating yet: ratings come from ' + (isFolder() ? 'each file\'s <code>.xmp</code> or its embedded XMP' : 'Lightroom Classic') + '.') +
+    ' <button class="link" data-a="clear-min">Clear Min rating</button></div>';
+  return gridChrome(stdFilters(mr), hint + body);
+}
+
+function screenGone(v) {
+  const goneCount = PHOTOS.filter(p => p.gone).length;
+  let list = PHOTOS.map((p, i) => [p, i]);
+  let banner = '', extraFilter = '', opts = { reject: 'chip' };
+  if (v === 'B' && !lrUnmarked()) {
+    const w = goneWords();
+    opts.missing = true;
+    extraFilter = '<label>' + w.filter + '<div class="seg">' + ['all', 'present', 'missing'].map(k => '<button data-a="ff" data-k="' + k + '" class="' + (S.fileFilter === k ? 'on' : '') + '">' +
+      { all: 'All', present: w.present, missing: w.gone + ' (' + goneCount + ')' }[k] + '</button>').join('') + '</div></label>';
+    if (S.fileFilter === 'present') list = list.filter(([p]) => !p.gone);
+    if (S.fileFilter === 'missing') list = list.filter(([p]) => p.gone);
+  }
+  if (v === 'C') {
+    opts.missing = true;
+    if (!S.showGone) list = list.filter(([p]) => !p.gone);
+    banner = '<p class="bannerline">' + (S.showGone
+      ? 'Showing ' + goneCount + ' photos whose files are missing. <button class="link" data-a="togglegone">Hide them</button>'
+      : goneCount + ' photos whose files are missing are hidden. <button class="link" data-a="togglegone">Show them</button>') + '</p>';
+  }
+  return gridChrome(stdFilters(minRatingSelect(false), extraFilter), banner + '<div class="grid">' + list.map(([p, i]) => tile(p, i, opts)).join('') + '</div>');
+}
+
+function goneModal(p) {
+  const where = isFolder() ? ROOT + '/' + p.f : '/Volumes/Photos/2026/' + p.f;
+  const why = isFolder()
+    ? 'Not found at <code>' + esc(where) + '</code> since ' + p.goneSince + '. If the file comes back, or turns up moved with the same size and capture time, it is this photo again.'
+    : 'Removed from the Lightroom Classic catalog since ' + p.goneSince + '.';
+  const sb = p.gone && !lrUnmarked() ? statusBlock('warning', goneWords().modal, why + '<br>Its descriptions, scores and culling are kept.') : '';
+  return '<div class="scrim" data-a="close-bg">' + detailModal(p, [{ id: 'culling', label: 'Culling' }, { id: 'ai', label: 'AI' }, { id: 'file', label: 'File' }], 'file',
+    '<div class="stack">' + sb + fileTabFacts(p) + '</div><div class="row" style="justify-content:flex-end"><button class="btn" data-a="close">Close</button></div>') + '</div>';
+}
+
+/* ---------- Q6: other words ---------- */
+const WORDS = [
+  ['INSIGHTS_KPI_CATALOG_DESC', 'Lightroom Classic catalog entries', 'Photos in the folder', 'Photos in the catalog'],
+  ['CATALOG_CACHE_STAT_TOTAL_HELPER', 'Images in Lightroom Classic catalog', 'Photos in the folder', 'Photos in the catalog'],
+  ['(vision cache help)', 'The vision cache stores preprocessed Lightroom Classic catalog images for fast AI comparison. …', 'The vision cache stores preprocessed photos from the folder for fast AI comparison. …', 'The vision cache stores preprocessed catalog photos for fast AI comparison. …'],
+  ['(Insights dates note)', 'Timestamps on catalog images follow Lightroom Classic capture metadata where available.', 'Timestamps follow each file\'s capture date, else its modification date.', 'Timestamps follow each photo\'s capture date where available.'],
+  ['FILTER_DESCRIPTION_SEARCH_PLACEHOLDER', 'Search AI-generated description (summary and subjects), not Lightroom Classic keywords', '… not the keywords in your files', '… not the catalog\'s keywords'],
+  ['(re-decide confirm)', '… verdicts and Lightroom Classic stars may change when it finishes.', '… verdicts and the stars written into your files may change when it finishes.', '… verdicts and written-back stars may change when it finishes.'],
+  ['(culling profile help)', "… It gives the stars and reject written to Lightroom Classic.", "… It gives the stars and reject written into your photo files.", "… It gives the stars and reject written back to the catalog."],
+  ['(Score forecast rule off)', 'Off — the rule still gives the reject written to Lightroom Classic, but filters nothing.', 'Off — the rule still gives the reject written into your photo files, but filters nothing.', 'Off — the rule still gives the reject written back, but filters nothing.'],
+  ['(uninstall)', 'Your Lightroom Classic catalog, anything written to it, and your photos are not touched.', 'Your photo files, and the ratings Fixer wrote into them, are not touched.', 'Your catalog, anything written back to it, and your photos are not touched.'],
+  ['(trademark notice)', 'Adobe and Lightroom Classic are … trademarks of Adobe …', 'unchanged (the app still opens .lrcat catalogs)', 'unchanged'],
+];
+
+function screenWords(v) {
+  const col = v === 'A' ? 2 : 3;
+  const head = v === 'A' ? 'On a folder catalog (a Lightroom catalog keeps today\'s text)' : 'Both kinds (one text)';
+  return '<p class="s2" style="margin-bottom:12px">Strings outside the write-back section and the image modal that name Lightroom Classic today. The setup screen and the Settings catalog row were decided with the catalog choice.</p>' +
+    '<table class="copy"><tr><th>String</th><th>Today</th><th>' + head + '</th></tr>' +
+    WORDS.map(w => '<tr><td class="k">' + esc(w[0]) + '</td><td class="old">' + esc(w[1]) + '</td><td>' + esc(w[col]) + '</td></tr>').join('') + '</table>';
+}
+
+/* ---------- questions ---------- */
+const Q = [
+  { key: 'writeback', label: 'Write-back switches', page: 'Processing', screen: screenWriteback, variants: [
+    { key: 'A', name: 'Same section, warning in the lead',
+      notes: '<p>The Lightroom section with its words changed to files. A warning box under the lead says what happens to which file kind. The "Lightroom Classic is open/closed" status goes: there is no lock to wait for. A <b>skipped</b> count appears for read-only files and files changed mid-write.</p><p><b>Trade-off:</b> the warning is read once and then ignored; nothing stops a user who never reads it.</p>' },
+    { key: 'B', name: 'Confirm when a switch is turned on',
+      notes: '<p>Same words, no warning box. Turning a switch <b>on</b> opens a confirmation listing how many files of each kind will change. Try ticking a switch. Asked each time it goes from off to on; never again while it stays on.</p><p><b>Trade-off:</b> one more click, but the user sees real counts for their folder before any file changes. The counts need a dry run over pending photos (cheap: a stat per file).</p>' },
+    { key: 'C', name: 'What the next write changes, always shown',
+      notes: '<p>No modal and no warning box. Under the switches, a block counts what the next write changes, by file kind, always visible and updated as culling makes photos pending.</p><p><b>Trade-off:</b> informative without blocking; the user may never look at it before the first automatic write when culling ends.</p>' },
+  ] },
+  { key: 'modal', label: 'Image modal tab', page: 'Images', screen: screenModal, variants: [
+    { key: 'A', name: '"Ratings" tab, same facts as Lightroom',
+      notes: '<p>The Lightroom tab is renamed <b>Ratings</b> on a folder catalog (the tab name follows the kind) and shows the same facts plus <b>Label</b> and <b>Read from</b> (the <code>.xmp</code>, or "inside the file"). Title and caption stay in the File tab, as on a Lightroom catalog. Undo rows unchanged.</p><p><b>Trade-off:</b> minimal change; does not say which source each field came from.</p>' },
+    { key: 'B', name: 'No tab: folded into File',
+      notes: '<p>A folder catalog has no separate tab: rating, reject, label, keywords, copyright and the <code>.xmp</code> are rows of the <b>File</b> tab, with undo in its action area. On a folder catalog they are facts of the file, so they live with the file.</p><p><b>Trade-off:</b> one fewer tab, but the File tab gets long and the two kinds differ in tab structure, not just in words.</p>' },
+    { key: 'C', name: '"XMP" tab, each field says where it came from',
+      notes: '<p>A tab named <b>XMP</b> holds every field read from XMP/IPTC, including title, caption and copyright (moved out of File for a folder catalog). Under each value, its source: which <code>.xmp</code>, embedded XMP, or IPTC. Lists a second <code>.xmp</code> when there is one.</p><p><b>Trade-off:</b> answers "why does it say 4★?" when two editors disagree; the most text, and "XMP" is jargon for people without Lightroom.</p>' },
+  ] },
+  { key: 'reject', label: 'Reject on the photo', page: 'Images', screen: screenReject, variants: [
+    { key: 'A', name: '"Rejected" chip',
+      notes: '<p>A <b>✕ Rejected</b> chip where <b>Pick</b> is. Pick shows only for a real pick (<code>pick = 1</code>, Lightroom only); today any non-zero pick says Pick, so a reject reads as a pick. Applies to both kinds.</p><p><b>Trade-off:</b> explicit; one more chip on tiles that are already busy.</p>' },
+    { key: 'B', name: 'Dimmed tile with ✕',
+      notes: '<p>No chip: a rejected photo\'s thumbnail is dimmed with a ✕ in the corner, as editors show rejects. Pick unchanged. Applies to both kinds.</p><p><b>Trade-off:</b> reads at a glance across a grid; dimming hides a photo the user may want to judge again.</p>' },
+    { key: 'C', name: 'Not on the tile, only in the modal',
+      notes: '<p>The tile shows nothing for a reject (the wrong "Pick" is just removed). The reject is visible in the image modal\'s metadata.</p><p><b>Trade-off:</b> quietest; a user browsing for keepers cannot see rejects without opening each photo.</p>' },
+  ] },
+  { key: 'minrating', label: 'Min rating, nothing rated', page: 'Images', screen: screenMinRating, variants: [
+    { key: 'A', name: 'Unchanged, empty grid explains',
+      notes: '<p>This question opens with <b>Rated photos: none</b> (black bar); pick a Min rating. The filter is always there; with nothing rated the empty grid says why and where ratings come from. Switch to <b>some</b> to see that all three variants then look like today.</p><p><b>Trade-off:</b> no special case in the filter bar; the user learns only after trying it.</p>' },
+    { key: 'B', name: 'Hidden while nothing is rated',
+      notes: '<p>With no rated photo in the catalog the Min rating filter is not shown. It appears after a sync finds ratings (or the app writes stars).</p><p><b>Trade-off:</b> clean bar; a filter that appears and disappears is confusing, and a user looking for it does not learn why it is missing.</p>' },
+    { key: 'C', name: 'Disabled, with the reason',
+      notes: '<p>With no rated photo the filter is shown disabled with "No photo in this catalog has a rating yet" under it.</p><p><b>Trade-off:</b> explains up front; takes room in the filter bar for something that does nothing.</p>' },
+  ] },
+  { key: 'gone', label: 'Photo whose file is gone', page: 'Images', screen: screenGone, variants: [
+    { key: 'A', name: 'Shown as usual; the modal says',
+      notes: '<p>Grid unchanged (two of these photos are gone). Opening one shows a <b>File missing</b> block in the File tab. On a Lightroom catalog the same block says "Not in the catalog". Its preview still shows from the cache.</p><p><b>Trade-off:</b> nothing new in the grid; the user finds out only by opening a photo, and may cull or post one whose original is gone.</p>' },
+    { key: 'B', name: 'Marked in the grid, with a File filter',
+      notes: '<p>Gone photos are greyed with a <b>File missing</b> chip, and a <b>File</b> filter (All / Present / Missing) is added. Modal as in A.</p><p><b>Trade-off:</b> visible and findable; an unmounted share greys out a whole year at once (which is accurate).</p>' },
+    { key: 'C', name: 'Hidden by default, one line to show them',
+      notes: '<p>Gone photos are left out of the grid; a line above it counts them and shows them (greyed, marked) on demand. Modal as in A.</p><p><b>Trade-off:</b> the grid lists only photos the user can open in an editor; an unmounted share makes photos silently vanish except for that line. Counts elsewhere (Insights, jobs) would have to agree.</p>' },
+  ] },
+  { key: 'words', label: 'Other "Lightroom" words', page: 'Insights', screen: screenWords, variants: [
+    { key: 'A', name: 'Text per kind',
+      notes: '<p>Each string has two texts; a Lightroom catalog keeps today\'s, a folder catalog gets its own.</p><p><b>Trade-off:</b> each kind reads naturally; every such string becomes a pair to keep in step.</p>' },
+    { key: 'B', name: 'One text for both kinds',
+      notes: '<p>Each string is rewritten once, in words true for both kinds ("the catalog", "written back").</p><p><b>Trade-off:</b> one string each; loses the precision a Lightroom user has today ("Lightroom Classic stars").</p>' },
+  ] },
+];
+const QBY = Object.fromEntries(Q.map(q => [q.key, q]));
+Q.forEach(q => { variantByQ[q.key] = 0; });
+{ const v0 = url.searchParams.get('variant'); const idx = QBY[S0.q] ? QBY[S0.q].variants.findIndex(v => v.key === v0) : -1; if (idx >= 0) variantByQ[S0.q] = idx; }
+if (!QBY[S0.q]) S0.q = 'writeback';
+if (S0.q === 'minrating') S0.rated = false;
+
+const PLACES = '<h5>Rating or pick elsewhere, unchanged</h5><ul><li>Analyze job <code>min_rating</code></li><li>Burst-stack representative tie-break</li><li>CLIP embedding windows</li><li>Identity rating display</li><li>Color filter (reads <code>xmp:Label</code> as the <code>.lrcat</code> label)</li></ul><p>Culling and the vision prompts read neither.</p>';
+
+function render() {
+  const q = QBY[S0.q], vi = variantByQ[q.key], v = q.variants[vi];
+  const kindMatters = q.key !== 'words';
+  document.getElementById('protobar').innerHTML = '<span>PROTOTYPE</span>' +
+    '<div class="grp"><span>Question</span>' + Q.map(x => '<button data-a="q" data-k="' + x.key + '" class="' + (x.key === q.key ? 'on' : '') + '">' + x.label + '</button>').join('') + '</div>' +
+    (kindMatters ? '<div class="grp"><span>Catalog</span><button data-a="kind" data-k="folder" class="' + (isFolder() ? 'on' : '') + '">folder</button><button data-a="kind" data-k="lightroom" class="' + (!isFolder() ? 'on' : '') + '">Lightroom (today)</button></div>' : '') +
+    (q.key === 'minrating' ? '<div class="grp"><span>Rated photos</span><button data-a="rated" data-k="1" class="' + (S0.rated ? 'on' : '') + '">some</button><button data-a="rated" data-k="0" class="' + (!S0.rated ? 'on' : '') + '">none</button></div>' : '') +
+    (q.key === 'gone' && v.key === 'B' && !isFolder() ? '<div class="grp"><span>On a Lightroom catalog</span>' +
+      [['own', '1 · Not in catalog'], ['gone', '2 · "Gone" for both kinds'], ['none', '3 · not marked']].map(([k, l]) =>
+        '<button data-a="lrgone" data-k="' + k + '" class="' + (S0.lrGone === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' : '') +
+    '<button data-a="reset">Reset</button>';
+  document.getElementById('nav').innerHTML = ['Insights', 'Images', 'Identity', 'Processing'].map(t => '<a class="' + (t === q.page ? 'on' : '') + '">' + t + '</a>').join('');
+  document.getElementById('screen').innerHTML = q.screen(v.key);
+  let lrNote = !isFolder() && (q.key === 'writeback' || q.key === 'modal') ? '<p><b>Lightroom (today)</b> is shown unchanged for comparison; the variants change only the folder catalog.</p>' : '';
+  if (q.key === 'gone' && v.key === 'B' && !isFolder()) lrNote = '<p><b>Open case — a Lightroom catalog.</b> Its gone photo was removed from the <code>.lrcat</code>; the file may be fine. Pick in the black bar:</p><ul>' +
+    '<li><b>1</b> — its own words: <b>Not in catalog</b> chip, <b>Catalog</b> filter (In catalog / Removed).</li>' +
+    '<li><b>2</b> — one word for both kinds: <b>Gone</b> chip and filter; the modal says why (file missing, or removed from the catalog).</li>' +
+    '<li><b>3</b> — not marked: a Lightroom catalog stays as today; only a folder catalog marks gone photos.</li></ul>' +
+    '<p>Marking gone photos needs the sync to store which ones are gone; today the Lightroom sync only counts them.</p>';
+  document.getElementById('notes').innerHTML = '<h5>' + esc(q.label) + ' · ' + v.key + '</h5><p class="b" style="color:var(--color-text-primary)">' + esc(v.name) + '</p>' + lrNote + v.notes +
+    (q.key === 'minrating' || q.key === 'reject' ? PLACES : '');
+  let ov = '';
+  if (S.confirm) ov = confirmTurnOn(S.confirm);
+  if (S.modal !== null) ov = goneModal(PHOTOS[S.modal]);
+  document.getElementById('overlay').innerHTML = ov;
+  document.getElementById('switcher').innerHTML = '<button data-a="prev">&#8249;</button><span class="lbl">' + v.key + ' <em>&mdash; ' + esc(v.name) + '</em></span><button data-a="next">&#8250;</button>';
+}
+
+function syncUrl() {
+  const q = QBY[S0.q];
+  const u = new URL(location.href);
+  u.searchParams.set('q', q.key); u.searchParams.set('variant', q.variants[variantByQ[q.key]].key); u.searchParams.set('kind', S0.kind);
+  history.replaceState(null, '', u);
+}
+
+function setVariant(d) {
+  const q = QBY[S0.q];
+  variantByQ[q.key] = (variantByQ[q.key] + d + q.variants.length) % q.variants.length;
+  S = seed(); syncUrl(); render();
+}
+
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  if (e.key === 'ArrowLeft') setVariant(-1);
+  if (e.key === 'ArrowRight') setVariant(1);
+  if (e.key === 'Escape') { S.modal = null; S.confirm = null; render(); }
+});
+
+document.addEventListener('change', e => {
+  const a = e.target.getAttribute('data-a');
+  if (a === 'minrating') { S.minRating = e.target.value; render(); }
+  if (a === 'switch') {
+    const k = e.target.getAttribute('data-k'), on = e.target.checked;
+    const v = QBY[S0.q].variants[variantByQ[S0.q]].key;
+    if (on && isFolder() && v === 'B') { S.confirm = k; render(); return; }
+    S[k] = on; S.wrote = null; render();
+  }
+});
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-a]');
+  if (!b) return;
+  const a = b.getAttribute('data-a'), k = b.getAttribute('data-k');
+  if (a === 'switch' || a === 'minrating') return;
+  if (a === 'close-bg' && e.target !== b) return;
+  if (a === 'prev') return setVariant(-1);
+  if (a === 'next') return setVariant(1);
+  if (a === 'q') { S0.q = k; if (k === 'minrating') S0.rated = false; S = seed(); syncUrl(); }
+  if (a === 'kind') { S0.kind = k; S = seed(); syncUrl(); }
+  if (a === 'rated') { S0.rated = k === '1'; S.minRating = ''; }
+  if (a === 'reset') S = seed();
+  if (a === 'confirm-cancel') S.confirm = null;
+  if (a === 'confirm-ok') { S[S.confirm] = true; S.confirm = null; }
+  if (a === 'write') S.wrote = isFolder() ? 'Wrote 120 photos to their files · 3 skipped' : 'Wrote 120 photos to Lightroom Classic';
+  if (a === 'photo') { S.photo = Number(k); }
+  if (a === 'tab') S.tab = k;
+  if (a === 'open') { S.modal = Number(k); S.tab = 'file'; }
+  if (a === 'close' || a === 'close-bg') S.modal = null;
+  if (a === 'ff') S.fileFilter = k;
+  if (a === 'lrgone') { S0.lrGone = k; S.fileFilter = 'all'; }
+  if (a === 'togglegone') S.showGone = !S.showGone;
+  if (a === 'clear-min') S.minRating = '';
+  render();
+});
+
+S = seed();
+render();
+</script>
+</body>
+</html>

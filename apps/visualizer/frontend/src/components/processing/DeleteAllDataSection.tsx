@@ -4,15 +4,20 @@ import { RedecideConfirmDialog } from '../cull/RedecideConfirmDialog'
 import {
   SETTINGS_DELETE_ALL_BUTTON,
   SETTINGS_DELETE_ALL_CONFIRM_BODY,
+  SETTINGS_DELETE_ALL_CONFIRM_BODY_FOLDER,
   SETTINGS_DELETE_ALL_CONFIRM_BUTTON,
   SETTINGS_DELETE_ALL_CONFIRM_TITLE,
   SETTINGS_DELETE_ALL_DESCRIPTION,
+  SETTINGS_DELETE_ALL_DESCRIPTION_FOLDER,
   SETTINGS_DELETE_ALL_HEADING,
   SETTINGS_DELETE_ALL_WORKING,
 } from '../../constants/strings'
 import { invokeDeleteAllDataAndQuit, isTauriRuntime } from '../../utils/tauri'
+import { useCatalogKind } from '../../hooks/useCatalogKind'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
 
 export function DeleteAllDataSection() {
+  const catalogKind = useCatalogKind()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +42,13 @@ export function DeleteAllDataSection() {
     <section className="space-y-3">
       <div>
         <h3 className="text-card-title text-text mb-2">{SETTINGS_DELETE_ALL_HEADING}</h3>
-        <p className="text-sm text-text-secondary">{SETTINGS_DELETE_ALL_DESCRIPTION}</p>
+        <p className="text-sm text-text-secondary">
+          {forCatalogKind(
+            catalogKind,
+            SETTINGS_DELETE_ALL_DESCRIPTION,
+            SETTINGS_DELETE_ALL_DESCRIPTION_FOLDER,
+          )}
+        </p>
       </div>
       <div className="rounded-base border border-border bg-bg p-4">
         {error && <p className="mb-3 text-sm text-error">{error}</p>}
@@ -55,7 +66,11 @@ export function DeleteAllDataSection() {
       {confirmOpen && (
         <RedecideConfirmDialog
           title={SETTINGS_DELETE_ALL_CONFIRM_TITLE}
-          body={SETTINGS_DELETE_ALL_CONFIRM_BODY}
+          body={forCatalogKind(
+            catalogKind,
+            SETTINGS_DELETE_ALL_CONFIRM_BODY,
+            SETTINGS_DELETE_ALL_CONFIRM_BODY_FOLDER,
+          )}
           confirmLabel={working ? SETTINGS_DELETE_ALL_WORKING : SETTINGS_DELETE_ALL_CONFIRM_BUTTON}
           onCancel={() => {
             if (!working) setConfirmOpen(false)

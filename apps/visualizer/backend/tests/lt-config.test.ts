@@ -4,8 +4,8 @@
  * These routes WRITE `config.yaml`, so every test points `LT_CONFIG_YAML` at a temp
  * file. Without that override the suite would rewrite the user's real config.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, normalize } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -13,13 +13,17 @@ import { createApp } from '../src/app.js';
 import {
   initLibraryDb,
   setLibraryMeta,
-  SYNCED_CATALOG_META_KEY,
 } from '../src/db/library/bootstrap.js';
+import { CATALOG_PATH_META_KEY, generateCatalogFolderName, resetCatalogLibraryModuleStateForTests } from '../src/catalog-library.js';
 import { libraryWrite } from '../src/db/library/write.js';
+import { createJob, initJobsDb } from '../src/db/jobs/jobs.js';
+import { makeFakeCatalog } from './helpers/fake-catalog.js';
+import * as walkModule from '../src/folder/walk.js';
 
 let dir: string;
 let cfgPath: string;
 let libraryPath: string;
+let visualizerDb: string;
 const app = createApp();
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 
@@ -30,39 +34,80 @@ const put = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+const putCatalog = (catalogPath: string, change: 'update_path' | 'switch') =>
+  put('/api/config/catalog', { catalog_path: catalogPath, change });
+
+const postChangePreview = (catalogPath: string) =>
+  app.request('/api/config/catalog/change-preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ catalog_path: catalogPath }),
+  });
+
 const readCfg = (): Record<string, unknown> =>
   parseYaml(readFileSync(cfgPath, 'utf8')) as Record<string, unknown>;
 
 const onMac = process.platform === 'darwin';
 
-/** A library.db whose last catalog sync read `catalogPath`, or no sync at all. */
+/** A library.db whose library_meta records `catalogPath`. */
 const seedLibrary = (catalogPath?: string): void => {
   const db = initLibraryDb(libraryPath);
   if (catalogPath) {
-    libraryWrite(db, () => setLibraryMeta(db, SYNCED_CATALOG_META_KEY, catalogPath));
+    libraryWrite(db, () => setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogPath));
   }
   db.close();
 };
 
+const ENV_KEYS = ['LT_CONFIG_YAML', 'LIBRARY_DB', 'LT_DATA_DIR', 'DATABASE_PATH'] as const;
+const setupDataDir = process.env.LT_DATA_DIR;
+let savedEnv: Partial<Record<(typeof ENV_KEYS)[number], string>>;
+
 beforeEach(() => {
+  savedEnv = {};
+  for (const key of ENV_KEYS) {
+    if (process.env[key] !== undefined) savedEnv[key] = process.env[key];
+  }
   dir = mkdtempSync(join(tmpdir(), 'lt-cfg-'));
   cfgPath = join(dir, 'config.yaml');
   libraryPath = join(dir, 'library.db');
+  visualizerDb = join(dir, 'visualizer.db');
   process.env.LT_CONFIG_YAML = cfgPath;
-  // Without this the sync-state read would open the developer's real library.db.
-  process.env.LIBRARY_DB = libraryPath;
+  process.env.LT_DATA_DIR = dir;
+  process.env.DATABASE_PATH = visualizerDb;
+  delete process.env.LIBRARY_DB;
+  resetCatalogLibraryModuleStateForTests();
 });
 
 afterEach(() => {
-  delete process.env.LT_CONFIG_YAML;
-  delete process.env.LIBRARY_DB;
+  // The test setup's isolated LT_DATA_DIR must outlive this file's overrides.
+  for (const key of ENV_KEYS) {
+    if (savedEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = savedEnv[key];
+  }
   rmSync(dir, { recursive: true, force: true });
 });
+
+afterAll(() => {
+  expect(process.env.LT_DATA_DIR).toBe(setupDataDir);
+});
+
+function seedCatalogLibrary(catalogPath: string): void {
+  const folderName = generateCatalogFolderName(catalogPath);
+  const catalogFolder = join(dir, 'catalogs', folderName);
+  mkdirSync(catalogFolder, { recursive: true });
+  const dbPath = join(catalogFolder, 'library.db');
+  const db = initLibraryDb(dbPath);
+  libraryWrite(db, () => setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogPath));
+  db.close();
+}
 
 describe('GET /api/config/catalog', () => {
   it('reports the raw path, the expanded path, and whether it exists', async () => {
     const lrcat = join(dir, 'My Catalog.lrcat');
-    writeFileSync(lrcat, 'x');
+    makeFakeCatalog(lrcat, [
+      { id: 1, baseName: 'a' },
+      { id: 2, baseName: 'b' },
+    ]);
     writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\nworkers: 4\n`);
 
     const res = await app.request('/api/config/catalog');
@@ -71,9 +116,11 @@ describe('GET /api/config/catalog', () => {
       catalog_path: lrcat,
       resolved_path: lrcat,
       exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 2,
+      folder_count: null,
+      unreadable_directories: [],
       picker_available: onMac,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     });
   });
 
@@ -92,9 +139,11 @@ describe('GET /api/config/catalog', () => {
       catalog_path: '',
       resolved_path: '',
       exists: false,
+      catalog_kind: 'lightroom',
+      photo_count: null,
+      folder_count: null,
+      unreadable_directories: [],
       picker_available: onMac,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     });
   });
 
@@ -108,57 +157,24 @@ describe('GET /api/config/catalog', () => {
     expect(body.resolved_path).not.toContain('~');
     expect(normalize(body.resolved_path)).toBe(normalize(join(homedir(), 'Pictures', 'Cat.lrcat')));
   });
-});
 
-describe('GET /api/config/catalog sync state', () => {
-  const syncState = async () => {
-    const body = await json<{ synced_catalog_path: string | null; needs_catalog_sync: boolean }>(
-      await app.request('/api/config/catalog'),
-    );
-    return {
-      synced_catalog_path: body.synced_catalog_path,
-      needs_catalog_sync: body.needs_catalog_sync,
-    };
-  };
+  it('reuses cached folder stats on repeated GET requests', async () => {
+    const root = join(dir, 'photos-cache');
+    mkdirSync(join(root, '2024'), { recursive: true });
+    writeFileSync(join(root, '2024', 'a.jpg'), 'jpg');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(root)}\n`);
+    walkModule.invalidateFolderCatalogWalkCache();
 
-  it('says nothing when there is no library.db to ask', async () => {
-    writeFileSync(cfgPath, 'catalog_path: /a.lrcat\n');
-    expect(await syncState()).toEqual({ synced_catalog_path: null, needs_catalog_sync: false });
-  });
+    const first = await json<{ photo_count: number }>(await app.request('/api/config/catalog'));
+    expect(first.photo_count).toBe(1);
 
-  it('says nothing when the library has never been synced', async () => {
-    // A library built before this key existed must not be reported as stale;
-    // "unknown" and "different" are not the same answer.
-    seedLibrary();
-    writeFileSync(cfgPath, 'catalog_path: /a.lrcat\n');
-    expect(await syncState()).toEqual({ synced_catalog_path: null, needs_catalog_sync: false });
-  });
+    writeFileSync(join(root, '2024', 'b.jpg'), 'jpg');
+    const second = await json<{ photo_count: number }>(await app.request('/api/config/catalog'));
+    expect(second.photo_count).toBe(1);
 
-  it('is in sync when the library was synced from the configured catalog', async () => {
-    seedLibrary('/a.lrcat');
-    writeFileSync(cfgPath, 'catalog_path: /a.lrcat\n');
-    expect(await syncState()).toEqual({
-      synced_catalog_path: '/a.lrcat',
-      needs_catalog_sync: false,
-    });
-  });
-
-  it('needs a sync when the configured catalog is not the one mirrored', async () => {
-    seedLibrary('/old.lrcat');
-    writeFileSync(cfgPath, 'catalog_path: /new.lrcat\n');
-    expect(await syncState()).toEqual({
-      synced_catalog_path: '/old.lrcat',
-      needs_catalog_sync: true,
-    });
-  });
-
-  it('compares expanded paths, so ~ is not a mismatch', async () => {
-    // The sync stores what the config loader resolved; comparing the raw value
-    // would call a `~` path stale on every read.
-    const expanded = join(homedir(), 'Pictures/Cat.lrcat');
-    seedLibrary(expanded);
-    writeFileSync(cfgPath, 'catalog_path: ~/Pictures/Cat.lrcat\n');
-    expect((await syncState()).needs_catalog_sync).toBe(false);
+    walkModule.invalidateFolderCatalogWalkCache();
+    const third = await json<{ photo_count: number }>(await app.request('/api/config/catalog'));
+    expect(third.photo_count).toBe(2);
   });
 });
 
@@ -168,9 +184,12 @@ describe('PUT /api/config/catalog', () => {
     const lrcat = join(dir, 'new.lrcat');
     writeFileSync(lrcat, 'x');
 
-    const res = await put('/api/config/catalog', { catalog_path: lrcat });
+    const res = await putCatalog(lrcat, 'switch');
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ catalog_path: lrcat, ok: true });
+    const body = await json<{ catalog_path: string; ok: boolean; change: string }>(res);
+    expect(body.catalog_path).toBe(lrcat);
+    expect(body.ok).toBe(true);
+    expect(body.change).toBe('switch');
 
     const cfg = readCfg();
     expect(cfg.catalog_path).toBe(lrcat);
@@ -180,23 +199,18 @@ describe('PUT /api/config/catalog', () => {
     expect(Object.keys(cfg)).toEqual(['workers', 'vision_model', 'catalog_path']);
   });
 
-  it('rejects a padded path, because validation runs before the trim', async () => {
-    // Validation runs on the raw path before trim, so padded paths fail the extension check.
+  it('trims surrounding spaces on save', async () => {
+    writeFileSync(cfgPath, 'catalog_path: /old.lrcat\n');
     const lrcat = join(dir, 'spaced.lrcat');
     writeFileSync(lrcat, 'x');
 
-    const trailing = await put('/api/config/catalog', { catalog_path: `${lrcat}  ` });
-    expect(trailing.status).toBe(400);
-    expect(await json(trailing)).toEqual({ error: 'catalog_path must be a .lrcat file' });
-
-    const leading = await put('/api/config/catalog', { catalog_path: `  ${lrcat}` });
-    expect(leading.status).toBe(400);
-    expect(await json(leading)).toEqual({ error: 'catalog_path must be an existing file' });
+    const res = await put('/api/config/catalog', { catalog_path: `  ${lrcat}  `, change: 'switch' });
+    expect(res.status).toBe(200);
+    expect(readCfg().catalog_path).toBe(lrcat);
   });
 
   it.each([
-    [{ catalog_path: '/tmp/notacatalog.txt' }, 'catalog_path must be a .lrcat file'],
-    [{ catalog_path: '/nope/missing.lrcat' }, 'catalog_path must be an existing file'],
+    [{ catalog_path: '/nope/missing.lrcat', change: 'switch' }, 'catalog_path must be an existing file'],
   ])('rejects %j with a 400', async (body, message) => {
     const res = await put('/api/config/catalog', body);
     expect(res.status).toBe(400);
@@ -206,7 +220,7 @@ describe('PUT /api/config/catalog', () => {
   it.each([
     [{}, 'a missing field'],
     [{ catalog_path: 5 }, 'a non-string'],
-    [{ catalog_path: '/nope/missing.lrcat', extra: 1 }, 'an unexpected field'],
+    [{ catalog_path: '/nope/missing.lrcat', extra: 1, change: 'switch' }, 'an unexpected field'],
   ])('answers 422 for %o (%s)', async (body, _why) => {
     // Schema violations return 422, not 400.
     const res = await put('/api/config/catalog', body);
@@ -216,13 +230,106 @@ describe('PUT /api/config/catalog', () => {
   it('accepts a .LRCAT extension case-insensitively', async () => {
     const lrcat = join(dir, 'Shouty.LRCAT');
     writeFileSync(lrcat, 'x');
-    expect((await put('/api/config/catalog', { catalog_path: lrcat })).status).toBe(200);
+    expect((await putCatalog(lrcat, 'switch')).status).toBe(200);
   });
 
   it('does not write the file when validation fails', async () => {
     writeFileSync(cfgPath, 'catalog_path: /original.lrcat\n');
-    await put('/api/config/catalog', { catalog_path: '/nope/missing.lrcat' });
+    await putCatalog('/nope/missing.lrcat', 'switch');
     expect(readCfg().catalog_path).toBe('/original.lrcat');
+  });
+
+  it('refuses a different catalog while LIBRARY_DB is pinned', async () => {
+    const first = join(dir, 'first.lrcat');
+    const second = join(dir, 'second.lrcat');
+    writeFileSync(first, 'x');
+    writeFileSync(second, 'x');
+    seedLibrary(first);
+    process.env.LIBRARY_DB = libraryPath;
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(first)}\n`);
+
+    const res = await putCatalog(second, 'switch');
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: 'library pinned by LIBRARY_DB' });
+  });
+
+  it('allows the same catalog at a new path while LIBRARY_DB is pinned', async () => {
+    const oldPath = join(dir, 'old-name.lrcat');
+    const newPath = join(dir, 'moved', 'old-name.lrcat');
+    writeFileSync(oldPath, 'x');
+    mkdirSync(join(dir, 'moved'), { recursive: true });
+    writeFileSync(newPath, 'x');
+    seedLibrary(oldPath);
+    process.env.LIBRARY_DB = libraryPath;
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(oldPath)}\n`);
+
+    const res = await putCatalog(newPath, 'update_path');
+    expect(res.status).toBe(200);
+    expect(readCfg().catalog_path).toBe(newPath);
+  });
+});
+
+describe('POST /api/config/catalog/change-preview', () => {
+  it('returns unchanged when the resolved path matches the current catalog', async () => {
+    const lrcat = join(dir, 'Same.lrcat');
+    writeFileSync(lrcat, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    seedCatalogLibrary(lrcat);
+
+    const res = await postChangePreview(lrcat);
+    expect(res.status).toBe(200);
+    const body = await json<{ unchanged: boolean; ask_same_or_different: boolean }>(res);
+    expect(body.unchanged).toBe(true);
+    expect(body.ask_same_or_different).toBe(false);
+  });
+
+  it('asks same or different for a new .lrcat with no library yet', async () => {
+    const current = join(dir, 'Final-v13.lrcat');
+    const next = join(dir, 'Final-v14.lrcat');
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(current)}\n`);
+    seedCatalogLibrary(current);
+
+    const res = await postChangePreview(next);
+    expect(res.status).toBe(200);
+    const body = await json<{ ask_same_or_different: boolean; next: { display_name: string } }>(res);
+    expect(body.ask_same_or_different).toBe(true);
+    expect(body.next.display_name).toBe('Final-v14');
+  });
+
+  it('lists active catalog jobs that switching would cancel', async () => {
+    const current = join(dir, 'Current.lrcat');
+    const next = join(dir, 'Other.lrcat');
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(current)}\n`);
+    seedCatalogLibrary(current);
+
+    const jobsDb = initJobsDb(visualizerDb);
+    const jobId = createJob(jobsDb, 'batch_describe', {});
+    jobsDb.close();
+
+    const res = await postChangePreview(next);
+    expect(res.status).toBe(200);
+    const body = await json<{ jobs_to_cancel: { id: string; type: string; status: string }[] }>(res);
+    expect(body.jobs_to_cancel).toEqual([
+      { id: jobId, type: 'batch_describe', status: 'pending' },
+    ]);
+  });
+
+  it('returns 400 when the path does not exist', async () => {
+    writeFileSync(cfgPath, 'catalog_path: /old.lrcat\n');
+    const res = await postChangePreview('/nope/missing.lrcat');
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: 'catalog_path must be an existing file' });
+  });
+
+  it('returns 400 when the folder path does not exist', async () => {
+    writeFileSync(cfgPath, 'catalog_path: /old.lrcat\n');
+    const res = await postChangePreview('/nope/missing-folder');
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: 'catalog_path must be an existing folder' });
   });
 });
 
@@ -234,6 +341,22 @@ describe('POST /api/config/catalog/pick', () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     try {
       const res = await app.request('/api/config/catalog/pick', { method: 'POST' });
+      expect(res.status).toBe(501);
+      expect(await json(res)).toEqual({
+        error: 'Native file dialog is only available on macOS',
+      });
+    } finally {
+      Object.defineProperty(process, 'platform', { value: real, configurable: true });
+    }
+  });
+});
+
+describe('POST /api/config/catalog/pick-folder', () => {
+  it('answers 501 on a platform without a native dialog', async () => {
+    const real = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    try {
+      const res = await app.request('/api/config/catalog/pick-folder', { method: 'POST' });
       expect(res.status).toBe(501);
       expect(await json(res)).toEqual({
         error: 'Native file dialog is only available on macOS',

@@ -1,3 +1,4 @@
+import type { CatalogKind } from '../../types/config'
 import { Link } from 'react-router-dom'
 import type { InsightsSummary } from '../../services/api'
 import { Badge } from '../ui/badges'
@@ -7,6 +8,7 @@ import {
   INSIGHTS_KPI_BURST_STACKS,
   INSIGHTS_KPI_BURST_STACKS_DESC,
   INSIGHTS_KPI_CATALOG_DESC,
+  INSIGHTS_KPI_CATALOG_DESC_FOLDER,
   INSIGHTS_KPI_SCORING_9_PLUS,
   INSIGHTS_KPI_SCORING_9_PLUS_DESC,
   INSIGHTS_KPI_UNSCORED_ACTIVE,
@@ -17,16 +19,23 @@ import {
   INSIGHTS_LINK_SCORING_9_PLUS,
   MSG_LOADING,
 } from '../../constants/strings'
+import { forCatalogKind } from '../../utils/catalogKindCopy'
 
 export type InsightsKpiRowProps = {
   summary: InsightsSummary | null
   loading: boolean
   error: string | null
+  catalogKind?: CatalogKind
 }
 
 type StatBadge = 'default' | 'success' | 'accent' | 'warning'
 
-export function InsightsKpiRow({ summary, loading, error }: InsightsKpiRowProps) {
+export function InsightsKpiRow({
+  summary,
+  loading,
+  error,
+  catalogKind = 'lightroom',
+}: InsightsKpiRowProps) {
   if (error) {
     return (
       <div className="rounded-card border border-border bg-surface px-4 py-3 text-sm text-error" role="alert">
@@ -58,7 +67,11 @@ export function InsightsKpiRow({ summary, loading, error }: InsightsKpiRowProps)
     {
       title: DASHBOARD_CATALOG_IMAGES,
       value: catalog.toLocaleString(),
-      description: INSIGHTS_KPI_CATALOG_DESC,
+      description: forCatalogKind(
+        catalogKind,
+        INSIGHTS_KPI_CATALOG_DESC,
+        INSIGHTS_KPI_CATALOG_DESC_FOLDER,
+      ),
       link: INSIGHTS_LINK_CATALOG,
       badge: catalog > 0 ? 'success' : 'default',
     },

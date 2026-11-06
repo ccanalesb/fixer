@@ -39,6 +39,11 @@ export const keys = {
   },
   lrWriteback: {
     photo: (imageKey: string) => ['lr-writeback.photo', imageKey] as const,
+    /** The XMP tab's read, which keeps a failed request instead of dropping it. */
+    readout: (imageKey: string) => ['lr-writeback.photo', imageKey, 'readout'] as const,
+  },
+  folderXmp: {
+    photo: (imageKey: string) => ['folder-xmp.photo', imageKey] as const,
   },
   jobs: {
     listAll: () => ['jobs.list'] as const,
@@ -84,6 +89,9 @@ export const keys = {
   firstRun: {
     signals: () => ['firstRun', 'signals'] as const,
   },
+  config: {
+    catalog: () => ['config', 'catalog'] as const,
+  },
 } as const
 
 const PROVIDERS_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
@@ -118,6 +126,22 @@ export function catalogCacheBuildSignalsChanged(): void {
   invalidateAll(keys.dashboard())
   invalidateAll(keys.catalog.cache.stats())
   invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
+}
+
+/** Invalidate every query tied to the open catalog library (path switch or reopen). */
+export function catalogLibraryChanged(): void {
+  invalidateAll(keys.firstRun.signals())
+  invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
+  invalidateAll(keys.catalog.cache.stats())
+  invalidateAll(prefixOf(keys.jobs.health(), 1))
+  invalidateAll(keys.dashboard())
+  invalidateAll(keys.cull.summary())
+  invalidateAll(keys.cull.photosAll())
+  invalidateAll(prefixOf(keys.cull.detail(''), 1))
+  invalidateAll(keys.stacks.suggestions())
+  invalidateAll(prefixOf(keys.identity.mirror(), 1))
+  invalidateAll(keys.identity.postNextAll())
+  invalidateAll(prefixOf(keys.config.catalog(), 1))
 }
 
 export function clipModelChanged(): void {
@@ -206,6 +230,7 @@ export function cullingProfilesChanged(): void {
 
 const LIGHTROOM_WRITTEN_PREFIXES: readonly (readonly unknown[])[] = [
   prefixOf(keys.lrWriteback.photo(''), 1),
+  prefixOf(keys.folderXmp.photo(''), 1),
   prefixOf(keys.images.catalogMonths(), 1),
   prefixOf(keys.images.detail('catalog', '', ''), 1),
   keys.cull.summary(),

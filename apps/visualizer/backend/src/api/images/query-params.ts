@@ -61,6 +61,13 @@ function descriptionSearch(raw: string | undefined): string | null {
   return raw.trim();
 }
 
+function catalogPresence(raw: string | undefined): 'present' | 'missing' | null {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === 'present') return 'present';
+  if (v === 'missing') return 'missing';
+  return null;
+}
+
 /** Trim and drop blanks from a repeated query parameter; `null` when nothing remains. */
 function stringList(values: string[] | undefined): string[] | null {
   if (!values) return null;
@@ -95,6 +102,7 @@ function commonFilters(q: QuerySource): {
       colorLabel: (q.query('color_label') ?? '').trim() || null,
       analyzed: boolTriState(q.query('analyzed')),
       descriptionSearch: descriptionSearch(q.query('description_search')),
+      catalogPresence: catalogPresence(q.query('catalog_presence')),
     },
     scorePerspectiveRaw: (q.query('score_perspective') ?? '').trim(),
   };

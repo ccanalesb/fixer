@@ -9,13 +9,18 @@
  * and the test suite can build the app without starting background work.
  */
 import { createServer } from 'node:net';
-import { existsSync } from 'node:fs';
 import { Server as SocketIOServer } from 'socket.io';
 import { config } from './config.js';
+import {
+  legacyUpgradeFailureMessage,
+  legacyUpgradeLines,
+  runLegacyUpgradeOnce,
+  type LegacyUpgradeResult,
+} from './catalog-library.js';
+import { resolveOpenLibraryPaths } from './open-library.js';
 import { createApp } from './app.js';
 import { serveApp } from './http-server.js';
 import { upgradeLibraryDb } from './api/library-db.js';
-import { initLibraryDb } from './db/library/bootstrap.js';
 import { startJobProcessor } from './jobs/processor.js';
 import { assertLoopbackSocketHandshake } from './middleware/loopback.js';
 import { registerGracefulShutdown } from './lifecycle/shutdown.js';
@@ -53,14 +58,22 @@ await refuseIfPortInUse(config.HOST, config.PORT);
 migrateProvidersConfigIfNeeded();
 migrateCullingModelsIfNeeded();
 
-const libraryDbPath = config.LIBRARY_DB;
-if (process.env.LT_DATA_DIR && !existsSync(libraryDbPath)) {
-  initLibraryDb(libraryDbPath).close();
+// Moving an older install into catalogs/ must finish before any library is opened:
+// starting without it would open a new, empty library for the catalog.
+let legacyUpgrade: LegacyUpgradeResult | null;
+try {
+  legacyUpgrade = runLegacyUpgradeOnce();
+} catch (e) {
+  process.stderr.write(`${legacyUpgradeFailureMessage(e)}\n`);
+  process.exit(1);
+}
+for (const line of legacyUpgrade ? legacyUpgradeLines(legacyUpgrade) : []) {
+  process.stderr.write(`${line}\n`);
 }
 
-// A library.db that cannot be upgraded still lets the server start; its requests answer 500 saying why.
+// A library.db that cannot be found or upgraded still lets the server start; its requests answer 500 saying why.
 try {
-  upgradeLibraryDb(libraryDbPath);
+  upgradeLibraryDb(resolveOpenLibraryPaths().libraryDbPath);
 } catch (e) {
   process.stderr.write(`library.db not upgraded: ${e instanceof Error ? e.message : String(e)}\n`);
 }

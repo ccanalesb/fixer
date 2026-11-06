@@ -43,9 +43,11 @@ describe('IdentityPage', () => {
       catalog_path: '/tmp/test.lrcat',
       resolved_path: '/tmp/test.lrcat',
       exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 0,
+      folder_count: null,
+      unreadable_directories: [],
       picker_available: false,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
     vi.spyOn(SystemAPI, 'insightsSummary').mockResolvedValue({

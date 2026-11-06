@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Pagination } from '../ui/Pagination';
 import { JOB_QUEUE_PAGINATION_RANGE } from '../../constants/strings';
+import { jobTypeLabel } from '../../utils/jobTypeLabel';
 
 function getStatusVariant(status: Job['status']): 'default' | 'success' | 'warning' | 'error' | 'accent' {
   switch (status) {
@@ -178,7 +179,7 @@ export function JobQueueTab({
                     className="hover:bg-surface cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-text">{job.type}</div>
+                      <div className="text-sm font-medium text-text">{jobTypeLabel(job.type)}</div>
                       <div className="text-xs text-text-tertiary font-mono">{job.id.slice(0, 8)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

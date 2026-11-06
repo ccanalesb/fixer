@@ -7,13 +7,15 @@ import { deleteMatching } from '../data/cache'
 import {
   ConfigAPI,
   IdentityAPI,
+  JobsAPI,
   SystemAPI,
 } from '../services/api'
 import {
   EMPTY_BEST_PHOTOS_META,
 } from '../__test-utils__/identityFixtures'
 import {
-  FIRST_RUN_CHOOSE_CATALOG,
+  FIRST_RUN_CHOOSE_FOLDER,
+  FIRST_RUN_CHOOSE_LRCAT,
   FIRST_RUN_WELCOME_TITLE,
   INSIGHTS_KPI_SCORING_9_PLUS,
   INSIGHTS_PAGE_TITLE,
@@ -21,6 +23,7 @@ import {
   INSIGHTS_SECTION_HIGHLIGHTS,
   INSIGHTS_SECTION_NEXT_ACTIONS,
   INSIGHTS_SECTION_PERSPECTIVE_COVERAGE,
+  INSIGHTS_FOOTER_TIMEZONE_FOLDER,
 } from '../constants/strings'
 
 const completedImportPipeline = {
@@ -46,9 +49,11 @@ describe('DashboardPage', () => {
       catalog_path: '/tmp/test.lrcat',
       resolved_path: '/tmp/test.lrcat',
       exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 0,
+      folder_count: null,
+      unreadable_directories: [],
       picker_available: false,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
     vi.spyOn(SystemAPI, 'clipModel').mockResolvedValue({
@@ -127,18 +132,44 @@ describe('DashboardPage', () => {
       screen.getByRole('heading', { level: 2, name: INSIGHTS_SECTION_EXPLORE }),
     ).toBeInTheDocument()
   })
+
+  it('shows folder-specific capture-date copy in the footer on a folder catalog', async () => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/tmp/photos',
+      resolved_path: '/tmp/photos',
+      exists: true,
+      catalog_kind: 'folder',
+      photo_count: 10,
+      folder_count: 2,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+
+    render(
+      <MemoryRouter>
+        <Suspense fallback={null}>
+          <DashboardPage />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(INSIGHTS_FOOTER_TIMEZONE_FOLDER)).toBeInTheDocument()
+  })
 })
 
 describe('DashboardPage first-run setup', () => {
   beforeEach(() => {
     deleteMatching(() => true)
+    deleteMatching(() => true)
     vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
       catalog_path: '',
       resolved_path: '',
       exists: false,
+      catalog_kind: 'lightroom',
+      photo_count: null,
+      folder_count: null,
+      unreadable_directories: [],
       picker_available: true,
-      synced_catalog_path: null,
-      needs_catalog_sync: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue({
       catalog_sync: null,
@@ -180,7 +211,64 @@ describe('DashboardPage first-run setup', () => {
     )
 
     expect(await screen.findByRole('heading', { name: FIRST_RUN_WELCOME_TITLE })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_CATALOG })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_FOLDER })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_LRCAT })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: INSIGHTS_PAGE_TITLE })).not.toBeInTheDocument()
+  })
+
+  it('starts import on setup when navigated after switching to an empty catalog', async () => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/tmp/new.lrcat',
+      resolved_path: '/tmp/new.lrcat',
+      exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 50,
+      folder_count: null,
+      unreadable_directories: [],
+      picker_available: true,
+    })
+    let insightsCalls = 0
+    vi.spyOn(SystemAPI, 'insightsSummary').mockImplementation(() => {
+      insightsCalls += 1
+      return Promise.resolve({
+        first_catalog_import_completed: insightsCalls >= 2 ? false : true,
+        catalog_images: insightsCalls >= 2 ? 0 : 1000,
+        scoring_9_plus: 0,
+        burst_stacks: 0,
+        pending_stack_suggestions: 0,
+        unscored_on_active_perspectives: 0,
+        no_current_score: 0,
+        frame_substance_flagged: 0,
+        frame_substance_unknown: { never_judged: 0 },
+        frame_substance_run: null,
+        perspective_coverage: [],
+      })
+    })
+    const createSpy = vi.spyOn(JobsAPI, 'create').mockResolvedValue({
+      id: 'import-job',
+      type: 'catalog_cache_build',
+      status: 'pending',
+      progress: 0,
+      created_at: '2026-01-01T00:00:00Z',
+      started_at: null,
+      completed_at: null,
+      error: null,
+      metadata: {},
+      logs: [],
+      logs_total: 0,
+      warning_count: 0,
+      error_count: 0,
+    })
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/', state: { startCatalogImport: true } }]}>
+        <Suspense fallback={null}>
+          <DashboardPage />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: FIRST_RUN_WELCOME_TITLE })
+    await waitFor(() => expect(createSpy).toHaveBeenCalledWith('catalog_cache_build', {}))
   })
 })

@@ -1,7 +1,8 @@
+import type { CatalogKind } from '../../types/config'
 import type { Job } from '../../types/job'
 import {
-  CATALOG_CACHE_BUILD_STAGE_LABELS,
   CATALOG_CACHE_BUILD_STAGE_ORDER,
+  catalogCacheBuildStageLabels,
   catalogCacheBuildStageState,
   parseEmbedProgressDetail,
 } from '../../utils/catalogCacheBuildProgress'
@@ -59,15 +60,18 @@ function stageDotFromChecklistState(
 type CatalogImportStageChecklistProps = {
   job: Job | null
   expectClipDownloadInRun?: boolean
+  catalogKind?: CatalogKind
 }
 
 export function CatalogImportStageChecklist({
   job,
   expectClipDownloadInRun = false,
+  catalogKind = 'lightroom',
 }: CatalogImportStageChecklistProps) {
   const clipRow = clipDownloadRowState(job, expectClipDownloadInRun)
   const clipSuppressEmbed =
     clipRow === 'current' || clipRow === 'failed' || isJobClipDownloading(job)
+  const stageLabels = catalogCacheBuildStageLabels(catalogKind)
 
   return (
     <ol className="list-none space-y-1 p-0 m-0" data-testid="catalog-import-stage-checklist">
@@ -77,7 +81,7 @@ export function CatalogImportStageChecklist({
           state = 'pending'
         }
 
-        const label = CATALOG_CACHE_BUILD_STAGE_LABELS[key]
+        const label = stageLabels[key]
         const rowClass =
           state === 'done'
             ? 'text-text-secondary'
