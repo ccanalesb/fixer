@@ -129,11 +129,6 @@ function buildSyncPlan(
   return { toRead, goneRows, newOnDisk, unreadablePaths };
 }
 
-function recordForDisk(disk: DiskPhoto, tags: import('exiftool-vendored').Tags): CatalogRecord {
-  const sizeByPath = new Map([[disk.photo.filepath, disk.stat.size]]);
-  return buildFolderCatalogRecords([disk.photo], new Map([[disk.photo.filepath, tags]]), sizeByPath)[0]!;
-}
-
 export async function syncFolderCatalog(
   catalogRoot: string,
   libDb: Db,
@@ -182,62 +177,24 @@ export async function syncFolderCatalog(
     unreadable: plan.unreadablePaths.length,
   };
 
+  const dbByRel = new Map<string, FolderLibraryRow>();
+  for (const row of dbRows) {
+    if (row.id) dbByRel.set(row.id, row);
+  }
+
+  const matchedGoneKeys = new Set<string>();
+  const existingKeyByRel = new Map<string, string>();
+  for (const disk of plan.toRead) {
+    const row = dbByRel.get(disk.photo.relPath);
+    if (row) existingKeyByRel.set(disk.photo.relPath, row.key);
+  }
+
+  const readQueue = [...plan.toRead, ...plan.newOnDisk];
+  const batches = [...batchResolvedPhotos(readQueue.map((d) => d.photo), SYNC_BATCH_SIZE)];
+
   const exif = createFolderExifSession();
   try {
-    const newTags = await exif.readParallel(plan.newOnDisk.map((d) => d.photo.filepath));
-    const movePairs: { row: FolderLibraryRow; disk: DiskPhoto; record: CatalogRecord }[] = [];
-    const stillNew: DiskPhoto[] = [];
-
-    for (const disk of plan.newOnDisk) {
-      const tags = newTags.get(disk.photo.filepath) ?? {};
-      const record = recordForDisk(disk, tags);
-      const goneMatches = plan.goneRows.filter(
-        (g) =>
-          g.file_size === disk.stat.size &&
-          g.date_taken === record.date_taken &&
-          !movePairs.some((m) => m.row.key === g.key),
-      );
-      if (goneMatches.length === 1) {
-        movePairs.push({
-          row: goneMatches[0]!,
-          disk,
-          record: { ...record, key: goneMatches[0]!.key },
-        });
-      } else {
-        stillNew.push(disk);
-      }
-    }
-
-    if (await pollCancelAndYield(libDb, isCancelled, yieldState)) {
-      return cancelledOutcome(
-        stats.photoCount,
-        walkMs,
-        statMs,
-        unreadableDirectories,
-        plan.unreadablePaths,
-        libDb,
-      );
-    }
-
-    libraryWrite(libDb, () => {
-      for (const { row, disk, record } of movePairs) {
-        applyFolderMove(libDb, row.key, record, disk.stat.mtimeMs);
-        counters.moved += 1;
-      }
-    });
-    for (const { row, disk } of movePairs) {
-      await markStaleIfPreviewPhashChanged(libDb, row.key, disk.photo.filepath);
-    }
-
-    // Edits keep the key the row first got; only genuinely new files mint one.
-    const existingKeyByRel = new Map<string, string>();
-    for (const disk of plan.toRead) {
-      const row = dbRows.find((r) => r.id === disk.photo.relPath);
-      if (row) existingKeyByRel.set(disk.photo.relPath, row.key);
-    }
-
-    const readQueue = [...plan.toRead, ...stillNew];
-    const batches = [...batchResolvedPhotos(readQueue.map((d) => d.photo), SYNC_BATCH_SIZE)];
+    const movedKeysThisRun = new Set<string>();
 
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       const photoBatch = batches[batchIndex]!;
@@ -265,30 +222,45 @@ export async function syncFolderCatalog(
       }
 
       const mtimeByKey = new Map<string, number>();
-      for (const disk of diskBatch) {
-        const rec = recordForDisk(disk, tagsByPath.get(disk.photo.filepath) ?? {});
-        mtimeByKey.set(rec.key, disk.stat.mtimeMs);
-      }
-
       const changedRelPaths = new Set<string>();
+      const previewStaleKeys: { key: string; filepath: string }[] = [];
+
       libraryWrite(libDb, () => {
         const inserts: CatalogRecord[] = [];
         for (const record of records) {
           const rel = String(record.id);
           const disk = diskBatch.find((d) => d.photo.relPath === rel);
           if (!disk) continue;
-          // Identity is the path. An edited row keeps the key it was first given;
-          // a new path either takes an in-DB key's slot (a collision) or inserts.
+
           const existingKey = existingKeyByRel.get(rel);
           if (existingKey !== undefined) {
             updateFolderRecordInPlace(libDb, existingKey, record, disk.stat.mtimeMs, true);
             counters.changed += 1;
             changedRelPaths.add(rel);
+            mtimeByKey.set(existingKey, disk.stat.mtimeMs);
             continue;
           }
+
+          const goneMatches = plan.goneRows.filter(
+            (g) =>
+              !matchedGoneKeys.has(g.key) &&
+              g.file_size === disk.stat.size &&
+              g.date_taken === record.date_taken,
+          );
+          if (goneMatches.length === 1) {
+            const gone = goneMatches[0]!;
+            matchedGoneKeys.add(gone.key);
+            movedKeysThisRun.add(gone.key);
+            applyFolderMove(libDb, gone.key, { ...record, key: gone.key }, disk.stat.mtimeMs);
+            counters.moved += 1;
+            previewStaleKeys.push({ key: gone.key, filepath: disk.photo.filepath });
+            continue;
+          }
+
           if (!keysInDb.has(record.key)) {
             inserts.push(record);
             keysInDb.add(record.key);
+            mtimeByKey.set(record.key, disk.stat.mtimeMs);
             continue;
           }
           const existing = dbRows.find((r) => r.key === record.key);
@@ -296,25 +268,27 @@ export async function syncFolderCatalog(
           updateFolderRecordInPlace(libDb, record.key, record, disk.stat.mtimeMs, true);
           counters.changed += 1;
           changedRelPaths.add(rel);
+          mtimeByKey.set(record.key, disk.stat.mtimeMs);
         }
         counters.added += insertFolderRecords(libDb, inserts, mtimeByKey);
       });
 
+      for (const { key, filepath } of previewStaleKeys) {
+        await markStaleIfPreviewPhashChanged(libDb, key, filepath);
+      }
       for (const record of records) {
         const rel = String(record.id);
         const disk = diskBatch.find((d) => d.photo.relPath === rel);
-        if (!disk) continue;
-        if (changedRelPaths.has(rel)) {
-          const key = existingKeyByRel.get(rel) ?? record.key;
-          await markStaleIfPreviewPhashChanged(libDb, key, disk.photo.filepath);
-        }
+        if (!disk || !changedRelPaths.has(rel)) continue;
+        const key = existingKeyByRel.get(rel) ?? record.key;
+        await markStaleIfPreviewPhashChanged(libDb, key, disk.photo.filepath);
       }
 
       const pct = 10 + Math.trunc((80 * (batchIndex + 1)) / Math.max(batches.length, 1));
       opts.progress?.(pct, FOLDER_CATALOG_READ_PROGRESS);
     }
 
-    const movedGoneKeys = new Set(movePairs.map((m) => m.row.key));
+    const movedGoneKeys = movedKeysThisRun;
     const goneKeys = plan.goneRows.filter((g) => !movedGoneKeys.has(g.key)).map((g) => g.key);
     const sinceIso = nowIsoUtc();
     let newlyGone = 0;

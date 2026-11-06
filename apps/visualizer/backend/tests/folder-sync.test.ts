@@ -1,20 +1,27 @@
 /**
  * Folder catalog import and re-sync into library.db.
  */
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Tags } from 'exiftool-vendored';
-import { initLibraryDb } from '../src/db/library/bootstrap.js';
+import sharp from 'sharp';
+import { initLibraryDb, getLibraryMeta } from '../src/db/library/bootstrap.js';
 import { getImageCount } from '../src/db/library/statistics.js';
+import { isDescriptionStale } from '../src/db/library/vision-stale.js';
 import {
   buildFolderCatalogRecords,
   captureDateFromTags,
   createFolderExifSession,
 } from '../src/folder/exif-read.js';
-import { syncFolderCatalog } from '../src/folder/sync.js';
+import { FOLDER_CATALOG_SYNCED_META_KEY, syncFolderCatalog } from '../src/folder/sync.js';
 import type { ResolvedFolderPhoto } from '../src/folder/walk.js';
+import { getOrCreateCachedImage } from '../src/vision/vision-cache.js';
+
+const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const sampleHeic = join(fixtureDir, 'example.heic');
 
 let dir: string;
 let root: string;
@@ -195,6 +202,191 @@ describe('syncFolderCatalog', () => {
       await expect(syncFolderCatalog(join(dir, 'missing'), db, {})).rejects.toThrow(
         /Catalog not found/,
       );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('when cancelled mid-import keeps batches already read and does not mark gone or synced', async () => {
+    for (let i = 0; i < 65; i += 1) {
+      writeFileSync(join(root, `batch-${i}.jpg`), 'fake-jpeg');
+    }
+    const db = initLibraryDb(dbPath);
+    try {
+      let progressCalls = 0;
+      const { cancelled, result } = await syncFolderCatalog(root, db, {
+        progress: () => {
+          progressCalls += 1;
+        },
+        isCancelled: () => progressCalls >= 1,
+      });
+      expect(cancelled).toBe(true);
+      expect(result.added).toBe(64);
+      expect(result.newly_gone).toBe(0);
+      expect(getImageCount(db)).toBe(64);
+      expect(getLibraryMeta(db, FOLDER_CATALOG_SYNCED_META_KEY)).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('records a key collision when a new path shares an existing key', async () => {
+    const fixed = new Date('2018-08-08T08:08:08Z');
+    mkdirSync(join(root, 'a'), { recursive: true });
+    mkdirSync(join(root, 'b'), { recursive: true });
+    writeFileSync(join(root, 'a', 'dup.jpg'), 'bytes');
+    writeFileSync(join(root, 'b', 'dup.jpg'), 'bytes');
+    utimesSync(join(root, 'a', 'dup.jpg'), fixed, fixed);
+    utimesSync(join(root, 'b', 'dup.jpg'), fixed, fixed);
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      expect(getImageCount(db)).toBe(1);
+
+      rmSync(join(root, 'a', 'dup.jpg'));
+      writeFileSync(join(root, 'a', 'dup.jpg'), 'bytes');
+      utimesSync(join(root, 'a', 'dup.jpg'), fixed, fixed);
+
+      const { result } = await syncFolderCatalog(root, db, {});
+      expect(result.collisions).toBeGreaterThanOrEqual(1);
+      expect(getImageCount(db)).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('treats a RAW+JPEG pair forming and breaking as in-place edits', async () => {
+    mkdirSync(join(root, 'pair'), { recursive: true });
+    const rawPath = join(root, 'pair', 'img.cr2');
+    const jpegPath = join(root, 'pair', 'img.jpg');
+    writeFileSync(rawPath, 'raw-bytes');
+    const touch = new Date('2017-07-07T07:07:07Z');
+    utimesSync(rawPath, touch, touch);
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      writeFileSync(jpegPath, 'jpeg-bytes');
+      utimesSync(rawPath, new Date('2017-07-08T07:07:07Z'), new Date('2017-07-08T07:07:07Z'));
+      const paired = await syncFolderCatalog(root, db, {});
+      expect(paired.result.changed).toBe(1);
+      expect(getImageCount(db)).toBe(1);
+
+      rmSync(jpegPath);
+      utimesSync(rawPath, new Date('2017-07-09T07:07:07Z'), new Date('2017-07-09T07:07:07Z'));
+      const alone = await syncFolderCatalog(root, db, {});
+      expect(alone.result.changed).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('marks vision outputs stale when pixels change but not for a metadata-only touch', async () => {
+    const path = join(root, 'meta.jpg');
+    await sharp({ create: { width: 32, height: 32, channels: 3, background: '#111111' } })
+      .jpeg()
+      .toFile(path);
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      const key = (db.prepare('SELECT key FROM images').get() as { key: string }).key;
+      db.prepare(
+        "INSERT INTO image_descriptions (image_key, image_type, summary, best_perspective) VALUES (?, 'catalog', 'desc', 'street')",
+      ).run(key);
+      process.env.LT_CONFIG_YAML = join(dir, 'cfg.yaml');
+      writeFileSync(
+        join(dir, 'cfg.yaml'),
+        `vision_cache_dir: ${join(dir, 'vc')}\nmount_point: ${dir}\n`,
+      );
+      await getOrCreateCachedImage(db, key, path);
+
+      utimesSync(path, new Date('2030-01-01T00:00:00Z'), new Date('2030-01-01T00:00:00Z'));
+      await syncFolderCatalog(root, db, {});
+      expect(isDescriptionStale(db, key)).toBe(false);
+
+      await sharp({ create: { width: 32, height: 32, channels: 3, background: '#eeeeee' } })
+        .jpeg()
+        .toFile(path);
+      writeFileSync(path, Buffer.from(await sharp(path).toBuffer())); // force size change
+      await syncFolderCatalog(root, db, {});
+      expect(isDescriptionStale(db, key)).toBe(true);
+    } finally {
+      delete process.env.LT_CONFIG_YAML;
+      db.close();
+    }
+  });
+
+  it('keeps descriptions and culling rows when a photo is moved or edited', async () => {
+    const path = join(root, 'keep-work.jpg');
+    writeFileSync(path, 'v1');
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      const key = (db.prepare('SELECT key FROM images').get() as { key: string }).key;
+      db.prepare(
+        "INSERT INTO image_descriptions (image_key, image_type, summary, best_perspective) VALUES (?, 'catalog', 'hello', 'street')",
+      ).run(key);
+      db.prepare(
+        `INSERT INTO cull_verdicts (image_key, verdict, culling_profile_verdict, pipeline_setting_version, decided_at)
+         VALUES (?, 'passed', 'passed', 1, '2020-01-01T00:00:00')`,
+      ).run(key);
+
+      const movedPath = join(root, 'renamed.jpg');
+      writeFileSync(movedPath, 'v1');
+      rmSync(path);
+      await syncFolderCatalog(root, db, {});
+      expect(
+        db.prepare('SELECT summary FROM image_descriptions WHERE image_key = ?').get(key),
+      ).toEqual({ summary: 'hello' });
+      expect(
+        db.prepare('SELECT verdict FROM cull_verdicts WHERE image_key = ?').get(key),
+      ).toEqual({ verdict: 'passed' });
+
+      writeFileSync(movedPath, 'v2-edited');
+      await syncFolderCatalog(root, db, {});
+      expect(
+        db.prepare('SELECT summary FROM image_descriptions WHERE image_key = ?').get(key),
+      ).toEqual({ summary: 'hello' });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('keeps the original key when an in-place edit changes capture-derived key fields', async () => {
+    const path = join(root, 'key-lock.jpg');
+    writeFileSync(path, 'v1');
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      const before = db.prepare('SELECT key FROM images').get() as { key: string };
+
+      writeFileSync(path, 'v2');
+      utimesSync(path, new Date('1999-12-31T23:59:59Z'), new Date('1999-12-31T23:59:59Z'));
+      await syncFolderCatalog(root, db, {});
+      const after = db.prepare('SELECT key FROM images').get() as { key: string };
+      expect(after.key).toBe(before.key);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('completes when a corrupt HEIC is present and keeps the other photos', async () => {
+    writeFileSync(join(root, 'bad.heic'), 'not-a-heic');
+    writeFileSync(join(root, 'good.jpg'), 'fake-jpeg');
+    copyFileSync(sampleHeic, join(root, 'fine.heic'));
+    const db = initLibraryDb(dbPath);
+    const logs: string[] = [];
+    try {
+      const { cancelled, result } = await syncFolderCatalog(root, db, {
+        log: (_level, msg) => logs.push(msg),
+      });
+      expect(cancelled).toBe(false);
+      expect(result.added).toBe(3);
+      expect(getImageCount(db)).toBe(3);
+      expect(
+        db.prepare("SELECT COUNT(*) AS c FROM images WHERE id IN ('good.jpg', 'fine.heic')").get() as {
+          c: number;
+        },
+      ).toEqual({ c: 2 });
     } finally {
       db.close();
     }

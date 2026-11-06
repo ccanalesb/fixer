@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
-import { decodeHeicToJpegPath } from '../src/imaging/heic-decode.js';
+import { decodeHeicToJpegPath, setHeicDecodeSipsPresenceOverride } from '../src/imaging/heic-decode.js';
 import { getViewablePathManaged, makeTempJpgPath } from '../src/imaging/image-prep.js';
 import { getOrCreateCachedImage } from '../src/vision/vision-cache.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
@@ -62,6 +62,19 @@ describe('decodeHeicToJpegPath', () => {
     const jpegPath = (await decodeHeicToJpegPath(heicPath, makeTempJpgPath))!;
     expect(jpegPath).toBeTruthy();
     expect(await sharp(jpegPath).metadata()).toMatchObject({ format: 'jpeg' });
+  });
+
+  it('falls back to libheif when sips fails', async () => {
+    const heicPath = join(workDir, 'fallback.heic');
+    copyFileSync(sampleHeic, heicPath);
+    setHeicDecodeSipsPresenceOverride(async () => true);
+    try {
+      const jpegPath = (await decodeHeicToJpegPath(heicPath, makeTempJpgPath))!;
+      expect(jpegPath).toBeTruthy();
+      expect(await sharp(jpegPath).metadata()).toMatchObject({ format: 'jpeg' });
+    } finally {
+      setHeicDecodeSipsPresenceOverride(null);
+    }
   });
 });
 

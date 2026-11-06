@@ -13,6 +13,13 @@ import sharp from 'sharp';
 
 const execFileAsync = promisify(execFile);
 
+let sipsPresenceOverride: (() => Promise<boolean>) | null = null;
+
+/** Test seam: pretend `sips` is available without running it. */
+export function setHeicDecodeSipsPresenceOverride(fn: (() => Promise<boolean>) | null): void {
+  sipsPresenceOverride = fn;
+}
+
 export const HEIC_EXTENSIONS = new Set(['.heic', '.heif']);
 
 export function isHeicPath(imagePath: string): boolean {
@@ -20,6 +27,7 @@ export function isHeicPath(imagePath: string): boolean {
 }
 
 async function sipsPresent(): Promise<boolean> {
+  if (sipsPresenceOverride) return sipsPresenceOverride();
   if (process.platform !== 'darwin') return false;
   try {
     await execFileAsync('which', ['sips']);
