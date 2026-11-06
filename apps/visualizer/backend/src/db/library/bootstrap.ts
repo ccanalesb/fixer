@@ -14,6 +14,7 @@ import { openLibraryDb, type Db } from '../connection.js';
 import { resourcesRoot } from '../../config.js';
 import { nowIsoUtc } from '../../utils/datetime.js';
 import { upgradeDefaultProfileSlug } from './cull-default-profile-v18.js';
+import { upgradeFolderCatalogSyncColumns } from './folder-catalog-v19.js';
 import { syncCurrentStagesAfterLibraryWrite } from './cull-sync-stages.js';
 import { seedCullingDefaults } from './cull-profiles.js';
 import { markdownMarksOptional } from './scores.js';
@@ -21,7 +22,7 @@ import { SCORE_FORECAST_QUESTIONS_SQL } from './score-forecast-questions.js';
 import { libraryWrite } from './write.js';
 
 /** `PRAGMA user_version` for a database created by this module. */
-export const LIBRARY_SCHEMA_VERSION = 18;
+export const LIBRARY_SCHEMA_VERSION = 19;
 
 /** The oldest version `upgradeLibrarySchema` can bring forward. */
 const OLDEST_UPGRADABLE_VERSION = 17;
@@ -249,7 +250,9 @@ CREATE TABLE IF NOT EXISTS images (
     catalog_path TEXT DEFAULT '',
     -- Lightroom's Adobe_images.orientation. Last because version 10 added it with
     -- ALTER TABLE, and column order is the key order of a SELECT * row.
-    orientation TEXT
+    orientation TEXT,
+    catalog_missing_since TEXT,
+    catalog_file_mtime REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_images_filepath ON images(filepath);
@@ -548,6 +551,7 @@ export function upgradeLibrarySchema(db: Db): void {
     const version = userVersion(db);
     if (version >= LIBRARY_SCHEMA_VERSION) return;
     if (version < 18) upgradeDefaultProfileSlug(db);
+    if (version < 19) upgradeFolderCatalogSyncColumns(db);
     db.pragma(`user_version = ${LIBRARY_SCHEMA_VERSION}`);
     backfillFirstCatalogImportMeta(db);
   }).immediate();

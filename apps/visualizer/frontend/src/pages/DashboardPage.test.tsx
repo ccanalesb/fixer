@@ -52,6 +52,7 @@ describe('DashboardPage', () => {
       catalog_kind: 'lightroom',
       photo_count: 0,
       folder_count: null,
+      unreadable_directories: [],
       picker_available: false,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue(completedImportPipeline)
@@ -144,6 +145,7 @@ describe('DashboardPage first-run setup', () => {
       catalog_kind: 'lightroom',
       photo_count: null,
       folder_count: null,
+      unreadable_directories: [],
       picker_available: true,
     })
     vi.spyOn(SystemAPI, 'cachePipelineStatus').mockResolvedValue({
@@ -199,6 +201,7 @@ describe('DashboardPage first-run setup', () => {
       catalog_kind: 'lightroom',
       photo_count: 50,
       folder_count: null,
+      unreadable_directories: [],
       picker_available: true,
     })
     let insightsCalls = 0

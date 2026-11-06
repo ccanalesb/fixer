@@ -21,7 +21,7 @@ import {
   syncCatalog,
   type SyncCatalogOutcome,
 } from '../../lightroom/catalog-sync.js';
-import { syncFolderCatalog } from '../../folder/sync.js';
+import { syncFolderCatalog, type FolderCatalogSyncResult, type SyncFolderCatalogOutcome } from '../../folder/sync.js';
 import type { JobRunner } from '../runner.js';
 import {
   asMetadata,
@@ -53,6 +53,13 @@ export interface CatalogSyncStageResult {
   /** Set when the catalog exists but could not be read. */
   failed?: true;
   error?: string;
+  changed?: number;
+  moved?: number;
+  newly_gone?: number;
+  collisions?: number;
+  unreadable?: number;
+  walk_ms?: number;
+  stat_ms?: number;
 }
 
 /** `catalog_path` from the job's metadata, else from `config.yaml`. */
@@ -114,7 +121,7 @@ export async function runCatalogSyncPass(
   const isFolder = inferCatalogKind(catalogPath) === 'folder';
   progress(5, isFolder ? 'Reading the folder...' : 'Connecting to Lightroom Classic catalog...');
 
-  let outcome: SyncCatalogOutcome;
+  let outcome: SyncCatalogOutcome | SyncFolderCatalogOutcome;
   try {
     if (isFolder) {
       const folderOutcome = await syncFolderCatalog(catalogPath, libDb, {
@@ -150,7 +157,25 @@ export async function runCatalogSyncPass(
     runner.finalizeCancelled(jobId);
     return null;
   }
-  if (ctx.settle === 'stage') return outcome.result;
+  if (ctx.settle === 'stage') {
+    if (isFolder) {
+      const folderResult = outcome.result as FolderCatalogSyncResult;
+      return { ...folderResult, ...folderReportFields(folderResult) };
+    }
+    return outcome.result;
+  }
   runner.completeJob(jobId, outcome.result);
   return null;
+}
+
+function folderReportFields(result: FolderCatalogSyncResult): Partial<CatalogSyncStageResult> {
+  return {
+    changed: result.changed,
+    moved: result.moved,
+    newly_gone: result.newly_gone,
+    collisions: result.collisions,
+    unreadable: result.unreadable,
+    walk_ms: result.walk_ms,
+    stat_ms: result.stat_ms,
+  };
 }

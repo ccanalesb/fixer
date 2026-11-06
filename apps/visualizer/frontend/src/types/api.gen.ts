@@ -6465,6 +6465,7 @@ export interface components {
             catalog_kind: "lightroom" | "folder";
             photo_count: number | null;
             folder_count: number | null;
+            unreadable_directories: string[];
             picker_available: boolean;
         };
         ConfigCatalogChangePreviewResponse: {

@@ -265,7 +265,12 @@ async function runCacheStages(
 
   // Similarity is recomputed from scratch each time, so a check that found nothing
   // new leaves the last full run's ranking in place.
-  const unchanged = sync.added === 0 && sync.stale === 0 && embed.embedded === 0;
+  const folderChanges =
+    (sync.changed ?? 0) +
+    (sync.moved ?? 0) +
+    (sync.newly_gone ?? 0) +
+    (sync.collisions ?? 0);
+  const unchanged = sync.added === 0 && sync.stale === 0 && embed.embedded === 0 && folderChanges === 0;
   if (opts.skipRankingWhenCurrent && unchanged && catalogCacheBuilt(db)) {
     return { sync, embed, ranking: null };
   }
