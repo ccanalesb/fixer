@@ -171,4 +171,33 @@ describe('LightroomWritebackSection', () => {
     fireEvent.click(await screen.findByRole('button', { name: LR_WRITEBACK_WRITE_TO_LR }))
     expect(write).toHaveBeenCalled()
   })
+
+  it('folder turn-on shows dry-run counts and PATCHes only after confirm', async () => {
+    const folderSettings = {
+      ...baseSettings,
+      catalog_kind: 'folder' as const,
+      catalog_path: '/Volumes/Photos',
+    }
+    vi.spyOn(LrWritebackAPI, 'getSettings').mockResolvedValue(folderSettings)
+    const preview = vi.spyOn(LrWritebackAPI, 'turnOnPreview').mockResolvedValue({
+      new_sidecar: 2,
+      update_sidecar: 1,
+      embedded: 4,
+    })
+    const patch = vi.spyOn(LrWritebackAPI, 'patchSettings').mockResolvedValue({
+      ...folderSettings,
+      write_stars: true,
+    })
+    renderSection()
+    const [starsCheckbox] = await screen.findAllByRole('checkbox')
+    fireEvent.click(starsCheckbox!)
+    expect(preview).toHaveBeenCalledWith('stars')
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(patch).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+    expect(patch).toHaveBeenCalledWith({ write_stars: true })
+  })
 })

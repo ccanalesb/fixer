@@ -265,7 +265,7 @@ export function LightroomWritebackSection() {
               <b>{turnOnDialog.preview.update_sidecar}</b> existing <code>.xmp</code> files are updated
             </li>
             <li>
-              <b>{turnOnDialog.preview.embedded}</b> JPEG, HEIC, TIFF, DNG files are rewritten with the
+              <b>{turnOnDialog.preview.embedded}</b> JPEG, HEIC and TIFF files are rewritten with the
               rating inside
             </li>
           </ul>

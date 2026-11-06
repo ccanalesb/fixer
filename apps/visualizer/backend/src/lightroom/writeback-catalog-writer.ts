@@ -36,8 +36,8 @@ export interface WritebackCatalogWriter {
   readPickRating(imageKey: string): LivePickRating | null;
   hasAppStars(imageKey: string, rating: number): boolean;
   hasAppReject(imageKey: string): boolean;
-  removeAutoStarsKeyword(imageKey: string): void;
-  removeAutoRejectKeyword(imageKey: string): void;
+  removeAutoStarsKeyword(imageKey: string): void | Promise<void>;
+  removeAutoRejectKeyword(imageKey: string): void | Promise<void>;
   writeStars(imageKey: string, rating: number): PickRatingWriteResult | Promise<PickRatingWriteResult>;
   writeReject(imageKey: string): PickRatingWriteResult | Promise<PickRatingWriteResult>;
   clearStars(imageKey: string, writtenRating: number): PickRatingWriteResult | Promise<PickRatingWriteResult>;

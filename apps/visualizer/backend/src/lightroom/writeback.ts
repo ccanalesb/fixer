@@ -61,12 +61,14 @@ function countsFromDb(db: Db, tally: ReconcileRunTally): Pick<WritebackReconcile
       written: by.stars.written,
       skipped: by.stars.skipped,
       image_not_found: tally.image_not_found_stars,
+      file_error: tally.file_error_stars,
     },
     reject: {
       pending: by.reject.pending,
       written: by.reject.written,
       skipped: by.reject.skipped,
       image_not_found: tally.image_not_found_reject,
+      file_error: tally.file_error_reject,
     },
   };
 }
@@ -179,7 +181,10 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
         }
         if (!isFolder && canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
         const writeNow = canWrite && !lockStopped && catalogSession !== null;
-        const live = catalogSession?.writer.readPickRating(imageKey) ?? null;
+        let live = catalogSession?.writer.readPickRating(imageKey) ?? null;
+        if (folderWriter && writeNow) {
+          live = await folderWriter.refreshLiveFromDisk(imageKey);
+        }
         const decision = decideWriteback(db, settings, imageKey, starsSlug);
         const photo = { imageKey, live, writeNow, decision };
 

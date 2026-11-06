@@ -2,10 +2,14 @@
  * Folder catalog image rows — updates during re-sync.
  */
 import type { Db } from '../connection.js';
+import { statSync } from 'node:fs';
 import type { CatalogRecord } from '../../lightroom/reader.js';
 import { pickForDb } from '../../folder/catalog-pick.js';
 import { storeImagesBatch } from './catalog.js';
 import { libraryWrite } from './write.js';
+import { sidecarPathsForPhoto, sidecarSignature } from '../../folder/xmp-sidecars.js';
+import type { FileStatSnapshot } from '../../folder/lstat-parallel.js';
+import type { ResolvedFolderPhoto } from '../../folder/walk.js';
 
 export { pickForDb } from '../../folder/catalog-pick.js';
 
@@ -194,4 +198,34 @@ export function applyFolderMove(
   sidecarSig?: string | null,
 ): void {
   updateFolderRecordInPlace(db, key, record, catalogFileMtime, true, sidecarSig);
+}
+
+/** After write-back, match library file stats to disk so the next sync does not treat the write as an edit. */
+export function recordFolderCatalogFileSnapshot(
+  db: Db,
+  imageKey: string,
+  photo: ResolvedFolderPhoto,
+  ambiguousStemSidecarDirs: ReadonlySet<string>,
+): void {
+  const sidecarPaths = sidecarPathsForPhoto(photo, ambiguousStemSidecarDirs);
+  const statsByPath = new Map<string, FileStatSnapshot>();
+  try {
+    const st = statSync(photo.filepath);
+    statsByPath.set(photo.filepath, { size: st.size, mtimeMs: st.mtimeMs, readable: true });
+  } catch {
+    return;
+  }
+  for (const p of sidecarPaths) {
+    try {
+      const st = statSync(p);
+      statsByPath.set(p, { size: st.size, mtimeMs: st.mtimeMs, readable: true });
+    } catch {
+      statsByPath.set(p, { size: 0, mtimeMs: 0, readable: false });
+    }
+  }
+  const photoStat = statsByPath.get(photo.filepath)!;
+  const sideSig = sidecarSignature(sidecarPaths, statsByPath);
+  db.prepare(
+    `UPDATE images SET file_size = ?, catalog_file_mtime = ?, catalog_sidecar_sig = ? WHERE key = ?`,
+  ).run(photoStat.size, photoStat.mtimeMs, sideSig, imageKey);
 }

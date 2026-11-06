@@ -5,6 +5,7 @@ import {
   catalogHasAppReject,
   liveMatchesWritten,
   notFoundState,
+  stayPendingOnFileWriteFailure,
   syncWrittenFromLiveCatalog,
   userChangedAfterWrite,
   type WritebackPlanPhoto,
@@ -115,6 +116,9 @@ export async function planRejectPhoto(
   const beforePick = live.pick ?? 0;
   const result = await Promise.resolve(catalog.writeReject(imageKey));
   if (result === 'image_not_found') return notFoundState(imageKey, 'reject', row, tally);
+  if (result === 'mtime_conflict' || result === 'readonly_error') {
+    return stayPendingOnFileWriteFailure(imageKey, 'reject', row, tally, result);
+  }
   if (result !== 'updated') {
     if (catalogHasAppReject(catalog, imageKey)) {
       return adoptWrittenRejectState(imageKey, row, beforePick);

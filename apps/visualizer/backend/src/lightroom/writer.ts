@@ -29,7 +29,12 @@ export type KeywordRemoveResult = 'removed' | 'not_present' | 'image_not_found';
 export const AUTO_STARS_KEYWORD = 'lrt-auto-stars';
 export const AUTO_REJECT_KEYWORD = 'lrt-auto-reject';
 
-export type PickRatingWriteResult = 'updated' | 'skipped' | 'image_not_found';
+export type PickRatingWriteResult =
+  | 'updated'
+  | 'skipped'
+  | 'image_not_found'
+  | 'mtime_conflict'
+  | 'readonly_error';
 
 export interface LivePickRating {
   pick: number | null;

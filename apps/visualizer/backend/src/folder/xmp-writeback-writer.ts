@@ -6,6 +6,8 @@ import { dirname } from 'node:path';
 import { ExifTool } from 'exiftool-vendored';
 import type { Db } from '../db/connection.js';
 import { getImage } from '../db/library/catalog.js';
+import { recordFolderCatalogFileSnapshot } from '../db/library/folder-sync.js';
+import { libraryWrite } from '../db/library/write.js';
 import type { PickRatingWriteResult } from '../lightroom/writer.js';
 import {
   AUTO_REJECT_KEYWORD,
@@ -17,7 +19,7 @@ import {
 import { createFolderExifSession } from './exif-read.js';
 import { lstatPathsParallel } from './lstat-parallel.js';
 import { atomicReplaceFileAsync, snapshotMtime, type MtimeGuard } from './xmp-atomic-write.js';
-import { readFolderPhotoXmpMetadata } from './xmp-metadata.js';
+import { readFolderPhotoXmpMetadata, type FolderXmpMetadata } from './xmp-metadata.js';
 import { resolveFolderWriteTargets } from './xmp-write-target.js';
 import { resolveFolderPhotoAtPath, stemSidecarAmbiguousForDir } from './resolve-photo.js';
 import type { ResolvedFolderPhoto } from './walk.js';
@@ -34,6 +36,15 @@ function liveFromMeta(meta: { rating: number; pick: number; keywords: string[] }
   return { pick: 0, rating: null, auto_stars_keyword, auto_reject_keyword };
 }
 
+function pickRatingWriteResultFromAtomic(
+  outcome: 'ok' | 'skipped_mtime' | 'readonly' | 'outside',
+): PickRatingWriteResult | 'ok' {
+  if (outcome === 'ok') return 'ok';
+  if (outcome === 'skipped_mtime') return 'mtime_conflict';
+  if (outcome === 'readonly') return 'readonly_error';
+  return 'skipped';
+}
+
 export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
   private readonly exif = createFolderExifSession();
   private readonly writeTool = new ExifTool({ maxProcs: 1 });
@@ -47,16 +58,14 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
   async prefetch(imageKeys: readonly string[]): Promise<void> {
     for (const imageKey of imageKeys) {
       if (this.liveByKey.has(imageKey)) continue;
-      const photo = this.resolvePhoto(imageKey);
-      if (!photo || !existsSync(photo.filepath)) {
-        continue;
-      }
-      const ambiguous = this.ambiguousFor(photo);
-      const sidecars = resolveFolderWriteTargets(photo, ambiguous).map((t) => t.path);
-      const stats = await lstatPathsParallel([photo.filepath, ...sidecars], 4);
-      const meta = await readFolderPhotoXmpMetadata(this.exif, photo, ambiguous, stats);
-      this.liveByKey.set(imageKey, liveFromMeta(meta));
+      await this.readFreshLive(imageKey);
     }
+  }
+
+  async refreshLiveFromDisk(imageKey: string): Promise<LivePickRating | null> {
+    const fresh = await this.readFreshLive(imageKey);
+    if (!fresh) return null;
+    return { pick: fresh.live.pick, rating: fresh.live.rating };
   }
 
   async close(): Promise<void> {
@@ -75,13 +84,26 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     return stemSidecarAmbiguousForDir(dir, photo.stem) ? new Set([dir]) : new Set();
   }
 
+  private async readFreshLive(
+    imageKey: string,
+  ): Promise<{ photo: ResolvedFolderPhoto; meta: FolderXmpMetadata; live: LiveWritebackCatalog } | null> {
+    const photo = this.resolvePhoto(imageKey);
+    if (!photo || !existsSync(photo.filepath)) return null;
+    const ambiguous = this.ambiguousFor(photo);
+    const sidecars = resolveFolderWriteTargets(photo, ambiguous).map((t) => t.path);
+    const stats = await lstatPathsParallel([photo.filepath, ...sidecars], 4);
+    const meta = await readFolderPhotoXmpMetadata(this.exif, photo, ambiguous, stats);
+    const live = liveFromMeta(meta);
+    this.liveByKey.set(imageKey, live);
+    return { photo, meta, live };
+  }
+
   readLive(imageKey: string): LiveWritebackCatalog | null {
     if (!this.liveByKey.has(imageKey)) return null;
     return this.liveByKey.get(imageKey) ?? null;
   }
 
   readPickRating(imageKey: string): LivePickRating | null {
-    if (!this.liveByKey.has(imageKey)) return null;
     const live = this.readLive(imageKey);
     if (!live) return null;
     return { pick: live.pick, rating: live.rating };
@@ -99,12 +121,12 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     return live.auto_reject_keyword;
   }
 
-  removeAutoStarsKeyword(imageKey: string): void {
-    void this.writeKeywordChange(imageKey, (kws) => kws.filter((k) => k !== AUTO_STARS_KEYWORD));
+  removeAutoStarsKeyword(imageKey: string): Promise<void> {
+    return this.writeKeywordChange(imageKey, (kws) => kws.filter((k) => k !== AUTO_STARS_KEYWORD));
   }
 
-  removeAutoRejectKeyword(imageKey: string): void {
-    void this.writeKeywordChange(imageKey, (kws) => kws.filter((k) => k !== AUTO_REJECT_KEYWORD));
+  removeAutoRejectKeyword(imageKey: string): Promise<void> {
+    return this.writeKeywordChange(imageKey, (kws) => kws.filter((k) => k !== AUTO_REJECT_KEYWORD));
   }
 
   writeStars(imageKey: string, rating: number): PickRatingWriteResult | Promise<PickRatingWriteResult> {
@@ -158,20 +180,23 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
   }
 
   private async writeKeywordChange(imageKey: string, map: (kws: string[]) => string[]): Promise<void> {
-    const photo = this.resolvePhoto(imageKey);
-    if (!photo) return;
-    const live = this.readLive(imageKey);
-    if (!live) return;
+    const fresh = await this.readFreshLive(imageKey);
+    if (!fresh) return;
+    const { photo, meta, live } = fresh;
     const rating = live.pick === -1 ? -1 : (live.rating ?? 0);
-    const kws = map(await this.readKeywords(photo));
-    await this.applyToTargets(photo, rating, kws);
+    const keywords = map(meta.keywords);
+    const result = await this.applyToTargets(photo, rating, keywords, 'set');
+    if (result === 'ok') {
+      this.liveByKey.set(imageKey, liveFromMeta({ rating: meta.rating, pick: meta.pick, keywords }));
+      this.recordSnapshot(imageKey, photo);
+    }
   }
 
-  private async readKeywords(photo: ResolvedFolderPhoto): Promise<string[]> {
+  private recordSnapshot(imageKey: string, photo: ResolvedFolderPhoto): void {
     const ambiguous = this.ambiguousFor(photo);
-    const stats = await lstatPathsParallel([photo.filepath], 2);
-    const meta = await readFolderPhotoXmpMetadata(this.exif, photo, ambiguous, stats);
-    return meta.keywords;
+    libraryWrite(this.library, () =>
+      recordFolderCatalogFileSnapshot(this.library, imageKey, photo, ambiguous),
+    );
   }
 
   private async writeRating(
@@ -180,11 +205,9 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     keyword: string | null,
     opts?: { clearRating?: boolean; removeKeyword?: string },
   ): Promise<PickRatingWriteResult> {
-    const photo = this.resolvePhoto(imageKey);
-    if (!photo || !existsSync(photo.filepath)) return 'image_not_found';
-
-    const live = this.readLive(imageKey);
-    if (!live) return 'image_not_found';
+    const fresh = await this.readFreshLive(imageKey);
+    if (!fresh) return 'image_not_found';
+    const { photo, meta, live } = fresh;
 
     if (rating === -1) {
       if (live.rating != null && live.rating > 0) return 'skipped';
@@ -194,13 +217,16 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
       if (live.pick === -1) return 'skipped';
     }
 
-    let keywords = await this.readKeywords(photo);
+    let keywords = [...meta.keywords];
+    const touchesSubject = Boolean(keyword || opts?.removeKeyword);
     if (opts?.removeKeyword) keywords = keywords.filter((k) => k !== opts.removeKeyword);
     if (keyword && !keywords.includes(keyword)) keywords = [...keywords, keyword];
 
     const writeRating = opts?.clearRating ? 0 : rating;
-    const result = await this.applyToTargets(photo, writeRating, keywords, Boolean(opts?.removeKeyword));
-    if (result === 'ok') {
+    const subjectMode = touchesSubject ? ('set' as const) : ('unchanged' as const);
+    const result = await this.applyToTargets(photo, writeRating, keywords, subjectMode);
+    const mapped = pickRatingWriteResultFromAtomic(result);
+    if (mapped === 'ok') {
       this.liveByKey.set(
         imageKey,
         liveFromMeta({
@@ -209,9 +235,10 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
           keywords,
         }),
       );
+      this.recordSnapshot(imageKey, photo);
       return 'updated';
     }
-    if (result === 'readonly') return 'skipped';
+    if (mapped === 'mtime_conflict' || mapped === 'readonly_error') return mapped;
     return 'skipped';
   }
 
@@ -230,18 +257,15 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     photo: ResolvedFolderPhoto,
     rating: number,
     keywords: string[],
-    clearSubject = false,
+    subjectMode: 'unchanged' | 'set',
   ): Promise<'ok' | 'skipped_mtime' | 'readonly' | 'outside'> {
     const ambiguous = this.ambiguousFor(photo);
     const targets = resolveFolderWriteTargets(photo, ambiguous);
-    let last: 'ok' | 'skipped_mtime' | 'readonly' | 'outside' = 'ok';
     for (const target of targets) {
       const guards = this.guardsForTarget(photo, target.path);
       const tags: Record<string, unknown> = { Rating: rating === 0 ? 0 : rating };
-      if (keywords.length) {
+      if (subjectMode === 'set') {
         tags.Subject = keywords;
-      } else if (clearSubject) {
-        tags.Subject = '';
       }
       const outcome = await atomicReplaceFileAsync(this.catalogRoot, target.path, guards, async (tempPath) => {
         if (target.kind === 'embedded') {
@@ -251,9 +275,8 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
         }
       });
       if (outcome !== 'ok') return outcome;
-      last = outcome;
     }
-    return last;
+    return 'ok';
   }
 }
 

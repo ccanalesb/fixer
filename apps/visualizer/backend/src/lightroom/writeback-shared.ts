@@ -28,6 +28,8 @@ export interface ReconcileRunTally {
   catalog_cleared_stars: number;
   image_not_found_stars: number;
   image_not_found_reject: number;
+  file_error_stars: number;
+  file_error_reject: number;
 }
 
 export function emptyRunTally(): ReconcileRunTally {
@@ -38,6 +40,8 @@ export function emptyRunTally(): ReconcileRunTally {
     catalog_cleared_stars: 0,
     image_not_found_stars: 0,
     image_not_found_reject: 0,
+    file_error_stars: 0,
+    file_error_reject: 0,
   };
 }
 
@@ -154,6 +158,32 @@ export function adoptWrittenStarsState(
     written_rating: rating,
     stars_profile_version_id: starsProfileVersionId,
     written_at: row?.written_at ?? nowIsoUtc(),
+  };
+}
+
+export function stayPendingOnFileWriteFailure(
+  imageKey: string,
+  kind: WritebackKind,
+  row: LrWritebackStateRow | null,
+  tally: ReconcileRunTally,
+  result: 'mtime_conflict' | 'readonly_error',
+  starsProfileVersionId: number | null = null,
+): Omit<LrWritebackStateRow, 'updated_at'> {
+  if (result === 'readonly_error') {
+    if (kind === 'stars') tally.file_error_stars += 1;
+    else tally.file_error_reject += 1;
+  }
+  return {
+    image_key: imageKey,
+    kind,
+    status: 'pending',
+    before_pick: row?.before_pick ?? null,
+    before_rating: row?.before_rating ?? null,
+    written_pick: row?.written_pick ?? null,
+    written_rating: row?.written_rating ?? null,
+    stars_profile_version_id:
+      kind === 'stars' ? (row?.stars_profile_version_id ?? starsProfileVersionId) : null,
+    written_at: row?.written_at ?? null,
   };
 }
 

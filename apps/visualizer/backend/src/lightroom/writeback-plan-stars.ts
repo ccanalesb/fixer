@@ -5,6 +5,7 @@ import {
   catalogHasAppStars,
   liveMatchesWritten,
   notFoundState,
+  stayPendingOnFileWriteFailure,
   syncWrittenFromLiveCatalog,
   userChangedAfterWrite,
   type WritebackPlanPhoto,
@@ -90,6 +91,9 @@ export async function planStarsPhoto(
     catalogHasAppStars(catalog, imageKey, row.written_rating)
   ) {
     const result = await Promise.resolve(catalog.replaceStars(imageKey, row.written_rating, rating));
+    if (result === 'mtime_conflict' || result === 'readonly_error') {
+      return stayPendingOnFileWriteFailure(imageKey, 'stars', row, tally, result, starsVersionId);
+    }
     if (result === 'updated') {
       tally.catalog_updated_stars += 1;
       return {
@@ -142,6 +146,9 @@ export async function planStarsPhoto(
   const beforeRating = live.rating;
   const result = await Promise.resolve(catalog.writeStars(imageKey, rating));
   if (result === 'image_not_found') return notFoundState(imageKey, 'stars', row, tally);
+  if (result === 'mtime_conflict' || result === 'readonly_error') {
+    return stayPendingOnFileWriteFailure(imageKey, 'stars', row, tally, result, starsVersionId);
+  }
   if (result !== 'updated') {
     if (catalogHasAppStars(catalog, imageKey, rating)) {
       return adoptWrittenStarsState(imageKey, rating, starsVersionId, row);
