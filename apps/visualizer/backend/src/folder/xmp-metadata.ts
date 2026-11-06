@@ -6,6 +6,7 @@ import type { CatalogRecord } from '../lightroom/reader.js';
 import type { FolderExifSession } from './exif-read.js';
 import type { FileStatSnapshot } from './lstat-parallel.js';
 import type { ResolvedFolderPhoto } from './walk.js';
+import { assignCatalogPick } from './catalog-pick.js';
 import { sidecarPathsForFile } from './xmp-sidecars.js';
 
 export interface FolderXmpMetadata {
@@ -194,7 +195,7 @@ export async function readFolderPhotoXmpMetadata(
 
 export function applyFolderXmpMetadata(record: CatalogRecord, meta: FolderXmpMetadata): void {
   record.rating = meta.rating;
-  record.pick = meta.pick as unknown as boolean;
+  assignCatalogPick(record, meta.pick === -1 ? -1 : 0);
   record.color_label = meta.color_label;
   record.keywords = meta.keywords;
   record.title = meta.title;

@@ -3,8 +3,11 @@
  */
 import type { Db } from '../connection.js';
 import type { CatalogRecord } from '../../lightroom/reader.js';
+import { pickForDb } from '../../folder/catalog-pick.js';
 import { storeImagesBatch } from './catalog.js';
 import { libraryWrite } from './write.js';
+
+export { pickForDb } from '../../folder/catalog-pick.js';
 
 export interface FolderLibraryRow {
   key: string;
@@ -31,13 +34,6 @@ export function listFolderLibraryRows(db: Db): FolderLibraryRow[] {
     file_size: Number(r.file_size ?? 0),
     catalog_sidecar_sig: r.catalog_sidecar_sig ?? null,
   }));
-}
-
-function pickForDb(record: CatalogRecord): number {
-  const raw = record.pick as boolean | number;
-  if (Number(raw) === -1) return -1;
-  if (raw === true || Number(raw) === 1) return 1;
-  return 0;
 }
 
 export function insertFolderRecords(

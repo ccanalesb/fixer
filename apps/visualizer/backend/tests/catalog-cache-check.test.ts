@@ -111,6 +111,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete process.env.DATABASE_PATH;
   delete process.env.LT_CONFIG_YAML;
   fx.cleanup();
@@ -203,6 +204,25 @@ describe('the catalog cache check', () => {
       });
     });
 
+    expect(
+      fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`),
+    ).toHaveLength(1);
+  });
+
+  it('leaves the changed-since-ranking mark when similarity detection fails', async () => {
+    await seedCatalog(['shot-a']);
+    await check();
+    fx.withDb((db) => {
+      libraryWrite(db, () => markChangedSinceRanking(db));
+    });
+
+    const clip = await import('../src/clip/similarity.js');
+    vi.spyOn(clip, 'runClipSimilarForSeed').mockImplementation(() => {
+      throw new Error('simulated similarity failure');
+    });
+
+    const { ready } = await check();
+    expect(ready).toBe(false);
     expect(
       fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`),
     ).toHaveLength(1);
