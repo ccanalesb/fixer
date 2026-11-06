@@ -24,6 +24,13 @@ export interface FolderWalkStats {
   folderCount: number;
 }
 
+export interface FolderWalkResult {
+  photos: ResolvedFolderPhoto[];
+  stats: FolderWalkStats;
+  /** Absolute paths of directories that could not be read. */
+  unreadableDirectories: string[];
+}
+
 export interface ResolvedFolderPhoto {
   /** File stored on the row — RAW when paired, else the raster. */
   filepath: string;
@@ -32,10 +39,11 @@ export interface ResolvedFolderPhoto {
   stem: string;
 }
 
-function collectFiles(root: string): WalkedPhotoFile[] {
+function collectFiles(root: string): { files: WalkedPhotoFile[]; unreadableDirectories: string[] } {
   const rootReal = resolve(root);
   const skipRoots = skipRootsUnderCatalog(rootReal);
   const out: WalkedPhotoFile[] = [];
+  const unreadableDirectories: string[] = [];
 
   function visit(dir: string): void {
     if (skipDirectory(dir, skipRoots)) return;
@@ -43,6 +51,7 @@ function collectFiles(root: string): WalkedPhotoFile[] {
     try {
       names = readdirSync(dir).sort((a, b) => a.localeCompare(b));
     } catch {
+      unreadableDirectories.push(dir);
       return;
     }
     for (const name of names) {
@@ -75,7 +84,8 @@ function collectFiles(root: string): WalkedPhotoFile[] {
 
   visit(rootReal);
   out.sort((a, b) => a.relPath.localeCompare(b.relPath));
-  return out;
+  unreadableDirectories.sort((a, b) => a.localeCompare(b));
+  return { files: out, unreadableDirectories };
 }
 
 /** Group RAW + JPEG in the same directory into one logical photo. */
@@ -115,17 +125,38 @@ export function resolveFolderPhotos(files: WalkedPhotoFile[]): ResolvedFolderPho
   return photos;
 }
 
-export function walkFolderCatalog(root: string): { photos: ResolvedFolderPhoto[]; stats: FolderWalkStats } {
-  const files = collectFiles(root);
+export function walkFolderCatalog(root: string): FolderWalkResult {
+  const walkStart = Date.now();
+  const { files, unreadableDirectories } = collectFiles(root);
   const photos = resolveFolderPhotos(files);
   const folderSet = new Set<string>();
   for (const f of files) folderSet.add(f.dir);
+  void walkStart;
   return {
     photos,
     stats: { photoCount: photos.length, folderCount: folderSet.size },
+    unreadableDirectories,
   };
 }
 
 export function folderCatalogStats(root: string): FolderWalkStats {
   return walkFolderCatalog(root).stats;
+}
+
+export function folderCatalogWalkDiagnostics(root: string): {
+  stats: FolderWalkStats;
+  unreadableDirectories: string[];
+} {
+  const { stats, unreadableDirectories } = walkFolderCatalog(root);
+  return { stats, unreadableDirectories };
+}
+
+/** Yield photo batches for streaming EXIF reads and DB writes. */
+export function* batchResolvedPhotos(
+  photos: readonly ResolvedFolderPhoto[],
+  batchSize: number,
+): Generator<ResolvedFolderPhoto[], void> {
+  for (let i = 0; i < photos.length; i += batchSize) {
+    yield photos.slice(i, i + batchSize);
+  }
 }

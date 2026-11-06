@@ -14,7 +14,7 @@ import {
   findCatalogLibrariesForPath,
   inferCatalogKind,
 } from '../catalog-library.js';
-import { folderCatalogStats } from '../folder/walk.js';
+import { folderCatalogStats, folderCatalogWalkDiagnostics } from '../folder/walk.js';
 import {
   config,
   expandUserPath,
@@ -124,6 +124,10 @@ ltConfigRoutes.openapi(getCatalogRoute, (c) => {
   const resolved = raw ? expandUserPath(raw) : '';
   const kind = resolved ? inferCatalogKind(resolved) : 'lightroom';
   const counts = resolved ? catalogPhotoAndFolderCounts(resolved, kind) : { photo_count: null, folder_count: null };
+  const unreadable_directories =
+    resolved && kind === 'folder' && catalogExists(resolved)
+      ? folderCatalogWalkDiagnostics(resolved).unreadableDirectories
+      : [];
   return c.json(
     {
       catalog_path: raw,
@@ -132,6 +136,7 @@ ltConfigRoutes.openapi(getCatalogRoute, (c) => {
       catalog_kind: kind,
       photo_count: counts.photo_count,
       folder_count: counts.folder_count,
+      unreadable_directories,
       picker_available: nativeFileDialogAvailable(),
     },
     200,

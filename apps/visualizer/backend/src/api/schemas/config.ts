@@ -13,6 +13,8 @@ export const ConfigCatalogGetResponse = z
     photo_count: z.int().nullable(),
     /** Subfolders that contain photos under a folder catalog root. */
     folder_count: z.int().nullable(),
+    /** Directories under a folder catalog root that could not be read on the last walk. */
+    unreadable_directories: z.array(z.string()),
     /** Whether this host can open a native file dialog; macOS only for now. */
     picker_available: z.boolean(),
   })

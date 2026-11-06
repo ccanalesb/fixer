@@ -135,4 +135,14 @@ describe('applyCatalogChange', () => {
     expect(result.cancelled_job_ids).toContain(jobId);
     expect(readCfg().catalog_path).toBe(next);
   });
+
+  it('does not queue catalog_sync when switching to an empty catalog with no libraries', () => {
+    const next = join(dir, 'photos');
+    mkdirSync(next, { recursive: true });
+    writeFileSync(cfgPath, 'catalog_path: ""\n');
+
+    const result = applyCatalogChange(next, 'switch');
+    if ('error' in result) throw new Error(result.error);
+    expect(result.catalog_sync_job_id).toBeNull();
+  });
 });

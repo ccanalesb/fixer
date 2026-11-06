@@ -186,6 +186,17 @@ export function previewCatalogChange(
   };
 }
 
+function shouldQueueCatalogSync(preview: CatalogChangePreview, mode: CatalogChangeMode): boolean {
+  if (mode !== 'switch') return true;
+  if (preview.next.has_library) return true;
+  if (preview.current.has_library) return true;
+  return false;
+}
+
+function queueCatalogSyncJob(jobsDb: Db): string | null {
+  return createJob(jobsDb, 'catalog_sync', {});
+}
+
 function cancelCatalogJobs(jobsDb: Db): string[] {
   const cancellable = catalogRequiringJobTypes();
   const cancelled: string[] = [];
@@ -256,7 +267,7 @@ export function applyCatalogChange(
     invalidateOpenLibraryCache();
 
     return withJobsDb((jobsDb) => {
-      const syncId = createJob(jobsDb, 'catalog_sync', {});
+      const syncId = shouldQueueCatalogSync(preview, mode) ? queueCatalogSyncJob(jobsDb) : null;
       return {
         catalog_path: validated.trimmed,
         change: mode,
@@ -272,7 +283,7 @@ export function applyCatalogChange(
     const cancelled = cancelCatalogJobs(jobsDb);
     updateConfigYamlCatalogPath(configPath, validated.trimmed);
     invalidateOpenLibraryCache();
-    const syncId = createJob(jobsDb, 'catalog_sync', {});
+    const syncId = shouldQueueCatalogSync(preview, mode) ? queueCatalogSyncJob(jobsDb) : null;
     return {
       catalog_path: validated.trimmed,
       change: mode,

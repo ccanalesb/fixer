@@ -2,12 +2,14 @@
  * Read capture metadata from photo files with exiftool-vendored.
  */
 import { statSync } from 'node:fs';
-import { exiftool, type Tags } from 'exiftool-vendored';
+import { ExifTool, type Tags } from 'exiftool-vendored';
 import { generateRecordKey } from '../lightroom/reader.js';
 import type { CatalogRecord } from '../lightroom/reader.js';
 import type { ResolvedFolderPhoto } from './walk.js';
 
 const WALL_CLOCK_FIELDS = ['DateTimeOriginal', 'CreateDate', 'DateTimeDigitized'] as const;
+
+export const FOLDER_EXIF_WORKERS = Math.max(1, Number(process.env.FOLDER_EXIF_WORKERS ?? '4'));
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -45,36 +47,51 @@ export function captureDateFromTags(tags: Tags, filepath: string): string {
   }
 }
 
-export async function readExifTags(filepath: string): Promise<Tags> {
-  try {
-    return await exiftool.read(filepath);
-  } catch {
-    return {} as Tags;
-  }
+export interface FolderExifSession {
+  maxProcs: number;
+  read: (filepath: string) => Promise<Tags>;
+  readParallel: (paths: readonly string[]) => Promise<Map<string, Tags>>;
+  end: () => Promise<void>;
 }
 
-const EXIF_WORKERS = Math.max(1, Number(process.env.FOLDER_EXIF_WORKERS ?? '4'));
-
-export async function readExifTagsParallel(paths: readonly string[]): Promise<Map<string, Tags>> {
-  const out = new Map<string, Tags>();
-  let index = 0;
-  async function worker(): Promise<void> {
-    for (;;) {
-      const i = index;
-      index += 1;
-      if (i >= paths.length) return;
-      const path = paths[i]!;
-      out.set(path, await readExifTags(path));
+/** One ExifTool pool per folder sync — workers match `FOLDER_EXIF_WORKERS`. */
+export function createFolderExifSession(): FolderExifSession {
+  const maxProcs = FOLDER_EXIF_WORKERS;
+  const tool = new ExifTool({ maxProcs });
+  async function read(filepath: string): Promise<Tags> {
+    try {
+      return await tool.read(filepath);
+    } catch {
+      return {} as Tags;
     }
   }
-  const workers = Math.min(EXIF_WORKERS, paths.length || 1);
-  await Promise.all(Array.from({ length: workers }, () => worker()));
-  return out;
+  return {
+    maxProcs,
+    read,
+    async readParallel(paths: readonly string[]): Promise<Map<string, Tags>> {
+      const out = new Map<string, Tags>();
+      let index = 0;
+      async function worker(): Promise<void> {
+        for (;;) {
+          const i = index;
+          index += 1;
+          if (i >= paths.length) return;
+          const path = paths[i]!;
+          out.set(path, await read(path));
+        }
+      }
+      const workers = Math.min(maxProcs, paths.length || 1);
+      await Promise.all(Array.from({ length: workers }, () => worker()));
+      return out;
+    },
+    end: () => tool.end(),
+  };
 }
 
 export function folderPhotoToCatalogRecord(
   photo: ResolvedFolderPhoto,
   tags: Tags,
+  fileSize = 0,
 ): CatalogRecord {
   const date_taken = captureDateFromTags(tags, photo.filepath);
   const record: CatalogRecord = {
@@ -101,7 +118,7 @@ export function folderPhotoToCatalogRecord(
     gps_longitude: null,
     width: Number(tags.ImageWidth ?? tags.ExifImageWidth ?? 0) || 0,
     height: Number(tags.ImageHeight ?? tags.ExifImageHeight ?? 0) || 0,
-    file_size: 0,
+    file_size: fileSize,
     orientation: null,
   };
   record.key = generateRecordKey(record);
@@ -112,11 +129,13 @@ export function folderPhotoToCatalogRecord(
 export function buildFolderCatalogRecords(
   photos: readonly ResolvedFolderPhoto[],
   tagsByPath: ReadonlyMap<string, Tags>,
+  sizeByPath?: ReadonlyMap<string, number>,
 ): CatalogRecord[] {
   const byKey = new Map<string, CatalogRecord>();
   for (const photo of photos) {
     const tags = tagsByPath.get(photo.filepath) ?? ({} as Tags);
-    const record = folderPhotoToCatalogRecord(photo, tags);
+    const size = sizeByPath?.get(photo.filepath) ?? 0;
+    const record = folderPhotoToCatalogRecord(photo, tags, size);
     byKey.set(record.key, record);
   }
   return [...byKey.values()];
