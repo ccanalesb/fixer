@@ -2,7 +2,7 @@
  * XMP/IPTC field values and per-field sources for the folder-catalog image modal tab.
  */
 import { existsSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname } from 'node:path';
 import type { Tags } from 'exiftool-vendored';
 import { getLibraryMeta } from '../db/library/bootstrap.js';
 import type { Db } from '../db/connection.js';
@@ -20,7 +20,6 @@ import {
   stringField,
   type FolderXmpMetadata,
 } from './xmp-metadata.js';
-import { canonicalPath, isPathUnderAllowedRoots } from '../api/images/common.js';
 import { pathUnderCatalogRoot } from './path-under-root.js';
 import { sidecarPathsForPhoto } from './xmp-sidecars.js';
 import type { ResolvedFolderPhoto } from './walk.js';

@@ -2,12 +2,10 @@
  * Write-back into folder-catalog photo files (XMP sidecars and embedded metadata).
  */
 import { existsSync } from 'node:fs';
-import { dirname, extname } from 'node:path';
+import { dirname } from 'node:path';
 import { ExifTool } from 'exiftool-vendored';
 import type { Db } from '../db/connection.js';
 import { getImage } from '../db/library/catalog.js';
-import { CATALOG_PATH_META_KEY } from '../catalog-library.js';
-import { getLibraryMeta } from '../db/library/bootstrap.js';
 import type { PickRatingWriteResult } from '../lightroom/writer.js';
 import {
   AUTO_REJECT_KEYWORD,
@@ -254,14 +252,6 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
   }
 }
 
-export function folderCatalogRoot(library: Db): string | null {
-  return getLibraryMeta(library, CATALOG_PATH_META_KEY);
-}
-
-export function isFolderWritebackWriter(w: WritebackCatalogWriter): w is FolderWritebackCatalogWriter {
-  return w instanceof FolderWritebackCatalogWriter;
-}
-
 export async function openFolderWritebackWriterSession(
   catalogRoot: string,
   library: Db,
@@ -271,12 +261,4 @@ export async function openFolderWritebackWriterSession(
     writer,
     close: () => writer.close(),
   };
-}
-
-export function embeddedWriteExtensions(): Set<string> {
-  return new Set(['.jpg', '.jpeg', '.heic', '.heif', '.tif', '.tiff', '.dng', '.png', '.webp', '.avif']);
-}
-
-export function isEmbeddedWriteTarget(filepath: string): boolean {
-  return embeddedWriteExtensions().has(extname(filepath).toLowerCase());
 }

@@ -27,8 +27,6 @@ function photoWouldWrite(
   db: Db,
   imageKey: string,
   kind: 'stars' | 'reject',
-  settings: ReturnType<typeof getLrWritebackSettings>,
-  starsSlug: string | null,
   meta: { rating: number; pick: number },
   decision: ReturnType<typeof decideWriteback>,
 ): boolean {
@@ -36,7 +34,6 @@ function photoWouldWrite(
   if (row?.status === 'written' || row?.status === 'skipped') return false;
   if (meta.rating > 0 || meta.pick === -1) return false;
   if (kind === 'stars') {
-    if (!settings.write_stars && decision.stars.rating == null) return false;
     return decision.stars.rating != null;
   }
   if (!decision.reject.want) return false;
@@ -68,7 +65,7 @@ export async function previewFolderWritebackTurnOn(
         : new Set<string>();
       const stats = await lstatPathsParallel([photo.filepath], 2);
       const meta = await readFolderPhotoXmpMetadata(session, photo, ambiguous, stats);
-      if (!photoWouldWrite(db, imageKey, kind, settings, starsSlug, meta, decision)) continue;
+      if (!photoWouldWrite(db, imageKey, kind, meta, decision)) continue;
       const breakdown = dryRunBreakdownForTargets(resolveFolderWriteTargets(photo, ambiguous));
       totals.new_sidecar += breakdown.new_sidecar;
       totals.update_sidecar += breakdown.update_sidecar;
