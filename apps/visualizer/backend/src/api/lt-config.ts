@@ -14,7 +14,7 @@ import {
   findCatalogLibrariesForPath,
   inferCatalogKind,
 } from '../catalog-library.js';
-import { folderCatalogStats, folderCatalogWalkDiagnostics, invalidateFolderCatalogWalkCache } from '../folder/walk.js';
+import { folderCatalogWalkDiagnostics } from '../folder/walk.js';
 import {
   connectCatalogReadOnly,
   getImageCount as getLightroomCatalogImageCount,
@@ -93,37 +93,63 @@ function currentPhotoCount(resolved: string): number | null {
   }
 }
 
-function lightroomCatalogPhotoCount(resolved: string): number | null {
-  const libraryCount = currentPhotoCount(resolved);
-  if (libraryCount != null && libraryCount > 0) return libraryCount;
+/** Photo count read from a `.lrcat`, kept until the file's size or mtime changes. */
+const lrcatCountCache = new Map<string, { signature: string; count: number }>();
+
+function lrcatImageCount(resolved: string): number | null {
+  let signature: string;
+  try {
+    const st = statSync(resolved);
+    signature = `${st.size}:${st.mtimeMs}`;
+  } catch {
+    return null;
+  }
+  const hit = lrcatCountCache.get(resolved);
+  if (hit?.signature === signature) return hit.count;
   try {
     const conn = connectCatalogReadOnly(resolved);
     try {
-      return getLightroomCatalogImageCount(conn);
+      const count = getLightroomCatalogImageCount(conn);
+      lrcatCountCache.set(resolved, { signature, count });
+      return count;
     } finally {
       conn.close();
     }
   } catch {
-    return libraryCount;
+    return null;
   }
 }
 
-function catalogPhotoAndFolderCounts(
+function lightroomCatalogPhotoCount(resolved: string): number | null {
+  const libraryCount = currentPhotoCount(resolved);
+  if (libraryCount != null && libraryCount > 0) return libraryCount;
+  return lrcatImageCount(resolved) ?? libraryCount;
+}
+
+interface CatalogCounts {
+  photo_count: number | null;
+  folder_count: number | null;
+  unreadable_directories: string[];
+}
+
+async function catalogCounts(
   resolved: string,
   kind: ReturnType<typeof inferCatalogKind>,
-): { photo_count: number | null; folder_count: number | null } {
-  if (!resolved || !catalogExists(resolved)) {
-    return { photo_count: null, folder_count: null };
-  }
+): Promise<CatalogCounts> {
   if (kind === 'folder') {
     const libraryCount = currentPhotoCount(resolved);
-    const walked = folderCatalogStats(resolved);
+    const walked = await folderCatalogWalkDiagnostics(resolved);
     return {
-      photo_count: libraryCount && libraryCount > 0 ? libraryCount : walked.photoCount,
-      folder_count: walked.folderCount,
+      photo_count: libraryCount && libraryCount > 0 ? libraryCount : walked.stats.photoCount,
+      folder_count: walked.stats.folderCount,
+      unreadable_directories: walked.unreadableDirectories,
     };
   }
-  return { photo_count: lightroomCatalogPhotoCount(resolved), folder_count: null };
+  return {
+    photo_count: lightroomCatalogPhotoCount(resolved),
+    folder_count: null,
+    unreadable_directories: [],
+  };
 }
 
 // --- catalog ----------------------------------------------------------------
@@ -137,25 +163,22 @@ const getCatalogRoute = createRoute({
   }),
 });
 
-ltConfigRoutes.openapi(getCatalogRoute, (c) => {
+ltConfigRoutes.openapi(getCatalogRoute, async (c) => {
   const cfg = loadLibraryConfig(config.LT_CONFIG_YAML);
   const raw = cfg.catalogPathRaw || '';
   const resolved = raw ? expandUserPath(raw) : '';
   const kind = resolved ? inferCatalogKind(resolved) : 'lightroom';
-  const counts = resolved ? catalogPhotoAndFolderCounts(resolved, kind) : { photo_count: null, folder_count: null };
-  const unreadable_directories =
-    resolved && kind === 'folder' && catalogExists(resolved)
-      ? folderCatalogWalkDiagnostics(resolved).unreadableDirectories
-      : [];
+  const exists = catalogExists(resolved);
+  const counts: CatalogCounts = exists
+    ? await catalogCounts(resolved, kind)
+    : { photo_count: null, folder_count: null, unreadable_directories: [] };
   return c.json(
     {
       catalog_path: raw,
       resolved_path: resolved,
-      exists: Boolean(resolved && catalogExists(resolved)),
+      exists,
       catalog_kind: kind,
-      photo_count: counts.photo_count,
-      folder_count: counts.folder_count,
-      unreadable_directories,
+      ...counts,
       picker_available: nativeFileDialogAvailable(),
     },
     200,

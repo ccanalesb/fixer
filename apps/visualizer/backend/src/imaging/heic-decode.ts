@@ -76,6 +76,12 @@ function fitToPreview(pipeline: sharp.Sharp, width: number, height: number): sha
   });
 }
 
+function logDecodeFailure(decoder: string, inputPath: string, e: unknown): void {
+  process.stderr.write(
+    ` ${decoder} could not decode ${inputPath}: ${e instanceof Error ? e.message : String(e)}\n`,
+  );
+}
+
 async function decodeWithSips(inputPath: string, outputPath: string): Promise<boolean> {
   try {
     await execFileAsync('sips', ['-s', 'format', 'jpeg', inputPath, '--out', outputPath]);
@@ -87,7 +93,8 @@ async function decodeWithSips(inputPath: string, outputPath: string): Promise<bo
       await writeFile(outputPath, resized);
     }
     return true;
-  } catch {
+  } catch (e) {
+    logDecodeFailure('sips', inputPath, e);
     return false;
   }
 }
@@ -100,7 +107,8 @@ async function decodeWithLibheif(inputPath: string, outputPath: string): Promise
     const pipeline = fitToPreview(sharp(data, { raw: { width, height, channels: 4 } }), width, height);
     await pipeline.jpeg({ quality: 92, mozjpeg: true }).toFile(outputPath);
     return true;
-  } catch {
+  } catch (e) {
+    logDecodeFailure('libheif', inputPath, e);
     return false;
   } finally {
     releaseLibheifSlot();

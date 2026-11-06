@@ -60,7 +60,7 @@ export async function previewFolderWritebackTurnOn(
       const photo = resolveFolderPhotoAtPath(catalogRoot, String(row.filepath));
       if (!photo || !existsSync(photo.filepath)) continue;
       const decision = decideWriteback(db, settings, imageKey, starsSlug);
-      const ambiguous = stemSidecarAmbiguousForDir(dirname(photo.filepath), photo.stem)
+      const ambiguous = stemSidecarAmbiguousForDir(dirname(photo.filepath))
         ? new Set([dirname(photo.filepath)])
         : new Set<string>();
       const stats = await lstatPathsParallel([photo.filepath], 2);

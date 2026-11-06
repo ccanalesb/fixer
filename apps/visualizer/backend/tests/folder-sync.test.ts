@@ -208,6 +208,30 @@ describe('syncFolderCatalog', () => {
     }
   });
 
+  it('when cancelled during the walk writes nothing and stops reading folders', async () => {
+    for (const sub of ['a', 'b', 'c']) {
+      mkdirSync(join(root, sub));
+      writeFileSync(join(root, sub, `${sub}.jpg`), 'fake-jpeg');
+    }
+    const db = initLibraryDb(dbPath);
+    try {
+      let checks = 0;
+      const { cancelled, result } = await syncFolderCatalog(root, db, {
+        isCancelled: () => {
+          checks += 1;
+          return checks > 2;
+        },
+      });
+      expect(cancelled).toBe(true);
+      expect(checks).toBe(3);
+      expect(result.catalog_total).toBe(0);
+      expect(getImageCount(db)).toBe(0);
+      expect(getLibraryMeta(db, FOLDER_CATALOG_SYNCED_META_KEY)).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
   it('when cancelled mid-import keeps batches already read and does not mark gone or synced', async () => {
     for (let i = 0; i < 65; i += 1) {
       writeFileSync(join(root, `batch-${i}.jpg`), 'fake-jpeg');

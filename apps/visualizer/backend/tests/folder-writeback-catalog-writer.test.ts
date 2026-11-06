@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -30,6 +31,7 @@ import {
   openFolderWritebackWriterSession,
 } from '../src/folder/xmp-writeback-writer.js';
 import * as xmpAtomicWrite from '../src/folder/xmp-atomic-write.js';
+import * as xmpMetadata from '../src/folder/xmp-metadata.js';
 import { AUTO_REJECT_KEYWORD, AUTO_STARS_KEYWORD } from '../src/lightroom/writeback-catalog-writer.js';
 import { reconcileLrWriteback } from '../src/lightroom/writeback.js';
 import { seedCullingStagesOn } from './helpers/culling-stages.js';
@@ -95,6 +97,21 @@ async function seedLibrary(): Promise<{ db: ReturnType<typeof initLibraryDb>; im
     runId: null,
   });
   return { db, imageKey };
+}
+
+async function rawLibrary(name: string): Promise<{ db: ReturnType<typeof initLibraryDb>; imageKey: string }> {
+  const db = initLibraryDb(join(dir, `lib-${name}.db`));
+  setLibraryMeta(db, CATALOG_KIND_META_KEY, 'folder');
+  setLibraryMeta(db, CATALOG_PATH_META_KEY, root);
+  await syncFolderCatalog(root, db, {});
+  const imageKey = (db.prepare('SELECT key FROM images LIMIT 1').get() as { key: string }).key;
+  return { db, imageKey };
+}
+
+async function subjectsOf(path: string): Promise<string[]> {
+  const subject = (await tool.read(path)).Subject;
+  if (subject == null) return [];
+  return Array.isArray(subject) ? subject.map(String) : [String(subject)];
 }
 
 describe('FolderWritebackCatalogWriter', () => {
@@ -307,6 +324,86 @@ describe('FolderWritebackCatalogWriter', () => {
         await session.close();
       }
     } finally {
+      db.close();
+    }
+  });
+
+  it('leaves only the photo and its sidecar after an update and an undo', async () => {
+    writeFileSync(join(root, 'tidy.cr2'), 'raw');
+    await tool.write(join(root, 'tidy.xmp'), { Subject: ['trip'] });
+    const { db, imageKey } = await rawLibrary('tidy');
+    const session = await openFolderWritebackWriterSession(root, db);
+    try {
+      expect(await session.writer.writeStars(imageKey, 2)).toBe('updated');
+      expect(readdirSync(root).sort()).toEqual(['tidy.cr2', 'tidy.xmp']);
+      expect(await session.writer.undoStars(imageKey, null)).toBe('updated');
+      expect(readdirSync(root).sort()).toEqual(['tidy.cr2', 'tidy.xmp']);
+    } finally {
+      await session.close();
+      db.close();
+    }
+  });
+
+  it('skips and leaves the file alone when it changes while the writer reads it', async () => {
+    const path = await jpegAt('edited.jpg');
+    const { db, imageKey } = await seedLibrary();
+    const realRead = xmpMetadata.readFolderPhotoXmpMetadata;
+    let edited: Buffer | null = null;
+    vi.spyOn(xmpMetadata, 'readFolderPhotoXmpMetadata').mockImplementation(async (...args) => {
+      const meta = await realRead(...args);
+      await tool.write(path, { Subject: ['mine'] }, ['-overwrite_original']);
+      utimesSync(path, new Date(), new Date(Date.now() + 60_000));
+      edited = readFileSync(path);
+      return meta;
+    });
+    const session = await openFolderWritebackWriterSession(root, db);
+    try {
+      expect(await session.writer.writeReject(imageKey)).toBe('mtime_conflict');
+      expect(readFileSync(path).equals(edited!)).toBe(true);
+    } finally {
+      await session.close();
+      db.close();
+    }
+  });
+
+  it('keeps each sidecar its own keywords', async () => {
+    writeFileSync(join(root, 'pair.cr2'), 'raw');
+    const fileSidecar = join(root, 'pair.cr2.xmp');
+    const stemSidecar = join(root, 'pair.xmp');
+    await tool.write(fileSidecar, { Subject: ['alpha'] });
+    await tool.write(stemSidecar, { Subject: ['beta'] });
+    const { db, imageKey } = await rawLibrary('pair');
+    const session = await openFolderWritebackWriterSession(root, db);
+    try {
+      expect(await session.writer.writeStars(imageKey, 2)).toBe('updated');
+      expect((await subjectsOf(fileSidecar)).sort()).toEqual(['alpha', AUTO_STARS_KEYWORD].sort());
+      expect((await subjectsOf(stemSidecar)).sort()).toEqual(['beta', AUTO_STARS_KEYWORD].sort());
+      expect(await session.writer.undoStars(imageKey, null)).toBe('updated');
+      expect(await subjectsOf(fileSidecar)).toEqual(['alpha']);
+      expect(await subjectsOf(stemSidecar)).toEqual(['beta']);
+    } finally {
+      await session.close();
+      db.close();
+    }
+  });
+
+  it('writes no sidecar when any of them cannot be written', async () => {
+    writeFileSync(join(root, 'locked.cr2'), 'raw');
+    const fileSidecar = join(root, 'locked.cr2.xmp');
+    const stemSidecar = join(root, 'locked.xmp');
+    await tool.write(fileSidecar, { Subject: ['alpha'] });
+    await tool.write(stemSidecar, { Subject: ['beta'] });
+    const { db, imageKey } = await rawLibrary('locked');
+    const before = [readFileSync(fileSidecar), readFileSync(stemSidecar)];
+    chmodSync(stemSidecar, 0o444);
+    const session = await openFolderWritebackWriterSession(root, db);
+    try {
+      expect(await session.writer.writeStars(imageKey, 2)).toBe('readonly_error');
+      expect(readFileSync(fileSidecar).equals(before[0]!)).toBe(true);
+      expect(readFileSync(stemSidecar).equals(before[1]!)).toBe(true);
+    } finally {
+      chmodSync(stemSidecar, 0o644);
+      await session.close();
       db.close();
     }
   });

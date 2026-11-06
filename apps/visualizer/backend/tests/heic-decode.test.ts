@@ -80,6 +80,18 @@ describe('decodeHeicToJpegPath', () => {
       setHeicDecodeSipsPresenceOverride(null);
     }
   });
+
+  it('logs why each decoder failed when none can decode the file', async () => {
+    const brokenPath = join(workDir, 'broken.heic');
+    writeFileSync(brokenPath, 'not a heic');
+    setHeicDecodeSipsPresenceOverride(async () => true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    expect(await decodeHeicToJpegPath(brokenPath, makeTempJpgPath)).toBeNull();
+    const logged = stderr.mock.calls.map((c) => String(c[0])).join('');
+    expect(logged).toMatch(/sips could not decode .*broken\.heic: \S/);
+    expect(logged).toMatch(/libheif could not decode .*broken\.heic: \S/);
+  });
 });
 
 describe('HEIC vision cache', () => {

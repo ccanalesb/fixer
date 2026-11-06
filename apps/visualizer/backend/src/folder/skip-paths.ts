@@ -1,9 +1,13 @@
 /**
  * Names and paths skipped when walking a folder catalog tree.
+ *
+ * The name rules apply to entries below the root: a root the user chose is
+ * walked whatever it is called.
  */
-import { basename, join } from 'node:path';
+import path from 'node:path';
 import { dataRoot } from '../config.js';
 import { resolveOpenLibraryPaths } from '../open-library.js';
+import { isResolvedPathInsideDir, type PathContainmentModule } from '../utils/path-containment.js';
 
 const SKIP_BASENAMES = new Set([
   '@eadir',
@@ -24,30 +28,30 @@ export function shouldSkipEntryName(name: string): boolean {
   return false;
 }
 
-/** Absolute paths under `catalogRoot` that must not be walked. */
+/** The `candidates` that are `catalogRoot` or sit below it. */
+export function skipRootsInside(
+  catalogRoot: string,
+  candidates: readonly string[],
+  pathMod: PathContainmentModule = path,
+): string[] {
+  return candidates.filter((c) => isResolvedPathInsideDir(catalogRoot, c, pathMod));
+}
+
+/** The app's data folder and vision cache, when they sit under `catalogRoot`. */
 export function skipRootsUnderCatalog(catalogRoot: string): string[] {
-  const roots: string[] = [];
-  const data = dataRoot();
-  if (data.startsWith(catalogRoot + '/') || data === catalogRoot) roots.push(data);
+  const candidates = [dataRoot()];
   try {
-    const { visionCacheDir } = resolveOpenLibraryPaths();
-    if (visionCacheDir.startsWith(catalogRoot + '/') || visionCacheDir === catalogRoot) {
-      roots.push(visionCacheDir);
-    }
+    candidates.push(resolveOpenLibraryPaths().visionCacheDir);
   } catch {
     /* library not resolved yet */
   }
-  return roots;
+  return skipRootsInside(catalogRoot, candidates);
 }
 
-export function isUnderSkippedRoot(absPath: string, skipRoots: readonly string[]): boolean {
-  for (const root of skipRoots) {
-    if (absPath === root || absPath.startsWith(root + '/')) return true;
-  }
-  return false;
-}
-
-export function skipDirectory(absDir: string, skipRoots: readonly string[]): boolean {
-  if (isUnderSkippedRoot(absDir, skipRoots)) return true;
-  return shouldSkipEntryName(basename(absDir));
+export function isUnderSkippedRoot(
+  absPath: string,
+  skipRoots: readonly string[],
+  pathMod: PathContainmentModule = path,
+): boolean {
+  return skipRoots.some((root) => isResolvedPathInsideDir(root, absPath, pathMod));
 }

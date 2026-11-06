@@ -72,4 +72,29 @@ describe('folder catalog list filters after sync', () => {
     const neon = await json<ListBody>(await app.request('/api/images/catalog?keyword=neon'));
     expect(neon.images.map((i) => i.key)).toEqual([expect.stringMatching(/star/)]);
   });
+
+  it('sends pick as -1 for a reject, 0 otherwise, on the list and the detail', async () => {
+    writeFileSync(join(root, 'nope.jpg'), 'fake3');
+    writeFileSync(join(root, 'nope.jpg.xmp'), xmp("xmp:Rating='-1'"));
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+    } finally {
+      db.close();
+    }
+
+    const list = await json<{ images: { key: string; pick: number }[] }>(
+      await app.request('/api/images/catalog'),
+    );
+    const byName = Object.fromEntries(list.images.map((i) => [i.key.split('/').pop() ?? i.key, i.pick]));
+    const rejectKey = list.images.find((i) => i.key.includes('nope'))!.key;
+    expect(list.images.find((i) => i.key.includes('nope'))!.pick).toBe(-1);
+    expect(list.images.find((i) => i.key.includes('plain'))!.pick).toBe(0);
+    expect(Object.keys(byName).length).toBe(3);
+
+    const detail = await json<{ pick: number }>(
+      await app.request(`/api/images/catalog/${encodeURIComponent(rejectKey)}`),
+    );
+    expect(detail.pick).toBe(-1);
+  });
 });

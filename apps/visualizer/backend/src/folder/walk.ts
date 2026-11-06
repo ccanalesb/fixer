@@ -1,15 +1,10 @@
 /**
  * Walk a folder catalog root and list photo files in sorted path order.
  */
-import { lstatSync, readdirSync } from 'node:fs';
-import { basename, join, relative, resolve } from 'node:path';
+import { readdir } from 'node:fs/promises';
+import { join, relative, resolve } from 'node:path';
 import { isPhotoFilename, isJpegExtension, isRawExtension, photoExtension } from './photo-extensions.js';
-import {
-  isUnderSkippedRoot,
-  shouldSkipEntryName,
-  skipDirectory,
-  skipRootsUnderCatalog,
-} from './skip-paths.js';
+import { isUnderSkippedRoot, shouldSkipEntryName, skipRootsUnderCatalog } from './skip-paths.js';
 
 export interface WalkedPhotoFile {
   absPath: string;
@@ -31,6 +26,11 @@ export interface FolderWalkResult {
   unreadableDirectories: string[];
 }
 
+export interface FolderWalkOptions {
+  /** Asked before each directory is read; `true` abandons the walk. */
+  shouldStop?: () => boolean | Promise<boolean>;
+}
+
 export interface ResolvedFolderPhoto {
   /** File stored on the row — RAW when paired, else the raster. */
   filepath: string;
@@ -41,50 +41,54 @@ export interface ResolvedFolderPhoto {
   jpegFilepath?: string;
 }
 
-function collectFiles(root: string): { files: WalkedPhotoFile[]; unreadableDirectories: string[] } {
+/** A photo file named `name` in `dir`, or null when the name is not a photo. */
+export function walkedPhotoFile(rootReal: string, dir: string, name: string): WalkedPhotoFile | null {
+  if (!isPhotoFilename(name)) return null;
+  const abs = join(dir, name);
+  const ext = photoExtension(name);
+  // `ext` is lower-cased; slice by length so `IMG.CR2` has stem `IMG`.
+  const stem = name.slice(0, name.length - ext.length);
+  return { absPath: abs, relPath: relative(rootReal, abs), dir, stem, ext };
+}
+
+async function collectFiles(
+  root: string,
+  opts: FolderWalkOptions,
+): Promise<{ files: WalkedPhotoFile[]; unreadableDirectories: string[] } | null> {
   const rootReal = resolve(root);
   const skipRoots = skipRootsUnderCatalog(rootReal);
   const out: WalkedPhotoFile[] = [];
   const unreadableDirectories: string[] = [];
+  // Depth-first in sorted order: the stack holds directories still to read, last first.
+  const pending: string[] = isUnderSkippedRoot(rootReal, skipRoots) ? [] : [rootReal];
 
-  function visit(dir: string): void {
-    if (skipDirectory(dir, skipRoots)) return;
-    let names: string[];
+  while (pending.length > 0) {
+    if (opts.shouldStop && (await opts.shouldStop())) return null;
+    const dir = pending.pop()!;
+    let entries;
     try {
-      names = readdirSync(dir).sort((a, b) => a.localeCompare(b));
+      entries = await readdir(dir, { withFileTypes: true });
     } catch {
       unreadableDirectories.push(dir);
-      return;
+      continue;
     }
-    for (const name of names) {
-      if (shouldSkipEntryName(name)) continue;
-      const abs = join(dir, name);
-      if (isUnderSkippedRoot(abs, skipRoots)) continue;
-      let st;
-      try {
-        st = lstatSync(abs);
-      } catch {
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    const subdirs: string[] = [];
+    for (const entry of entries) {
+      if (shouldSkipEntryName(entry.name)) continue;
+      // Dirent types come from lstat, so a symlink is never a directory or file here.
+      if (entry.isDirectory()) {
+        const abs = join(dir, entry.name);
+        if (!isUnderSkippedRoot(abs, skipRoots)) subdirs.push(abs);
         continue;
       }
-      if (st.isSymbolicLink()) continue;
-      if (st.isDirectory()) {
-        visit(abs);
-        continue;
-      }
-      if (!st.isFile() || !isPhotoFilename(name)) continue;
-      const ext = photoExtension(name);
-      const stem = basename(name, ext);
-      out.push({
-        absPath: abs,
-        relPath: relative(rootReal, abs),
-        dir,
-        stem,
-        ext,
-      });
+      if (!entry.isFile()) continue;
+      const file = walkedPhotoFile(rootReal, dir, entry.name);
+      if (file) out.push(file);
     }
+    for (let i = subdirs.length - 1; i >= 0; i -= 1) pending.push(subdirs[i]!);
   }
 
-  visit(rootReal);
   out.sort((a, b) => a.relPath.localeCompare(b.relPath));
   unreadableDirectories.sort((a, b) => a.localeCompare(b));
   return { files: out, unreadableDirectories };
@@ -128,13 +132,17 @@ export function resolveFolderPhotos(files: WalkedPhotoFile[]): ResolvedFolderPho
   return photos;
 }
 
-export function walkFolderCatalog(root: string): FolderWalkResult {
-  const walkStart = Date.now();
-  const { files, unreadableDirectories } = collectFiles(root);
+/** Walk `root`; null when `opts.shouldStop` abandoned it. */
+export async function walkFolderCatalog(
+  root: string,
+  opts: FolderWalkOptions = {},
+): Promise<FolderWalkResult | null> {
+  const collected = await collectFiles(root, opts);
+  if (!collected) return null;
+  const { files, unreadableDirectories } = collected;
   const photos = resolveFolderPhotos(files);
   const folderSet = new Set<string>();
   for (const f of files) folderSet.add(f.dir);
-  void walkStart;
   return {
     photos,
     stats: { photoCount: photos.length, folderCount: folderSet.size },
@@ -147,7 +155,8 @@ interface FolderWalkSummary {
   unreadableDirectories: string[];
 }
 
-const folderWalkSummaryCache = new Map<string, FolderWalkSummary>();
+/** One walk per root; concurrent requests share the walk in flight. */
+const folderWalkSummaryCache = new Map<string, Promise<FolderWalkSummary>>();
 
 /** Drop cached folder walks (all roots, or one resolved path). */
 export function invalidateFolderCatalogWalkCache(resolvedPath?: string): void {
@@ -163,27 +172,29 @@ export function rememberFolderCatalogWalkSummary(
   root: string,
   summary: FolderWalkSummary,
 ): void {
-  folderWalkSummaryCache.set(resolve(root), summary);
+  folderWalkSummaryCache.set(resolve(root), Promise.resolve(summary));
 }
 
-function folderWalkSummary(root: string): FolderWalkSummary {
+function folderWalkSummary(root: string): Promise<FolderWalkSummary> {
   const key = resolve(root);
   const hit = folderWalkSummaryCache.get(key);
   if (hit) return hit;
-  const { stats, unreadableDirectories } = walkFolderCatalog(root);
-  const summary = { stats, unreadableDirectories };
-  folderWalkSummaryCache.set(key, summary);
-  return summary;
+  const pending = walkFolderCatalog(root).then((walked) => ({
+    stats: walked!.stats,
+    unreadableDirectories: walked!.unreadableDirectories,
+  }));
+  folderWalkSummaryCache.set(key, pending);
+  pending.catch(() => {
+    if (folderWalkSummaryCache.get(key) === pending) folderWalkSummaryCache.delete(key);
+  });
+  return pending;
 }
 
-export function folderCatalogStats(root: string): FolderWalkStats {
-  return folderWalkSummary(root).stats;
+export async function folderCatalogStats(root: string): Promise<FolderWalkStats> {
+  return (await folderWalkSummary(root)).stats;
 }
 
-export function folderCatalogWalkDiagnostics(root: string): {
-  stats: FolderWalkStats;
-  unreadableDirectories: string[];
-} {
+export function folderCatalogWalkDiagnostics(root: string): Promise<FolderWalkSummary> {
   return folderWalkSummary(root);
 }
 

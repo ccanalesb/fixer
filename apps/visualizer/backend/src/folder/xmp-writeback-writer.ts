@@ -18,9 +18,15 @@ import {
 } from '../lightroom/writeback-catalog-writer.js';
 import { createFolderExifSession } from './exif-read.js';
 import { lstatPathsParallel } from './lstat-parallel.js';
-import { atomicReplaceFileAsync, snapshotMtime, type MtimeGuard } from './xmp-atomic-write.js';
-import { readFolderPhotoXmpMetadata, type FolderXmpMetadata } from './xmp-metadata.js';
-import { resolveFolderWriteTargets } from './xmp-write-target.js';
+import {
+  atomicReplaceFileAsync,
+  checkAtomicReplace,
+  snapshotMtime,
+  type AtomicWriteOutcome,
+  type MtimeGuard,
+} from './xmp-atomic-write.js';
+import { keywordsFromTags, readFolderPhotoXmpMetadata, type FolderXmpMetadata } from './xmp-metadata.js';
+import { resolveFolderWriteTargets, type FolderWriteTarget } from './xmp-write-target.js';
 import { resolveFolderPhotoAtPath, stemSidecarAmbiguousForDir } from './resolve-photo.js';
 import type { ResolvedFolderPhoto } from './walk.js';
 
@@ -36,9 +42,18 @@ function liveFromMeta(meta: { rating: number; pick: number; keywords: string[] }
   return { pick: 0, rating: null, auto_stars_keyword, auto_reject_keyword };
 }
 
-function pickRatingWriteResultFromAtomic(
-  outcome: 'ok' | 'skipped_mtime' | 'readonly' | 'outside',
-): PickRatingWriteResult | 'ok' {
+type KeywordEdit = (keywords: string[]) => string[];
+
+/** What the writer read from disk, with the file mtimes taken before reading. */
+interface FreshRead {
+  photo: ResolvedFolderPhoto;
+  targets: FolderWriteTarget[];
+  guards: Map<string, MtimeGuard>;
+  meta: FolderXmpMetadata;
+  live: LiveWritebackCatalog;
+}
+
+function pickRatingWriteResultFromAtomic(outcome: AtomicWriteOutcome): PickRatingWriteResult | 'ok' {
   if (outcome === 'ok') return 'ok';
   if (outcome === 'skipped_mtime') return 'mtime_conflict';
   if (outcome === 'readonly') return 'readonly_error';
@@ -81,25 +96,38 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
 
   private ambiguousFor(photo: ResolvedFolderPhoto): Set<string> {
     const dir = dirname(photo.filepath);
-    return stemSidecarAmbiguousForDir(dir, photo.stem) ? new Set([dir]) : new Set();
+    return stemSidecarAmbiguousForDir(dir) ? new Set([dir]) : new Set();
   }
 
-  private async readFreshLive(
-    imageKey: string,
-  ): Promise<{ photo: ResolvedFolderPhoto; meta: FolderXmpMetadata; live: LiveWritebackCatalog } | null> {
+  /** Mtimes of the photo and every existing write target, taken before anything is read. */
+  private guardsBeforeRead(
+    photo: ResolvedFolderPhoto,
+    targets: readonly FolderWriteTarget[],
+  ): Map<string, MtimeGuard> {
+    const guards = new Map<string, MtimeGuard>();
+    for (const path of new Set([photo.filepath, ...targets.map((t) => t.path)])) {
+      if (!existsSync(path)) continue;
+      const guard = snapshotMtime(path);
+      if (guard) guards.set(path, guard);
+    }
+    return guards;
+  }
+
+  private async readFreshLive(imageKey: string): Promise<FreshRead | null> {
     const photo = this.resolvePhoto(imageKey);
     if (!photo || !existsSync(photo.filepath)) return null;
     const ambiguous = this.ambiguousFor(photo);
-    const sidecars = resolveFolderWriteTargets(photo, ambiguous).map((t) => t.path);
+    const targets = resolveFolderWriteTargets(photo, ambiguous);
+    const guards = this.guardsBeforeRead(photo, targets);
+    const sidecars = targets.map((t) => t.path);
     const stats = await lstatPathsParallel([photo.filepath, ...sidecars], 4);
     const meta = await readFolderPhotoXmpMetadata(this.exif, photo, ambiguous, stats);
     const live = liveFromMeta(meta);
     this.liveByKey.set(imageKey, live);
-    return { photo, meta, live };
+    return { photo, targets, guards, meta, live };
   }
 
   readLive(imageKey: string): LiveWritebackCatalog | null {
-    if (!this.liveByKey.has(imageKey)) return null;
     return this.liveByKey.get(imageKey) ?? null;
   }
 
@@ -190,14 +218,14 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     return null;
   }
 
-  private async writeKeywordChange(imageKey: string, map: (kws: string[]) => string[]): Promise<void> {
+  private async writeKeywordChange(imageKey: string, edit: KeywordEdit): Promise<void> {
     const fresh = await this.readFreshLive(imageKey);
     if (!fresh) return;
     const { photo, meta, live } = fresh;
     const rating = live.pick === -1 ? -1 : (live.rating ?? 0);
-    const keywords = map(meta.keywords);
-    const result = await this.applyToTargets(photo, rating, keywords, 'set');
+    const result = await this.applyToTargets(fresh, rating, edit);
     if (result === 'ok') {
+      const keywords = edit(meta.keywords);
       this.liveByKey.set(imageKey, liveFromMeta({ rating: meta.rating, pick: meta.pick, keywords }));
       this.recordSnapshot(imageKey, photo);
     }
@@ -230,14 +258,17 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
       }
     }
 
-    let keywords = [...meta.keywords];
-    const touchesSubject = Boolean(keyword || opts?.removeKeyword);
-    if (opts?.removeKeyword) keywords = keywords.filter((k) => k !== opts.removeKeyword);
-    if (keyword && !keywords.includes(keyword)) keywords = [...keywords, keyword];
+    const removeKeyword = opts?.removeKeyword;
+    const edit: KeywordEdit | null =
+      keyword || removeKeyword
+        ? (kws) => {
+            const kept = removeKeyword ? kws.filter((k) => k !== removeKeyword) : kws;
+            return keyword && !kept.includes(keyword) ? [...kept, keyword] : kept;
+          }
+        : null;
 
     const writeRating = opts?.clearRating ? 0 : rating;
-    const subjectMode = touchesSubject ? ('set' as const) : ('unchanged' as const);
-    const result = await this.applyToTargets(photo, writeRating, keywords, subjectMode);
+    const result = await this.applyToTargets(fresh, writeRating, edit);
     const mapped = pickRatingWriteResultFromAtomic(result);
     if (mapped === 'ok') {
       this.liveByKey.set(
@@ -245,7 +276,7 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
         liveFromMeta({
           rating: writeRating === -1 ? 0 : writeRating,
           pick: writeRating === -1 ? -1 : 0,
-          keywords,
+          keywords: edit ? edit(meta.keywords) : meta.keywords,
         }),
       );
       this.recordSnapshot(imageKey, photo);
@@ -255,38 +286,54 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     return 'skipped';
   }
 
-  private guardsForTarget(photo: ResolvedFolderPhoto, targetPath: string): MtimeGuard[] {
-    const guards: MtimeGuard[] = [];
-    const photoGuard = snapshotMtime(photo.filepath);
-    if (photoGuard) guards.push(photoGuard);
-    if (existsSync(targetPath)) {
-      const sideGuard = snapshotMtime(targetPath);
-      if (sideGuard) guards.push(sideGuard);
-    }
-    return guards;
+  /** The photo's guard plus the target's own; earlier targets' rewrites do not trip later ones. */
+  private guardsForTarget(fresh: FreshRead, targetPath: string): MtimeGuard[] {
+    const paths = new Set([fresh.photo.filepath, targetPath]);
+    return [...paths].flatMap((p) => {
+      const guard = fresh.guards.get(p);
+      return guard ? [guard] : [];
+    });
   }
 
+  /**
+   * A target's own keywords with the edit applied. A target with no keywords of
+   * its own starts from the keywords the reader sees, so writing it never hides them.
+   */
+  private async keywordsForTarget(
+    fresh: FreshRead,
+    target: FolderWriteTarget,
+    edit: KeywordEdit,
+  ): Promise<string[]> {
+    const own = existsSync(target.path) ? keywordsFromTags(await this.exif.read(target.path)) : null;
+    return edit(own ?? fresh.meta.keywords);
+  }
+
+  /**
+   * Every target's guards are checked before any is written. Each target is then
+   * replaced atomically on its own; if a later one still fails, the earlier ones
+   * are already rewritten and the failure is returned so the photo stays pending.
+   */
   private async applyToTargets(
-    photo: ResolvedFolderPhoto,
+    fresh: FreshRead,
     rating: number,
-    keywords: string[],
-    subjectMode: 'unchanged' | 'set',
-  ): Promise<'ok' | 'skipped_mtime' | 'readonly' | 'outside'> {
-    const ambiguous = this.ambiguousFor(photo);
-    const targets = resolveFolderWriteTargets(photo, ambiguous);
-    for (const target of targets) {
-      const guards = this.guardsForTarget(photo, target.path);
-      const tags: Record<string, unknown> = { Rating: rating === 0 ? 0 : rating };
-      if (subjectMode === 'set') {
-        tags.Subject = keywords;
-      }
-      const outcome = await atomicReplaceFileAsync(this.catalogRoot, target.path, guards, async (tempPath) => {
-        if (target.kind === 'embedded') {
+    editKeywords: KeywordEdit | null,
+  ): Promise<AtomicWriteOutcome> {
+    for (const target of fresh.targets) {
+      const guards = this.guardsForTarget(fresh, target.path);
+      const ready = await checkAtomicReplace(this.catalogRoot, target.path, guards);
+      if (ready !== 'ok') return ready;
+    }
+    for (const target of fresh.targets) {
+      const tags: Record<string, unknown> = { Rating: rating };
+      if (editKeywords) tags.Subject = await this.keywordsForTarget(fresh, target, editKeywords);
+      const outcome = await atomicReplaceFileAsync(
+        this.catalogRoot,
+        target.path,
+        this.guardsForTarget(fresh, target.path),
+        async (tempPath) => {
           await this.writeTool.write(tempPath, tags, ['-overwrite_original']);
-        } else {
-          await this.writeTool.write(tempPath, tags);
-        }
-      });
+        },
+      );
       if (outcome !== 'ok') return outcome;
     }
     return 'ok';

@@ -4,7 +4,7 @@
  * These routes WRITE `config.yaml`, so every test points `LT_CONFIG_YAML` at a temp
  * file. Without that override the suite would rewrite the user's real config.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, normalize } from 'node:path';
@@ -58,7 +58,15 @@ const seedLibrary = (catalogPath?: string): void => {
   db.close();
 };
 
+const ENV_KEYS = ['LT_CONFIG_YAML', 'LIBRARY_DB', 'LT_DATA_DIR', 'DATABASE_PATH'] as const;
+const setupDataDir = process.env.LT_DATA_DIR;
+let savedEnv: Partial<Record<(typeof ENV_KEYS)[number], string>>;
+
 beforeEach(() => {
+  savedEnv = {};
+  for (const key of ENV_KEYS) {
+    if (process.env[key] !== undefined) savedEnv[key] = process.env[key];
+  }
   dir = mkdtempSync(join(tmpdir(), 'lt-cfg-'));
   cfgPath = join(dir, 'config.yaml');
   libraryPath = join(dir, 'library.db');
@@ -71,11 +79,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.LT_CONFIG_YAML;
-  delete process.env.LIBRARY_DB;
-  delete process.env.LT_DATA_DIR;
-  delete process.env.DATABASE_PATH;
+  // The test setup's isolated LT_DATA_DIR must outlive this file's overrides.
+  for (const key of ENV_KEYS) {
+    if (savedEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = savedEnv[key];
+  }
   rmSync(dir, { recursive: true, force: true });
+});
+
+afterAll(() => {
+  expect(process.env.LT_DATA_DIR).toBe(setupDataDir);
 });
 
 function seedCatalogLibrary(catalogPath: string): void {

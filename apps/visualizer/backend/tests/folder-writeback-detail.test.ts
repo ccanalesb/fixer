@@ -158,7 +158,7 @@ describe('folder write-back detail and undo', () => {
       const detail = await buildWritebackPhotoDetail(db, root, imageKey, settings);
       expect(detail.flag.user_changed).toBe(true);
       expect(detail.flag.undo_available).toBe(false);
-      expect(detail.user_changed_message).toContain('shot.jpg');
+      expect(detail.user_changed_message).toBe('Undone by you: what the app wrote is no longer in shot.jpg.');
     } finally {
       db.close();
     }

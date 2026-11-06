@@ -235,7 +235,7 @@ export async function buildFolderXmpDetail(db: Db, imageKey: string): Promise<Fo
 
   const ambiguous = new Set<string>();
   const dir = dirname(photo.filepath);
-  if (stemSidecarAmbiguousForDir(dir, photo.stem)) ambiguous.add(dir);
+  if (stemSidecarAmbiguousForDir(dir)) ambiguous.add(dir);
 
   const pathsToStat = metadataSourcePathsInOrder(photo, ambiguous, new Map());
   const readPaths = [photo.filepath, ...(photo.jpegFilepath ? [photo.jpegFilepath] : []), ...pathsToStat];

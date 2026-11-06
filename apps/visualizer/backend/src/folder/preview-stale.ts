@@ -19,6 +19,8 @@ export async function markStaleIfPreviewPhashChanged(
 ): Promise<boolean> {
   const cached = getVisionCachedImage(db, key);
   const oldPhash = cached?.phash ?? null;
+  // No earlier preview hash: nothing to compare, so decoding the file would be wasted.
+  if (oldPhash === null) return false;
   const orientation = getImageOrientation(db, key);
 
   const viewable = await getViewablePathManaged(filepath);
@@ -33,13 +35,10 @@ export async function markStaleIfPreviewPhashChanged(
 
     const newPhash = await phashFromFile(viewable.path);
     if (!newPhash) return false;
-    if (oldPhash !== null && oldPhash === newPhash) return false;
-    if (oldPhash !== null) {
-      libraryWrite(db, () => markVisionOutputsStale(db, [key]));
-      await getOrCreateCachedImage(db, key, filepath);
-      return true;
-    }
-    return false;
+    if (oldPhash === newPhash) return false;
+    libraryWrite(db, () => markVisionOutputsStale(db, [key]));
+    await getOrCreateCachedImage(db, key, filepath);
+    return true;
   } finally {
     for (const tf of tempFiles) {
       await unlink(tf).catch(() => undefined);

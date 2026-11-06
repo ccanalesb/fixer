@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -48,5 +48,23 @@ describe('folder write-back path safety', () => {
     const outcome = await atomicReplaceFileAsync(root, outside, [], async () => {});
     expect(outcome).toBe('outside');
     expect(readFileSync(outside, 'utf8')).toBe('x');
+  });
+
+  it('reports a read-only target and leaves the folder as it was', async () => {
+    const sidecar = join(root, 'locked.xmp');
+    writeFileSync(sidecar, 'x');
+    chmodSync(sidecar, 0o444);
+    try {
+      let prepared = false;
+      const outcome = await atomicReplaceFileAsync(root, sidecar, [], async () => {
+        prepared = true;
+      });
+      expect(outcome).toBe('readonly');
+      expect(prepared).toBe(false);
+      expect(readFileSync(sidecar, 'utf8')).toBe('x');
+      expect(readdirSync(root)).toEqual(['locked.xmp']);
+    } finally {
+      chmodSync(sidecar, 0o644);
+    }
   });
 });
