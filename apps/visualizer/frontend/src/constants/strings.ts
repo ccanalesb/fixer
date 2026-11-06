@@ -625,6 +625,9 @@ export const CATALOG_CACHE_BUILD_CTA = 'Build catalog cache'
 export const CATALOG_CACHE_BUILD_SUCCESS =
   'Catalog cache build started! Check the Job Queue tab for progress.'
 export const CATALOG_CACHE_CARD_TITLE = 'Catalog Vision Cache'
+/** Shown when the jobs health endpoint reports no library without a specific reason. */
+export const CATALOG_LIBRARY_UNAVAILABLE =
+  'The catalog library is unavailable. Catalog-dependent jobs cannot run.'
 export const CATALOG_CACHE_INTRO_BODY =
   'The vision cache stores preprocessed Lightroom Classic catalog images for fast AI comparison. Rebuilding the cache will process all catalog images and may take several minutes.'
 export const CATALOG_CACHE_INTRO_BODY_FOLDER =
@@ -1296,5 +1299,7 @@ export const SETTINGS_DELETE_ALL_BUTTON = 'Delete all data and quit…'
 export const SETTINGS_DELETE_ALL_CONFIRM_TITLE = 'Delete all data and quit?'
 export const SETTINGS_DELETE_ALL_CONFIRM_BODY =
   'This removes Fixer’s data folder, log files and web browser data from this computer, then quits the app. Your Lightroom Classic catalog, ratings and keywords in it, and your photo files are not changed.'
+export const SETTINGS_DELETE_ALL_CONFIRM_BODY_FOLDER =
+  'This removes Fixer’s data folder, log files and web browser data from this computer, then quits the app. Your photo files and the ratings Fixer wrote into them are not changed.'
 export const SETTINGS_DELETE_ALL_CONFIRM_BUTTON = 'Delete and quit'
 export const SETTINGS_DELETE_ALL_WORKING = 'Deleting…'

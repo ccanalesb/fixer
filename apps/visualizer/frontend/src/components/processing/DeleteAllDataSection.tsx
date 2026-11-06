@@ -4,6 +4,7 @@ import { RedecideConfirmDialog } from '../cull/RedecideConfirmDialog'
 import {
   SETTINGS_DELETE_ALL_BUTTON,
   SETTINGS_DELETE_ALL_CONFIRM_BODY,
+  SETTINGS_DELETE_ALL_CONFIRM_BODY_FOLDER,
   SETTINGS_DELETE_ALL_CONFIRM_BUTTON,
   SETTINGS_DELETE_ALL_CONFIRM_TITLE,
   SETTINGS_DELETE_ALL_DESCRIPTION,
@@ -65,7 +66,11 @@ export function DeleteAllDataSection() {
       {confirmOpen && (
         <RedecideConfirmDialog
           title={SETTINGS_DELETE_ALL_CONFIRM_TITLE}
-          body={SETTINGS_DELETE_ALL_CONFIRM_BODY}
+          body={forCatalogKind(
+            catalogKind,
+            SETTINGS_DELETE_ALL_CONFIRM_BODY,
+            SETTINGS_DELETE_ALL_CONFIRM_BODY_FOLDER,
+          )}
           confirmLabel={working ? SETTINGS_DELETE_ALL_WORKING : SETTINGS_DELETE_ALL_CONFIRM_BUTTON}
           onCancel={() => {
             if (!working) setConfirmOpen(false)

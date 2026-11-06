@@ -23,6 +23,7 @@ import {
   INSIGHTS_SECTION_HIGHLIGHTS,
   INSIGHTS_SECTION_NEXT_ACTIONS,
   INSIGHTS_SECTION_PERSPECTIVE_COVERAGE,
+  INSIGHTS_FOOTER_TIMEZONE_FOLDER,
 } from '../constants/strings'
 
 const completedImportPipeline = {
@@ -130,6 +131,29 @@ describe('DashboardPage', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: INSIGHTS_SECTION_EXPLORE }),
     ).toBeInTheDocument()
+  })
+
+  it('shows folder-specific capture-date copy in the footer on a folder catalog', async () => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/tmp/photos',
+      resolved_path: '/tmp/photos',
+      exists: true,
+      catalog_kind: 'folder',
+      photo_count: 10,
+      folder_count: 2,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+
+    render(
+      <MemoryRouter>
+        <Suspense fallback={null}>
+          <DashboardPage />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(INSIGHTS_FOOTER_TIMEZONE_FOLDER)).toBeInTheDocument()
   })
 })
 

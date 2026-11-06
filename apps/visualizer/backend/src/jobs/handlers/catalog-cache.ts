@@ -20,9 +20,11 @@
 import type { Db } from '../../db/connection.js';
 import {
   catalogCacheBuilt,
+  getLibraryMeta,
   markCatalogCacheBuilt,
   markFirstCatalogImportCompleted,
 } from '../../db/library/bootstrap.js';
+import { CATALOG_KIND_META_KEY } from '../../catalog-library.js';
 import { clearChangedSinceRanking, hasChangedSinceRanking } from '../../db/library/ranking-stale.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { listCatalogKeysNeedingClipEmbedding } from '../../db/library/embeddings.js';
@@ -175,10 +177,10 @@ async function runBuild(
   });
   if (result === null || result.ranking === null) return;
 
-  // A catalog with no photos yet builds nothing; first run stays open so the
-  // setup screen asks again once Lightroom has photos.
+  // A catalog with no photos yet builds nothing; first run stays open so setup
+  // can ask again once the catalog has photos.
   if (countLibraryImages(db) === 0) {
-    banner('warning=empty_catalog The Lightroom catalog has no photos yet', 'warning');
+    banner(emptyCatalogWarningLine(db), 'warning');
   } else {
     libraryWrite(db, () => markFirstCatalogImportCompleted(db));
   }
@@ -197,6 +199,14 @@ async function runBuild(
 function countLibraryImages(db: Db): number {
   const row = db.prepare('SELECT COUNT(*) AS c FROM images').get() as { c: number };
   return Math.trunc(row.c);
+}
+
+function emptyCatalogWarningLine(db: Db): string {
+  const kind = getLibraryMeta(db, CATALOG_KIND_META_KEY);
+  if (kind === 'folder') {
+    return 'warning=empty_catalog The folder has no photos yet';
+  }
+  return 'warning=empty_catalog The Lightroom catalog has no photos yet';
 }
 
 /** Run the cache stages in order. Null when a stage settled the job. */

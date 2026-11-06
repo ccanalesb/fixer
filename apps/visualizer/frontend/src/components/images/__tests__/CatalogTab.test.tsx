@@ -113,6 +113,7 @@ function catalogRow(key: string, id: number): CatalogImageInput {
 
 describe('CatalogTab', () => {
   beforeEach(() => {
+    localStorage.clear()
     deleteMatching(() => true)
     vi.clearAllMocks()
     apiMocks.listCatalogMock.mockResolvedValue({ images: [], total: 0 })

@@ -11,7 +11,7 @@ import { forCatalogKind } from '../../utils/catalogKindCopy'
 /** Before a change that queues a re-decide job. */
 export function RedecideConfirmDialog({
   title,
-  body = CULL_REDECIDE_CONFIRM_BODY,
+  body,
   confirmLabel,
   onCancel,
   onConfirm,

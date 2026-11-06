@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { ErrorBoundary, invalidateAll, keys, prefixOf, useQuery } from '../../data';
 import { JobsAPI } from '../../services/api';
+import { CATALOG_LIBRARY_UNAVAILABLE } from '../../constants/strings';
 
 export interface JobsHealthBannerProps {
   /** Polling interval in ms. Defaults to 30s. Set to 0 to disable polling. */
@@ -32,7 +33,7 @@ function JobsHealthBannerBody({
 
   const reason =
     health.library_db.reason ??
-    'Lightroom Classic catalog database is unavailable. Catalog-dependent jobs cannot run.';
+    CATALOG_LIBRARY_UNAVAILABLE;
 
   return (
     <div
@@ -70,8 +71,8 @@ function JobsHealthErrorBanner({ error }: { error: Error }) {
 /**
  * Surface backend catalog-availability problems on the Processing page.
  *
- * Polls ``/api/jobs/health`` and renders an error banner when the Lightroom Classic
- * catalog SQLite mirror is missing/misconfigured. This warns the user *before*
+ * Polls ``/api/jobs/health`` and renders an error banner when the catalog library
+ * is missing or misconfigured. This warns the user *before*
  * they enqueue a job that will either fail immediately or deadlock the queue.
  */
 export function JobsHealthBanner({ pollIntervalMs = 30_000 }: JobsHealthBannerProps) {

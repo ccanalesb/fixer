@@ -10,6 +10,7 @@ import sharp from 'sharp';
 import { stringify as stringifyYaml } from 'yaml';
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
+import { CATALOG_KIND_META_KEY, CATALOG_PATH_META_KEY } from '../src/catalog-library.js';
 import type { Db } from '../src/db/connection.js';
 import { createJob, getJob, initJobsDb, updateJobStatus } from '../src/db/jobs/jobs.js';
 import { JobRunner } from '../src/jobs/runner.js';
@@ -181,6 +182,33 @@ describe('the catalog_cache_build handler', () => {
       "SELECT COUNT(*) AS c FROM library_meta WHERE key = 'first_catalog_import_completed'",
     );
     expect(Number(firstRun[0]!.c)).toBe(0);
+  });
+
+  it('completes on an empty folder catalog with a folder-specific warning', async () => {
+    const folderRoot = join(dir, 'empty-folder');
+    mkdirSync(folderRoot);
+    writeFileSync(
+      cfgPath,
+      stringifyYaml({
+        catalog_path: folderRoot,
+        vision_cache_dir: join(dir, 'vision-folder'),
+        stack_burst_delta_ms: 2000,
+      }),
+    );
+    fx.exec(
+      'INSERT OR REPLACE INTO library_meta (key, value) VALUES (?, ?), (?, ?)',
+      CATALOG_KIND_META_KEY,
+      'folder',
+      CATALOG_PATH_META_KEY,
+      folderRoot,
+    );
+
+    const job = await runChain();
+
+    expect(job.status).toBe('completed');
+    expect(banners(job)).toContain(
+      '[catalog-cache-build] warning=empty_catalog The folder has no photos yet',
+    );
   });
 
   it('marks first run done once the catalog has photos', async () => {
