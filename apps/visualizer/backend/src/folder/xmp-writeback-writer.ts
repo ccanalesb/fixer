@@ -199,7 +199,7 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     if (keyword && !keywords.includes(keyword)) keywords = [...keywords, keyword];
 
     const writeRating = opts?.clearRating ? 0 : rating;
-    const result = await this.applyToTargets(photo, writeRating, keywords);
+    const result = await this.applyToTargets(photo, writeRating, keywords, Boolean(opts?.removeKeyword));
     if (result === 'ok') {
       this.liveByKey.set(
         imageKey,
@@ -230,6 +230,7 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     photo: ResolvedFolderPhoto,
     rating: number,
     keywords: string[],
+    clearSubject = false,
   ): Promise<'ok' | 'skipped_mtime' | 'readonly' | 'outside'> {
     const ambiguous = this.ambiguousFor(photo);
     const targets = resolveFolderWriteTargets(photo, ambiguous);
@@ -237,7 +238,11 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     for (const target of targets) {
       const guards = this.guardsForTarget(photo, target.path);
       const tags: Record<string, unknown> = { Rating: rating === 0 ? 0 : rating };
-      if (keywords.length) tags.Subject = keywords;
+      if (keywords.length) {
+        tags.Subject = keywords;
+      } else if (clearSubject) {
+        tags.Subject = '';
+      }
       const outcome = await atomicReplaceFileAsync(this.catalogRoot, target.path, guards, async (tempPath) => {
         if (target.kind === 'embedded') {
           await this.writeTool.write(tempPath, tags, ['-overwrite_original']);

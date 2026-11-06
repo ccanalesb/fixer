@@ -1,9 +1,17 @@
 import { Suspense } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteMatching } from '../../../../data/cache'
 import { ImagesAPI, LrWritebackAPI, type FolderXmpDetailResponse } from '../../../../services/api'
-import { XMP_DETAIL_SECTION, XMP_FILE_MISSING, XMP_NO_METADATA_HINT } from '../../../../constants/strings'
+import {
+  LR_WRITEBACK_BEFORE_NO_RATING,
+  LR_WRITEBACK_UNDO,
+  LR_WRITEBACK_UNDO_STARS_ROW,
+  LR_WRITEBACK_USER_CHANGED,
+  XMP_DETAIL_SECTION,
+  XMP_FILE_MISSING,
+  XMP_NO_METADATA_HINT,
+} from '../../../../constants/strings'
 import { XmpTab } from '../XmpTab'
 
 function sampleDetail(overrides: Partial<FolderXmpDetailResponse> = {}): FolderXmpDetailResponse {
@@ -77,5 +85,80 @@ describe('XmpTab', () => {
       </Suspense>,
     )
     expect(await screen.findByText(XMP_FILE_MISSING)).toBeInTheDocument()
+  })
+
+  it('shows write-back readout from the live file and undoes stars', async () => {
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(
+      sampleDetail({
+        rating: { display: 'no rating', source: 'embedded XMP' },
+      }),
+    )
+    let live = 2
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockImplementation(async () => ({
+      image_key: 'k',
+      rating: {
+        live,
+        app_wrote: true,
+        before_label: LR_WRITEBACK_BEFORE_NO_RATING,
+        undo_available: live === 2,
+        user_changed: false,
+      },
+      flag: {
+        live_pick: 0,
+        app_wrote_reject: false,
+        undo_available: false,
+        user_changed: false,
+      },
+      keywords: ['lrt-auto-stars'],
+      strong_dimensions_line: null,
+    }))
+    const undoSpy = vi.spyOn(LrWritebackAPI, 'undo').mockImplementation(async () => {
+      live = 0
+      return { ok: true }
+    })
+
+    render(
+      <Suspense fallback={null}>
+        <XmpTab image={{ image_type: 'catalog', key: 'k' }} />
+      </Suspense>,
+    )
+
+    expect(await screen.findByText('2★')).toBeInTheDocument()
+    expect(screen.getByText('written by the app')).toBeInTheDocument()
+    expect(screen.getByText(LR_WRITEBACK_BEFORE_NO_RATING)).toBeInTheDocument()
+    expect(screen.getByText(LR_WRITEBACK_UNDO_STARS_ROW)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: LR_WRITEBACK_UNDO }))
+    expect(undoSpy).toHaveBeenCalledWith('k', 'stars')
+  })
+
+  it('shows user-changed warning when the file no longer matches what the app wrote', async () => {
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(sampleDetail())
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockResolvedValue({
+      image_key: 'k',
+      rating: {
+        live: 4,
+        app_wrote: true,
+        before_label: null,
+        undo_available: false,
+        user_changed: true,
+      },
+      flag: {
+        live_pick: 0,
+        app_wrote_reject: false,
+        undo_available: false,
+        user_changed: false,
+      },
+      keywords: [],
+      strong_dimensions_line: null,
+    })
+
+    render(
+      <Suspense fallback={null}>
+        <XmpTab image={{ image_type: 'catalog', key: 'k' }} />
+      </Suspense>,
+    )
+
+    expect(await screen.findByText(LR_WRITEBACK_USER_CHANGED)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: LR_WRITEBACK_UNDO })).toBeNull()
   })
 })
