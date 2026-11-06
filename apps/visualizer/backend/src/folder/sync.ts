@@ -243,7 +243,7 @@ export async function syncFolderCatalog(
       for (const disk of diskBatch) {
         xmpByRel.set(
           disk.photo.relPath,
-          await readFolderPhotoXmpMetadata(exif, disk.photo, photos, statsByPath),
+          await readFolderPhotoXmpMetadata(exif, disk.photo, ambiguousStemSidecarDirs, statsByPath),
         );
       }
       const records = buildFolderCatalogRecords(
@@ -365,7 +365,7 @@ export async function syncFolderCatalog(
       const row = dbByRel.get(disk.photo.relPath);
       if (!row) continue;
       const tags = await exif.read(disk.photo.filepath);
-      const xmp = await readFolderPhotoXmpMetadata(exif, disk.photo, photos, statsByPath);
+      const xmp = await readFolderPhotoXmpMetadata(exif, disk.photo, ambiguousStemSidecarDirs, statsByPath);
       const record = folderPhotoToCatalogRecord(disk.photo, tags, disk.stat.size, xmp);
       const sideSig = sidecarSigForPhoto(disk.photo, ambiguousStemSidecarDirs, statsByPath);
       libraryWrite(libDb, () => {

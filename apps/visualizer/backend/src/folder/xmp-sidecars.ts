@@ -22,20 +22,27 @@ export function findAmbiguousStemSidecarDirs(photos: readonly ResolvedFolderPhot
   return ambiguous;
 }
 
+/** `<file>.xmp` and, unless the dir's `<stem>.xmp` is shared, `<stem>.xmp` beside it. */
+export function sidecarPathsForFile(
+  filepath: string,
+  stem: string,
+  ambiguousStemSidecarDirs: ReadonlySet<string>,
+): string[] {
+  const dir = dirname(filepath);
+  const paths = [`${filepath}.xmp`];
+  if (!ambiguousStemSidecarDirs.has(dir)) {
+    paths.push(join(dir, `${stem}.xmp`));
+  }
+  return [...new Set(paths)];
+}
+
 export function sidecarPathsForPhoto(
   photo: ResolvedFolderPhoto,
   ambiguousStemSidecarDirs: ReadonlySet<string>,
 ): string[] {
-  const dir = dirname(photo.filepath);
-  const paths = [`${photo.filepath}.xmp`];
-  if (!ambiguousStemSidecarDirs.has(dir)) {
-    paths.push(join(dir, `${photo.stem}.xmp`));
-  }
+  const paths = sidecarPathsForFile(photo.filepath, photo.stem, ambiguousStemSidecarDirs);
   if (photo.jpegFilepath) {
-    paths.push(`${photo.jpegFilepath}.xmp`);
-    if (!ambiguousStemSidecarDirs.has(dirname(photo.jpegFilepath))) {
-      paths.push(join(dirname(photo.jpegFilepath), `${photo.stem}.xmp`));
-    }
+    paths.push(...sidecarPathsForFile(photo.jpegFilepath, photo.stem, ambiguousStemSidecarDirs));
   }
   return [...new Set(paths)];
 }

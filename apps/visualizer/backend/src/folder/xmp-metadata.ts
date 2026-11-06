@@ -6,7 +6,7 @@ import type { CatalogRecord } from '../lightroom/reader.js';
 import type { FolderExifSession } from './exif-read.js';
 import type { FileStatSnapshot } from './lstat-parallel.js';
 import type { ResolvedFolderPhoto } from './walk.js';
-import { findAmbiguousStemSidecarDirs, sidecarPathsForPhoto } from './xmp-sidecars.js';
+import { sidecarPathsForFile } from './xmp-sidecars.js';
 
 export interface FolderXmpMetadata {
   rating: number;
@@ -146,31 +146,44 @@ export function finalizeFolderXmpMetadata(partial: Partial<FolderXmpMetadata>): 
   return merged;
 }
 
-/** Paths to read in PRD order: sidecars by mtime, then embedded on the RAW, then on the JPEG. */
+function byMtimeDesc(statsByPath: ReadonlyMap<string, FileStatSnapshot>) {
+  return (a: string, b: string): number => {
+    const ma = statsByPath.get(a)?.mtimeMs ?? 0;
+    const mb = statsByPath.get(b)?.mtimeMs ?? 0;
+    return mb - ma || a.localeCompare(b);
+  };
+}
+
+/**
+ * Paths to read in PRD order. For a RAW+JPEG pair all of the RAW's sources come
+ * first — its sidecars (newer first), then its embedded XMP/IPTC — and only then
+ * the JPEG's sidecars and embedded XMP/IPTC. A lone photo is just its sidecars
+ * (newer first) then its embedded XMP/IPTC.
+ */
 export function metadataSourcePathsInOrder(
   photo: ResolvedFolderPhoto,
   ambiguousStemSidecarDirs: ReadonlySet<string>,
   statsByPath: ReadonlyMap<string, FileStatSnapshot>,
 ): string[] {
-  const sidecars = sidecarPathsForPhoto(photo, ambiguousStemSidecarDirs);
-  sidecars.sort((a, b) => {
-    const ma = statsByPath.get(a)?.mtimeMs ?? 0;
-    const mb = statsByPath.get(b)?.mtimeMs ?? 0;
-    return mb - ma || a.localeCompare(b);
-  });
-  const embedded = [photo.filepath];
-  if (photo.jpegFilepath) embedded.push(photo.jpegFilepath);
-  return [...sidecars, ...embedded];
+  const order = byMtimeDesc(statsByPath);
+  const rawSidecars = sidecarPathsForFile(photo.filepath, photo.stem, ambiguousStemSidecarDirs);
+  rawSidecars.sort(order);
+  const paths = [...rawSidecars, photo.filepath];
+  if (photo.jpegFilepath) {
+    const jpegSidecars = sidecarPathsForFile(photo.jpegFilepath, photo.stem, ambiguousStemSidecarDirs);
+    jpegSidecars.sort(order);
+    paths.push(...jpegSidecars, photo.jpegFilepath);
+  }
+  return [...new Set(paths)];
 }
 
 export async function readFolderPhotoXmpMetadata(
   session: FolderExifSession,
   photo: ResolvedFolderPhoto,
-  allPhotos: readonly ResolvedFolderPhoto[],
+  ambiguousStemSidecarDirs: ReadonlySet<string>,
   statsByPath: ReadonlyMap<string, FileStatSnapshot>,
 ): Promise<FolderXmpMetadata> {
-  const ambiguous = findAmbiguousStemSidecarDirs(allPhotos);
-  const paths = metadataSourcePathsInOrder(photo, ambiguous, statsByPath);
+  const paths = metadataSourcePathsInOrder(photo, ambiguousStemSidecarDirs, statsByPath);
   const merged: Partial<FolderXmpMetadata> = {};
   for (const path of paths) {
     const tags = await session.read(path);
@@ -188,5 +201,3 @@ export function applyFolderXmpMetadata(record: CatalogRecord, meta: FolderXmpMet
   record.caption = meta.caption;
   record.copyright = meta.copyright;
 }
-
-export { findAmbiguousStemSidecarDirs };

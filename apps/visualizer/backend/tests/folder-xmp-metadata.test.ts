@@ -53,11 +53,42 @@ describe('folder XMP metadata', () => {
 
     const session = createFolderExifSession();
     try {
-      const meta = await readFolderPhotoXmpMetadata(session, photo, [photo], stats);
+      const meta = await readFolderPhotoXmpMetadata(session, photo, ambiguous, stats);
       expect(meta.rating).toBe(1);
     } finally {
       await session.end();
     }
+  });
+
+  it("orders a pair's RAW sources before the JPEG's even when a JPEG sidecar is newer", async () => {
+    const rawPath = join(root, 'img.cr2');
+    const jpegPath = join(root, 'img.jpg');
+    writeFileSync(rawPath, 'raw');
+    writeFileSync(jpegPath, 'jpg');
+    const rawSidecar = join(root, 'img.cr2.xmp');
+    const jpegSidecar = join(root, 'img.jpg.xmp');
+    writeFileSync(rawSidecar, 'x');
+    writeFileSync(jpegSidecar, 'x');
+    utimesSync(rawSidecar, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'));
+    utimesSync(jpegSidecar, new Date('2025-01-01T00:00:00Z'), new Date('2025-01-01T00:00:00Z'));
+
+    const photo: ResolvedFolderPhoto = {
+      filepath: rawPath,
+      relPath: 'img.cr2',
+      filename: 'img',
+      stem: 'img',
+      jpegFilepath: jpegPath,
+    };
+    const stemSidecar = join(root, 'img.xmp');
+    const stats = await lstatPathsParallel(
+      [rawPath, jpegPath, rawSidecar, jpegSidecar, stemSidecar],
+      4,
+    );
+    const ambiguous = findAmbiguousStemSidecarDirs([photo]);
+    const order = metadataSourcePathsInOrder(photo, ambiguous, stats);
+    // All of the RAW's sources (sidecars + embedded) come before any of the JPEG's,
+    // regardless of the JPEG sidecar being more recently modified.
+    expect(order).toEqual([rawSidecar, stemSidecar, rawPath, jpegSidecar, jpegPath]);
   });
 
   it('stores reject as pick -1 and maps labels and keywords', async () => {
