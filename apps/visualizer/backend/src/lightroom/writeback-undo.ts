@@ -8,7 +8,6 @@ import { liveMatchesWritten } from './writeback-shared.js';
 import { openWritebackCatalogWriter } from './writeback-catalog-writer.js';
 import { CATALOG_KIND_META_KEY, inferCatalogKind } from '../catalog-library.js';
 import { getLibraryMeta } from '../db/library/bootstrap.js';
-import { resyncFolderPhotoMetadata } from '../folder/resync-photo-metadata.js';
 import { openFolderWritebackWriterSession } from '../folder/xmp-writeback-writer.js';
 import type { PickRatingWriteResult } from './writer.js';
 import { folderUndoFailureReason } from './writeback-undo-reasons.js';
@@ -48,7 +47,6 @@ export async function undoWritebackKind(
       if (writeResult !== 'updated') {
         return { ok: false, reason: folderUndoFailureReason(writeResult) };
       }
-      await resyncFolderPhotoMetadata(catalogPath, db, imageKey);
       libraryWrite(db, () => {
         upsertWritebackState(db, {
           ...row,

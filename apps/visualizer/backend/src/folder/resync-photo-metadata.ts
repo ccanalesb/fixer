@@ -1,5 +1,6 @@
 /**
- * Re-read one folder-catalog photo's XMP into `library.db` (after write-back undo).
+ * Re-read one folder-catalog photo's XMP into `library.db` after write-back writes
+ * into it, recording its file stats so the next sync does not see an edit.
  */
 import type { Db } from '../db/connection.js';
 import {
@@ -7,16 +8,22 @@ import {
   updateFolderMetadataOnly,
 } from '../db/library/folder-sync.js';
 import { libraryWrite } from '../db/library/write.js';
-import { createFolderExifSession, folderPhotoToCatalogRecord } from './exif-read.js';
+import {
+  createFolderExifSession,
+  folderPhotoToCatalogRecord,
+  type FolderExifSession,
+} from './exif-read.js';
 import { lstatPathsParallel } from './lstat-parallel.js';
 import { resolveFolderPhotoAtPath } from './resolve-photo.js';
 import { readFolderPhotoXmpMetadata } from './xmp-metadata.js';
 import { findAmbiguousStemSidecarDirs, sidecarPathsForPhoto, sidecarSignature } from './xmp-sidecars.js';
 
+/** Reads with `session` when given, else with one opened and closed here. */
 export async function resyncFolderPhotoMetadata(
   catalogRoot: string,
   db: Db,
   imageKey: string,
+  session?: FolderExifSession,
 ): Promise<void> {
   const row = db.prepare('SELECT filepath FROM images WHERE key = ?').get(imageKey) as
     | { filepath: string }
@@ -31,7 +38,7 @@ export async function resyncFolderPhotoMetadata(
   const diskStat = statsByPath.get(photo.filepath);
   if (!diskStat?.readable) return;
 
-  const exif = createFolderExifSession();
+  const exif = session ?? createFolderExifSession();
   try {
     const tags = await exif.read(photo.filepath);
     const xmp = await readFolderPhotoXmpMetadata(exif, photo, ambiguous, statsByPath);
@@ -42,6 +49,6 @@ export async function resyncFolderPhotoMetadata(
       recordFolderCatalogFileSnapshot(db, imageKey, photo, ambiguous);
     });
   } finally {
-    await exif.end();
+    if (!session) await exif.end();
   }
 }

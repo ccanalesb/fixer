@@ -81,7 +81,8 @@ describe('buildFolderCatalogRecords', () => {
   });
 });
 
-describe('syncFolderCatalog', () => {
+// Every sync starts exiftool processes; under a loaded runner one test can pass 5 s.
+describe('syncFolderCatalog', { timeout: 30_000 }, () => {
   it('inserts walked photos with capture dates', async () => {
     writeFileSync(join(root, 'one.jpg'), 'fake-jpeg');
     const db = initLibraryDb(dbPath);

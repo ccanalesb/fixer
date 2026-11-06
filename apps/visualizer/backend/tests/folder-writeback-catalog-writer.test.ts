@@ -198,6 +198,24 @@ describe('FolderWritebackCatalogWriter', () => {
     }
   });
 
+  it('stores what it wrote in the library, and the next sync keeps it', async () => {
+    await jpegAt('written.jpg');
+    const { db, imageKey } = await seedLibrary();
+    const pickAndRating = () =>
+      db.prepare('SELECT pick, rating FROM images WHERE key = ?').get(imageKey) as { pick: number; rating: number };
+    try {
+      await reconcileLrWriteback(db, { trigger: 'write_pending', catalogPath: root });
+      expect(getWritebackState(db, imageKey, 'reject')?.status).toBe('written');
+      expect(pickAndRating()).toEqual({ pick: -1, rating: 0 });
+
+      const sync = await syncFolderCatalog(root, db, {});
+      expect(sync.result).toMatchObject({ changed: 0, metadata_changed: 0 });
+      expect(pickAndRating()).toEqual({ pick: -1, rating: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
   it('adds and removes ownership keywords', async () => {
     await jpegAt('kw.jpg');
     const dbPath = join(dir, 'lib-kw.db');

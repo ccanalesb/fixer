@@ -6,8 +6,6 @@ import { dirname } from 'node:path';
 import { ExifTool } from 'exiftool-vendored';
 import type { Db } from '../db/connection.js';
 import { getImage } from '../db/library/catalog.js';
-import { recordFolderCatalogFileSnapshot } from '../db/library/folder-sync.js';
-import { libraryWrite } from '../db/library/write.js';
 import type { PickRatingWriteResult } from '../lightroom/writer.js';
 import {
   AUTO_REJECT_KEYWORD,
@@ -28,6 +26,7 @@ import {
 import { keywordsFromTags, readFolderPhotoXmpMetadata, type FolderXmpMetadata } from './xmp-metadata.js';
 import { resolveFolderWriteTargets, type FolderWriteTarget } from './xmp-write-target.js';
 import { resolveFolderPhotoAtPath, stemSidecarAmbiguousForDir } from './resolve-photo.js';
+import { resyncFolderPhotoMetadata } from './resync-photo-metadata.js';
 import type { ResolvedFolderPhoto } from './walk.js';
 
 function liveFromMeta(meta: { rating: number; pick: number; keywords: string[] }): LiveWritebackCatalog {
@@ -221,21 +220,14 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
   private async writeKeywordChange(imageKey: string, edit: KeywordEdit): Promise<void> {
     const fresh = await this.readFreshLive(imageKey);
     if (!fresh) return;
-    const { photo, meta, live } = fresh;
+    const { meta, live } = fresh;
     const rating = live.pick === -1 ? -1 : (live.rating ?? 0);
     const result = await this.applyToTargets(fresh, rating, edit);
     if (result === 'ok') {
       const keywords = edit(meta.keywords);
       this.liveByKey.set(imageKey, liveFromMeta({ rating: meta.rating, pick: meta.pick, keywords }));
-      this.recordSnapshot(imageKey, photo);
+      await resyncFolderPhotoMetadata(this.catalogRoot, this.library, imageKey, this.exif);
     }
-  }
-
-  private recordSnapshot(imageKey: string, photo: ResolvedFolderPhoto): void {
-    const ambiguous = this.ambiguousFor(photo);
-    libraryWrite(this.library, () =>
-      recordFolderCatalogFileSnapshot(this.library, imageKey, photo, ambiguous),
-    );
   }
 
   private async writeRating(
@@ -246,7 +238,7 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
   ): Promise<PickRatingWriteResult> {
     const fresh = await this.readFreshLive(imageKey);
     if (!fresh) return 'image_not_found';
-    const { photo, meta, live } = fresh;
+    const { meta, live } = fresh;
 
     if (!opts?.forUndo) {
       if (rating === -1) {
@@ -279,7 +271,7 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
           keywords: edit ? edit(meta.keywords) : meta.keywords,
         }),
       );
-      this.recordSnapshot(imageKey, photo);
+      await resyncFolderPhotoMetadata(this.catalogRoot, this.library, imageKey, this.exif);
       return 'updated';
     }
     if (mapped === 'mtime_conflict' || mapped === 'readonly_error') return mapped;
