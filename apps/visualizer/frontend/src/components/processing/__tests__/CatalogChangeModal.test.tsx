@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { CatalogChangeModal } from '../CatalogChangeModal'
 
-const preview = {
+const sameOrDifferentPreview = {
   unchanged: false,
   current: {
     catalog_path: '/a/old.lrcat',
@@ -26,11 +26,27 @@ const preview = {
   jobs_to_cancel: [],
 }
 
+const switchPreview = {
+  ...sameOrDifferentPreview,
+  ask_same_or_different: false,
+  next: {
+    ...sameOrDifferentPreview.next,
+    catalog_path: '/photos',
+    resolved_path: '/photos',
+    catalog_kind: 'folder' as const,
+    display_name: 'photos',
+  },
+  jobs_to_cancel: [
+    { id: 'job-1', type: 'batch_describe', status: 'running' },
+    { id: 'job-2', type: 'batch_score', status: 'pending' },
+  ],
+}
+
 describe('CatalogChangeModal', () => {
   it('shows Update the path when same catalog is chosen', () => {
     render(
       <CatalogChangeModal
-        preview={preview}
+        preview={sameOrDifferentPreview}
         sameChoice="same"
         onSameChoice={() => {}}
         saving={false}
@@ -40,5 +56,58 @@ describe('CatalogChangeModal', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Update the path' })).toBeEnabled()
+  })
+
+  it('disables confirm until a same-or-different choice is made', () => {
+    render(
+      <CatalogChangeModal
+        preview={sameOrDifferentPreview}
+        sameChoice={null}
+        onSameChoice={() => {}}
+        saving={false}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Switch catalog' })).toBeDisabled()
+  })
+
+  it('shows switch title, consequences, cancelled jobs, and user-facing statuses', () => {
+    render(
+      <CatalogChangeModal
+        preview={switchPreview}
+        sameChoice="different"
+        onSameChoice={() => {}}
+        saving={false}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Switch to photos?' })).toBeInTheDocument()
+    expect(screen.getByText(/starts empty/i)).toBeInTheDocument()
+    expect(screen.getByText(/Everything for/)).toHaveTextContent('old')
+    expect(screen.getByText(/Switching cancels 2 jobs on photos:/)).toBeInTheDocument()
+    expect(screen.getByText(/batch_describe — Running/)).toBeInTheDocument()
+    expect(screen.getByText(/batch_score — Queued/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Switch catalog' })).toBeEnabled()
+  })
+
+  it('calls onConfirm when Switch catalog is pressed', () => {
+    const onConfirm = vi.fn()
+    render(
+      <CatalogChangeModal
+        preview={switchPreview}
+        sameChoice="different"
+        onSameChoice={() => {}}
+        saving={false}
+        onCancel={() => {}}
+        onConfirm={onConfirm}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch catalog' }))
+    expect(onConfirm).toHaveBeenCalled()
   })
 })

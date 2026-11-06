@@ -1,5 +1,6 @@
 import {
   catalogCacheBuildSignalsChanged,
+  catalogLibraryChanged,
   cullingChanged,
   cullingModelsChanged,
   cullingProfilesChanged,
@@ -432,10 +433,7 @@ export const ConfigAPI = {
       method: 'PUT',
       body: JSON.stringify({ catalog_path: catalogPath, change }),
     })
-    invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
-    invalidateAll(keys.catalog.cache.stats())
-    invalidateAll(prefixOf(keys.jobs.health(), 1))
-    invalidateAll(keys.dashboard())
+    catalogLibraryChanged()
     return result
   },
 

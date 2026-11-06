@@ -5,7 +5,9 @@ import { Button } from '../ui/Button/Button'
 import { Input } from '../ui/Input/Input'
 import { PathSummary, SettingRow } from './SettingRow'
 import { CatalogChangeModal } from './CatalogChangeModal'
+import { Badge } from '../ui/badges'
 import type { ConfigCatalogChangePreviewResponse } from '../../types/config'
+import { SETTINGS_CATALOG_MANUAL_PATH_HINT, SETTINGS_CATALOG_REMOTE_HINT } from '../../constants/strings'
 
 function kindLabel(kind: 'lightroom' | 'folder'): string {
   return kind === 'folder' ? 'Folder' : 'Lightroom catalog'
@@ -116,8 +118,8 @@ export function CatalogSettingRow() {
       : ''
 
   const description = (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1">
-      <span className="font-medium text-text">{kindLabel(status.catalogKind)}</span>
+    <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+      <Badge>{kindLabel(status.catalogKind)}</Badge>
       <PathSummary path={status.resolvedPath || status.path} />
       {photoSuffix ? <span className="text-text-tertiary">{photoSuffix}</span> : null}
     </span>
@@ -130,9 +132,7 @@ export function CatalogSettingRow() {
         description={description}
         control={null}
         under={
-          <p className="text-sm text-text-tertiary">
-            The catalog is chosen on the Mac running Fixer.
-          </p>
+          <p className="text-sm text-text-tertiary">{SETTINGS_CATALOG_REMOTE_HINT}</p>
         }
       />
     )
@@ -204,6 +204,7 @@ export function CatalogSettingRow() {
                       : 'Not a .lrcat file, so this is a folder catalog.'}
                   </p>
                 ) : null}
+                <p className="text-sm text-text-tertiary">{SETTINGS_CATALOG_MANUAL_PATH_HINT}</p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"

@@ -14,12 +14,14 @@ import {
   initLibraryDb,
   setLibraryMeta,
 } from '../src/db/library/bootstrap.js';
-import { CATALOG_PATH_META_KEY } from '../src/catalog-library.js';
+import { CATALOG_PATH_META_KEY, generateCatalogFolderName, resetCatalogLibraryModuleStateForTests } from '../src/catalog-library.js';
 import { libraryWrite } from '../src/db/library/write.js';
+import { createJob, initJobsDb } from '../src/db/jobs/jobs.js';
 
 let dir: string;
 let cfgPath: string;
 let libraryPath: string;
+let visualizerDb: string;
 const app = createApp();
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 
@@ -32,6 +34,13 @@ const put = (path: string, body: unknown) =>
 
 const putCatalog = (catalogPath: string, change: 'update_path' | 'switch') =>
   put('/api/config/catalog', { catalog_path: catalogPath, change });
+
+const postChangePreview = (catalogPath: string) =>
+  app.request('/api/config/catalog/change-preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ catalog_path: catalogPath }),
+  });
 
 const readCfg = (): Record<string, unknown> =>
   parseYaml(readFileSync(cfgPath, 'utf8')) as Record<string, unknown>;
@@ -51,17 +60,31 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lt-cfg-'));
   cfgPath = join(dir, 'config.yaml');
   libraryPath = join(dir, 'library.db');
+  visualizerDb = join(dir, 'visualizer.db');
   process.env.LT_CONFIG_YAML = cfgPath;
   process.env.LT_DATA_DIR = dir;
+  process.env.DATABASE_PATH = visualizerDb;
   delete process.env.LIBRARY_DB;
+  resetCatalogLibraryModuleStateForTests();
 });
 
 afterEach(() => {
   delete process.env.LT_CONFIG_YAML;
   delete process.env.LIBRARY_DB;
   delete process.env.LT_DATA_DIR;
+  delete process.env.DATABASE_PATH;
   rmSync(dir, { recursive: true, force: true });
 });
+
+function seedCatalogLibrary(catalogPath: string): void {
+  const folderName = generateCatalogFolderName(catalogPath);
+  const catalogFolder = join(dir, 'catalogs', folderName);
+  mkdirSync(catalogFolder, { recursive: true });
+  const dbPath = join(catalogFolder, 'library.db');
+  const db = initLibraryDb(dbPath);
+  libraryWrite(db, () => setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogPath));
+  db.close();
+}
 
 describe('GET /api/config/catalog', () => {
   it('reports the raw path, the expanded path, and whether it exists', async () => {
@@ -204,6 +227,70 @@ describe('PUT /api/config/catalog', () => {
     const res = await putCatalog(newPath, 'update_path');
     expect(res.status).toBe(200);
     expect(readCfg().catalog_path).toBe(newPath);
+  });
+});
+
+describe('POST /api/config/catalog/change-preview', () => {
+  it('returns unchanged when the resolved path matches the current catalog', async () => {
+    const lrcat = join(dir, 'Same.lrcat');
+    writeFileSync(lrcat, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    seedCatalogLibrary(lrcat);
+
+    const res = await postChangePreview(lrcat);
+    expect(res.status).toBe(200);
+    const body = await json<{ unchanged: boolean; ask_same_or_different: boolean }>(res);
+    expect(body.unchanged).toBe(true);
+    expect(body.ask_same_or_different).toBe(false);
+  });
+
+  it('asks same or different for a new .lrcat with no library yet', async () => {
+    const current = join(dir, 'Final-v13.lrcat');
+    const next = join(dir, 'Final-v14.lrcat');
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(current)}\n`);
+    seedCatalogLibrary(current);
+
+    const res = await postChangePreview(next);
+    expect(res.status).toBe(200);
+    const body = await json<{ ask_same_or_different: boolean; next: { display_name: string } }>(res);
+    expect(body.ask_same_or_different).toBe(true);
+    expect(body.next.display_name).toBe('Final-v14');
+  });
+
+  it('lists active catalog jobs that switching would cancel', async () => {
+    const current = join(dir, 'Current.lrcat');
+    const next = join(dir, 'Other.lrcat');
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(current)}\n`);
+    seedCatalogLibrary(current);
+
+    const jobsDb = initJobsDb(visualizerDb);
+    const jobId = createJob(jobsDb, 'batch_describe', {});
+    jobsDb.close();
+
+    const res = await postChangePreview(next);
+    expect(res.status).toBe(200);
+    const body = await json<{ jobs_to_cancel: { id: string; type: string; status: string }[] }>(res);
+    expect(body.jobs_to_cancel).toEqual([
+      { id: jobId, type: 'batch_describe', status: 'pending' },
+    ]);
+  });
+
+  it('returns 400 when the path does not exist', async () => {
+    writeFileSync(cfgPath, 'catalog_path: /old.lrcat\n');
+    const res = await postChangePreview('/nope/missing.lrcat');
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: 'catalog_path must be an existing file' });
+  });
+
+  it('returns 400 when the folder path does not exist', async () => {
+    writeFileSync(cfgPath, 'catalog_path: /old.lrcat\n');
+    const res = await postChangePreview('/nope/missing-folder');
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: 'catalog_path must be an existing folder' });
   });
 });
 

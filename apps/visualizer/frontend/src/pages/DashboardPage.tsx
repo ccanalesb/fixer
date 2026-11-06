@@ -119,21 +119,31 @@ function DashboardPageInner() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  const locationState = location.state as { startCatalogImport?: boolean } | null
+  const pendingCatalogImport = Boolean(locationState?.startCatalogImport)
+  const showSetup =
+    firstRun.showInsightsSetup || (pendingCatalogImport && !firstRun.loading)
+
   useEffect(() => {
-    const state = location.state as { startCatalogImport?: boolean } | null
-    if (!state?.startCatalogImport || firstRun.loading || !firstRun.showInsightsSetup) return
+    if (!pendingCatalogImport || firstRun.loading || !showSetup) return
+    if (firstRun.firstCatalogImportCompleted) return
     navigate(location.pathname, { replace: true, state: null })
-    void firstRun.startImport()
+    if (!firstRun.importRunning && !firstRun.importStarting) {
+      void firstRun.startImport()
+    }
   }, [
+    pendingCatalogImport,
+    showSetup,
     location.pathname,
-    location.state,
     firstRun.loading,
-    firstRun.showInsightsSetup,
+    firstRun.firstCatalogImportCompleted,
+    firstRun.importRunning,
+    firstRun.importStarting,
     firstRun.startImport,
     navigate,
   ])
 
-  if (firstRun.showInsightsSetup) {
+  if (showSetup) {
     if (firstRun.loading) {
       return dashboardSuspenseFallback
     }

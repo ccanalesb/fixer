@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfigAPI } from '../services/api'
 import { isTauri } from '../utils/isTauri'
+import { catalogDisplayName } from '../utils/catalogDisplayName'
 import { pickCatalogPath, pickFolderCatalogPath } from '../utils/nativeFilePickers'
 import type { ConfigCatalogPutResponse } from '../types/config'
 
@@ -161,12 +162,13 @@ export function useCatalogPicker() {
 }
 
 function buildNotice(result: ConfigCatalogPutResponse): string {
+  const name = catalogDisplayName(result.catalog_path)
   if (result.change === 'update_path') {
-    return 'The library stays. A catalog sync is queued.'
+    return `Path updated to ${name}. The library stays; a catalog sync is queued.`
   }
   if (result.reopened_library && result.library_photo_count != null) {
     const count = result.library_photo_count.toLocaleString('en-US')
-    return `Reopened this catalog: ${count} photos with their descriptions, scores and culling. A catalog sync is queued.`
+    return `Reopened ${name}: ${count} photos with their descriptions, scores and culling. A catalog sync is queued.`
   }
   return ''
 }

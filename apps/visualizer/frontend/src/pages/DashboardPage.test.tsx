@@ -4,9 +4,11 @@ import { Suspense } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from './DashboardPage'
 import { deleteMatching } from '../data/cache'
+import { catalogLibraryChanged } from '../data'
 import {
   ConfigAPI,
   IdentityAPI,
+  JobsAPI,
   SystemAPI,
 } from '../services/api'
 import {
@@ -134,6 +136,7 @@ describe('DashboardPage', () => {
 describe('DashboardPage first-run setup', () => {
   beforeEach(() => {
     deleteMatching(() => true)
+    deleteMatching(() => true)
     vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
       catalog_path: '',
       resolved_path: '',
@@ -186,5 +189,61 @@ describe('DashboardPage first-run setup', () => {
     expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_FOLDER })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: FIRST_RUN_CHOOSE_LRCAT })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: INSIGHTS_PAGE_TITLE })).not.toBeInTheDocument()
+  })
+
+  it('starts import on setup when navigated after switching to an empty catalog', async () => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/tmp/new.lrcat',
+      resolved_path: '/tmp/new.lrcat',
+      exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 50,
+      folder_count: null,
+      picker_available: true,
+    })
+    let insightsCalls = 0
+    vi.spyOn(SystemAPI, 'insightsSummary').mockImplementation(() => {
+      insightsCalls += 1
+      return Promise.resolve({
+        first_catalog_import_completed: insightsCalls === 1,
+        catalog_images: insightsCalls === 1 ? 1000 : 0,
+        scoring_9_plus: 0,
+        burst_stacks: 0,
+        pending_stack_suggestions: 0,
+        unscored_on_active_perspectives: 0,
+        no_current_score: 0,
+        frame_substance_flagged: 0,
+        frame_substance_unknown: { never_judged: 0 },
+        frame_substance_run: null,
+        perspective_coverage: [],
+      })
+    })
+    const createSpy = vi.spyOn(JobsAPI, 'create').mockResolvedValue({
+      id: 'import-job',
+      type: 'catalog_cache_build',
+      status: 'pending',
+      progress: 0,
+      created_at: '2026-01-01T00:00:00Z',
+      started_at: null,
+      completed_at: null,
+      error: null,
+      metadata: {},
+      logs: [],
+      logs_total: 0,
+      warning_count: 0,
+      error_count: 0,
+    })
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/', state: { startCatalogImport: true } }]}>
+        <Suspense fallback={null}>
+          <DashboardPage />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: FIRST_RUN_WELCOME_TITLE })
+    catalogLibraryChanged()
+    await waitFor(() => expect(createSpy).toHaveBeenCalledWith('catalog_cache_build', {}))
   })
 })

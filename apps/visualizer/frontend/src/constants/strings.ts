@@ -201,6 +201,12 @@ export const FIRST_RUN_CHOOSE_FOLDER = 'Choose folder…'
 export const FIRST_RUN_CHOOSE_LRCAT = 'Choose .lrcat…'
 export const FIRST_RUN_MANUAL_PATH_DISCLOSURE = 'Enter a path manually'
 export const FIRST_RUN_MANUAL_PATH_LABEL = 'Folder or catalog path'
+export const SETTINGS_CATALOG_MANUAL_PATH_HINT =
+  'A path on the Mac running Fixer. In Finder, ⌥⌘C copies it.'
+export const FIRST_RUN_REMOTE_CATALOG_HINT =
+  'Only on the Mac running Fixer. Open Fixer there to choose a folder or a Lightroom catalog; from here you can browse what has been imported.'
+export const SETTINGS_CATALOG_REMOTE_HINT =
+  'The catalog is chosen on the Mac running Fixer.'
 export const FIRST_RUN_USE_PATH = 'Use this path'
 export const FIRST_RUN_KIND_FOLDER = 'Folder'
 export const FIRST_RUN_KIND_LRCAT = 'Lightroom catalog'

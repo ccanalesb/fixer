@@ -120,6 +120,21 @@ export function catalogCacheBuildSignalsChanged(): void {
   invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
 }
 
+/** Invalidate every query tied to the open catalog library (path switch or reopen). */
+export function catalogLibraryChanged(): void {
+  invalidateAll(keys.firstRun.signals())
+  invalidateAll(prefixOf(keys.images.catalogMonths(), 1))
+  invalidateAll(keys.catalog.cache.stats())
+  invalidateAll(prefixOf(keys.jobs.health(), 1))
+  invalidateAll(keys.dashboard())
+  invalidateAll(keys.cull.summary())
+  invalidateAll(keys.cull.photosAll())
+  invalidateAll(prefixOf(keys.cull.detail(''), 1))
+  invalidateAll(keys.stacks.suggestions())
+  invalidateAll(prefixOf(keys.identity.mirror(), 1))
+  invalidateAll(keys.identity.postNextAll())
+}
+
 export function clipModelChanged(): void {
   invalidateAll(prefixOf(keys.system.clipModel(), 1))
 }

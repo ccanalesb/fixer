@@ -4,6 +4,7 @@ import { useCatalogPicker } from '../useCatalogPicker'
 
 const mockGetCatalog = vi.fn()
 const mockPutCatalog = vi.fn()
+const mockPreviewCatalogChange = vi.fn()
 const mockPickCatalogPath = vi.fn()
 const mockIsTauri = vi.fn()
 
@@ -11,7 +12,7 @@ vi.mock('../../services/api', () => ({
   ConfigAPI: {
     getCatalog: () => mockGetCatalog(),
     putCatalog: (...args: unknown[]) => mockPutCatalog(...args),
-    previewCatalogChange: vi.fn(),
+    previewCatalogChange: (...args: unknown[]) => mockPreviewCatalogChange(...args),
   },
 }))
 
@@ -64,5 +65,27 @@ describe('useCatalogPicker pickLrcat', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.status?.pickerUsable).toBe(true)
+  })
+
+  it('shows catalog-name notices after applyChange', async () => {
+    mockPutCatalog.mockResolvedValue({
+      catalog_path: '/Volumes/NAS/Holiday.lrcat',
+      change: 'update_path',
+      reopened_library: true,
+      library_photo_count: 1200,
+      catalog_sync_job_id: 'sync-1',
+      cancelled_job_ids: [],
+    })
+
+    const { result } = renderHook(() => useCatalogPicker())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.applyChange('/Volumes/NAS/Holiday.lrcat', 'update_path')
+    })
+
+    expect(result.current.notice).toBe(
+      'Path updated to Holiday. The library stays; a catalog sync is queued.',
+    )
   })
 })
