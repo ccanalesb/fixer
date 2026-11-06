@@ -9,7 +9,8 @@ import sharp from 'sharp';
 import { stringify as stringifyYaml } from 'yaml';
 import { makeFakeCatalog, type CatalogFile } from './helpers/fake-catalog.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
-import type { Db } from '../src/db/connection.js';
+import { openLibraryDb, type Db } from '../src/db/connection.js';
+import { syncCatalog } from '../src/lightroom/catalog-sync.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
@@ -48,6 +49,15 @@ let jobsDbPath: string;
 function withJobsDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   const db = initJobsDb(jobsDbPath);
   return fn(db).finally(() => db.close());
+}
+
+async function withLibraryAsync<T>(fn: (db: Db) => Promise<T>): Promise<T> {
+  const db = openLibraryDb(fx.dbPath);
+  try {
+    return await fn(db);
+  } finally {
+    db.close();
+  }
 }
 
 async function seedCatalog(names: string[]): Promise<void> {
@@ -162,6 +172,27 @@ describe('the catalog cache check', () => {
       `SELECT value FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`,
     );
     expect(mark).toHaveLength(0);
+  });
+
+  it('recomputes stacks after a standalone sync found a photo newly gone', async () => {
+    await seedCatalog(['shot-a', 'shot-b']);
+    await check();
+    enc.encoded = 0;
+
+    // A standalone sync (no ranking after it) with one photo removed: it marks the
+    // row gone and leaves the changed-since-ranking mark set.
+    await seedCatalog(['shot-a']);
+    const standalone = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(standalone.result.newly_gone).toBe(1);
+    expect(fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`))
+      .toHaveLength(1);
+
+    // The next job's own sync finds nothing new, but the mark still forces a recompute.
+    const { messages } = await check();
+
+    expect(messages.some((m) => m.includes('[cache] stage=stack status=start'))).toBe(true);
+    expect(fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`))
+      .toHaveLength(0);
   });
 
   it('builds what a photo added in Lightroom is missing', async () => {

@@ -15,6 +15,10 @@ import { openLibraryDb, type Db } from '../src/db/connection.js';
 import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { getLibraryMeta } from '../src/db/library/bootstrap.js';
 import { libraryWrite } from '../src/db/library/write.js';
+import {
+  clearChangedSinceRanking,
+  hasChangedSinceRanking,
+} from '../src/db/library/ranking-stale.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import {
@@ -233,6 +237,27 @@ describe('syncCatalog', () => {
 
     expect(result).toMatchObject({ added: 0, stale: 1 });
     expect(syncedImages()).toHaveLength(1);
+  });
+
+  it('marks the library changed-since-ranking when a photo is newly gone', async () => {
+    makeFakeCatalog(lrcatPath, []);
+    seedLibraryImage('gone', '42');
+
+    const { result } = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(result).toMatchObject({ newly_gone: 1 });
+    withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(true));
+  });
+
+  it('does not re-mark a photo that was already gone', async () => {
+    makeFakeCatalog(lrcatPath, []);
+    seedLibraryImage('gone', '42');
+
+    await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    withLibrary((db) => libraryWrite(db, () => clearChangedSinceRanking(db)));
+
+    const { result } = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(result).toMatchObject({ newly_gone: 0 });
+    withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(false));
   });
 
   it('diffs ids numerically, not lexicographically', async () => {

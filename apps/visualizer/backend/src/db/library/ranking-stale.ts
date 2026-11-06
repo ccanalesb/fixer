@@ -26,18 +26,10 @@ export interface FolderSyncRankingSignals {
   changed: number;
   moved: number;
   newly_gone: number;
-  metadata_changed?: number;
 }
 
 export function noteRankingStaleAfterFolderSync(db: Db, report: FolderSyncRankingSignals): void {
-  const metadataChanged = report.metadata_changed ?? 0;
-  if (
-    report.added > 0 ||
-    report.changed > 0 ||
-    report.moved > 0 ||
-    report.newly_gone > 0 ||
-    metadataChanged > 0
-  ) {
+  if (report.added > 0 || report.changed > 0 || report.moved > 0 || report.newly_gone > 0) {
     libraryWrite(db, () => markChangedSinceRanking(db));
   }
 }

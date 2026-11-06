@@ -270,8 +270,7 @@ async function runCacheStages(
     (sync.changed ?? 0) +
     (sync.moved ?? 0) +
     (sync.newly_gone ?? 0) +
-    (sync.collisions ?? 0) +
-    (sync.metadata_changed ?? 0);
+    (sync.collisions ?? 0);
   const syncChanged =
     sync.added > 0 || folderChanges > 0 || hasChangedSinceRanking(db);
   const unchanged = !syncChanged && embed.embedded === 0;
