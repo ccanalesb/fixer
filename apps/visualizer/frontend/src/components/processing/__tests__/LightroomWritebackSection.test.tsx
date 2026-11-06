@@ -4,6 +4,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { LightroomWritebackSection } from '../LightroomWritebackSection'
 import { JobsAPI, LrWritebackAPI } from '../../../services/api'
 import {
+  FOLDER_WRITEBACK_WRITE,
   LR_WRITEBACK_CLOSE_LR,
   LR_WRITEBACK_STARS_SWITCH,
   LR_WRITEBACK_STOP_WRITING_CANCEL,
@@ -170,6 +171,18 @@ describe('LightroomWritebackSection', () => {
     renderSection()
     fireEvent.click(await screen.findByRole('button', { name: LR_WRITEBACK_WRITE_TO_LR }))
     expect(write).toHaveBeenCalled()
+  })
+
+  it('shows write enqueue error for a folder catalog', async () => {
+    vi.spyOn(LrWritebackAPI, 'getSettings').mockResolvedValue({
+      ...baseSettings,
+      catalog_kind: 'folder',
+      write_reject: true,
+    })
+    vi.spyOn(LrWritebackAPI, 'write').mockRejectedValue(new Error('Catalog unavailable for write-back.'))
+    renderSection()
+    fireEvent.click(await screen.findByRole('button', { name: FOLDER_WRITEBACK_WRITE }))
+    expect(await screen.findByText('Catalog unavailable for write-back.')).toBeInTheDocument()
   })
 
   it('folder turn-on shows dry-run counts and PATCHes only after confirm', async () => {

@@ -64,6 +64,9 @@ export const LrWritebackPhotoDetailSchema = z
       .strict(),
     keywords: z.array(z.string()),
     strong_dimensions_line: z.string().nullable(),
+    written_at: z.string().nullable(),
+    written_file_label: z.string().nullable(),
+    user_changed_message: z.string().nullable(),
   })
   .strict()
   .openapi('LrWritebackPhotoDetailResponse');

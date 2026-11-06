@@ -8,7 +8,10 @@ import { liveMatchesWritten } from './writeback-shared.js';
 import { openWritebackCatalogWriter } from './writeback-catalog-writer.js';
 import { CATALOG_KIND_META_KEY, inferCatalogKind } from '../catalog-library.js';
 import { getLibraryMeta } from '../db/library/bootstrap.js';
+import { resyncFolderPhotoMetadata } from '../folder/resync-photo-metadata.js';
 import { openFolderWritebackWriterSession } from '../folder/xmp-writeback-writer.js';
+import type { PickRatingWriteResult } from './writer.js';
+import { folderUndoFailureReason } from './writeback-undo-reasons.js';
 
 export async function undoWritebackKind(
   db: Db,
@@ -36,11 +39,16 @@ export async function undoWritebackKind(
       if (!pickRating || !liveMatchesWritten(kind, pickRating, row)) {
         return { ok: false, reason: 'The file no longer holds what the app wrote.' };
       }
+      let writeResult: PickRatingWriteResult;
       if (kind === 'reject') {
-        await Promise.resolve(folderSession.writer.undoReject(imageKey, row.before_pick));
+        writeResult = await Promise.resolve(folderSession.writer.undoReject(imageKey, row.before_pick));
       } else {
-        await Promise.resolve(folderSession.writer.undoStars(imageKey, row.before_rating));
+        writeResult = await Promise.resolve(folderSession.writer.undoStars(imageKey, row.before_rating));
       }
+      if (writeResult !== 'updated') {
+        return { ok: false, reason: folderUndoFailureReason(writeResult) };
+      }
+      await resyncFolderPhotoMetadata(catalogPath, db, imageKey);
       libraryWrite(db, () => {
         upsertWritebackState(db, {
           ...row,

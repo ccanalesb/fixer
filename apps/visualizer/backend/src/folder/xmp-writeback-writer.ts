@@ -163,16 +163,27 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     const live = this.readLive(imageKey);
     if (!live?.auto_stars_keyword) return 'skipped';
     if (beforeRating == null || beforeRating === 0) {
-      return this.writeRating(imageKey, 0, null, { clearRating: true, removeKeyword: AUTO_STARS_KEYWORD });
+      return this.writeRating(imageKey, 0, null, {
+        clearRating: true,
+        removeKeyword: AUTO_STARS_KEYWORD,
+        forUndo: true,
+      });
     }
-    return this.writeRating(imageKey, beforeRating, null, { removeKeyword: AUTO_STARS_KEYWORD });
+    return this.writeRating(imageKey, beforeRating, null, {
+      removeKeyword: AUTO_STARS_KEYWORD,
+      forUndo: true,
+    });
   }
 
   undoReject(imageKey: string, beforePick: number | null): PickRatingWriteResult | Promise<PickRatingWriteResult> {
     const live = this.readLive(imageKey);
     if (!live?.auto_reject_keyword) return 'skipped';
     if (beforePick === -1) return 'skipped';
-    return this.writeRating(imageKey, 0, null, { clearRating: true, removeKeyword: AUTO_REJECT_KEYWORD });
+    return this.writeRating(imageKey, 0, null, {
+      clearRating: true,
+      removeKeyword: AUTO_REJECT_KEYWORD,
+      forUndo: true,
+    });
   }
 
   imageLocalId(_imageKey: string): number | null {
@@ -203,18 +214,20 @@ export class FolderWritebackCatalogWriter implements WritebackCatalogWriter {
     imageKey: string,
     rating: number,
     keyword: string | null,
-    opts?: { clearRating?: boolean; removeKeyword?: string },
+    opts?: { clearRating?: boolean; removeKeyword?: string; forUndo?: boolean },
   ): Promise<PickRatingWriteResult> {
     const fresh = await this.readFreshLive(imageKey);
     if (!fresh) return 'image_not_found';
     const { photo, meta, live } = fresh;
 
-    if (rating === -1) {
-      if (live.rating != null && live.rating > 0) return 'skipped';
-      if (live.pick != null && live.pick !== 0) return 'skipped';
-    } else if (rating >= 1) {
-      if (live.rating != null && live.rating > 0) return 'skipped';
-      if (live.pick === -1) return 'skipped';
+    if (!opts?.forUndo) {
+      if (rating === -1) {
+        if (live.rating != null && live.rating > 0) return 'skipped';
+        if (live.pick != null && live.pick !== 0) return 'skipped';
+      } else if (rating >= 1) {
+        if (live.rating != null && live.rating > 0) return 'skipped';
+        if (live.pick === -1) return 'skipped';
+      }
     }
 
     let keywords = [...meta.keywords];

@@ -7,11 +7,13 @@ import {
   LR_WRITEBACK_BEFORE_NO_RATING,
   LR_WRITEBACK_UNDO,
   LR_WRITEBACK_UNDO_STARS_ROW,
-  LR_WRITEBACK_USER_CHANGED,
+  FOLDER_WRITEBACK_WRITTEN_DETAIL,
+  FOLDER_WRITEBACK_USER_CHANGED,
   XMP_DETAIL_SECTION,
   XMP_FILE_MISSING,
   XMP_NO_METADATA_HINT,
 } from '../../../../constants/strings'
+import { formatDateTime } from '../../../../utils/date'
 import { XmpTab } from '../XmpTab'
 
 function sampleDetail(overrides: Partial<FolderXmpDetailResponse> = {}): FolderXmpDetailResponse {
@@ -111,6 +113,9 @@ describe('XmpTab', () => {
       },
       keywords: ['lrt-auto-stars'],
       strong_dimensions_line: null,
+      written_at: '2026-03-15T14:30:00.000Z',
+      written_file_label: 'embed.jpg',
+      user_changed_message: null,
     }))
     const undoSpy = vi.spyOn(LrWritebackAPI, 'undo').mockImplementation(async () => {
       live = 0
@@ -126,6 +131,11 @@ describe('XmpTab', () => {
     expect(await screen.findByText('2★')).toBeInTheDocument()
     expect(screen.getByText('written by the app')).toBeInTheDocument()
     expect(screen.getByText(LR_WRITEBACK_BEFORE_NO_RATING)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        FOLDER_WRITEBACK_WRITTEN_DETAIL('embed.jpg', formatDateTime('2026-03-15T14:30:00.000Z')),
+      ),
+    ).toBeInTheDocument()
     expect(screen.getByText(LR_WRITEBACK_UNDO_STARS_ROW)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: LR_WRITEBACK_UNDO }))
     expect(undoSpy).toHaveBeenCalledWith('k', 'stars')
@@ -150,6 +160,9 @@ describe('XmpTab', () => {
       },
       keywords: [],
       strong_dimensions_line: null,
+      written_at: null,
+      written_file_label: null,
+      user_changed_message: FOLDER_WRITEBACK_USER_CHANGED('beach.jpg'),
     })
 
     render(
@@ -158,7 +171,7 @@ describe('XmpTab', () => {
       </Suspense>,
     )
 
-    expect(await screen.findByText(LR_WRITEBACK_USER_CHANGED)).toBeInTheDocument()
+    expect(await screen.findByText(FOLDER_WRITEBACK_USER_CHANGED('beach.jpg'))).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: LR_WRITEBACK_UNDO })).toBeNull()
   })
 })

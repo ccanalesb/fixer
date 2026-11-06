@@ -996,6 +996,10 @@ export const LR_WRITEBACK_KEYWORDS = 'Keywords'
 export const LR_WRITEBACK_UNDO = 'Undo'
 export const LR_WRITEBACK_BEFORE_NO_RATING = 'before: no rating'
 export const LR_WRITEBACK_USER_CHANGED = 'You changed this in Lightroom Classic after the app wrote it.'
+export const FOLDER_WRITEBACK_USER_CHANGED = (filename: string) =>
+  `You changed ${filename} after the app wrote it.`
+export const FOLDER_WRITEBACK_WRITTEN_DETAIL = (fileLabel: string, whenLabel: string) =>
+  `Written to ${fileLabel} · ${whenLabel}`
 export const LR_WRITEBACK_APP_KEYWORDS = 'App keywords'
 export const LR_WRITEBACK_PICK = 'Pick'
 export const LR_WRITEBACK_UNDO_STARS_ROW = 'Stars written by the app'

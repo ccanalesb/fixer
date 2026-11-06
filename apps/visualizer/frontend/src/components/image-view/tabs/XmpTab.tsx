@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { LrWritebackAPI, ImagesAPI, type FolderXmpDetailResponse, type ImageView, type LrWritebackPhotoDetailResponse } from '../../../services/api'
 import { keys, useQuery } from '../../../data'
@@ -14,12 +15,13 @@ import {
   LR_WRITEBACK_UNDO,
   LR_WRITEBACK_UNDO_REJECT_ROW,
   LR_WRITEBACK_UNDO_STARS_ROW,
-  LR_WRITEBACK_USER_CHANGED,
+  FOLDER_WRITEBACK_WRITTEN_DETAIL,
   XMP_DETAIL_SECTION,
   XMP_FILE_MISSING,
   XMP_NO_METADATA_HINT,
   XMP_REJECT_LABEL,
 } from '../../../constants/strings'
+import { formatDateTime } from '../../../utils/date'
 import { ActionArea, ActionRow, Fact, FactsBlock, StatusBlock } from '../detail-blocks'
 
 function ValueWithSource({ value, source }: { value: ReactNode; source?: string | null }) {
@@ -46,6 +48,16 @@ function ratingLine(
         written by the app
       </span>,
     )
+  }
+  if (writeback?.written_file_label && writeback.written_at) {
+    const when = formatDateTime(writeback.written_at)
+    if (when) {
+      extras.push(
+        <span key="written" className="ml-2 block text-text-tertiary">
+          {FOLDER_WRITEBACK_WRITTEN_DETAIL(writeback.written_file_label, when)}
+        </span>,
+      )
+    }
   }
   const before =
     writeback?.rating.before_label ??
@@ -106,9 +118,16 @@ async function fetchLrWritebackPhoto(imageKey: string): Promise<LrWritebackPhoto
 export function XmpTab({ image }: { image: ImageView }) {
   const detail = useQuery(keys.folderXmp.photo(image.key), () => fetchFolderXmp(image.key))
   const writeback = useQuery(keys.lrWriteback.photo(image.key), () => fetchLrWritebackPhoto(image.key))
+  const [undoError, setUndoError] = useState<string | null>(null)
 
   const undo = async (kind: 'stars' | 'reject') => {
-    await LrWritebackAPI.undo(image.key, kind)
+    setUndoError(null)
+    try {
+      const result = await LrWritebackAPI.undo(image.key, kind)
+      if (!result.ok) setUndoError(result.reason ?? 'Undo failed.')
+    } catch (e) {
+      setUndoError(e instanceof Error ? e.message : 'Undo failed.')
+    }
   }
 
   const appKeywords = writeback && writeback.keywords.length > 0 ? writeback.keywords.join(', ') : null
@@ -193,9 +212,10 @@ export function XmpTab({ image }: { image: ImageView }) {
       {writeback?.strong_dimensions_line ? (
         <p className="text-xs text-text-secondary">{writeback.strong_dimensions_line}</p>
       ) : null}
-      {writeback?.rating.user_changed || writeback?.flag.user_changed ? (
-        <p className="text-xs text-warning">{LR_WRITEBACK_USER_CHANGED}</p>
+      {writeback?.user_changed_message ? (
+        <p className="text-xs text-warning">{writeback.user_changed_message}</p>
       ) : null}
+      {undoError ? <p className="text-xs text-error">{undoError}</p> : null}
 
       <ActionArea>
         {writeback?.rating.undo_available ? (

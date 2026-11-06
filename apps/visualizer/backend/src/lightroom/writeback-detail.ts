@@ -7,6 +7,41 @@ import { openWritebackCatalogWriter, AUTO_REJECT_KEYWORD, AUTO_STARS_KEYWORD } f
 import { CATALOG_KIND_META_KEY } from '../catalog-library.js';
 import { getLibraryMeta } from '../db/library/bootstrap.js';
 import { openFolderWritebackWriterSession } from '../folder/xmp-writeback-writer.js';
+import { basename, dirname } from 'node:path';
+import { resolveFolderPhotoAtPath, stemSidecarAmbiguousForDir } from '../folder/resolve-photo.js';
+import { resolveFolderWriteTargets } from '../folder/xmp-write-target.js';
+import { getImage } from '../db/library/catalog.js';
+import type { LrWritebackStateRow } from '../db/library/lr-writeback-state.js';
+
+function starsBeforeLabel(row: LrWritebackStateRow | null): string | null {
+  if (!row || row.status !== 'written') return null;
+  if (row.before_rating == null || row.before_rating === 0) return 'before: no rating';
+  return `before: ${row.before_rating}★`;
+}
+
+function folderWrittenFileLabel(catalogPath: string, db: Db, imageKey: string): string | null {
+  const image = getImage(db, imageKey);
+  if (!image?.filepath) return null;
+  const photo = resolveFolderPhotoAtPath(catalogPath, String(image.filepath));
+  if (!photo) return null;
+  const dir = dirname(photo.filepath);
+  const ambiguous = new Set<string>();
+  if (stemSidecarAmbiguousForDir(dir, photo.stem)) ambiguous.add(dir);
+  const targets = resolveFolderWriteTargets(photo, ambiguous);
+  const target = targets[0];
+  if (!target) return null;
+  if (target.kind === 'embedded') return `embedded in ${basename(target.path)}`;
+  return basename(target.path);
+}
+
+function pickWrittenRow(
+  starsRow: LrWritebackStateRow | null,
+  rejectRow: LrWritebackStateRow | null,
+): LrWritebackStateRow | null {
+  if (starsRow?.status === 'written') return starsRow;
+  if (rejectRow?.status === 'written') return rejectRow;
+  return null;
+}
 
 function strongDimensionsLine(decision: ReturnType<typeof decideWriteback>['stars']): string | null {
   switch (decision.why) {
@@ -64,13 +99,18 @@ export async function buildWritebackPhotoDetail(
   const pickRating = live ? { pick: live.pick, rating: live.rating } : null;
   const ratingUserChanged = starsRow && pickRating && userChangedAfterWrite('stars', pickRating, starsRow);
   const flagUserChanged = rejectRow && pickRating && userChangedAfterWrite('reject', pickRating, rejectRow);
+  const writtenRow = pickWrittenRow(starsRow, rejectRow);
+  const image = isFolder ? getImage(db, imageKey) : null;
+  const userChangedFileLabel =
+    image?.filepath != null ? basename(String(image.filepath)) : image?.filename ?? null;
+  const userChanged = Boolean(ratingUserChanged || flagUserChanged);
 
   return {
     image_key: imageKey,
     rating: {
       live: pickRating?.rating ?? null,
       app_wrote: starsRow?.status === 'written',
-      before_label: starsRow?.before_rating === null ? 'before: no rating' : null,
+      before_label: starsBeforeLabel(starsRow),
       undo_available:
         starsRow?.status === 'written' &&
         pickRating !== null &&
@@ -90,5 +130,12 @@ export async function buildWritebackPhotoDetail(
     },
     keywords,
     strong_dimensions_line: strongDimensionsLine(decision.stars),
+    written_at: writtenRow?.written_at ?? null,
+    written_file_label:
+      isFolder && writtenRow ? folderWrittenFileLabel(catalogPath, db, imageKey) : null,
+    user_changed_message:
+      isFolder && userChanged && userChangedFileLabel
+        ? `You changed ${userChangedFileLabel} after the app wrote it.`
+        : null,
   };
 }

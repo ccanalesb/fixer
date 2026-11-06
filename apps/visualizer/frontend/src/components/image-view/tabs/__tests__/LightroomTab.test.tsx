@@ -33,6 +33,9 @@ function detail(
     flag: { live_pick: 0, app_wrote_reject: false, undo_available: false, user_changed: false },
     keywords: [],
     strong_dimensions_line: null,
+    written_at: null,
+    written_file_label: null,
+    user_changed_message: null,
   }
 }
 

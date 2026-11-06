@@ -6938,6 +6938,9 @@ export interface components {
             };
             keywords: string[];
             strong_dimensions_line: string | null;
+            written_at: string | null;
+            written_file_label: string | null;
+            user_changed_message: string | null;
         };
         AppModelsListResponse: {
             models: components["schemas"]["AppModel"][];
