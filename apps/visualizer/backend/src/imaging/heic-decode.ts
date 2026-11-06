@@ -13,7 +13,35 @@ import sharp from 'sharp';
 
 const execFileAsync = promisify(execFile);
 
+/** Longest edge for decoded HEIC JPEGs — matches vision cache compression input. */
+const PREVIEW_MAX_DIMENSION = Number(process.env.VISION_MAX_DIMENSION ?? '1024');
+
+/** Cap simultaneous libheif decodes so large files do not exhaust memory. */
+const MAX_CONCURRENT_LIBHEIF_DECODES = 2;
+
 let sipsPresenceOverride: (() => Promise<boolean>) | null = null;
+
+let libheifInFlight = 0;
+const libheifWaiters: Array<() => void> = [];
+
+async function acquireLibheifSlot(): Promise<void> {
+  if (libheifInFlight < MAX_CONCURRENT_LIBHEIF_DECODES) {
+    libheifInFlight += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    libheifWaiters.push(() => {
+      libheifInFlight += 1;
+      resolve();
+    });
+  });
+}
+
+function releaseLibheifSlot(): void {
+  libheifInFlight -= 1;
+  const next = libheifWaiters.shift();
+  if (next) next();
+}
 
 /** Test seam: pretend `sips` is available without running it. */
 export function setHeicDecodeSipsPresenceOverride(fn: (() => Promise<boolean>) | null): void {
@@ -47,15 +75,26 @@ async function decodeWithSips(inputPath: string, outputPath: string): Promise<bo
 }
 
 async function decodeWithLibheif(inputPath: string, outputPath: string): Promise<boolean> {
+  await acquireLibheifSlot();
   try {
     const buffer = await readFile(inputPath);
     const { width, height, data } = await decodeHeic({ buffer });
-    await sharp(data, { raw: { width, height, channels: 4 } })
-      .jpeg({ quality: 92, mozjpeg: true })
-      .toFile(outputPath);
+    const pipeline = sharp(data, { raw: { width, height, channels: 4 } });
+    if (width > PREVIEW_MAX_DIMENSION || height > PREVIEW_MAX_DIMENSION) {
+      pipeline.resize({
+        width: PREVIEW_MAX_DIMENSION,
+        height: PREVIEW_MAX_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true,
+        kernel: 'lanczos3',
+      });
+    }
+    await pipeline.jpeg({ quality: 92, mozjpeg: true }).toFile(outputPath);
     return true;
   } catch {
     return false;
+  } finally {
+    releaseLibheifSlot();
   }
 }
 

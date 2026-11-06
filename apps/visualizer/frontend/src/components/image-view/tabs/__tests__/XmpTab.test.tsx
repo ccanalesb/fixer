@@ -2,8 +2,8 @@ import { Suspense } from 'react'
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteMatching } from '../../../../data/cache'
-import { ImagesAPI, type FolderXmpDetailResponse } from '../../../../services/api'
-import { XMP_DETAIL_SECTION } from '../../../../constants/strings'
+import { ImagesAPI, LrWritebackAPI, type FolderXmpDetailResponse } from '../../../../services/api'
+import { XMP_DETAIL_SECTION, XMP_FILE_MISSING, XMP_NO_METADATA_HINT } from '../../../../constants/strings'
 import { XmpTab } from '../XmpTab'
 
 function sampleDetail(overrides: Partial<FolderXmpDetailResponse> = {}): FolderXmpDetailResponse {
@@ -27,6 +27,7 @@ function sampleDetail(overrides: Partial<FolderXmpDetailResponse> = {}): FolderX
 describe('XmpTab', () => {
   beforeEach(() => {
     deleteMatching(() => true)
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockRejectedValue(new Error('no writeback'))
   })
 
   afterEach(() => {
@@ -63,6 +64,18 @@ describe('XmpTab', () => {
         <XmpTab image={{ image_type: 'catalog', key: 'k' }} />
       </Suspense>,
     )
-    expect(await screen.findByText(/They are read from its/)).toBeInTheDocument()
+    expect(await screen.findByText(XMP_NO_METADATA_HINT)).toBeInTheDocument()
+  })
+
+  it('shows the missing-file notice when file_missing is true', async () => {
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(
+      sampleDetail({ file_missing: true, no_metadata_hint: false }),
+    )
+    render(
+      <Suspense fallback={null}>
+        <XmpTab image={{ image_type: 'catalog', key: 'k' }} />
+      </Suspense>,
+    )
+    expect(await screen.findByText(XMP_FILE_MISSING)).toBeInTheDocument()
   })
 })

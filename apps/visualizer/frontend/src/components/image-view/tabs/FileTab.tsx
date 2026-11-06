@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ImageView } from '../../../services/api'
-import { ConfigAPI, ImagesAPI } from '../../../services/api'
+import { ImagesAPI } from '../../../services/api'
 import {
   DATE_NO_DATE,
   FILE_MISSING_STATUS_BODY,
@@ -36,31 +36,22 @@ function formatMissingSince(iso: string): string {
 
 export function FileTab({
   image,
+  catalogKind,
   onPostedChange,
 }: {
   image: ImageView
+  catalogKind: 'lightroom' | 'folder' | null
   /** Optimistic posted flag for the badges under the photo. */
   onPostedChange?: (posted: boolean) => void
 }) {
   const [posted, setPosted] = useState(image.instagram_posted ?? false)
   const [toggling, setToggling] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [catalogKind, setCatalogKind] = useState<'lightroom' | 'folder'>('lightroom')
 
   useEffect(() => {
     setPosted(image.instagram_posted ?? false)
     setError(null)
   }, [image.key, image.instagram_posted])
-
-  useEffect(() => {
-    let cancelled = false
-    void ConfigAPI.getCatalog().then((cfg) => {
-      if (!cancelled) setCatalogKind(cfg.catalog_kind)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   async function togglePosted(next: boolean) {
     const prev = posted

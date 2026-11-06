@@ -87,6 +87,9 @@ export const keys = {
   firstRun: {
     signals: () => ['firstRun', 'signals'] as const,
   },
+  config: {
+    catalog: () => ['config', 'catalog'] as const,
+  },
 } as const
 
 const PROVIDERS_CHANGED_PREFIXES: readonly (readonly unknown[])[] = [
@@ -136,6 +139,7 @@ export function catalogLibraryChanged(): void {
   invalidateAll(keys.stacks.suggestions())
   invalidateAll(prefixOf(keys.identity.mirror(), 1))
   invalidateAll(keys.identity.postNextAll())
+  invalidateAll(prefixOf(keys.config.catalog(), 1))
 }
 
 export function clipModelChanged(): void {

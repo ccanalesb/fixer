@@ -1,27 +1,14 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import {
   FILE_MISSING_STATUS_TITLE,
   IMAGE_DETAIL_POSTED_ARIA,
   LR_MISSING_STATUS_TITLE,
 } from '../../../../constants/strings'
-import { ConfigAPI, ImagesAPI } from '../../../../services/api'
+import { ImagesAPI } from '../../../../services/api'
 import { FileTab } from '../FileTab'
 
 describe('FileTab', () => {
-  beforeEach(() => {
-    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
-      catalog_path: '',
-      resolved_path: '',
-      exists: false,
-      catalog_kind: 'lightroom',
-      photo_count: null,
-      folder_count: null,
-      unreadable_directories: [],
-      picker_available: false,
-    })
-  })
-
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
@@ -30,6 +17,7 @@ describe('FileTab', () => {
   it('lists the file facts', () => {
     render(
       <FileTab
+        catalogKind="lightroom"
         image={{
           image_type: 'catalog',
           key: 'k',
@@ -49,19 +37,10 @@ describe('FileTab', () => {
     expect(screen.getByText('6000 × 4000')).toBeInTheDocument()
   })
 
-  it('omits title and caption on a folder catalog', async () => {
-    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
-      catalog_path: '/photos',
-      resolved_path: '/photos',
-      exists: true,
-      catalog_kind: 'folder',
-      photo_count: 1,
-      folder_count: 1,
-      unreadable_directories: [],
-      picker_available: false,
-    })
+  it('omits title and caption on a folder catalog', () => {
     render(
       <FileTab
+        catalogKind="folder"
         image={{
           image_type: 'catalog',
           key: 'k',
@@ -71,7 +50,7 @@ describe('FileTab', () => {
         }}
       />,
     )
-    await waitFor(() => expect(screen.queryByText('Hidden')).toBeNull())
+    expect(screen.queryByText('Hidden')).toBeNull()
     expect(screen.queryByText('Also hidden')).toBeNull()
     expect(screen.getByText('a.jpg')).toBeInTheDocument()
   })
@@ -79,7 +58,13 @@ describe('FileTab', () => {
   it('toggles posted via the API and tells the modal at once', async () => {
     const spy = vi.spyOn(ImagesAPI, 'setInstagramPosted').mockResolvedValue({ key: 'k', instagram_posted: true })
     const onPostedChange = vi.fn()
-    render(<FileTab image={{ image_type: 'catalog', key: 'k', instagram_posted: false }} onPostedChange={onPostedChange} />)
+    render(
+      <FileTab
+        catalogKind="lightroom"
+        image={{ image_type: 'catalog', key: 'k', instagram_posted: false }}
+        onPostedChange={onPostedChange}
+      />,
+    )
 
     const checkbox = screen.getByRole('checkbox', { name: IMAGE_DETAIL_POSTED_ARIA })
     expect(checkbox).not.toBeChecked()
@@ -90,19 +75,10 @@ describe('FileTab', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledWith('k', true))
   })
 
-  it('shows a file-missing status for a folder catalog', async () => {
-    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
-      catalog_path: '/photos',
-      resolved_path: '/photos',
-      exists: true,
-      catalog_kind: 'folder',
-      photo_count: 1,
-      folder_count: 1,
-      unreadable_directories: [],
-      picker_available: false,
-    })
+  it('shows a file-missing status for a folder catalog', () => {
     render(
       <FileTab
+        catalogKind="folder"
         image={{
           image_type: 'catalog',
           key: 'k',
@@ -111,23 +87,14 @@ describe('FileTab', () => {
         }}
       />,
     )
-    await waitFor(() => expect(screen.getByText(FILE_MISSING_STATUS_TITLE)).toBeInTheDocument())
+    expect(screen.getByText(FILE_MISSING_STATUS_TITLE)).toBeInTheDocument()
     expect(screen.getByText(/Not found at/)).toBeInTheDocument()
   })
 
-  it('shows a not-in-catalog status for a Lightroom catalog', async () => {
-    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
-      catalog_path: '/x.lrcat',
-      resolved_path: '/x.lrcat',
-      exists: true,
-      catalog_kind: 'lightroom',
-      photo_count: 1,
-      folder_count: null,
-      unreadable_directories: [],
-      picker_available: false,
-    })
+  it('shows a not-in-catalog status for a Lightroom catalog', () => {
     render(
       <FileTab
+        catalogKind="lightroom"
         image={{
           image_type: 'catalog',
           key: 'k',
@@ -135,6 +102,6 @@ describe('FileTab', () => {
         }}
       />,
     )
-    await waitFor(() => expect(screen.getByText(LR_MISSING_STATUS_TITLE)).toBeInTheDocument())
+    expect(screen.getByText(LR_MISSING_STATUS_TITLE)).toBeInTheDocument()
   })
 })

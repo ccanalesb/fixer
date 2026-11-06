@@ -17,8 +17,8 @@ import {
   LR_WRITEBACK_USER_CHANGED,
   XMP_DETAIL_SECTION,
   XMP_FILE_MISSING,
+  XMP_NO_METADATA_HINT,
   XMP_REJECT_LABEL,
-  XMP_SECONDARY_SIDECAR,
 } from '../../../constants/strings'
 import { ActionArea, ActionRow, Fact, FactsBlock, StatusBlock } from '../detail-blocks'
 
@@ -119,11 +119,7 @@ export function XmpTab({ image }: { image: ImageView }) {
         <StatusBlock tone="warning" title={XMP_FILE_MISSING} />
       ) : null}
       {detail.no_metadata_hint ? (
-        <p className="text-sm text-text-secondary">
-          This file has no rating, label or keywords. They are read from its{' '}
-          <code className="rounded bg-surface px-1 font-mono text-xs">.xmp</code> or from inside the file, as
-          your editor writes them.
-        </p>
+        <p className="text-sm text-text-secondary">{XMP_NO_METADATA_HINT}</p>
       ) : null}
       <FactsBlock title={XMP_DETAIL_SECTION}>
         <Fact label={LR_WRITEBACK_RATING} value={ratingLine(detail, writeback)} />
@@ -183,10 +179,15 @@ export function XmpTab({ image }: { image: ImageView }) {
       </FactsBlock>
       {detail.secondary_sidecar_note ? (
         <p className="text-xs text-text-tertiary">
-          {XMP_SECONDARY_SIDECAR(
-            detail.secondary_sidecar_note.basename,
-            detail.secondary_sidecar_note.read_after_basename,
-          )}
+          Also next to it:{' '}
+          <code className="rounded bg-surface px-1 font-mono text-xs">
+            {detail.secondary_sidecar_note.basename}
+          </code>{' '}
+          (older, read after{' '}
+          <code className="rounded bg-surface px-1 font-mono text-xs">
+            {detail.secondary_sidecar_note.read_after_basename}
+          </code>
+          )
         </p>
       ) : null}
       {writeback?.strong_dimensions_line ? (

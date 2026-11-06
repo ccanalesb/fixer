@@ -1,14 +1,23 @@
-import { useQuery } from '../data'
+import { useQuery, keys } from '../data'
 import { ConfigAPI } from '../services/api'
 import type { ConfigCatalogGetResponse } from '../types/config'
 
+type UseCatalogKindOptions = {
+  /** When true, suspend until the catalog config loads instead of assuming Lightroom. */
+  pendingAsNull?: boolean
+}
+
 /**
- * Catalog kind for copy that names Lightroom. Seeded with `lightroom` so a
- * component picking its wording never suspends on this non-critical detail.
+ * Catalog kind for copy that names Lightroom.
  */
-export function useCatalogKind(): 'lightroom' | 'folder' {
-  const cfg = useQuery(['config', 'catalog'] as const, () => ConfigAPI.getCatalog(), {
-    initialValue: { catalog_kind: 'lightroom' } as ConfigCatalogGetResponse,
+export function useCatalogKind(options?: UseCatalogKindOptions): 'lightroom' | 'folder' | null {
+  const cfg = useQuery(keys.config.catalog(), () => ConfigAPI.getCatalog(), {
+    ...(options?.pendingAsNull
+      ? {}
+      : { initialValue: { catalog_kind: 'lightroom' } as ConfigCatalogGetResponse }),
   })
+  if (options?.pendingAsNull) {
+    return cfg.catalog_kind ?? null
+  }
   return cfg.catalog_kind ?? 'lightroom'
 }

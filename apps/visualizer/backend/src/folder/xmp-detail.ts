@@ -2,7 +2,7 @@
  * XMP/IPTC field values and per-field sources for the folder-catalog image modal tab.
  */
 import { existsSync } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import type { Tags } from 'exiftool-vendored';
 import { getLibraryMeta } from '../db/library/bootstrap.js';
 import type { Db } from '../db/connection.js';
@@ -20,6 +20,7 @@ import {
   stringField,
   type FolderXmpMetadata,
 } from './xmp-metadata.js';
+import { canonicalPath, isPathUnderAllowedRoots } from '../api/images/common.js';
 import { sidecarPathsForPhoto } from './xmp-sidecars.js';
 import type { ResolvedFolderPhoto } from './walk.js';
 
@@ -139,6 +140,36 @@ function sidecarBasenamesOnDisk(
     .map((p) => basename(p));
 }
 
+function missingFileDetail(imageKey: string): FolderXmpDetail {
+  return {
+    image_key: imageKey,
+    file_missing: true,
+    no_metadata_hint: false,
+    sidecar_order: [],
+    secondary_sidecar_note: null,
+    rating: { display: 'no rating', source: null },
+    reject: { display: null, source: null },
+    label: { value: null, source: null },
+    keywords: { values: [], source: null },
+    title: { value: null, source: null },
+    caption: { value: null, source: null },
+    copyright: { value: null, source: null },
+  };
+}
+
+function pathUnderCatalogRoot(catalogRoot: string, filePath: string): boolean {
+  const root = canonicalPath(catalogRoot);
+  if (!root || !String(filePath).trim()) return false;
+  if (existsSync(filePath)) return isPathUnderAllowedRoots(filePath, [root]);
+  const abs = resolve(filePath);
+  const rel = relative(root, abs);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+function pathsUnderCatalogRoot(catalogRoot: string, paths: readonly string[]): boolean {
+  return paths.every((p) => p && pathUnderCatalogRoot(catalogRoot, p));
+}
+
 function buildDisplayRows(
   meta: FolderXmpMetadata,
   sources: FieldSources,
@@ -199,38 +230,16 @@ export async function buildFolderXmpDetail(db: Db, imageKey: string): Promise<Fo
   const catalogRoot = getLibraryMeta(db, CATALOG_PATH_META_KEY);
   const filepath = String(row.filepath ?? '').trim();
   if (!catalogRoot || !filepath) {
-    return {
-      image_key: imageKey,
-      file_missing: true,
-      no_metadata_hint: false,
-      sidecar_order: [],
-      secondary_sidecar_note: null,
-      rating: { display: 'no rating', source: null },
-      reject: { display: null, source: null },
-      label: { value: null, source: null },
-      keywords: { values: [], source: null },
-      title: { value: null, source: null },
-      caption: { value: null, source: null },
-      copyright: { value: null, source: null },
-    };
+    return missingFileDetail(imageKey);
+  }
+
+  if (!pathsUnderCatalogRoot(catalogRoot, [filepath])) {
+    return missingFileDetail(imageKey);
   }
 
   const photo = resolveFolderPhotoAtPath(catalogRoot, filepath);
   if (!photo || !existsSync(photo.filepath)) {
-    return {
-      image_key: imageKey,
-      file_missing: true,
-      no_metadata_hint: false,
-      sidecar_order: [],
-      secondary_sidecar_note: null,
-      rating: { display: 'no rating', source: null },
-      reject: { display: null, source: null },
-      label: { value: null, source: null },
-      keywords: { values: [], source: null },
-      title: { value: null, source: null },
-      caption: { value: null, source: null },
-      copyright: { value: null, source: null },
-    };
+    return missingFileDetail(imageKey);
   }
 
   const ambiguous = new Set<string>();
@@ -238,6 +247,11 @@ export async function buildFolderXmpDetail(db: Db, imageKey: string): Promise<Fo
   if (stemSidecarAmbiguousForDir(dir, photo.stem)) ambiguous.add(dir);
 
   const pathsToStat = metadataSourcePathsInOrder(photo, ambiguous, new Map());
+  const readPaths = [photo.filepath, ...(photo.jpegFilepath ? [photo.jpegFilepath] : []), ...pathsToStat];
+  if (!pathsUnderCatalogRoot(catalogRoot, readPaths)) {
+    return missingFileDetail(imageKey);
+  }
+
   const statsByPath = await lstatPathsParallel(pathsToStat, 4);
 
   const session = createFolderExifSession();

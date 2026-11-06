@@ -103,6 +103,24 @@ describe('folder XMP detail for the image modal', () => {
     }
   });
 
+  it('reports file_missing when library.db filepath is outside the catalog root', async () => {
+    writeFileSync(join(root, 'inside.jpg'), 'jpg');
+    const outside = join(dir, 'outside.jpg');
+    writeFileSync(outside, 'jpg');
+    const db = initLibraryDb(join(dir, 'library.db'));
+    try {
+      setLibraryMeta(db, CATALOG_KIND_META_KEY, 'folder');
+      setLibraryMeta(db, CATALOG_PATH_META_KEY, root);
+      await syncFolderCatalog(root, db, {});
+      const key = (db.prepare('SELECT key FROM images').get() as { key: string }).key;
+      db.prepare('UPDATE images SET filepath = ? WHERE key = ?').run(outside, key);
+      const detail = await buildFolderXmpDetail(db, key);
+      expect(detail?.file_missing).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
   it('reports file_missing when the photo file is gone', async () => {
     writeFileSync(join(root, 'gone.jpg'), 'jpg');
     const db = initLibraryDb(join(dir, 'library.db'));
