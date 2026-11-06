@@ -1231,6 +1231,10 @@ export const LrWritebackAPI = {
     lightroomWritten()
     return result
   },
+  turnOnPreview: (kind: 'stars' | 'reject') =>
+    request<{ new_sidecar: number; update_sidecar: number; embedded: number }>(
+      `/cull/lightroom-writeback/turn-on-preview?kind=${kind}`,
+    ),
   getPhoto: (imageKey: string) =>
     request<LrWritebackPhotoDetailResponse>(
       `/cull/lightroom-writeback/photos/${encodeURIComponent(imageKey)}`,

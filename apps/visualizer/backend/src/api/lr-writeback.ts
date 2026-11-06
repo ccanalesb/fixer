@@ -2,7 +2,7 @@
  * Lightroom Classic write-back settings and per-photo detail.
  */
 import { createRoute, z } from '@hono/zod-openapi';
-import { config, loadLibraryConfig, resolveConfiguredCatalogPath } from '../config.js';
+import { config } from '../config.js';
 import { buildWritebackPhotoDetail, undoWritebackKind } from '../lightroom/writeback.js';
 import type { WritebackKind } from '../lightroom/writeback-types.js';
 import { countWritebackByStatus } from '../db/library/lr-writeback-state.js';
@@ -19,7 +19,10 @@ import {
   findActiveLrWritebackJob,
 } from '../jobs/handlers/lr-writeback.js';
 import { compactJobPayload } from './schemas/jobs.js';
-import { describeLrCatalogWriteStatus } from '../utils/lr-catalog-write.js';
+import { describeCatalogWriteStatus } from '../utils/catalog-write-status.js';
+import { previewFolderWritebackTurnOn } from '../folder/writeback-turn-on-preview.js';
+import { getLibraryMeta } from '../db/library/bootstrap.js';
+import { CATALOG_KIND_META_KEY } from '../catalog-library.js';
 import { HttpError } from '../utils/responses.js';
 import { emitJobEvent } from '../websocket/events.js';
 import { libraryDb, type LibraryEnv } from './library-db.js';
@@ -49,18 +52,29 @@ function withJobsDb<T>(fn: (db: import('../db/connection.js').Db) => T): T {
 function settingsPayload(db: import('../db/connection.js').Db) {
   const settings = getLrWritebackSettings(db);
   const counts = countWritebackByStatus(db);
-  const status = describeLrCatalogWriteStatus();
+  const status = describeCatalogWriteStatus(db);
   return {
     write_stars: settings.write_stars,
     write_reject: settings.write_reject,
     stars_profile_slug: settings.stars_profile_slug,
     active_profile_slugs: activePipelineProfileSlugs(db),
     active_profiles: activePipelineProfiles(db),
+    catalog_kind:
+      getLibraryMeta(db, CATALOG_KIND_META_KEY) === 'folder' ? ('folder' as const) : ('lightroom' as const),
     catalog_write_available: status.available,
     catalog_write_unavailable_reason: status.reason,
+    catalog_path: status.path,
     counts: {
-      stars: { pending: counts.stars.pending, written: counts.stars.written },
-      reject: { pending: counts.reject.pending, written: counts.reject.written },
+      stars: {
+        pending: counts.stars.pending,
+        written: counts.stars.written,
+        skipped: counts.stars.skipped,
+      },
+      reject: {
+        pending: counts.reject.pending,
+        written: counts.reject.written,
+        skipped: counts.reject.skipped,
+      },
     },
   };
 }
@@ -146,15 +160,48 @@ const photoDetailRoute = createRoute({
   }),
 });
 
-lrWritebackRoutes.openapi(photoDetailRoute, (c) => {
+lrWritebackRoutes.openapi(photoDetailRoute, async (c) => {
   const db = c.get('libraryDb');
   const imageKey = c.req.valid('param').image_key;
   const settings = getLrWritebackSettings(db);
-  const status = describeLrCatalogWriteStatus();
+  const status = describeCatalogWriteStatus(db);
   if (!status.available || !status.path) {
-    throw new HttpError(400, status.reason ?? 'Lightroom Classic catalog unavailable.');
+    throw new HttpError(400, status.reason ?? 'Catalog unavailable for write-back.');
   }
-  return c.json(buildWritebackPhotoDetail(db, status.path, imageKey, settings), 200);
+  return c.json(await buildWritebackPhotoDetail(db, status.path, imageKey, settings), 200);
+});
+
+const turnOnPreviewRoute = createRoute({
+  method: 'get',
+  path: '/cull/lightroom-writeback/turn-on-preview',
+  tags: ['cull'],
+  request: {
+    query: z.object({ kind: z.enum(['stars', 'reject']) }),
+  },
+  responses: withValidationError({
+    200: {
+      description: 'Dry-run file counts for turning a switch on',
+      content: jsonBody(
+        z
+          .object({
+            new_sidecar: z.number().int(),
+            update_sidecar: z.number().int(),
+            embedded: z.number().int(),
+          })
+          .strict(),
+      ),
+    },
+  }),
+});
+
+lrWritebackRoutes.openapi(turnOnPreviewRoute, async (c) => {
+  const db = c.get('libraryDb');
+  const kind = c.req.valid('query').kind;
+  if (getLibraryMeta(db, CATALOG_KIND_META_KEY) !== 'folder') {
+    return c.json({ new_sidecar: 0, update_sidecar: 0, embedded: 0 }, 200);
+  }
+  const preview = await previewFolderWritebackTurnOn(db, kind);
+  return c.json(preview, 200);
 });
 
 const undoRoute = createRoute({
@@ -171,16 +218,16 @@ const undoRoute = createRoute({
   }),
 });
 
-lrWritebackRoutes.openapi(undoRoute, (c) => {
+lrWritebackRoutes.openapi(undoRoute, async (c) => {
   const db = c.get('libraryDb');
   const imageKey = c.req.valid('param').image_key;
   const { kind } = c.req.valid('json');
-  const status = describeLrCatalogWriteStatus();
+  const status = describeCatalogWriteStatus(db);
   if (!status.available || !status.path) {
-    throw new HttpError(400, status.reason ?? 'Lightroom Classic catalog unavailable.');
+    throw new HttpError(400, status.reason ?? 'Catalog unavailable for write-back.');
   }
-  const path = (resolveConfiguredCatalogPath(config.LT_CONFIG_YAML) ?? '').trim();
-  const result = undoWritebackKind(db, path, imageKey, kind as WritebackKind);
+  const path = status.path;
+  const result = await undoWritebackKind(db, path, imageKey, kind as WritebackKind);
   if (!result.ok) throw new HttpError(400, result.reason ?? 'Undo failed.');
   return c.json(result, 200);
 });

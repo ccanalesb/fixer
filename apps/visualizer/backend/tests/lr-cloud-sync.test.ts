@@ -293,7 +293,7 @@ describe('write-back carries stars and flags to the cloud', () => {
     expect(readCloudRevs(mcat, ASSET).revs).toHaveLength(1);
   });
 
-  it('pushes an undo', () => {
+  it('pushes an undo', async () => {
     makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'p', pick: 0, rating: null }]);
     const conn = connectCatalog(lrcatPath);
     writeRejectToCatalog(conn, '2024-06-01_p');
@@ -320,7 +320,7 @@ describe('write-back carries stars and flags to the cloud', () => {
       written_at: '2026-10-20T19:42:54.074Z',
     });
 
-    expect(undoWritebackKind(db, lrcatPath, '2024-06-01_p', 'reject').ok).toBe(true);
+    expect((await undoWritebackKind(db, lrcatPath, '2024-06-01_p', 'reject')).ok).toBe(true);
     db.close();
     expect(userValue(readCloudRevs(mcat, ASSET).revs.at(-1)!.doc, 'reviews', 'flag')).toBe('unflagged');
   });

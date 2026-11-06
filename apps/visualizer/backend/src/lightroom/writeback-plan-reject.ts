@@ -11,10 +11,10 @@ import {
   type WritebackPlanRun,
 } from './writeback-shared.js';
 
-export function planRejectPhoto(
+export async function planRejectPhoto(
   run: WritebackPlanRun,
   photo: WritebackPlanPhoto,
-): Omit<LrWritebackStateRow, 'updated_at'> | null {
+): Promise<Omit<LrWritebackStateRow, 'updated_at'> | null> {
   const { db, catalog, tally } = run;
   const { imageKey, live, writeNow, decision } = photo;
   const row = getWritebackState(db, imageKey, 'reject');
@@ -27,19 +27,19 @@ export function planRejectPhoto(
   if (live && row && userChangedAfterWrite('reject', live, row)) {
     if ((live.pick ?? 0) !== 0) return { ...row, status: 'skipped' };
     // Unflagging the app's reject in Lightroom is an undo: never written again.
-    if (catalog && writeNow) catalog.removeAutoRejectKeyword(imageKey);
+    if (catalog && writeNow) await Promise.resolve(catalog.removeAutoRejectKeyword(imageKey));
     return { ...row, status: 'undone', written_pick: null, written_at: null };
   }
 
   if (!want) {
     if (catalog && writeNow && catalogHasAppReject(catalog, imageKey)) {
-      catalog.clearReject(imageKey);
+      await Promise.resolve(catalog.clearReject(imageKey));
       tally.catalog_cleared_reject += 1;
       if (row) return { ...row, status: 'pending', written_pick: null, written_at: null };
       return null;
     }
     if (row?.status === 'written' && live && liveMatchesWritten('reject', live, row) && catalog && writeNow) {
-      catalog.clearReject(imageKey);
+      await Promise.resolve(catalog.clearReject(imageKey));
       tally.catalog_cleared_reject += 1;
       return { ...row, status: 'pending', written_pick: null, written_at: null };
     }
@@ -113,7 +113,7 @@ export function planRejectPhoto(
   }
 
   const beforePick = live.pick ?? 0;
-  const result = catalog.writeReject(imageKey);
+  const result = await Promise.resolve(catalog.writeReject(imageKey));
   if (result === 'image_not_found') return notFoundState(imageKey, 'reject', row, tally);
   if (result !== 'updated') {
     if (catalogHasAppReject(catalog, imageKey)) {

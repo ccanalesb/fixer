@@ -20,9 +20,14 @@ const baseSettings = {
   stars_profile_slug: null,
   active_profile_slugs: ['default'],
   active_profiles: [{ slug: 'default', name: 'Default culling profile' }],
+  catalog_kind: 'lightroom' as const,
+  catalog_path: '/tmp/cat',
   catalog_write_available: true,
   catalog_write_unavailable_reason: null,
-  counts: { stars: { pending: 0, written: 0 }, reject: { pending: 0, written: 0 } },
+  counts: {
+    stars: { pending: 0, written: 0, skipped: 0 },
+    reject: { pending: 0, written: 0, skipped: 0 },
+  },
 }
 
 function renderSection() {

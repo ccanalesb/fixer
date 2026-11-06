@@ -21,6 +21,7 @@ import {
   type FolderXmpMetadata,
 } from './xmp-metadata.js';
 import { canonicalPath, isPathUnderAllowedRoots } from '../api/images/common.js';
+import { pathUnderCatalogRoot } from './path-under-root.js';
 import { sidecarPathsForPhoto } from './xmp-sidecars.js';
 import type { ResolvedFolderPhoto } from './walk.js';
 
@@ -155,17 +156,6 @@ function missingFileDetail(imageKey: string): FolderXmpDetail {
     caption: { value: null, source: null },
     copyright: { value: null, source: null },
   };
-}
-
-function pathUnderCatalogRoot(catalogRoot: string, filePath: string): boolean {
-  const root = canonicalPath(catalogRoot);
-  if (!root || !String(filePath).trim()) return false;
-  if (existsSync(filePath)) return isPathUnderAllowedRoots(filePath, [root]);
-  const abs = resolve(filePath);
-  const parent = canonicalPath(dirname(abs));
-  if (!parent) return false;
-  const rel = relative(root, join(parent, basename(abs)));
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
 function pathsUnderCatalogRoot(catalogRoot: string, paths: readonly string[]): boolean {

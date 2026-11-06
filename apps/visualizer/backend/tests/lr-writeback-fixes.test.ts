@@ -224,7 +224,7 @@ describe('stars clear updates state', () => {
 });
 
 describe('undo reject restores before_pick', () => {
-  it('restores pick from before_pick not always 0', () => {
+  it('restores pick from before_pick not always 0', async () => {
     makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'p', pick: -1, rating: null }]);
     const db = openLibraryDb(fx.dbPath);
     upsertWritebackState(db, {
@@ -238,7 +238,7 @@ describe('undo reject restores before_pick', () => {
       stars_profile_version_id: null,
       written_at: '2026-01-01T00:00:00Z',
     });
-    const r = undoWritebackKind(db, lrcatPath, '2024-06-01_p', 'reject');
+    const r = await undoWritebackKind(db, lrcatPath, '2024-06-01_p', 'reject');
     expect(r.ok).toBe(true);
     db.close();
     const cat = new Database(lrcatPath, { readonly: true });

@@ -38,13 +38,17 @@ export interface WritebackCatalogWriter {
   hasAppReject(imageKey: string): boolean;
   removeAutoStarsKeyword(imageKey: string): void;
   removeAutoRejectKeyword(imageKey: string): void;
-  writeStars(imageKey: string, rating: number): PickRatingWriteResult;
-  writeReject(imageKey: string): PickRatingWriteResult;
-  clearStars(imageKey: string, writtenRating: number): PickRatingWriteResult;
-  clearReject(imageKey: string): PickRatingWriteResult;
-  replaceStars(imageKey: string, writtenRating: number, rating: number): PickRatingWriteResult;
-  undoStars(imageKey: string, beforeRating: number | null): PickRatingWriteResult;
-  undoReject(imageKey: string, beforePick: number | null): PickRatingWriteResult;
+  writeStars(imageKey: string, rating: number): PickRatingWriteResult | Promise<PickRatingWriteResult>;
+  writeReject(imageKey: string): PickRatingWriteResult | Promise<PickRatingWriteResult>;
+  clearStars(imageKey: string, writtenRating: number): PickRatingWriteResult | Promise<PickRatingWriteResult>;
+  clearReject(imageKey: string): PickRatingWriteResult | Promise<PickRatingWriteResult>;
+  replaceStars(
+    imageKey: string,
+    writtenRating: number,
+    rating: number,
+  ): PickRatingWriteResult | Promise<PickRatingWriteResult>;
+  undoStars(imageKey: string, beforeRating: number | null): PickRatingWriteResult | Promise<PickRatingWriteResult>;
+  undoReject(imageKey: string, beforePick: number | null): PickRatingWriteResult | Promise<PickRatingWriteResult>;
   imageLocalId(imageKey: string): number | null;
 }
 

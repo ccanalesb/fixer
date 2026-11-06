@@ -7,16 +7,20 @@ export const LrWritebackSettingsSchema = z
     stars_profile_slug: z.string().nullable(),
     active_profile_slugs: z.array(z.string()),
     active_profiles: z.array(z.object({ slug: z.string(), name: z.string() }).strict()),
+    catalog_kind: z.enum(['lightroom', 'folder']),
+    catalog_path: z.string().nullable(),
     catalog_write_available: z.boolean(),
     catalog_write_unavailable_reason: z.string().nullable(),
     counts: z.object({
       stars: z.object({
         pending: z.number().int(),
         written: z.number().int(),
+        skipped: z.number().int(),
       }),
       reject: z.object({
         pending: z.number().int(),
         written: z.number().int(),
+        skipped: z.number().int(),
       }),
     }),
   })

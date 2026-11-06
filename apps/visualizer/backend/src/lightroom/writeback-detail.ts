@@ -4,6 +4,9 @@ import { getWritebackState } from '../db/library/lr-writeback-state.js';
 import { resolveStarsProfileSlug, type LrWritebackSettings } from '../db/library/lr-writeback-settings.js';
 import { liveMatchesWritten, userChangedAfterWrite } from './writeback-shared.js';
 import { openWritebackCatalogWriter, AUTO_REJECT_KEYWORD, AUTO_STARS_KEYWORD } from './writeback-catalog-writer.js';
+import { CATALOG_KIND_META_KEY } from '../catalog-library.js';
+import { getLibraryMeta } from '../db/library/bootstrap.js';
+import { openFolderWritebackWriterSession } from '../folder/xmp-writeback-writer.js';
 
 function strongDimensionsLine(decision: ReturnType<typeof decideWriteback>['stars']): string | null {
   switch (decision.why) {
@@ -20,7 +23,7 @@ function strongDimensionsLine(decision: ReturnType<typeof decideWriteback>['star
   }
 }
 
-export function buildWritebackPhotoDetail(
+export async function buildWritebackPhotoDetail(
   db: Db,
   catalogPath: string,
   imageKey: string,
@@ -31,15 +34,31 @@ export function buildWritebackPhotoDetail(
   const rejectRow = getWritebackState(db, imageKey, 'reject');
   const decision = decideWriteback(db, settings, imageKey, starsSlug);
 
-  const session = openWritebackCatalogWriter(catalogPath, db);
-  let live = null as ReturnType<typeof session.writer.readLive>;
+  const isFolder = getLibraryMeta(db, CATALOG_KIND_META_KEY) === 'folder';
+  let live = null as ReturnType<
+    Awaited<ReturnType<typeof openFolderWritebackWriterSession>>['writer']['readLive']
+  >;
   const keywords: string[] = [];
-  try {
-    live = session.writer.readLive(imageKey);
-    if (live?.auto_stars_keyword) keywords.push(AUTO_STARS_KEYWORD);
-    if (live?.auto_reject_keyword) keywords.push(AUTO_REJECT_KEYWORD);
-  } finally {
-    session.close();
+
+  if (isFolder) {
+    const folderSession = await openFolderWritebackWriterSession(catalogPath, db);
+    try {
+      await folderSession.writer.prefetch([imageKey]);
+      live = folderSession.writer.readLive(imageKey);
+      if (live?.auto_stars_keyword) keywords.push(AUTO_STARS_KEYWORD);
+      if (live?.auto_reject_keyword) keywords.push(AUTO_REJECT_KEYWORD);
+    } finally {
+      await folderSession.close();
+    }
+  } else {
+    const session = openWritebackCatalogWriter(catalogPath, db);
+    try {
+      live = session.writer.readLive(imageKey);
+      if (live?.auto_stars_keyword) keywords.push(AUTO_STARS_KEYWORD);
+      if (live?.auto_reject_keyword) keywords.push(AUTO_REJECT_KEYWORD);
+    } finally {
+      session.close();
+    }
   }
 
   const pickRating = live ? { pick: live.pick, rating: live.rating } : null;

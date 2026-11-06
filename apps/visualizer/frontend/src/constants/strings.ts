@@ -1008,6 +1008,31 @@ export const XMP_FILE_MISSING =
 export const LABEL_COLOR = 'Label'
 export const LR_WRITEBACK_LOADING = 'Loading Lightroom Classic write-back…'
 
+export const FOLDER_WRITEBACK_SECTION = 'Write-back to your photo files'
+export const FOLDER_WRITEBACK_SECTION_LEAD =
+  'What culling writes into your photo files, where Lightroom, darktable, digiKam and other editors read it. Off until you turn it on. Which level set gives stars is set in each culling profile (Perspectives).'
+export const FOLDER_WRITEBACK_STARS_SWITCH = 'Write stars into the photo files'
+export const FOLDER_WRITEBACK_STARS_HELP =
+  "Stars from the culling profile's strong dimensions: 1 strong ★, 2 strong ★★, 3 or more ★★★. Only photos whose file has no rating; ratings you set are never touched. Void frames get none. Marked with the keyword lrt-auto-stars."
+export const FOLDER_WRITEBACK_REJECT_SWITCH = 'Write the reject into the photo files'
+export const FOLDER_WRITEBACK_REJECT_HELP =
+  'Photos the culling profile filtered, and void frames, are marked rejected (rating −1, as Lightroom and darktable read it), only when the file has no rating; ratings and rejects you set are never touched. Photos filtered by the Score forecast are not marked. Marked with the keyword lrt-auto-reject.'
+export const FOLDER_WRITEBACK_STATUS_TITLE = 'Write-back to your photo files'
+export const FOLDER_WRITEBACK_STATUS_HELP =
+  'Written automatically when culling ends. Turning a switch on writes nothing until then, or until you press Write to photo files. A file that is read-only, or that changed while Fixer was writing, is skipped and stays pending.'
+export const FOLDER_WRITEBACK_WRITE = 'Write to photo files'
+export const FOLDER_WRITEBACK_WRITE_RESULT = (n: number) =>
+  `Wrote ${n.toLocaleString('en-US')} photos to your files`
+export const FOLDER_WRITEBACK_WRITING_PROGRESS = 'Writing to your photo files… ·'
+export const FOLDER_WRITEBACK_LOADING = 'Loading write-back settings…'
+export const FOLDER_WRITEBACK_SKIPPED = 'skipped'
+export const FOLDER_WRITEBACK_TURN_ON_TITLE = (what: 'stars' | 'reject') =>
+  `Write ${what === 'stars' ? 'stars' : 'the reject'} into your photo files?`
+export const FOLDER_WRITEBACK_TURN_ON_LEAD = (root: string) =>
+  `Fixer will change files in ${root} when culling ends, or when you press Write to photo files:`
+export const FOLDER_WRITEBACK_TURN_ON_CANCEL = 'Cancel'
+export const FOLDER_WRITEBACK_TURN_ON_CONFIRM = 'Turn on'
+
 // Processing → Settings → Culling models
 export const CULLING_MODELS_SECTION = 'Culling'
 export const CULLING_MODELS_SECTION_LEAD =

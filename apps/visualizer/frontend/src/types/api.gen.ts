@@ -3973,6 +3973,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cull/lightroom-writeback/turn-on-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    kind: "stars" | "reject";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Dry-run file counts for turning a switch on */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            new_sidecar: number;
+                            update_sidecar: number;
+                            embedded: number;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cull/lightroom-writeback/photos/{image_key}/undo": {
         parameters: {
             query?: never;
@@ -6850,16 +6900,21 @@ export interface components {
                 slug: string;
                 name: string;
             }[];
+            /** @enum {string} */
+            catalog_kind: "lightroom" | "folder";
+            catalog_path: string | null;
             catalog_write_available: boolean;
             catalog_write_unavailable_reason: string | null;
             counts: {
                 stars: {
                     pending: number;
                     written: number;
+                    skipped: number;
                 };
                 reject: {
                     pending: number;
                     written: number;
+                    skipped: number;
                 };
             };
         };
