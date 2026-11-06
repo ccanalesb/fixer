@@ -53,6 +53,7 @@ export interface CatalogSyncStageResult {
   /** Set when the catalog exists but could not be read. */
   failed?: true;
   error?: string;
+  metadata_changed?: number;
   changed?: number;
   moved?: number;
   newly_gone?: number;

@@ -355,7 +355,7 @@ describe('syncCatalog', () => {
     expect(logs[0]).toContain('catalog_total=2 library_total=0 missing=2 stale=0');
     expect(logs[1]).toContain('orientation updated=0 stale=0');
     expect(logs[2]).toContain('keyword_backfill mode=auto rows=2');
-    expect(logs[3]).toContain('complete added=2 stale=0 keywords_backfilled=2');
+    expect(logs[3]).toContain('complete added=2 stale=0 newly_gone=0 keywords_backfilled=2');
   });
 
   it('stops on cancellation and keeps what it already fetched', async () => {

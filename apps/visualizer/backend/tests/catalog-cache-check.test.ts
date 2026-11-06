@@ -14,6 +14,11 @@ import { createJob, getJob, initJobsDb } from '../src/db/jobs/jobs.js';
 import { JobRunner } from '../src/jobs/runner.js';
 import { tick } from '../src/jobs/processor.js';
 import { ensureCatalogCache } from '../src/jobs/handlers/catalog-cache.js';
+import {
+  CHANGED_SINCE_RANKING_META_KEY,
+  markChangedSinceRanking,
+} from '../src/db/library/ranking-stale.js';
+import { libraryWrite } from '../src/db/library/write.js';
 
 vi.unmock('../src/jobs/handlers/catalog-cache.js');
 
@@ -140,6 +145,23 @@ describe('the catalog cache check', () => {
     expect(enc.encoded).toBe(0);
     expect(messages).toContain('[cache] cache up to date');
     expect(messages.some((m) => m.includes('stage=stack'))).toBe(false);
+  });
+
+  it('recomputes stacks when an earlier sync left the changed-since-ranking mark', async () => {
+    await seedCatalog(['shot-a', 'shot-b']);
+    await check();
+    enc.encoded = 0;
+    fx.withDb((db) => {
+      libraryWrite(db, () => markChangedSinceRanking(db));
+    });
+
+    const { messages } = await check();
+
+    expect(messages.some((m) => m.includes('[cache] stage=stack status=start'))).toBe(true);
+    const mark = fx.query<{ value: string }>(
+      `SELECT value FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`,
+    );
+    expect(mark).toHaveLength(0);
   });
 
   it('builds what a photo added in Lightroom is missing', async () => {

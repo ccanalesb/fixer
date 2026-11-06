@@ -23,6 +23,7 @@ import {
   markCatalogCacheBuilt,
   markFirstCatalogImportCompleted,
 } from '../../db/library/bootstrap.js';
+import { clearChangedSinceRanking, hasChangedSinceRanking } from '../../db/library/ranking-stale.js';
 import { libraryWrite } from '../../db/library/write.js';
 import { listCatalogKeysNeedingClipEmbedding } from '../../db/library/embeddings.js';
 import { fingerprintCatalogCacheBuild } from '../checkpoint.js';
@@ -264,13 +265,16 @@ async function runCacheStages(
   if (cancelled()) return null;
 
   // Similarity is recomputed from scratch each time, so a check that found nothing
-  // new leaves the last full run's ranking in place.
+  // new leaves the last full run's ranking in place unless an earlier sync set the mark.
   const folderChanges =
     (sync.changed ?? 0) +
     (sync.moved ?? 0) +
     (sync.newly_gone ?? 0) +
-    (sync.collisions ?? 0);
-  const unchanged = sync.added === 0 && sync.stale === 0 && embed.embedded === 0 && folderChanges === 0;
+    (sync.collisions ?? 0) +
+    (sync.metadata_changed ?? 0);
+  const syncChanged =
+    sync.added > 0 || folderChanges > 0 || hasChangedSinceRanking(db);
+  const unchanged = !syncChanged && embed.embedded === 0;
   if (opts.skipRankingWhenCurrent && unchanged && catalogCacheBuilt(db)) {
     return { sync, embed, ranking: null };
   }
@@ -298,6 +302,9 @@ async function runCacheStages(
       `skipped_no_embedding=${similarity.skipped_no_embedding}`,
   );
 
-  libraryWrite(db, () => markCatalogCacheBuilt(db));
+  libraryWrite(db, () => {
+    markCatalogCacheBuilt(db);
+    clearChangedSinceRanking(db);
+  });
   return { sync, embed, ranking: { stack, similarity } };
 }

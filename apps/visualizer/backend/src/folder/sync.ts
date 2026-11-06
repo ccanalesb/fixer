@@ -16,6 +16,7 @@ import {
   type FolderLibraryRow,
 } from '../db/library/folder-sync.js';
 import { libraryWrite } from '../db/library/write.js';
+import { noteRankingStaleAfterFolderSync } from '../db/library/ranking-stale.js';
 import type { CatalogSyncResult } from '../lightroom/catalog-sync.js';
 import type { CatalogRecord } from '../lightroom/reader.js';
 import { nowIsoUtc } from '../utils/datetime.js';
@@ -327,6 +328,13 @@ export async function syncFolderCatalog(
     const stale = Math.trunc(staleRow.c);
 
     libraryWrite(libDb, () => setLibraryMeta(libDb, FOLDER_CATALOG_SYNCED_META_KEY, sinceIso));
+
+    noteRankingStaleAfterFolderSync(libDb, {
+      added: counters.added,
+      changed: counters.changed,
+      moved: counters.moved,
+      newly_gone: newlyGone,
+    });
 
     logUnreadable(log, plan.unreadablePaths, unreadableDirectories);
 
