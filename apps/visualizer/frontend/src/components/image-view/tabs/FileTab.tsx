@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ImageView } from '../../../services/api'
-import { ImagesAPI } from '../../../services/api'
+import { ConfigAPI, ImagesAPI } from '../../../services/api'
 import {
   DATE_NO_DATE,
+  FILE_MISSING_STATUS_BODY,
+  FILE_MISSING_STATUS_TITLE,
   IMAGE_DETAILS_FILE,
   IMAGE_DETAILS_NO,
   IMAGE_DETAILS_POSTED,
@@ -15,8 +17,22 @@ import {
   LABEL_FILENAME,
   LABEL_PATH,
   LABEL_TITLE,
+  LR_MISSING_STATUS_BODY,
+  LR_MISSING_STATUS_TITLE,
 } from '../../../constants/strings'
-import { ActionArea, ActionRow, Fact, FactsBlock } from '../detail-blocks'
+import { ActionArea, ActionRow, Fact, FactsBlock, StatusBlock } from '../detail-blocks'
+
+function formatMissingSince(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  } catch {
+    return iso
+  }
+}
 
 export function FileTab({
   image,
@@ -29,11 +45,22 @@ export function FileTab({
   const [posted, setPosted] = useState(image.instagram_posted ?? false)
   const [toggling, setToggling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [catalogKind, setCatalogKind] = useState<'lightroom' | 'folder'>('lightroom')
 
   useEffect(() => {
     setPosted(image.instagram_posted ?? false)
     setError(null)
   }, [image.key, image.instagram_posted])
+
+  useEffect(() => {
+    let cancelled = false
+    void ConfigAPI.getCatalog().then((cfg) => {
+      if (!cancelled) setCatalogKind(cfg.catalog_kind)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function togglePosted(next: boolean) {
     const prev = posted
@@ -53,9 +80,22 @@ export function FileTab({
   }
 
   const dimensions = image.width && image.height ? `${image.width} × ${image.height}` : null
+  const missingSince = image.catalog_missing_since
+  const missingBlock =
+    missingSince != null ? (
+      <StatusBlock
+        tone="warning"
+        title={catalogKind === 'folder' ? FILE_MISSING_STATUS_TITLE : LR_MISSING_STATUS_TITLE}
+      >
+        {catalogKind === 'folder'
+          ? FILE_MISSING_STATUS_BODY(image.filepath ?? image.key, formatMissingSince(missingSince))
+          : LR_MISSING_STATUS_BODY(formatMissingSince(missingSince))}
+      </StatusBlock>
+    ) : null
 
   return (
     <>
+      {missingBlock}
       <FactsBlock title={IMAGE_DETAILS_FILE}>
         <Fact label={LABEL_FILENAME} value={image.filename ?? image.key} />
         <Fact label={LABEL_TITLE} value={image.title} />

@@ -474,6 +474,7 @@ export type CatalogListQueryParams = {
   limit?: number
   offset?: number
   cull_catalog?: boolean
+  catalog_presence?: 'present' | 'missing'
 }
 
 function appendCatalogListSearchParams(
@@ -514,6 +515,7 @@ function appendCatalogListSearchParams(
   if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
   if (params.offset !== undefined) searchParams.set('offset', String(params.offset))
   if (params.cull_catalog === true) searchParams.set('cull_catalog', 'true')
+  if (params.catalog_presence) searchParams.set('catalog_presence', params.catalog_presence)
 }
 
 export const SystemAPI = {

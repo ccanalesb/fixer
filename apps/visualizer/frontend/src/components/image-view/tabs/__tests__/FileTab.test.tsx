@@ -1,10 +1,27 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { IMAGE_DETAIL_POSTED_ARIA } from '../../../../constants/strings'
-import { ImagesAPI } from '../../../../services/api'
+import {
+  FILE_MISSING_STATUS_TITLE,
+  IMAGE_DETAIL_POSTED_ARIA,
+  LR_MISSING_STATUS_TITLE,
+} from '../../../../constants/strings'
+import { ConfigAPI, ImagesAPI } from '../../../../services/api'
 import { FileTab } from '../FileTab'
 
 describe('FileTab', () => {
+  beforeEach(() => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '',
+      resolved_path: '',
+      exists: false,
+      catalog_kind: 'lightroom',
+      photo_count: null,
+      folder_count: null,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+  })
+
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
@@ -40,5 +57,53 @@ describe('FileTab', () => {
     expect(onPostedChange).toHaveBeenCalledWith(true)
     expect(checkbox).toBeChecked()
     await waitFor(() => expect(spy).toHaveBeenCalledWith('k', true))
+  })
+
+  it('shows a file-missing status for a folder catalog', async () => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/photos',
+      resolved_path: '/photos',
+      exists: true,
+      catalog_kind: 'folder',
+      photo_count: 1,
+      folder_count: 1,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+    render(
+      <FileTab
+        image={{
+          image_type: 'catalog',
+          key: 'k',
+          filepath: '/photos/missing.jpg',
+          catalog_missing_since: '2026-11-03T12:00:00Z',
+        }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText(FILE_MISSING_STATUS_TITLE)).toBeInTheDocument())
+    expect(screen.getByText(/Not found at/)).toBeInTheDocument()
+  })
+
+  it('shows a not-in-catalog status for a Lightroom catalog', async () => {
+    vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+      catalog_path: '/x.lrcat',
+      resolved_path: '/x.lrcat',
+      exists: true,
+      catalog_kind: 'lightroom',
+      photo_count: 1,
+      folder_count: null,
+      unreadable_directories: [],
+      picker_available: false,
+    })
+    render(
+      <FileTab
+        image={{
+          image_type: 'catalog',
+          key: 'k',
+          catalog_missing_since: '2026-11-03T12:00:00Z',
+        }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText(LR_MISSING_STATUS_TITLE)).toBeInTheDocument())
   })
 })

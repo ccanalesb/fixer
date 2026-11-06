@@ -1,5 +1,9 @@
 import type { ImageView } from '../../services/api'
 import { Badge } from '../ui/badges'
+import {
+  CATALOG_CHIP_FILE_MISSING,
+  CATALOG_CHIP_NOT_IN_CATALOG,
+} from '../../constants/strings'
 import { PrimaryScorePill, type PrimaryScoreSource } from './PrimaryScorePill'
 
 export type { PrimaryScoreSource }
@@ -12,6 +16,7 @@ interface ImageMetadataBadgesProps {
   hidePrimaryScore?: boolean
   /** When true, omits the green "Posted" chip (e.g. when shown as overlay on the thumbnail). */
   hidePostedBadge?: boolean
+  catalogKind?: 'lightroom' | 'folder'
   className?: string
 }
 
@@ -27,13 +32,21 @@ export function ImageMetadataBadges({
   primaryScoreSource,
   hidePrimaryScore = false,
   hidePostedBadge = false,
+  catalogKind = 'lightroom',
   className = '',
 }: ImageMetadataBadgesProps) {
   const showPrimary = !hidePrimaryScore && primaryScoreSource !== 'none'
   const showPostedChip = image.instagram_posted && !hidePostedBadge
+  const missingChip =
+    image.catalog_missing_since != null
+      ? catalogKind === 'folder'
+        ? CATALOG_CHIP_FILE_MISSING
+        : CATALOG_CHIP_NOT_IN_CATALOG
+      : null
 
   return (
     <div className={`flex items-center gap-2 flex-wrap ${className}`.trim()}>
+      {missingChip ? <Badge variant="warning">{missingChip}</Badge> : null}
       {showPostedChip ? <Badge variant="success">Posted</Badge> : null}
       {typeof image.rating === 'number' && image.rating > 0 ? (
         <Badge variant="accent">{image.rating}★</Badge>

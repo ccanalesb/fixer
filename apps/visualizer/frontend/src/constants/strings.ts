@@ -365,6 +365,21 @@ export const CATALOG_FILTER_ANALYZED_ALL = 'All'
 export const CATALOG_FILTER_ANALYZED_ONLY = 'Analyzed only'
 export const CATALOG_FILTER_NOT_ANALYZED = 'Not analyzed'
 
+export const CATALOG_FILTER_LABEL_FILE = 'File'
+export const CATALOG_FILTER_LABEL_CATALOG = 'Catalog'
+export const CATALOG_FILTER_FILE_PRESENT = 'Present'
+export const CATALOG_FILTER_FILE_MISSING = 'Missing'
+export const CATALOG_FILTER_CATALOG_IN = 'In catalog'
+export const CATALOG_FILTER_CATALOG_REMOVED = 'Removed'
+export const CATALOG_CHIP_FILE_MISSING = 'File missing'
+export const CATALOG_CHIP_NOT_IN_CATALOG = 'Not in catalog'
+export const FILE_MISSING_STATUS_TITLE = 'File missing'
+export const FILE_MISSING_STATUS_BODY = (path: string, since: string) =>
+  `Not found at ${path} since ${since}. If the file comes back, or turns up moved with the same size and capture time, it is this photo again. Its descriptions, scores and culling are kept.`
+export const LR_MISSING_STATUS_TITLE = 'Not in the catalog'
+export const LR_MISSING_STATUS_BODY = (since: string) =>
+  `Removed from the Lightroom Classic catalog since ${since}. Its descriptions, scores and culling are kept.`
+
 export const CATALOG_FILTER_MIN_RATING_ANY = 'Any'
 export const CATALOG_FILTER_SCORE_ANY = 'Any'
 export const CATALOG_FILTER_SORT_NONE = 'None'

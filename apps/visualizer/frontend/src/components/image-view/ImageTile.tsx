@@ -28,6 +28,8 @@ interface ImageTileProps {
   /** Pass the horizontal scroll container ref for strip tiles so thumbnails
    *  load via IntersectionObserver instead of native lazy loading. */
   scrollContainerRef?: RefObject<HTMLElement | null>
+  /** Folder vs Lightroom catalog — labels the missing-from-catalog chip. */
+  catalogKind?: 'lightroom' | 'folder'
   className?: string
 }
 
@@ -57,10 +59,12 @@ export function ImageTile({
   footer,
   hidePostedMetadataBadge = false,
   scrollContainerRef,
+  catalogKind = 'lightroom',
   className = '',
 }: ImageTileProps) {
   const classes = imageTileVariantClasses(variant)
   const imageType = image.image_type
+  const catalogMissing = Boolean(image.catalog_missing_since)
   const dateDisplay = image.date_taken
     ? new Date(image.date_taken).toLocaleDateString()
     : image.created_at
@@ -81,7 +85,7 @@ export function ImageTile({
 
   return (
     <div
-      className={`group overflow-hidden rounded-card border border-border bg-bg shadow-card transition-all hover:border-border-strong hover:shadow-deep ${classes.root} ${className}`.trim()}
+      className={`group overflow-hidden rounded-card border border-border bg-bg shadow-card transition-all hover:border-border-strong hover:shadow-deep ${catalogMissing ? 'opacity-70' : ''} ${classes.root} ${className}`.trim()}
       data-testid="image-tile"
       data-image-key={image.key}
       data-image-type={imageType}
@@ -92,7 +96,7 @@ export function ImageTile({
         onClick={onClick}
         className={`block w-full text-left focus:outline-none focus:ring-2 focus:ring-accent focus:ring-inset ${classes.button}`}
       >
-        <div className={`relative bg-surface ${classes.thumb}`}>
+        <div className={`relative bg-surface ${classes.thumb} ${catalogMissing ? 'grayscale' : ''}`}>
           {scrollContainerRef ? (
             <ScrollContainerLazyImage
               scrollContainerRef={scrollContainerRef}
@@ -129,6 +133,7 @@ export function ImageTile({
           image={image}
           primaryScoreSource={primaryScoreSource}
           hidePostedBadge={hidePostedMetadataBadge}
+          catalogKind={catalogKind}
         />
         {footer}
       </div>

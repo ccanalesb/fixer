@@ -6098,6 +6098,7 @@ export interface components {
             thumbnail_url?: string | null;
             score?: number | null;
             cull_manually_sent?: boolean | null;
+            catalog_missing_since?: string | null;
         };
         CatalogSimilarResponse: {
             images: components["schemas"]["CatalogImage"][];
@@ -6195,6 +6196,7 @@ export interface components {
             processed_at?: string | null;
             vision_result?: string | null;
             vision_score?: number | null;
+            catalog_missing_since?: string | null;
         };
         IdentityPerPerspectiveScore: {
             perspective_slug: string;

@@ -68,6 +68,8 @@ export const CatalogImage = z
     thumbnail_url: z.string().nullish(),
     score: z.number().nullish(),
     cull_manually_sent: z.boolean().nullish(),
+    /** ISO timestamp when the photo was last seen missing from its catalog or folder. */
+    catalog_missing_since: z.string().nullish(),
   })
   .strict()
   .openapi('CatalogImage');
@@ -202,6 +204,7 @@ export const ImageView = z
     processed_at: z.string().nullish(),
     vision_result: z.string().nullish(),
     vision_score: z.number().nullish(),
+    catalog_missing_since: z.string().nullish(),
   })
   .strict()
   .openapi('ImageView');
