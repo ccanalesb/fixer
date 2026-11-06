@@ -11,7 +11,12 @@
 import { createServer } from 'node:net';
 import { Server as SocketIOServer } from 'socket.io';
 import { config } from './config.js';
-import { runLegacyUpgradeOnce } from './catalog-library.js';
+import {
+  legacyUpgradeFailureMessage,
+  legacyUpgradeLines,
+  runLegacyUpgradeOnce,
+  type LegacyUpgradeResult,
+} from './catalog-library.js';
 import { resolveOpenLibraryPaths } from './open-library.js';
 import { createApp } from './app.js';
 import { serveApp } from './http-server.js';
@@ -52,13 +57,23 @@ await refuseIfPortInUse(config.HOST, config.PORT);
 
 migrateProvidersConfigIfNeeded();
 migrateCullingModelsIfNeeded();
-runLegacyUpgradeOnce();
 
-const { libraryDbPath } = resolveOpenLibraryPaths();
-
-// A library.db that cannot be upgraded still lets the server start; its requests answer 500 saying why.
+// Moving an older install into catalogs/ must finish before any library is opened:
+// starting without it would open a new, empty library for the catalog.
+let legacyUpgrade: LegacyUpgradeResult | null;
 try {
-  upgradeLibraryDb(libraryDbPath);
+  legacyUpgrade = runLegacyUpgradeOnce();
+} catch (e) {
+  process.stderr.write(`${legacyUpgradeFailureMessage(e)}\n`);
+  process.exit(1);
+}
+for (const line of legacyUpgrade ? legacyUpgradeLines(legacyUpgrade) : []) {
+  process.stderr.write(`${line}\n`);
+}
+
+// A library.db that cannot be found or upgraded still lets the server start; its requests answer 500 saying why.
+try {
+  upgradeLibraryDb(resolveOpenLibraryPaths().libraryDbPath);
 } catch (e) {
   process.stderr.write(`library.db not upgraded: ${e instanceof Error ? e.message : String(e)}\n`);
 }

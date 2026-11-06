@@ -6,23 +6,20 @@ import { existsSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
   absoluteCatalogPath,
-  CATALOG_KIND_META_KEY,
-  CATALOG_PATH_META_KEY,
   findCatalogLibrariesForPath,
   inferCatalogKind,
   invalidateOpenLibraryCache,
   isLibraryDbPinned,
   pinnedLibraryCatalogPath,
+  recordCatalogAt,
   type CatalogKind,
   updatePinnedLibraryCatalogPath,
 } from './catalog-library.js';
 import { invalidateFolderCatalogWalkCache } from './folder/walk.js';
-import { config, expandUserPath, loadLibraryConfig, updateConfigYamlCatalogPath } from './config.js';
+import { config, loadLibraryConfig, updateConfigYamlCatalogPath } from './config.js';
 import { openLibraryDb, type Db } from './db/connection.js';
 import { createJob, getActiveJobs, initJobsDb } from './db/jobs/jobs.js';
-import { setLibraryMeta } from './db/library/bootstrap.js';
 import { getImageCount } from './db/library/statistics.js';
-import { libraryWrite } from './db/library/write.js';
 import { catalogRequiringJobTypes } from './jobs/registry.js';
 import { transitionCancel } from './jobs/transitions.js';
 import { signalCancel } from './jobs/processor.js';
@@ -98,7 +95,7 @@ function readLibraryPhotoCount(libraryDbPath: string): number | null {
 
 function summarizePath(raw: string): CatalogSideSummary {
   const trimmed = raw.trim();
-  const resolved = trimmed ? expandUserPath(trimmed) : '';
+  const resolved = absoluteCatalogPath(trimmed);
   const kind = resolved ? inferCatalogKind(resolved) : 'lightroom';
   const matches = resolved ? findCatalogLibrariesForPath(resolved) : [];
   const hasLibrary = matches.length === 1;
@@ -117,7 +114,7 @@ function summarizePath(raw: string): CatalogSideSummary {
 function validateCatalogPathRaw(raw: string): { ok: true; trimmed: string } | { ok: false; error: string } {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, error: 'catalog_path is required' };
-  const resolved = expandUserPath(trimmed);
+  const resolved = absoluteCatalogPath(trimmed);
   if (!catalogExists(resolved)) {
     return inferCatalogKind(resolved) === 'lightroom'
       ? { ok: false, error: 'catalog_path must be an existing file' }
@@ -126,13 +123,16 @@ function validateCatalogPathRaw(raw: string): { ok: true; trimmed: string } | { 
   return { ok: true, trimmed };
 }
 
-function refusePinnedDifferentCatalog(recorded: string, newRaw: string): boolean {
+/**
+ * While `LIBRARY_DB` pins one library, it stays with its own catalog: the one it
+ * records, or the configured one when it records none. A switch may only go to that
+ * catalog; a path update may only move that catalog.
+ */
+function refusedByPin(preview: CatalogChangePreview, mode: CatalogChangeMode): boolean {
   if (!isLibraryDbPinned()) return false;
-  const recordedAbs = absoluteCatalogPath(recorded);
-  const newAbs = absoluteCatalogPath(newRaw);
-  const recordedBase = recordedAbs.split('/').pop() ?? '';
-  const newBase = newAbs.split('/').pop() ?? '';
-  return recordedBase.toLowerCase() !== newBase.toLowerCase();
+  const recorded = pinnedLibraryCatalogPath();
+  const owner = recorded ? absoluteCatalogPath(recorded) : preview.current.resolved_path;
+  return owner !== (mode === 'switch' ? preview.next.resolved_path : preview.current.resolved_path);
 }
 
 function withJobsDb<T>(fn: (db: Db) => T): T {
@@ -210,22 +210,6 @@ function cancelCatalogJobs(jobsDb: Db): string[] {
   return cancelled;
 }
 
-function updateCurrentLibraryCatalogPath(
-  libraryDbPath: string,
-  catalogAbs: string,
-  kind: CatalogKind,
-): void {
-  const db = openLibraryDb(libraryDbPath);
-  try {
-    libraryWrite(db, () => {
-      setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogAbs);
-      setLibraryMeta(db, CATALOG_KIND_META_KEY, kind);
-    });
-  } finally {
-    db.close();
-  }
-}
-
 export function applyCatalogChange(
   newCatalogPathRaw: string,
   mode: CatalogChangeMode,
@@ -238,19 +222,14 @@ export function applyCatalogChange(
   if ('error' in preview) return preview;
   if (preview.unchanged) return { error: 'catalog_path is unchanged' };
 
-  const recorded = pinnedLibraryCatalogPath();
-  if (recorded && refusePinnedDifferentCatalog(recorded, validated.trimmed)) {
-    return { error: 'library pinned by LIBRARY_DB' };
-  }
+  if (refusedByPin(preview, mode)) return { error: 'library pinned by LIBRARY_DB' };
 
   if (mode === 'update_path') {
     if (!preview.ask_same_or_different) {
       return { error: 'This catalog change requires switching, not a path update' };
     }
     if (isLibraryDbPinned()) {
-      if (recorded && absoluteCatalogPath(recorded) !== preview.next.resolved_path) {
-        updatePinnedLibraryCatalogPath(preview.next.resolved_path);
-      }
+      updatePinnedLibraryCatalogPath(preview.next.resolved_path);
     } else {
       const currentMatches = preview.current.resolved_path
         ? findCatalogLibrariesForPath(preview.current.resolved_path)
@@ -258,11 +237,7 @@ export function applyCatalogChange(
       if (currentMatches.length !== 1) {
         return { error: 'No open library to update for the current catalog' };
       }
-      updateCurrentLibraryCatalogPath(
-        currentMatches[0]!.libraryDbPath,
-        preview.next.resolved_path,
-        preview.next.catalog_kind,
-      );
+      recordCatalogAt(currentMatches[0]!.libraryDbPath, preview.next.resolved_path);
     }
     updateConfigYamlCatalogPath(configPath, validated.trimmed);
     invalidateOpenLibraryCache();

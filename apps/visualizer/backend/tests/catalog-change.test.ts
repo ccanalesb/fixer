@@ -12,13 +12,19 @@ import {
   generateCatalogFolderName,
   resetCatalogLibraryModuleStateForTests,
 } from '../src/catalog-library.js';
-import { initLibraryDb, setLibraryMeta } from '../src/db/library/bootstrap.js';
+import { getLibraryMeta, initLibraryDb, setLibraryMeta } from '../src/db/library/bootstrap.js';
 import { libraryWrite } from '../src/db/library/write.js';
 import { createJob, initJobsDb } from '../src/db/jobs/jobs.js';
 
 let dir: string;
 let cfgPath: string;
 let visualizerDb: string;
+const savedEnv = {
+  LT_CONFIG_YAML: process.env.LT_CONFIG_YAML,
+  LT_DATA_DIR: process.env.LT_DATA_DIR,
+  DATABASE_PATH: process.env.DATABASE_PATH,
+  LIBRARY_DB: process.env.LIBRARY_DB,
+};
 
 const readCfg = (): Record<string, unknown> =>
   parseYaml(readFileSync(cfgPath, 'utf8')) as Record<string, unknown>;
@@ -46,10 +52,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.LT_CONFIG_YAML;
-  delete process.env.LT_DATA_DIR;
-  delete process.env.DATABASE_PATH;
-  delete process.env.LIBRARY_DB;
+  for (const [k, v] of Object.entries(savedEnv)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -81,6 +87,82 @@ describe('previewCatalogChange', () => {
     const preview = previewCatalogChange(next);
     if ('error' in preview) throw new Error(preview.error);
     expect(preview.ask_same_or_different).toBe(false);
+  });
+});
+
+describe('previewCatalogChange with a relative catalog_path', () => {
+  it('resolves it against the data folder, as the library lookup does', () => {
+    const current = join(dir, 'Rel.lrcat');
+    const next = join(dir, 'Next.lrcat');
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, 'catalog_path: Rel.lrcat\n');
+    seedCatalogLibrary(current);
+
+    const preview = previewCatalogChange(next);
+    if ('error' in preview) throw new Error(preview.error);
+    expect(preview.current.resolved_path).toBe(current);
+    expect(preview.current.exists).toBe(true);
+    expect(preview.current.has_library).toBe(true);
+  });
+});
+
+describe('applyCatalogChange while LIBRARY_DB is pinned', () => {
+  function pinLibrary(recorded: string | null): string {
+    const pinned = join(dir, 'pinned', 'library.db');
+    mkdirSync(join(dir, 'pinned'), { recursive: true });
+    const db = initLibraryDb(pinned);
+    if (recorded) libraryWrite(db, () => setLibraryMeta(db, CATALOG_PATH_META_KEY, recorded));
+    db.close();
+    process.env.LIBRARY_DB = pinned;
+    return pinned;
+  }
+
+  function recordedIn(libraryPath: string): string | null {
+    const db = initLibraryDb(libraryPath);
+    try {
+      return getLibraryMeta(db, CATALOG_PATH_META_KEY);
+    } finally {
+      db.close();
+    }
+  }
+
+  it('refuses switching when the pinned library records no catalog', () => {
+    const current = join(dir, 'Current.lrcat');
+    const next = join(dir, 'Other.lrcat');
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(current)}\n`);
+    pinLibrary(null);
+
+    expect(applyCatalogChange(next, 'switch')).toEqual({ error: 'library pinned by LIBRARY_DB' });
+    expect(readCfg().catalog_path).toBe(current);
+  });
+
+  it('refuses switching to another catalog with the same file name', () => {
+    const current = join(dir, 'a', 'Cat.lrcat');
+    const next = join(dir, 'b', 'Cat.lrcat');
+    mkdirSync(join(dir, 'a'), { recursive: true });
+    mkdirSync(join(dir, 'b'), { recursive: true });
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(current)}\n`);
+    pinLibrary(current);
+
+    expect(applyCatalogChange(next, 'switch')).toEqual({ error: 'library pinned by LIBRARY_DB' });
+  });
+
+  it('records the new path when updating the path of a library that recorded none', () => {
+    const current = join(dir, 'Old.lrcat');
+    const next = join(dir, 'Moved.lrcat');
+    writeFileSync(current, 'x');
+    writeFileSync(next, 'x');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(current)}\n`);
+    const pinned = pinLibrary(null);
+
+    const result = applyCatalogChange(next, 'update_path');
+    if ('error' in result) throw new Error(result.error);
+    expect(recordedIn(pinned)).toBe(next);
   });
 });
 

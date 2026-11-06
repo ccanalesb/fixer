@@ -11,30 +11,28 @@ import {
   getImageCount,
   getImageRecords,
 } from '../../lightroom/reader.js';
-import {
-  catalogKindAtPath,
-  resolveCliLibrary,
-  resolvePinnedScanSyncCatalog,
-} from '../library-resolution.js';
+import { inferCatalogKind } from '../../catalog-library.js';
+import type { Db } from '../../db/connection.js';
+import { resolvePinnedScanSyncCatalog } from '../library-resolution.js';
 import { CliError, cliLibraryPinned, withLibraryDbAsync } from '../library-db.js';
 import { boolFlag, intFlag } from '../parse.js';
 import type { CommandContext } from '../registry.js';
 
 const UNREADABLE_LOG_LIMIT = 5;
 
-function resolveScanSyncCatalogPath(ctx: CommandContext, dbPath: string, db: import('../../db/connection.js').Db): string {
-  if (cliLibraryPinned(ctx)) {
-    return resolvePinnedScanSyncCatalog(db, dbPath, ctx);
-  }
-  const resolved = resolveCliLibrary(ctx, true);
-  if (!resolved.catalogPath) {
-    throw new CliError('No catalog path provided. Use --catalog or config.yaml');
-  }
-  return resolved.catalogPath;
+function resolveScanSyncCatalogPath(
+  ctx: CommandContext,
+  db: Db,
+  dbPath: string,
+  catalogFromLookup: string | null,
+): string {
+  if (cliLibraryPinned(ctx)) return resolvePinnedScanSyncCatalog(db, dbPath, ctx);
+  if (!catalogFromLookup) throw new CliError('No catalog path provided. Use --catalog or config.yaml');
+  return catalogFromLookup;
 }
 
 function refuseFolderOnlyFlags(ctx: CommandContext, catalogPath: string): void {
-  if (catalogKindAtPath(catalogPath) !== 'folder') return;
+  if (inferCatalogKind(catalogPath) !== 'folder') return;
   if (intFlag(ctx.args, 'limit') != null) {
     throw new CliError('scan --limit is not supported for a folder catalog');
   }
@@ -46,7 +44,7 @@ function refuseFolderOnlyFlags(ctx: CommandContext, catalogPath: string): void {
 async function runFolderSyncCli(
   ctx: CommandContext,
   catalogPath: string,
-  db: import('../../db/connection.js').Db,
+  db: Db,
 ): Promise<number> {
   ctx.out(`Syncing folder: ${catalogPath}`);
   const logLines: string[] = [];
@@ -66,11 +64,11 @@ async function runFolderSyncCli(
 }
 
 export async function cmdScan(ctx: CommandContext): Promise<number> {
-  return withLibraryDbAsync(ctx, { mustExist: false, allowCreateLibrary: true }, async (db, dbPath) => {
-    const catalogPath = resolveScanSyncCatalogPath(ctx, dbPath, db);
+  return withLibraryDbAsync(ctx, { mustExist: false, allowCreateLibrary: true }, async (db, dbPath, catalogFromLookup) => {
+    const catalogPath = resolveScanSyncCatalogPath(ctx, db, dbPath, catalogFromLookup);
     refuseFolderOnlyFlags(ctx, catalogPath);
 
-    if (catalogKindAtPath(catalogPath) === 'folder') {
+    if (inferCatalogKind(catalogPath) === 'folder') {
       return runFolderSyncCli(ctx, catalogPath, db);
     }
 
@@ -95,11 +93,11 @@ export async function cmdScan(ctx: CommandContext): Promise<number> {
 }
 
 export async function cmdSync(ctx: CommandContext): Promise<number> {
-  return withLibraryDbAsync(ctx, { mustExist: false, allowCreateLibrary: true }, async (db, dbPath) => {
-    const catalogPath = resolveScanSyncCatalogPath(ctx, dbPath, db);
+  return withLibraryDbAsync(ctx, { mustExist: false, allowCreateLibrary: true }, async (db, dbPath, catalogFromLookup) => {
+    const catalogPath = resolveScanSyncCatalogPath(ctx, db, dbPath, catalogFromLookup);
     refuseFolderOnlyFlags(ctx, catalogPath);
 
-    if (catalogKindAtPath(catalogPath) === 'folder') {
+    if (inferCatalogKind(catalogPath) === 'folder') {
       return runFolderSyncCli(ctx, catalogPath, db);
     }
 

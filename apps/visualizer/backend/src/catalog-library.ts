@@ -9,16 +9,17 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   renameSync,
   rmSync,
   statSync,
 } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
   config,
   dataRoot,
-  expandUserPath,
   loadLibraryConfig,
   pathBase,
   resolvePath,
@@ -26,17 +27,22 @@ import {
 } from './config.js';
 import { openLibraryDb, type Db } from './db/connection.js';
 import {
+  deleteLibraryMeta,
   getLibraryMeta,
   initLibraryDb,
   setLibraryMeta,
 } from './db/library/bootstrap.js';
 import { libraryWrite } from './db/library/write.js';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { readFileSync } from 'node:fs';
 import { writePrivateFile } from './utils/private-file.js';
 
 export const CATALOG_PATH_META_KEY = 'catalog_path';
 export const CATALOG_KIND_META_KEY = 'catalog_kind';
+/**
+ * Set while a legacy library is being moved into `catalogs/`: JSON
+ * `{ fromLibrary, fromVisionCache }`. Written before the move and removed once the
+ * vision cache has followed, so an interrupted upgrade resumes on the next start.
+ */
+const LEGACY_UPGRADE_META_KEY = 'legacy_upgrade';
 
 export type CatalogKind = 'lightroom' | 'folder';
 
@@ -54,10 +60,14 @@ export class CatalogLibraryConflictError extends Error {
   }
 }
 
+interface LookupCache {
+  /** Data folder, config file and its last write; any change means a new lookup. */
+  key: string;
+  result: CatalogLibraryPaths | CatalogLibraryConflictError;
+}
+
 let legacyUpgradeDone = false;
-let cachedCatalogPath: string | null | undefined;
-let cachedResolution: CatalogLibraryPaths | null = null;
-let cachedConflict: CatalogLibraryConflictError | null = null;
+let lookupCache: LookupCache | null = null;
 
 export function catalogsRoot(): string {
   return join(dataRoot(), 'catalogs');
@@ -79,9 +89,7 @@ export function isLibraryDbPinned(): boolean {
 }
 
 export function invalidateOpenLibraryCache(): void {
-  cachedCatalogPath = undefined;
-  cachedResolution = null;
-  cachedConflict = null;
+  lookupCache = null;
 }
 
 /** Test-only: allow repeated legacy upgrade scenarios in one process. */
@@ -90,12 +98,43 @@ export function resetCatalogLibraryModuleStateForTests(): void {
   invalidateOpenLibraryCache();
 }
 
-function configuredCatalogAbsolute(configPath = config.LT_CONFIG_YAML): string | null {
-  const cfg = loadLibraryConfig(configPath);
+/** `config.yaml`'s `catalog_path`, absolute, or `null` when unset. */
+export function catalogPathFromConfig(cfg: LibraryConfig): string | null {
   const raw = cfg.catalogPathRaw.trim();
   if (!raw) return cfg.catalogPath;
-  const abs = absoluteCatalogPath(raw);
-  return abs || null;
+  return absoluteCatalogPath(raw) || null;
+}
+
+/** Record which catalog a library belongs to: its absolute path and kind. */
+export function recordCatalog(db: Db, catalogAbs: string): void {
+  libraryWrite(db, () => {
+    setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogAbs);
+    setLibraryMeta(db, CATALOG_KIND_META_KEY, inferCatalogKind(catalogAbs));
+  });
+}
+
+/** `recordCatalog` on the library at `libraryDbPath`. */
+export function recordCatalogAt(libraryDbPath: string, catalogAbs: string): void {
+  const db = openLibraryDb(libraryDbPath);
+  try {
+    recordCatalog(db, catalogAbs);
+  } finally {
+    db.close();
+  }
+}
+
+/** The catalog path a library records, or `null` when it records none or cannot be read. */
+export function readRecordedCatalogPath(libraryDbPath: string): string | null {
+  if (!existsSync(libraryDbPath)) return null;
+  let db: Db | undefined;
+  try {
+    db = openLibraryDb(libraryDbPath, { readonly: true });
+    return getLibraryMeta(db, CATALOG_PATH_META_KEY);
+  } catch {
+    return null;
+  } finally {
+    db?.close();
+  }
 }
 
 function catalogFolderStem(catalogPath: string): string {
@@ -112,12 +151,37 @@ function visionCacheBesideLibrary(libraryDbPath: string): string {
   return join(dirname(libraryDbPath), 'vision-cache');
 }
 
+function catalogFolderForLibraryDb(libraryDbPath: string): string | null {
+  const parent = dirname(libraryDbPath);
+  const root = catalogsRoot();
+  if (parent === root || parent.startsWith(`${root}/`)) return parent;
+  return null;
+}
+
+/** The library at `libraryDbPath` and the vision cache beside it — what a pin opens. */
+export function libraryPathsAt(libraryDbPath: string): CatalogLibraryPaths {
+  return {
+    libraryDbPath,
+    visionCacheDir: visionCacheBesideLibrary(libraryDbPath),
+    catalogFolder: catalogFolderForLibraryDb(libraryDbPath),
+  };
+}
+
+function pinnedLibraryPaths(): CatalogLibraryPaths {
+  return libraryPathsAt(resolvePath(process.env.LIBRARY_DB!.trim(), pathBase()));
+}
+
 export interface CatalogLibraryEntry {
   catalogFolder: string;
   libraryDbPath: string;
   visionCacheDir: string;
   catalogPath: string;
   catalogKind: CatalogKind;
+}
+
+interface ListedLibrary extends CatalogLibraryEntry {
+  /** `LEGACY_UPGRADE_META_KEY`'s value while an upgrade into this library is unfinished. */
+  pendingUpgrade: string | null;
 }
 
 function listCatalogLibraryDirs(): string[] {
@@ -128,35 +192,31 @@ function listCatalogLibraryDirs(): string[] {
     const folder = join(root, name);
     try {
       if (!statSync(folder).isDirectory()) continue;
+      if (statSync(join(folder, 'library.db')).isFile()) out.push(folder);
     } catch {
       continue;
     }
-    const dbPath = join(folder, 'library.db');
-    if (existsSync(dbPath) && statSync(dbPath).isFile()) out.push(folder);
   }
   return out;
 }
 
-function hasAnyCatalogLibrary(): boolean {
-  return listCatalogLibraryDirs().length > 0;
-}
-
-function readCatalogLibraryEntry(catalogFolder: string): CatalogLibraryEntry | null {
+/** A library under `catalogs/` that records its catalog; any other is not one the app opens. */
+function readCatalogLibrary(catalogFolder: string): ListedLibrary | null {
   const libraryDbPath = join(catalogFolder, 'library.db');
-  if (!existsSync(libraryDbPath)) return null;
   let db: Db | undefined;
   try {
     db = openLibraryDb(libraryDbPath, { readonly: true });
     const catalogPath = getLibraryMeta(db, CATALOG_PATH_META_KEY);
     if (!catalogPath) return null;
-    const kindRaw = getLibraryMeta(db, CATALOG_KIND_META_KEY);
-    const catalogKind: CatalogKind = kindRaw === 'folder' ? 'folder' : 'lightroom';
+    const catalogKind: CatalogKind =
+      getLibraryMeta(db, CATALOG_KIND_META_KEY) === 'folder' ? 'folder' : 'lightroom';
     return {
       catalogFolder,
       libraryDbPath,
-      visionCacheDir: join(catalogFolder, 'vision-cache'),
+      visionCacheDir: visionCacheBesideLibrary(libraryDbPath),
       catalogPath,
       catalogKind,
+      pendingUpgrade: getLibraryMeta(db, LEGACY_UPGRADE_META_KEY),
     };
   } catch {
     return null;
@@ -165,97 +225,141 @@ function readCatalogLibraryEntry(catalogFolder: string): CatalogLibraryEntry | n
   }
 }
 
+function listCatalogLibraries(): ListedLibrary[] {
+  return listCatalogLibraryDirs()
+    .map(readCatalogLibrary)
+    .filter((e): e is ListedLibrary => e !== null);
+}
+
 /** Every catalog library whose recorded path matches `catalogPath` (absolute). */
 export function findCatalogLibrariesForPath(catalogPath: string): CatalogLibraryEntry[] {
   const target = absoluteCatalogPath(catalogPath);
   if (!target) return [];
-  const matches: CatalogLibraryEntry[] = [];
-  for (const folder of listCatalogLibraryDirs()) {
-    const entry = readCatalogLibraryEntry(folder);
-    if (!entry) continue;
-    if (absoluteCatalogPath(entry.catalogPath) === target) matches.push(entry);
+  return listCatalogLibraries()
+    .filter((e) => absoluteCatalogPath(e.catalogPath) === target)
+    .map(({ pendingUpgrade: _pending, ...entry }) => entry);
+}
+
+/**
+ * The library that records `catalogAbs`, or `null` when none does.
+ *
+ * @throws CatalogLibraryConflictError when two libraries claim it.
+ */
+export function findCatalogLibrary(catalogAbs: string): CatalogLibraryPaths | null {
+  const matches = findCatalogLibrariesForPath(catalogAbs);
+  if (matches.length > 1) {
+    throw new CatalogLibraryConflictError(
+      `Two libraries claim the same catalog path (${matches[0]!.catalogPath}): ` +
+        `${matches.map((e) => e.catalogFolder).join(' and ')}.`,
+    );
   }
-  return matches;
-}
-
-function conflictMessage(entries: CatalogLibraryEntry[]): string {
-  const names = entries.map((e) => e.catalogFolder);
-  return (
-    `Two libraries claim the same catalog path (${entries[0]!.catalogPath}): ` +
-    names.join(' and ') +
-    '.'
-  );
-}
-
-function catalogFolderForLibraryDb(libraryDbPath: string): string | null {
-  const parent = dirname(libraryDbPath);
-  const root = catalogsRoot();
-  if (parent === root || parent.startsWith(`${root}/`)) return parent;
-  return null;
-}
-
-function resolvePinnedLibraryPaths(): CatalogLibraryPaths {
-  const libraryDbPath = resolvePath(process.env.LIBRARY_DB!.trim(), pathBase());
-  return {
-    libraryDbPath,
-    visionCacheDir: visionCacheBesideLibrary(libraryDbPath),
-    catalogFolder: catalogFolderForLibraryDb(libraryDbPath),
-  };
+  const m = matches[0];
+  return m ? { libraryDbPath: m.libraryDbPath, visionCacheDir: m.visionCacheDir, catalogFolder: m.catalogFolder } : null;
 }
 
 function legacyLibraryPath(cfg: LibraryConfig): string | null {
-  if (cfg.dbPath && existsSync(cfg.dbPath) && statSync(cfg.dbPath).isFile()) {
-    return cfg.dbPath;
+  for (const candidate of [cfg.dbPath, join(dataRoot(), 'library.db')]) {
+    if (candidate && existsSync(candidate) && statSync(candidate).isFile()) return candidate;
   }
-  const defaultPath = join(dataRoot(), 'library.db');
-  if (existsSync(defaultPath) && statSync(defaultPath).isFile()) return defaultPath;
-  const repoDefault = resolvePath('library.db', pathBase());
-  if (existsSync(repoDefault) && statSync(repoDefault).isFile()) return repoDefault;
   return null;
 }
 
-function movePathCrossVolume(src: string, dest: string): void {
+/** The filesystem moves an upgrade makes; tests replace them to interrupt one or cross volumes. */
+export interface UpgradeFs {
+  rename(src: string, dest: string): void;
+  /** Copy a file, or a directory recursively, merging into one that exists. */
+  copy(src: string, dest: string): void;
+}
+
+const realUpgradeFs: UpgradeFs = {
+  rename: renameSync,
+  copy: (src, dest) => cpSync(src, dest, { recursive: true }),
+};
+
+function isCrossDevice(e: unknown): boolean {
+  return Boolean(e && typeof e === 'object' && (e as NodeJS.ErrnoException).code === 'EXDEV');
+}
+
+/** Size of every file under `path`, keyed by its path relative to `path` (`''` for a file). */
+function fileSizes(path: string): Map<string, number> {
+  const sizes = new Map<string, number>();
+  const walk = (abs: string, rel: string): void => {
+    const st = statSync(abs);
+    if (st.isDirectory()) {
+      for (const name of readdirSync(abs)) walk(join(abs, name), rel ? `${rel}/${name}` : name);
+    } else if (st.isFile()) {
+      sizes.set(rel, st.size);
+    }
+  };
+  walk(path, '');
+  return sizes;
+}
+
+/** Throw unless every file under `src` is at `copy` with the same size. */
+function assertCopiedWhole(src: string, copy: string, dest: string): void {
+  const copied = existsSync(copy) ? fileSizes(copy) : new Map<string, number>();
+  for (const [rel, size] of fileSizes(src)) {
+    if (copied.get(rel) !== size) {
+      throw new Error(`Copying ${src} to ${dest} came out incomplete; ${src} is kept.`);
+    }
+  }
+}
+
+/** Copy `src` into `dest`, check every file arrived whole, and only then remove `src`. */
+function copyThenRemove(src: string, dest: string, fs: UpgradeFs): void {
+  fs.copy(src, dest);
+  assertCopiedWhole(src, dest, dest);
+  rmSync(src, { recursive: true, force: true });
+}
+
+/**
+ * Move a file or directory to a `dest` that does not exist yet. Across volumes it is
+ * copied beside `dest`, checked, renamed into place, and the original removed last.
+ */
+function movePath(src: string, dest: string, fs: UpgradeFs): void {
   mkdirSync(dirname(dest), { recursive: true });
   try {
-    renameSync(src, dest);
+    fs.rename(src, dest);
+    return;
   } catch (e) {
-    const code = e && typeof e === 'object' && 'code' in e ? (e as NodeJS.ErrnoException).code : undefined;
-    if (code !== 'EXDEV') throw e;
-    cpSync(src, dest);
-    rmSync(src, { force: true });
+    if (!isCrossDevice(e)) throw e;
   }
+  const partial = `${dest}.partial`;
+  rmSync(partial, { recursive: true, force: true });
+  try {
+    fs.copy(src, partial);
+    assertCopiedWhole(src, partial, dest);
+  } catch (e) {
+    rmSync(partial, { recursive: true, force: true });
+    throw e;
+  }
+  renameSync(partial, dest);
+  rmSync(src, { recursive: true, force: true });
 }
 
 /** After `library.db` moves, move `-wal` / `-shm` siblings when present. */
-export function moveLibraryDbSidecarsIfPresent(fromLibrary: string, toLibrary: string): void {
+export function moveLibraryDbSidecarsIfPresent(
+  fromLibrary: string,
+  toLibrary: string,
+  fs: UpgradeFs = realUpgradeFs,
+): void {
   for (const suffix of ['-wal', '-shm'] as const) {
     const sidecar = `${fromLibrary}${suffix}`;
-    if (existsSync(sidecar)) movePathCrossVolume(sidecar, `${toLibrary}${suffix}`);
+    if (existsSync(sidecar)) movePath(sidecar, `${toLibrary}${suffix}`, fs);
   }
 }
 
-function moveDirectoryCrossVolume(src: string, dest: string): void {
+/** Move the legacy vision cache to `dest`, merging into it when a resumed upgrade finds it started. */
+function moveVisionCache(src: string, dest: string, fs: UpgradeFs): void {
   if (!existsSync(src)) {
     mkdirSync(dest, { recursive: true });
     return;
   }
-  try {
-    renameSync(src, dest);
-  } catch (e) {
-    const code = e && typeof e === 'object' && 'code' in e ? (e as NodeJS.ErrnoException).code : undefined;
-    if (code !== 'EXDEV') throw e;
-    cpSync(src, dest, { recursive: true });
-    rmSync(src, { recursive: true, force: true });
+  if (!existsSync(dest)) {
+    movePath(src, dest, fs);
+    return;
   }
-}
-
-function checkpointWal(dbPath: string): void {
-  const db = openLibraryDb(dbPath);
-  try {
-    db.pragma('wal_checkpoint(TRUNCATE)');
-  } finally {
-    db.close();
-  }
+  copyThenRemove(src, dest, fs);
 }
 
 function rewriteVisionCachePrefix(db: Db, oldPrefix: string, newPrefix: string): void {
@@ -294,84 +398,128 @@ export interface LegacyUpgradeResult {
   fromVisionCacheDir: string;
 }
 
+interface PendingUpgrade {
+  fromLibrary: string;
+  fromVisionCache: string;
+}
+
+/** What an upgrade moved, one line each, as the server log and the CLI print it. */
+export function legacyUpgradeLines(result: LegacyUpgradeResult): string[] {
+  return [
+    `Moved library.db from ${result.fromLibraryPath} to ${result.libraryDbPath}`,
+    `Moved vision cache from ${result.fromVisionCacheDir} to ${result.visionCacheDir}`,
+  ];
+}
+
 /**
- * When `catalogs/` has no library yet, move a legacy `library.db` and vision cache
- * into `catalogs/<name>/`. No-op when pinned, already migrated, or nothing to move.
+ * The second half of an upgrade, once the library sits in `catalogs/<name>/`. Every
+ * step can run again, so an interrupted upgrade finishes here on the next start.
  */
-export function maybeUpgradeLegacyCatalogLayout(
-  configPath = config.LT_CONFIG_YAML,
-): LegacyUpgradeResult | null {
-  if (isLibraryDbPinned()) return null;
-  if (hasAnyCatalogLibrary()) return null;
-
-  const cfg = loadLibraryConfig(configPath);
-  const fromLibrary = legacyLibraryPath(cfg);
-  if (!fromLibrary) return null;
-
-  const catalogRaw = cfg.catalogPathRaw.trim();
-  const catalogAbs = catalogRaw ? absoluteCatalogPath(catalogRaw) : cfg.catalogPath;
-  if (!catalogAbs) return null;
-
-  const folderName = generateCatalogFolderName(catalogAbs);
-  const catalogFolder = join(catalogsRoot(), folderName);
-  const libraryDbPath = join(catalogFolder, 'library.db');
-  const visionCacheDir = join(catalogFolder, 'vision-cache');
-  const fromVisionCache = cfg.visionCacheDir;
-
-  mkdirSync(catalogFolder, { recursive: true });
-  checkpointWal(fromLibrary);
-  movePathCrossVolume(fromLibrary, libraryDbPath);
-  moveLibraryDbSidecarsIfPresent(fromLibrary, libraryDbPath);
-  moveDirectoryCrossVolume(fromVisionCache, visionCacheDir);
-
+function finishLegacyUpgrade(
+  libraryDbPath: string,
+  pending: PendingUpgrade,
+  configPath: string,
+  fs: UpgradeFs,
+): LegacyUpgradeResult {
+  const visionCacheDir = visionCacheBesideLibrary(libraryDbPath);
+  moveVisionCache(pending.fromVisionCache, visionCacheDir, fs);
+  removeRetiredKeysFromConfigYaml(configPath, ['db_path', 'vision_cache_dir']);
   const db = openLibraryDb(libraryDbPath);
   try {
     libraryWrite(db, () => {
-      rewriteVisionCachePrefix(db, fromVisionCache, visionCacheDir);
-      setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogAbs);
-      setLibraryMeta(db, CATALOG_KIND_META_KEY, inferCatalogKind(catalogAbs));
+      rewriteVisionCachePrefix(db, pending.fromVisionCache, visionCacheDir);
+      deleteLibraryMeta(db, LEGACY_UPGRADE_META_KEY);
     });
   } finally {
     db.close();
   }
-
-  removeRetiredKeysFromConfigYaml(configPath, ['db_path', 'vision_cache_dir']);
   invalidateOpenLibraryCache();
-
   return {
-    catalogFolder,
+    catalogFolder: dirname(libraryDbPath),
     libraryDbPath,
     visionCacheDir,
-    fromLibraryPath: fromLibrary,
-    fromVisionCacheDir: fromVisionCache,
+    fromLibraryPath: pending.fromLibrary,
+    fromVisionCacheDir: pending.fromVisionCache,
   };
+}
+
+/**
+ * When `catalogs/` has no library yet, move a legacy `library.db` and vision cache
+ * into `catalogs/<name>/`, or finish such a move that was interrupted. No-op when
+ * pinned, already migrated, or nothing to move.
+ *
+ * The catalog is recorded in the legacy library before it moves, so whatever stops
+ * the upgrade, the next start finds the user's library rather than creating an empty one.
+ */
+export function maybeUpgradeLegacyCatalogLayout(
+  configPath = config.LT_CONFIG_YAML,
+  fs: UpgradeFs = realUpgradeFs,
+): LegacyUpgradeResult | null {
+  if (isLibraryDbPinned()) return null;
+  const libraries = listCatalogLibraries();
+  const interrupted = libraries.find((e) => e.pendingUpgrade);
+  if (interrupted) {
+    const pending = JSON.parse(interrupted.pendingUpgrade!) as PendingUpgrade;
+    return finishLegacyUpgrade(interrupted.libraryDbPath, pending, configPath, fs);
+  }
+  if (libraries.length > 0) return null;
+
+  const cfg = loadLibraryConfig(configPath);
+  const fromLibrary = legacyLibraryPath(cfg);
+  if (!fromLibrary) return null;
+  const catalogAbs = catalogPathFromConfig(cfg);
+  if (!catalogAbs) return null;
+  const pending: PendingUpgrade = { fromLibrary, fromVisionCache: cfg.visionCacheDir };
+
+  const legacy = openLibraryDb(fromLibrary);
+  try {
+    libraryWrite(legacy, () => {
+      recordCatalog(legacy, catalogAbs);
+      setLibraryMeta(legacy, LEGACY_UPGRADE_META_KEY, JSON.stringify(pending));
+    });
+    legacy.pragma('wal_checkpoint(TRUNCATE)');
+  } finally {
+    legacy.close();
+  }
+
+  const catalogFolder = join(catalogsRoot(), generateCatalogFolderName(catalogAbs));
+  const libraryDbPath = join(catalogFolder, 'library.db');
+  mkdirSync(catalogFolder, { recursive: true });
+  try {
+    movePath(fromLibrary, libraryDbPath, fs);
+  } catch (e) {
+    rmSync(catalogFolder, { recursive: true, force: true });
+    throw e;
+  }
+  moveLibraryDbSidecarsIfPresent(fromLibrary, libraryDbPath, fs);
+  return finishLegacyUpgrade(libraryDbPath, pending, configPath, fs);
 }
 
 export function runLegacyUpgradeOnce(configPath = config.LT_CONFIG_YAML): LegacyUpgradeResult | null {
   if (legacyUpgradeDone) return null;
-  try {
-    const result = maybeUpgradeLegacyCatalogLayout(configPath);
-    legacyUpgradeDone = true;
-    return result;
-  } catch (e) {
-    legacyUpgradeDone = false;
-    throw e;
-  }
+  const result = maybeUpgradeLegacyCatalogLayout(configPath);
+  legacyUpgradeDone = true;
+  return result;
+}
+
+/** Startup's explanation when the upgrade fails: what failed, and that nothing is lost. */
+export function legacyUpgradeFailureMessage(e: unknown): string {
+  const reason = e instanceof Error ? e.message : String(e);
+  return (
+    `Could not move the library into ${catalogsRoot()}: ${reason}\n` +
+    'Your library and its previews are kept where they are; the move resumes on the next start.'
+  );
 }
 
 /** Create `catalogs/<name>/` with a new library for a catalog that has none yet. */
 export function createCatalogLibrary(catalogAbs: string): CatalogLibraryPaths {
-  const folderName = generateCatalogFolderName(catalogAbs);
-  const catalogFolder = join(catalogsRoot(), folderName);
+  const catalogFolder = join(catalogsRoot(), generateCatalogFolderName(catalogAbs));
   const libraryDbPath = join(catalogFolder, 'library.db');
-  const visionCacheDir = join(catalogFolder, 'vision-cache');
+  const visionCacheDir = visionCacheBesideLibrary(libraryDbPath);
   mkdirSync(visionCacheDir, { recursive: true });
   const db = initLibraryDb(libraryDbPath);
   try {
-    libraryWrite(db, () => {
-      setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogAbs);
-      setLibraryMeta(db, CATALOG_KIND_META_KEY, inferCatalogKind(catalogAbs));
-    });
+    recordCatalog(db, catalogAbs);
   } finally {
     db.close();
   }
@@ -379,98 +527,64 @@ export function createCatalogLibrary(catalogAbs: string): CatalogLibraryPaths {
   return { libraryDbPath, visionCacheDir, catalogFolder };
 }
 
-function resolveByCatalogLookup(configPath = config.LT_CONFIG_YAML): CatalogLibraryPaths {
+function resolveByCatalogLookup(configPath: string): CatalogLibraryPaths {
   runLegacyUpgradeOnce(configPath);
-  const catalogAbs = configuredCatalogAbsolute(configPath);
+  const cfg = loadLibraryConfig(configPath);
+  const catalogAbs = catalogPathFromConfig(cfg);
   if (!catalogAbs) {
     return {
       libraryDbPath: join(dataRoot(), 'library.db'),
-      visionCacheDir: loadLibraryConfig(configPath).visionCacheDir,
+      visionCacheDir: cfg.visionCacheDir,
       catalogFolder: null,
     };
   }
-
-  const matches = findCatalogLibrariesForPath(catalogAbs);
-  if (matches.length > 1) {
-    throw new CatalogLibraryConflictError(conflictMessage(matches));
-  }
-  if (matches.length === 1) {
-    const m = matches[0]!;
-    return {
-      libraryDbPath: m.libraryDbPath,
-      visionCacheDir: m.visionCacheDir,
-      catalogFolder: m.catalogFolder,
-    };
-  }
-
-  return createCatalogLibrary(catalogAbs);
+  return findCatalogLibrary(catalogAbs) ?? createCatalogLibrary(catalogAbs);
 }
 
-function resolveOpenLibraryInternal(configPath = config.LT_CONFIG_YAML): CatalogLibraryPaths {
-  if (isLibraryDbPinned()) return resolvePinnedLibraryPaths();
+function lookupCacheKey(configPath: string): string {
+  let written = 'absent';
+  try {
+    const st = statSync(configPath);
+    written = `${st.mtimeMs}:${st.size}`;
+  } catch {
+    // No config file yet: the key still changes once one is written.
+  }
+  return `${catalogsRoot()}\n${configPath}\n${written}`;
+}
 
-  const catalogAbs = configuredCatalogAbsolute(configPath);
-  if (cachedCatalogPath !== undefined && cachedCatalogPath === catalogAbs) {
-    if (cachedConflict) throw cachedConflict;
-    if (cachedResolution && catalogAbs) {
-      const matches = findCatalogLibrariesForPath(catalogAbs);
-      if (matches.length > 1) {
-        cachedConflict = new CatalogLibraryConflictError(conflictMessage(matches));
-        cachedResolution = null;
-        throw cachedConflict;
-      }
-      if (matches.length === 1 && matches[0]!.libraryDbPath === cachedResolution.libraryDbPath) {
-        return cachedResolution;
-      }
-    } else if (cachedResolution && !catalogAbs) {
-      return cachedResolution;
-    }
+/**
+ * `LIBRARY_DB` when set, else the library under `catalogs/` whose recorded path
+ * matches `catalog_path`. The answer is kept until `config.yaml` or the data folder
+ * changes, or `invalidateOpenLibraryCache()` is called.
+ */
+export function resolveCatalogLibraryPaths(configPath = config.LT_CONFIG_YAML): CatalogLibraryPaths {
+  if (isLibraryDbPinned()) return pinnedLibraryPaths();
+
+  const cached = lookupCache;
+  if (cached && cached.key === lookupCacheKey(configPath)) {
+    if (cached.result instanceof CatalogLibraryConflictError) throw cached.result;
+    if (!cached.result.catalogFolder || existsSync(cached.result.libraryDbPath)) return cached.result;
   }
 
-  cachedCatalogPath = catalogAbs;
-  cachedConflict = null;
   try {
-    cachedResolution = resolveByCatalogLookup(configPath);
-    return cachedResolution;
+    const result = resolveByCatalogLookup(configPath);
+    lookupCache = { key: lookupCacheKey(configPath), result };
+    return result;
   } catch (e) {
     if (e instanceof CatalogLibraryConflictError) {
-      cachedConflict = e;
-      cachedResolution = null;
+      lookupCache = { key: lookupCacheKey(configPath), result: e };
     }
     throw e;
   }
 }
 
-export function resolveCatalogLibraryPaths(configPath = config.LT_CONFIG_YAML): CatalogLibraryPaths {
-  return resolveOpenLibraryInternal(configPath);
-}
-
 /** Catalog path recorded in the pinned library, or `null`. */
 export function pinnedLibraryCatalogPath(): string | null {
   if (!isLibraryDbPinned()) return null;
-  const { libraryDbPath } = resolvePinnedLibraryPaths();
-  if (!existsSync(libraryDbPath)) return null;
-  let db: Db | undefined;
-  try {
-    db = openLibraryDb(libraryDbPath, { readonly: true });
-    return getLibraryMeta(db, CATALOG_PATH_META_KEY);
-  } catch {
-    return null;
-  } finally {
-    db?.close();
-  }
+  return readRecordedCatalogPath(pinnedLibraryPaths().libraryDbPath);
 }
 
-/** Update the pinned library's recorded catalog path (same catalog, new path). */
+/** Record `catalogAbs` in the pinned library (same catalog, new path). */
 export function updatePinnedLibraryCatalogPath(catalogAbs: string): void {
-  const { libraryDbPath } = resolvePinnedLibraryPaths();
-  const db = openLibraryDb(libraryDbPath);
-  try {
-    libraryWrite(db, () => {
-      setLibraryMeta(db, CATALOG_PATH_META_KEY, catalogAbs);
-      setLibraryMeta(db, CATALOG_KIND_META_KEY, inferCatalogKind(catalogAbs));
-    });
-  } finally {
-    db.close();
-  }
+  recordCatalogAt(pinnedLibraryPaths().libraryDbPath, catalogAbs);
 }

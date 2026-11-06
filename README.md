@@ -87,7 +87,7 @@ fixer sync --catalog "/path/to/Catalog.lrcat"
 
 ```bash
 cp apps/visualizer/backend/.env.example apps/visualizer/backend/.env
-# Edit .env: set LIBRARY_DB to the absolute path of library.db
+# The app opens the library for config.yaml's catalog_path. Set LIBRARY_DB in .env only to pin one library.db.
 
 make dev
 # Open http://localhost:5173
@@ -121,8 +121,7 @@ Legacy URLs (`/search`, `/analytics`, `/instagram`, `/matching`, `/jobs`) redire
 Edit `config.yaml` at the repo root (or pass `--config`):
 
 ```yaml
-catalog_path: "/path/to/Catalog.lrcat"
-db_path: "./library.db"
+catalog_path: "/path/to/Catalog.lrcat"   # or a folder of photos: "/path/to/Photos"
 mount_point: "/mnt/nas"
 workers: 4
 vision_model: "gemma3:27b"

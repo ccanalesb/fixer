@@ -1,6 +1,7 @@
 /**
  * Write-back's view of the live catalog: read pick/rating/keywords, write stars or reject, undo.
- * Lightroom Classic `.lrcat` is the only implementation today; folder XMP will implement the same seam.
+ * This module implements it for a Lightroom Classic `.lrcat`; `folder/xmp-writeback-writer.ts`
+ * implements it for a folder catalog's XMP.
  */
 import type { Db } from '../db/connection.js';
 import type { PickRatingWriteResult } from './writer.js';

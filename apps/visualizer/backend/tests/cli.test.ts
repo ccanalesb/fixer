@@ -37,6 +37,23 @@ import {
 import { makeFakeCatalog } from './helpers/fake-catalog.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 
+/**
+ * Tests here point the data folder, config.yaml and the pin at temp files; each is
+ * put back afterwards so no later test falls through to the repo-root defaults.
+ */
+const ENV_KEYS = ['LT_DATA_DIR', 'LT_CONFIG_YAML', 'LIBRARY_DB'] as const;
+let savedEnv: Record<string, string | undefined> = {};
+beforeEach(() => {
+  savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+});
+afterEach(() => {
+  for (const k of ENV_KEYS) {
+    const v = savedEnv[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+});
+
 /** Config with nothing in it: every path has to come from a flag. */
 const EMPTY_CONFIG = (): LibraryConfig => loadLibraryConfig('/nonexistent/config.yaml');
 
@@ -271,8 +288,6 @@ describe('read-only commands', () => {
       expect(r.lines.some((l) => l.startsWith('Moved library.db from '))).toBe(true);
       expect(r.lines.some((l) => l.startsWith('Moved vision cache from '))).toBe(true);
     } finally {
-      delete process.env.LT_DATA_DIR;
-      delete process.env.LT_CONFIG_YAML;
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
@@ -588,6 +603,15 @@ describe('library resolution', () => {
     return dbPath;
   }
 
+  function recordedCatalog(dbPath: string): string | null {
+    const db = openLibraryDb(dbPath, { readonly: true });
+    try {
+      return getLibraryMeta(db, CATALOG_PATH_META_KEY);
+    } finally {
+      db.close();
+    }
+  }
+
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'lt-resolve-'));
     delete process.env.LIBRARY_DB;
@@ -599,8 +623,6 @@ describe('library resolution', () => {
   });
 
   afterEach(() => {
-    delete process.env.LT_DATA_DIR;
-    delete process.env.LT_CONFIG_YAML;
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -648,6 +670,20 @@ describe('library resolution', () => {
     const r = await cli(['sync', '--db', dbPath]);
     expect(r.code).toBe(0);
     expect(r.lines.some((l) => l === `Syncing catalog: ${synced}`)).toBe(true);
+    expect(recordedCatalog(dbPath)).toBe(synced);
+  });
+
+  it('records the --catalog given to a pinned library that records none', async () => {
+    const catalog = join(dir, 'Given.lrcat');
+    makeFakeCatalog(catalog, [
+      { id: 1, baseName: 'DSC_0001', captureTime: '2024-06-01T12:00:00', rating: 3 },
+    ]);
+    const dbPath = join(dir, 'pinned.db');
+    initLibraryDb(dbPath).close();
+
+    const r = await cli(['sync', '--db', dbPath, '--catalog', catalog]);
+    expect(r.code).toBe(0);
+    expect(recordedCatalog(dbPath)).toBe(catalog);
   });
 
   it('every command refuses when two libraries claim one catalog path', async () => {
@@ -693,7 +729,6 @@ describe('enrich-catalog', () => {
   });
 
   afterEach(() => {
-    delete process.env.LT_CONFIG_YAML;
     fixture.cleanup();
     rmSync(dir, { recursive: true, force: true });
   });

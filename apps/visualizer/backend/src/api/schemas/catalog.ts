@@ -6,6 +6,11 @@
  */
 import { z } from '@hono/zod-openapi';
 
+/** Pick flag as stored: 1 = pick, -1 = reject, 0 = neither. */
+export const CatalogPick = z
+  .union([z.literal(-1), z.literal(0), z.literal(1)])
+  .openapi('CatalogPick');
+
 export const IdentityPerPerspectiveScore = z
   .object({
     perspective_slug: z.string(),
@@ -29,7 +34,7 @@ export const CatalogImage = z
     filepath: z.string().nullish(),
     date_taken: z.string().nullish(),
     rating: z.int().nullish(),
-    pick: z.boolean().nullish(),
+    pick: CatalogPick.nullish(),
     color_label: z.string().nullish(),
     keywords: z.array(z.string()).default([]),
     title: z.string().nullish(),
@@ -158,7 +163,7 @@ export const ImageView = z
     date_taken: z.string().nullish(),
     created_at: z.string().nullish(),
     rating: z.int().nullish(),
-    pick: z.boolean().nullish(),
+    pick: CatalogPick.nullish(),
     color_label: z.string().nullish(),
     keywords: z.array(z.string()).nullish(),
     title: z.string().nullish(),

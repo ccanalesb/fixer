@@ -291,7 +291,7 @@ export function updateConfigYamlCatalogPath(configFile: string, catalogPath: str
   updateConfigYaml(configFile, 'catalog_path', stripped);
 }
 
-/** The configured Lightroom catalog (`.lrcat`) path from `config.yaml`, if any. */
+/** The configured catalog path from `config.yaml` — a `.lrcat` file or a folder — if any. */
 export function resolveConfiguredCatalogPath(configPath = defaultConfigYamlPath()): string | null {
   return loadLibraryConfig(configPath).catalogPath;
 }
@@ -323,7 +323,7 @@ export function getDescriptionModel(): string {
   return process.env.DESCRIPTION_VISION_MODEL ?? getVisionModel();
 }
 
-export type LibraryDbSource = 'env' | 'config' | 'default';
+export type LibraryDbSource = 'env' | 'default';
 
 export interface LibraryDbStatus {
   path: string;

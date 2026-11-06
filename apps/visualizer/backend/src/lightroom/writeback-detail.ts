@@ -26,7 +26,7 @@ function folderWrittenFileLabel(catalogPath: string, db: Db, imageKey: string): 
   if (!photo) return null;
   const dir = dirname(photo.filepath);
   const ambiguous = new Set<string>();
-  if (stemSidecarAmbiguousForDir(dir, photo.stem)) ambiguous.add(dir);
+  if (stemSidecarAmbiguousForDir(dir)) ambiguous.add(dir);
   const targets = resolveFolderWriteTargets(photo, ambiguous);
   const target = targets[0];
   if (!target) return null;
@@ -135,7 +135,7 @@ export async function buildWritebackPhotoDetail(
       isFolder && writtenRow ? folderWrittenFileLabel(catalogPath, db, imageKey) : null,
     user_changed_message:
       isFolder && userChanged && userChangedFileLabel
-        ? `You changed ${userChangedFileLabel} after the app wrote it.`
+        ? `Undone by you: what the app wrote is no longer in ${userChangedFileLabel}.`
         : null,
   };
 }

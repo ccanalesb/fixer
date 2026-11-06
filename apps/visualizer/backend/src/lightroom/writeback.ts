@@ -128,26 +128,20 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
   const yieldState = createEventLoopYieldState();
   const isCancelled = opts.isCancelled ?? (() => false);
 
-  let catalogSession: WritebackCatalogWriterSession | null = null;
+  let lrcatSession: WritebackCatalogWriterSession | null = null;
   let folderSession: Awaited<ReturnType<typeof openFolderWritebackWriterSession>> | null = null;
   let cloud: CloudDocstore | null = null;
   if (canWrite) {
     if (isFolder) {
       folderSession = await openFolderWritebackWriterSession(catalogPath, db);
-      catalogSession = {
-        writer: folderSession.writer,
-        catalogConn: db,
-        close() {
-          void folderSession?.close();
-        },
-      };
     } else {
       raiseIfCatalogLocked(catalogPath);
       backupCatalogIfNeeded(catalogPath);
-      catalogSession = openWritebackCatalogWriter(catalogPath, db);
-      cloud = openCloudDocstore(catalogSession.catalogConn, catalogPath);
+      lrcatSession = openWritebackCatalogWriter(catalogPath, db);
+      cloud = openCloudDocstore(lrcatSession.catalogConn, catalogPath);
     }
   }
+  const catalogWriter: WritebackCatalogWriter | null = lrcatSession?.writer ?? folderSession?.writer ?? null;
 
   let lockStopped = false;
   const folderWriter = folderSession?.writer ?? null;
@@ -155,7 +149,7 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
 
   const run: WritebackPlanRun = {
     db,
-    catalog: catalogSession?.writer ?? null,
+    catalog: catalogWriter,
     tally,
     starsVersionId,
   };
@@ -180,8 +174,8 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
           break outer;
         }
         if (!isFolder && canWrite && isCatalogLocked(catalogPath)) lockStopped = true;
-        const writeNow = canWrite && !lockStopped && catalogSession !== null;
-        let live = catalogSession?.writer.readPickRating(imageKey) ?? null;
+        const writeNow = canWrite && !lockStopped && catalogWriter !== null;
+        let live = catalogWriter?.readPickRating(imageKey) ?? null;
         if (folderWriter && writeNow) {
           live = await folderWriter.refreshLiveFromDisk(imageKey);
         }
@@ -200,18 +194,15 @@ export async function reconcileLrWriteback(db: Db, opts: ReconcileOptions): Prom
             libraryWrite(db, () => upsertWritebackState(db, row));
           }
         }
-        if (writeNow && cloud && catalogSession && !isFolder) {
-          carryToCloud(db, cloud, catalogSession.catalogConn, catalogSession.writer, imageKey, settings, mutations.cloud);
+        if (writeNow && cloud && lrcatSession) {
+          carryToCloud(db, cloud, lrcatSession.catalogConn, lrcatSession.writer, imageKey, settings, mutations.cloud);
         }
       }
     }
   } finally {
     closeCloudDocstore(cloud);
-    if (folderSession) {
-      await folderSession.close();
-    } else {
-      catalogSession?.close();
-    }
+    lrcatSession?.close();
+    await folderSession?.close();
   }
 
   mutations.catalog_updated_stars = tally.catalog_updated_stars;

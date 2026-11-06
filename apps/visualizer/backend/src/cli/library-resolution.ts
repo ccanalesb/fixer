@@ -1,31 +1,32 @@
 /**
- * Resolve which `library.db` and catalog path the CLI opens — same lookup as the
- * server, with stricter rules for `--catalog` and library creation.
+ * Resolve which `library.db` and catalog path the CLI opens — the server's lookup
+ * (`catalog-library.ts`), with stricter rules for `--catalog` and library creation.
  */
 import { existsSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname } from 'node:path';
 import {
   absoluteCatalogPath,
-  CatalogLibraryConflictError,
-  CATALOG_KIND_META_KEY,
+  catalogPathFromConfig,
   CATALOG_PATH_META_KEY,
   createCatalogLibrary,
-  findCatalogLibrariesForPath,
-  inferCatalogKind,
+  findCatalogLibrary,
+  legacyUpgradeLines,
+  libraryPathsAt,
+  recordCatalog,
   runLegacyUpgradeOnce,
   type CatalogLibraryPaths,
-  type LegacyUpgradeResult,
 } from '../catalog-library.js';
 import { config } from '../config.js';
-import { openLibraryDb, type Db } from '../db/connection.js';
-import { getLibraryMeta, setLibraryMeta } from '../db/library/bootstrap.js';
-import { libraryWrite } from '../db/library/write.js';
+import type { Db } from '../db/connection.js';
+import { getLibraryMeta } from '../db/library/bootstrap.js';
 import type { CommandContext } from './registry.js';
 import { stringFlag } from './parse.js';
 import { CliError } from './library-db.js';
 
 export const NO_LIBRARY_FOR_CATALOG_MSG = (catalogPath: string) =>
   `No library for ${catalogPath}. Choose it in the app (Settings → Catalog) or set catalog_path in config.yaml`;
+
+const NO_CATALOG_MSG = 'No catalog path provided. Use --catalog or config.yaml';
 
 const SYNCED_CATALOG_PATH_META_KEY = 'synced_catalog_path';
 
@@ -53,34 +54,15 @@ function libraryBelongsToError(dbPath: string, recorded: string, requested?: str
   return msg;
 }
 
-function configuredCatalogAbsolute(ctx: CommandContext): string | null {
-  const raw = ctx.config.catalogPathRaw.trim();
-  if (!raw) return ctx.config.catalogPath || null;
-  const abs = absoluteCatalogPath(raw);
-  return abs || null;
-}
-
-function pathsFromEntry(entry: { libraryDbPath: string; visionCacheDir: string; catalogFolder: string }): CatalogLibraryPaths {
-  return {
-    libraryDbPath: entry.libraryDbPath,
-    visionCacheDir: entry.visionCacheDir,
-    catalogFolder: entry.catalogFolder,
-  };
-}
-
-function assertNoConflict(matches: ReturnType<typeof findCatalogLibrariesForPath>): void {
-  if (matches.length <= 1) return;
-  const names = matches.map((e) => e.catalogFolder);
-  throw new CatalogLibraryConflictError(
-    `Two libraries claim the same catalog path (${matches[0]!.catalogPath}): ${names.join(' and ')}.`,
-  );
-}
-
-export function printLegacyUpgradeLines(result: LegacyUpgradeResult): string[] {
-  return [
-    `Moved library.db from ${result.fromLibraryPath} to ${result.libraryDbPath}`,
-    `Moved vision cache from ${result.fromVisionCacheDir} to ${result.visionCacheDir}`,
-  ];
+/** `--catalog`, absolute, refusing one that is not there. */
+function existingCatalogFlag(ctx: CommandContext): string | null {
+  const catalogFlag = stringFlag(ctx.args, 'catalog');
+  if (!catalogFlag) return null;
+  const catalogAbs = absoluteCatalogPath(catalogFlag);
+  if (!catalogAbs || !existsSync(catalogAbs)) {
+    throw new CliError(`Catalog not found: ${catalogFlag}`);
+  }
+  return catalogAbs;
 }
 
 /** Run the one-time legacy layout upgrade when the CLI is not pinned with `--db`. */
@@ -88,28 +70,20 @@ export function runCliLegacyUpgrade(ctx: CommandContext): void {
   if (stringFlag(ctx.args, 'db')) return;
   const result = runLegacyUpgradeOnce(config.LT_CONFIG_YAML);
   if (result) {
-    for (const line of printLegacyUpgradeLines(result)) ctx.out(line);
+    for (const line of legacyUpgradeLines(result)) ctx.out(line);
   }
 }
 
-function resolveLibraryForCatalogPath(
-  catalogAbs: string,
-  opts: { allowCreate: boolean; configCatalogAbs: string | null },
-): CatalogLibraryPaths {
-  const matches = findCatalogLibrariesForPath(catalogAbs);
-  assertNoConflict(matches);
-  if (matches.length === 1) {
-    return pathsFromEntry(matches[0]!);
-  }
-  if (opts.allowCreate && opts.configCatalogAbs && absoluteCatalogPath(catalogAbs) === opts.configCatalogAbs) {
-    return createCatalogLibrary(catalogAbs);
-  }
+function libraryForCatalog(catalogAbs: string, mayCreate: boolean): CatalogLibraryPaths {
+  const found = findCatalogLibrary(catalogAbs);
+  if (found) return found;
+  if (mayCreate) return createCatalogLibrary(catalogAbs);
   throw new CliError(NO_LIBRARY_FOR_CATALOG_MSG(catalogAbs));
 }
 
 export interface ResolvedCliLibrary {
   paths: CatalogLibraryPaths;
-  /** Absolute catalog path this command should sync or scan. */
+  /** Absolute catalog path this command should sync or scan; `null` under `--db` without `--catalog`. */
   catalogPath: string | null;
 }
 
@@ -122,101 +96,37 @@ export function resolveCliLibrary(ctx: CommandContext, allowCreateLibrary: boole
   runCliLegacyUpgrade(ctx);
 
   const dbFlag = stringFlag(ctx.args, 'db');
-  const catalogFlag = stringFlag(ctx.args, 'catalog');
-  const configCatalog = configuredCatalogAbsolute(ctx);
+  const requested = existingCatalogFlag(ctx);
+  if (dbFlag) return { paths: libraryPathsAt(dbFlag), catalogPath: requested };
+  if (requested) return { paths: libraryForCatalog(requested, false), catalogPath: requested };
 
-  if (dbFlag) {
-    const paths: CatalogLibraryPaths = {
-      libraryDbPath: dbFlag,
-      visionCacheDir: join(dirname(dbFlag), 'vision-cache'),
-      catalogFolder: null,
-    };
-    if (catalogFlag) {
-      const catalogAbs = absoluteCatalogPath(catalogFlag);
-      if (!catalogAbs || !existsSync(catalogAbs)) {
-        throw new CliError(`Catalog not found: ${catalogFlag}`);
-      }
-      return { paths, catalogPath: catalogAbs };
-    }
-    return { paths, catalogPath: null };
-  }
-
-  if (catalogFlag) {
-    const catalogAbs = absoluteCatalogPath(catalogFlag);
-    if (!catalogAbs || !existsSync(catalogAbs)) {
-      throw new CliError(`Catalog not found: ${catalogFlag}`);
-    }
-    const paths = resolveLibraryForCatalogPath(catalogAbs, {
-      allowCreate: false,
-      configCatalogAbs: configCatalog,
-    });
-    return { paths, catalogPath: catalogAbs };
-  }
-
-  if (!configCatalog) {
-    throw new CliError('No catalog path provided. Use --catalog or config.yaml');
-  }
-
-  const paths = resolveLibraryForCatalogPath(configCatalog, {
-    allowCreate: allowCreateLibrary,
-    configCatalogAbs: configCatalog,
-  });
-  return { paths, catalogPath: configCatalog };
+  const configCatalog = catalogPathFromConfig(ctx.config);
+  if (!configCatalog) throw new CliError(NO_CATALOG_MSG);
+  return { paths: libraryForCatalog(configCatalog, allowCreateLibrary), catalogPath: configCatalog };
 }
 
 /**
- * Catalog path for `scan` / `sync` with an explicit `--db`, recording `config.yaml`'s
- * catalog in the library when the pinned file has none yet.
+ * Catalog path for `scan` / `sync` with an explicit `--db`: the one the library
+ * records, else `--catalog`, its legacy `synced_catalog_path` or `config.yaml`'s,
+ * which is then recorded. Another catalog than the recorded one is refused.
  */
 export function resolvePinnedScanSyncCatalog(
   db: Db,
   dbPath: string,
   ctx: CommandContext,
 ): string {
-  const catalogFlag = stringFlag(ctx.args, 'catalog');
-  const configCatalog = configuredCatalogAbsolute(ctx);
   const recorded = getLibraryMeta(db, CATALOG_PATH_META_KEY);
+  const requested = existingCatalogFlag(ctx);
 
-  if (catalogFlag) {
-    const requested = absoluteCatalogPath(catalogFlag);
-    if (!requested || !existsSync(requested)) {
-      throw new CliError(`Catalog not found: ${catalogFlag}`);
-    }
-    if (recorded && absoluteCatalogPath(recorded) !== requested) {
+  if (recorded) {
+    if (requested && absoluteCatalogPath(recorded) !== requested) {
       throw new CliError(libraryBelongsToError(dbPath, recorded, requested));
     }
-    return requested;
+    return requested ?? recorded;
   }
 
-  if (recorded) return recorded;
-
-  const legacySynced = legacySyncedCatalogPath(db);
-  if (legacySynced) return legacySynced;
-
-  if (!configCatalog) {
-    throw new CliError('No catalog path provided. Use --catalog or config.yaml');
-  }
-
-  libraryWrite(db, () => {
-    setLibraryMeta(db, CATALOG_PATH_META_KEY, configCatalog);
-    setLibraryMeta(db, CATALOG_KIND_META_KEY, inferCatalogKind(configCatalog));
-  });
-  return configCatalog;
+  const chosen = requested ?? legacySyncedCatalogPath(db) ?? catalogPathFromConfig(ctx.config);
+  if (!chosen) throw new CliError(NO_CATALOG_MSG);
+  recordCatalog(db, chosen);
+  return chosen;
 }
-
-/** Open the pinned library read-only enough to read `library_meta`. */
-export function readPinnedLibraryCatalogPath(dbPath: string): string | null {
-  if (!existsSync(dbPath)) return null;
-  const db = openLibraryDb(dbPath, { readonly: true });
-  try {
-    return getLibraryMeta(db, CATALOG_PATH_META_KEY);
-  } finally {
-    db.close();
-  }
-}
-
-export function catalogKindAtPath(catalogPath: string): 'lightroom' | 'folder' {
-  return inferCatalogKind(catalogPath);
-}
-
-export { CatalogLibraryConflictError };

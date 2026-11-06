@@ -14,7 +14,6 @@
 import type { Env, MiddlewareHandler } from 'hono';
 import { existsSync } from 'node:fs';
 import { resolveOpenLibraryPaths } from '../open-library.js';
-import { CatalogLibraryConflictError } from '../catalog-library.js';
 import { ERROR_DB_NOT_FOUND } from '../constants/errors.js';
 import { openLibraryDb, type Db } from '../db/connection.js';
 import { libraryNeedsUpgrade, upgradeLibrarySchema } from '../db/library/bootstrap.js';
@@ -78,9 +77,7 @@ export function libraryDb(opts: LibraryDbOptions = {}): MiddlewareHandler<Librar
     try {
       ({ libraryDbPath: dbPath } = resolveOpenLibraryPaths());
     } catch (e) {
-      if (e instanceof CatalogLibraryConflictError) {
-        return c.json({ error: e.message }, 500);
-      }
+      // Two libraries claiming the catalog land here too; the message names both folders.
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }
 
@@ -99,9 +96,6 @@ export function libraryDb(opts: LibraryDbOptions = {}): MiddlewareHandler<Librar
       await next();
       return;
     } catch (e) {
-      if (e instanceof CatalogLibraryConflictError) {
-        return c.json({ error: e.message }, 500);
-      }
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     } finally {
       db?.close();

@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { openLibraryDb, type Db } from '../db/connection.js';
 import { initLibraryDb, upgradeLibrarySchema } from '../db/library/bootstrap.js';
-import { resolveCliLibrary } from './library-resolution.js';
+import { resolveCliLibrary, type ResolvedCliLibrary } from './library-resolution.js';
 import type { CommandContext } from './registry.js';
 import { stringFlag } from './parse.js';
 
@@ -19,30 +19,20 @@ export interface WithLibraryDbOpts {
   allowCreateLibrary?: boolean;
 }
 
-/** `--db` if given, else the library the catalog lookup finds. */
-export function resolveLibraryDbPath(ctx: CommandContext, opts: WithLibraryDbOpts): string {
-  const { paths } = resolveCliLibrary(ctx, opts.allowCreateLibrary ?? false);
-  const dbPath = paths.libraryDbPath;
+/** `--db` if given, else the library the catalog lookup finds, and the catalog to read. */
+function resolveLibrary(ctx: CommandContext, opts: WithLibraryDbOpts): ResolvedCliLibrary {
+  const resolved = resolveCliLibrary(ctx, opts.allowCreateLibrary ?? false);
+  const dbPath = resolved.paths.libraryDbPath;
   if (!dbPath) throw new CliError(MISSING_DB_PATH_MSG);
   if (opts.mustExist && !existsSync(dbPath)) {
     throw new CliError(`Database not found: ${dbPath}`);
   }
-  return dbPath;
+  return resolved;
 }
 
 /** Open for a command. An existing database is brought up to the current schema. */
 function openForCommand(dbPath: string, mustExist: boolean): Db {
   if (!mustExist && !existsSync(dbPath)) return initLibraryDb(dbPath);
-  if (!mustExist && existsSync(dbPath)) {
-    const db = openLibraryDb(dbPath);
-    try {
-      upgradeLibrarySchema(db);
-    } catch (e) {
-      db.close();
-      throw e;
-    }
-    return db;
-  }
   const db = openLibraryDb(dbPath);
   try {
     upgradeLibrarySchema(db);
@@ -57,16 +47,18 @@ function openForCommand(dbPath: string, mustExist: boolean): Db {
  * Run `body` against an open library DB, closing it whatever happens.
  *
  * `mustExist: false` bootstraps the schema when the path is missing (`scan`, `sync`).
+ * `catalogPath` is the catalog the lookup chose; `null` under `--db` without `--catalog`.
  */
 export function withLibraryDb<T>(
   ctx: CommandContext,
   opts: WithLibraryDbOpts,
-  body: (db: Db, dbPath: string) => T,
+  body: (db: Db, dbPath: string, catalogPath: string | null) => T,
 ): T {
-  const dbPath = resolveLibraryDbPath(ctx, opts);
+  const { paths, catalogPath } = resolveLibrary(ctx, opts);
+  const dbPath = paths.libraryDbPath;
   const db = openForCommand(dbPath, opts.mustExist);
   try {
-    return body(db, dbPath);
+    return body(db, dbPath, catalogPath);
   } finally {
     db.close();
   }
@@ -75,12 +67,13 @@ export function withLibraryDb<T>(
 export async function withLibraryDbAsync<T>(
   ctx: CommandContext,
   opts: WithLibraryDbOpts,
-  body: (db: Db, dbPath: string) => Promise<T>,
+  body: (db: Db, dbPath: string, catalogPath: string | null) => Promise<T>,
 ): Promise<T> {
-  const dbPath = resolveLibraryDbPath(ctx, opts);
+  const { paths, catalogPath } = resolveLibrary(ctx, opts);
+  const dbPath = paths.libraryDbPath;
   const db = openForCommand(dbPath, opts.mustExist);
   try {
-    return await body(db, dbPath);
+    return await body(db, dbPath, catalogPath);
   } finally {
     db.close();
   }

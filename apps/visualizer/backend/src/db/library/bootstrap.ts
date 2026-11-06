@@ -505,6 +505,11 @@ export function setLibraryMeta(db: Db, key: string, value: string): void {
   ).run(key, value);
 }
 
+/** Remove one `library_meta` row. Does NOT commit — call inside `libraryWrite`. */
+export function deleteLibraryMeta(db: Db, key: string): void {
+  db.prepare('DELETE FROM library_meta WHERE key = ?').run(key);
+}
+
 /** Whether the Insights first-run setup should stay hidden. */
 export function firstCatalogImportCompleted(db: Db): boolean {
   return getLibraryMeta(db, FIRST_CATALOG_IMPORT_META_KEY) !== null;

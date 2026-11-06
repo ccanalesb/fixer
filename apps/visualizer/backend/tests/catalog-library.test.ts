@@ -7,7 +7,9 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -172,6 +174,143 @@ describe('maybeUpgradeLegacyCatalogLayout', () => {
     expect(existsSync(`${legacyDb}-shm`)).toBe(false);
     expect(readFileSync(`${destDb}-wal`, 'utf8')).toBe('wal-bytes');
     expect(readFileSync(`${destDb}-shm`, 'utf8')).toBe('shm-bytes');
+  });
+});
+
+/** A legacy install: `library.db` with one cached preview, its vision cache, and config naming both. */
+function seedLegacyInstall(): { lrcat: string; legacyDb: string; legacyCache: string } {
+  const lrcat = join(dir, 'legacy.lrcat');
+  writeFileSync(lrcat, '');
+  const legacyDb = join(dir, 'library.db');
+  const legacyCache = join(dir, 'old-cache');
+  writeFileSync(
+    cfgPath,
+    stringifyYaml({ catalog_path: lrcat, db_path: legacyDb, vision_cache_dir: legacyCache }),
+  );
+  const db = initLibraryDb(legacyDb);
+  libraryWrite(db, () => {
+    db.prepare('INSERT INTO vision_cache (key, compressed_path) VALUES (?, ?)').run(
+      'k1',
+      join(legacyCache, 'photo.jpg'),
+    );
+  });
+  db.close();
+  mkdirSync(legacyCache, { recursive: true });
+  writeFileSync(join(legacyCache, 'photo.jpg'), 'jpeg');
+  return { lrcat, legacyDb, legacyCache };
+}
+
+function cachedPathIn(libraryDbPath: string): string {
+  const db = openLibraryDb(libraryDbPath, { readonly: true });
+  try {
+    return (db.prepare('SELECT compressed_path FROM vision_cache WHERE key = ?').get('k1') as {
+      compressed_path: string;
+    }).compressed_path;
+  } finally {
+    db.close();
+  }
+}
+
+const exdev = (): never => {
+  throw Object.assign(new Error('cross-device link not permitted'), { code: 'EXDEV' });
+};
+
+describe('an interrupted upgrade', () => {
+  it('opens the moved library on the next start, then finishes moving the vision cache', () => {
+    const { legacyDb, legacyCache } = seedLegacyInstall();
+    const failCacheMove = {
+      rename: (src: string, dest: string) => {
+        if (src === legacyCache) throw new Error('interrupted');
+        renameSync(src, dest);
+      },
+      copy: (src: string, dest: string) => cpSync(src, dest, { recursive: true }),
+    };
+
+    expect(() => maybeUpgradeLegacyCatalogLayout(cfgPath, failCacheMove)).toThrow('interrupted');
+    expect(existsSync(legacyDb)).toBe(false);
+
+    resetCatalogLibraryModuleStateForTests();
+    const result = runLegacyUpgradeOnce();
+    expect(result).not.toBeNull();
+    const paths = resolveCatalogLibraryPaths();
+    expect(paths.libraryDbPath).toBe(result!.libraryDbPath);
+    expect(readdirSync(join(dir, 'catalogs'))).toHaveLength(1);
+    expect(cachedPathIn(paths.libraryDbPath)).toBe(join(paths.visionCacheDir, 'photo.jpg'));
+    expect(existsSync(join(paths.visionCacheDir, 'photo.jpg'))).toBe(true);
+    expect(existsSync(legacyCache)).toBe(false);
+    const cfg = parseYaml(readFileSync(cfgPath, 'utf8')) as Record<string, unknown>;
+    expect(cfg.db_path).toBeUndefined();
+  });
+
+  it('runs again when catalogs/ holds only a library that records no catalog', () => {
+    const { legacyDb } = seedLegacyInstall();
+    mkdirSync(join(dir, 'catalogs', 'stray-0000'), { recursive: true });
+    initLibraryDb(join(dir, 'catalogs', 'stray-0000', 'library.db')).close();
+
+    const result = maybeUpgradeLegacyCatalogLayout();
+    expect(result).not.toBeNull();
+    expect(existsSync(legacyDb)).toBe(false);
+    expect(cachedPathIn(resolveCatalogLibraryPaths().libraryDbPath)).toBe(
+      join(result!.visionCacheDir, 'photo.jpg'),
+    );
+  });
+});
+
+describe('an upgrade across volumes', () => {
+  it('copies the library and vision cache, then removes the originals', () => {
+    const { legacyDb, legacyCache } = seedLegacyInstall();
+    const crossVolume = {
+      rename: exdev,
+      copy: (src: string, dest: string) => cpSync(src, dest, { recursive: true }),
+    };
+
+    const result = maybeUpgradeLegacyCatalogLayout(cfgPath, crossVolume);
+    expect(result).not.toBeNull();
+    expect(existsSync(legacyDb)).toBe(false);
+    expect(existsSync(legacyCache)).toBe(false);
+    expect(readFileSync(join(result!.visionCacheDir, 'photo.jpg'), 'utf8')).toBe('jpeg');
+    expect(cachedPathIn(result!.libraryDbPath)).toBe(join(result!.visionCacheDir, 'photo.jpg'));
+  });
+
+  it('keeps the original library when the copy comes out short', () => {
+    const { legacyDb } = seedLegacyInstall();
+    const shortCopy = {
+      rename: exdev,
+      copy: (_src: string, dest: string) => writeFileSync(dest, ''),
+    };
+
+    expect(() => maybeUpgradeLegacyCatalogLayout(cfgPath, shortCopy)).toThrow();
+    expect(existsSync(legacyDb)).toBe(true);
+    resetCatalogLibraryModuleStateForTests();
+    expect(cachedPathIn(resolveCatalogLibraryPaths().libraryDbPath)).toContain('photo.jpg');
+  });
+});
+
+describe('the library lookup', () => {
+  it('keeps its answer until the catalog changes', () => {
+    const lrcat = join(dir, 'kept.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+    const first = resolveCatalogLibraryPaths();
+    cpSync(first.catalogFolder!, join(dir, 'catalogs', 'kept-ffff'), { recursive: true });
+
+    expect(resolveCatalogLibraryPaths()).toEqual(first);
+    invalidateOpenLibraryCache();
+    expect(() => resolveCatalogLibraryPaths()).toThrow(CatalogLibraryConflictError);
+  });
+
+  it('follows a catalog_path edited in config.yaml', () => {
+    const a = join(dir, 'a.lrcat');
+    const b = join(dir, 'b.lrcat');
+    writeFileSync(a, '');
+    writeFileSync(b, '');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(a)}\n`);
+    const first = resolveCatalogLibraryPaths();
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(b)}\n# edited\n`);
+
+    const second = resolveCatalogLibraryPaths();
+    expect(second.libraryDbPath).not.toBe(first.libraryDbPath);
+    expect(findCatalogLibrariesForPath(b)[0]!.libraryDbPath).toBe(second.libraryDbPath);
   });
 });
 
