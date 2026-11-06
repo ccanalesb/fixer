@@ -2,7 +2,7 @@
  * XMP/IPTC field values and per-field sources for the folder-catalog image modal tab.
  */
 import { existsSync } from 'node:fs';
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Tags } from 'exiftool-vendored';
 import { getLibraryMeta } from '../db/library/bootstrap.js';
 import type { Db } from '../db/connection.js';
@@ -162,7 +162,9 @@ function pathUnderCatalogRoot(catalogRoot: string, filePath: string): boolean {
   if (!root || !String(filePath).trim()) return false;
   if (existsSync(filePath)) return isPathUnderAllowedRoots(filePath, [root]);
   const abs = resolve(filePath);
-  const rel = relative(root, abs);
+  const parent = canonicalPath(dirname(abs));
+  if (!parent) return false;
+  const rel = relative(root, join(parent, basename(abs)));
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 

@@ -5,7 +5,7 @@
  * so pixels come from WASM libheif everywhere. On macOS, `sips` is tried first.
  */
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { promisify } from 'node:util';
 import decodeHeic from 'heic-decode';
@@ -65,9 +65,27 @@ async function sipsPresent(): Promise<boolean> {
   }
 }
 
+function fitToPreview(pipeline: sharp.Sharp, width: number, height: number): sharp.Sharp {
+  if (width <= PREVIEW_MAX_DIMENSION && height <= PREVIEW_MAX_DIMENSION) return pipeline;
+  return pipeline.resize({
+    width: PREVIEW_MAX_DIMENSION,
+    height: PREVIEW_MAX_DIMENSION,
+    fit: 'inside',
+    withoutEnlargement: true,
+    kernel: 'lanczos3',
+  });
+}
+
 async function decodeWithSips(inputPath: string, outputPath: string): Promise<boolean> {
   try {
     await execFileAsync('sips', ['-s', 'format', 'jpeg', inputPath, '--out', outputPath]);
+    const { width = 0, height = 0 } = await sharp(outputPath).metadata();
+    if (width > PREVIEW_MAX_DIMENSION || height > PREVIEW_MAX_DIMENSION) {
+      const resized = await fitToPreview(sharp(outputPath), width, height)
+        .jpeg({ quality: 92, mozjpeg: true })
+        .toBuffer();
+      await writeFile(outputPath, resized);
+    }
     return true;
   } catch {
     return false;
@@ -79,16 +97,7 @@ async function decodeWithLibheif(inputPath: string, outputPath: string): Promise
   try {
     const buffer = await readFile(inputPath);
     const { width, height, data } = await decodeHeic({ buffer });
-    const pipeline = sharp(data, { raw: { width, height, channels: 4 } });
-    if (width > PREVIEW_MAX_DIMENSION || height > PREVIEW_MAX_DIMENSION) {
-      pipeline.resize({
-        width: PREVIEW_MAX_DIMENSION,
-        height: PREVIEW_MAX_DIMENSION,
-        fit: 'inside',
-        withoutEnlargement: true,
-        kernel: 'lanczos3',
-      });
-    }
+    const pipeline = fitToPreview(sharp(data, { raw: { width, height, channels: 4 } }), width, height);
     await pipeline.jpeg({ quality: 92, mozjpeg: true }).toFile(outputPath);
     return true;
   } catch {

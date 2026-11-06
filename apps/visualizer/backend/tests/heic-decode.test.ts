@@ -39,6 +39,7 @@ afterEach(() => {
   fx.cleanup();
   delete process.env.LT_CONFIG_YAML;
   rmSync(workDir, { recursive: true, force: true });
+  setHeicDecodeSipsPresenceOverride(null);
   vi.restoreAllMocks();
 });
 
@@ -46,6 +47,7 @@ describe('decodeHeicToJpegPath', () => {
   it('decodes a HEVC HEIC to a JPEG with libheif', async () => {
     const heicPath = join(workDir, 'photo.heic');
     copyFileSync(sampleHeic, heicPath);
+    setHeicDecodeSipsPresenceOverride(async () => false);
 
     const jpegPath = (await decodeHeicToJpegPath(heicPath, makeTempJpgPath))!;
     expect(jpegPath).toBeTruthy();
@@ -61,7 +63,9 @@ describe('decodeHeicToJpegPath', () => {
     copyFileSync(sampleHeic, heicPath);
     const jpegPath = (await decodeHeicToJpegPath(heicPath, makeTempJpgPath))!;
     expect(jpegPath).toBeTruthy();
-    expect(await sharp(jpegPath).metadata()).toMatchObject({ format: 'jpeg' });
+    const meta = await sharp(jpegPath).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(1024);
   });
 
   it('falls back to libheif when sips fails', async () => {
