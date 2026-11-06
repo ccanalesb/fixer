@@ -37,6 +37,26 @@ describe('ranking stale mark', () => {
       noteRankingStaleAfterFolderSync(db, {
         added: 0,
         changed: 1,
+        metadata_changed: 0,
+        moved: 0,
+        newly_gone: 0,
+      });
+      expect(hasChangedSinceRanking(db)).toBe(true);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('notes folder sync reports that only metadata changed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lt-ranking-stale-'));
+    const dbPath = join(dir, 'library.db');
+    const db = initLibraryDb(dbPath);
+    try {
+      noteRankingStaleAfterFolderSync(db, {
+        added: 0,
+        changed: 0,
+        metadata_changed: 1,
         moved: 0,
         newly_gone: 0,
       });

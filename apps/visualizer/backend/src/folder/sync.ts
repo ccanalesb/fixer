@@ -12,6 +12,7 @@ import {
   insertFolderRecords,
   listFolderLibraryRows,
   markFolderPhotosGone,
+  updateFolderMetadataOnly,
   updateFolderRecordInPlace,
   type FolderLibraryRow,
 } from '../db/library/folder-sync.js';
@@ -24,9 +25,17 @@ import { createEventLoopYieldState, pollCancelAndYield } from '../utils/yield.js
 import {
   buildFolderCatalogRecords,
   createFolderExifSession,
+  folderPhotoToCatalogRecord,
 } from './exif-read.js';
 import { lstatPathsParallel, type FileStatSnapshot } from './lstat-parallel.js';
 import { markStaleIfPreviewPhashChanged } from './preview-stale.js';
+import {
+  allSidecarPathsToStat,
+  findAmbiguousStemSidecarDirs,
+  sidecarPathsForPhoto,
+  sidecarSignature,
+} from './xmp-sidecars.js';
+import { readFolderPhotoXmpMetadata } from './xmp-metadata.js';
 import {
   batchResolvedPhotos,
   rememberFolderCatalogWalkSummary,
@@ -51,6 +60,7 @@ export interface FolderSyncReport {
   added: number;
   stale: number;
   changed: number;
+  metadata_changed: number;
   moved: number;
   newly_gone: number;
   collisions: number;
@@ -75,23 +85,28 @@ interface DiskPhoto {
 
 interface SyncPlan {
   toRead: DiskPhoto[];
+  metadataOnly: DiskPhoto[];
   goneRows: FolderLibraryRow[];
   newOnDisk: DiskPhoto[];
   unreadablePaths: string[];
 }
 
-function fileSignature(stat: FileStatSnapshot): string {
-  return `${stat.size}:${stat.mtimeMs}`;
-}
-
-function rowSignature(row: FolderLibraryRow): string {
-  return `${row.file_size}:${row.catalog_file_mtime ?? 0}`;
+function sidecarSigForPhoto(
+  photo: ResolvedFolderPhoto,
+  ambiguousStemSidecarDirs: ReadonlySet<string>,
+  statsByPath: ReadonlyMap<string, FileStatSnapshot>,
+): string {
+  return sidecarSignature(
+    sidecarPathsForPhoto(photo, ambiguousStemSidecarDirs),
+    statsByPath,
+  );
 }
 
 function buildSyncPlan(
   photos: readonly ResolvedFolderPhoto[],
   statsByPath: ReadonlyMap<string, FileStatSnapshot>,
   dbRows: readonly FolderLibraryRow[],
+  ambiguousStemSidecarDirs: ReadonlySet<string>,
 ): SyncPlan {
   const diskByRel = new Map<string, DiskPhoto>();
   const unreadablePaths: string[] = [];
@@ -110,6 +125,7 @@ function buildSyncPlan(
   }
 
   const toRead: DiskPhoto[] = [];
+  const metadataOnly: DiskPhoto[] = [];
   const newOnDisk: DiskPhoto[] = [];
 
   for (const [relPath, disk] of diskByRel) {
@@ -118,15 +134,28 @@ function buildSyncPlan(
       newOnDisk.push(disk);
       continue;
     }
-    if (rowSignature(row) !== fileSignature(disk.stat)) {
+    const photoChanged = rowSignature(row) !== fileSignature(disk.stat);
+    const sideSig = sidecarSigForPhoto(disk.photo, ambiguousStemSidecarDirs, statsByPath);
+    const sidecarChanged = (row.catalog_sidecar_sig ?? '') !== sideSig;
+    if (photoChanged) {
       toRead.push(disk);
+    } else if (sidecarChanged) {
+      metadataOnly.push(disk);
     }
   }
 
   const seenRel = new Set(diskByRel.keys());
   const goneRows = dbRows.filter((row) => row.id && !seenRel.has(row.id));
 
-  return { toRead, goneRows, newOnDisk, unreadablePaths };
+  return { toRead, metadataOnly, goneRows, newOnDisk, unreadablePaths };
+}
+
+function fileSignature(stat: FileStatSnapshot): string {
+  return `${stat.size}:${stat.mtimeMs}`;
+}
+
+function rowSignature(row: FolderLibraryRow): string {
+  return `${row.file_size}:${row.catalog_file_mtime ?? 0}`;
 }
 
 export async function syncFolderCatalog(
@@ -158,20 +187,27 @@ export async function syncFolderCatalog(
     `[cache] [sync] walk_ms=${walkMs} photos=${stats.photoCount} folders=${stats.folderCount}`,
   );
 
+  const ambiguousStemSidecarDirs = findAmbiguousStemSidecarDirs(photos);
+  for (const dir of ambiguousStemSidecarDirs) {
+    log('warning', `[cache] [sync] ambiguous_stem_sidecar dir=${dir}`);
+  }
+
   const statStart = Date.now();
-  const statsByPath = await lstatPathsParallel(
-    photos.map((p) => p.filepath),
-    32,
-  );
+  const pathsToStat = [
+    ...photos.map((p) => p.filepath),
+    ...allSidecarPathsToStat(photos, ambiguousStemSidecarDirs),
+  ];
+  const statsByPath = await lstatPathsParallel(pathsToStat, 32);
   const statMs = Date.now() - statStart;
 
   const dbRows = listFolderLibraryRows(libDb);
-  const plan = buildSyncPlan(photos, statsByPath, dbRows);
+  const plan = buildSyncPlan(photos, statsByPath, dbRows, ambiguousStemSidecarDirs);
   const keysInDb = new Set(dbRows.map((r) => r.key));
 
   const counters = {
     added: 0,
     changed: 0,
+    metadata_changed: 0,
     moved: 0,
     collisions: 0,
     unreadable: plan.unreadablePaths.length,
@@ -203,10 +239,18 @@ export async function syncFolderCatalog(
       );
       const tagsByPath = await exif.readParallel(diskBatch.map((d) => d.photo.filepath));
       const sizeByPath = new Map(diskBatch.map((d) => [d.photo.filepath, d.stat.size]));
+      const xmpByRel = new Map<string, Awaited<ReturnType<typeof readFolderPhotoXmpMetadata>>>();
+      for (const disk of diskBatch) {
+        xmpByRel.set(
+          disk.photo.relPath,
+          await readFolderPhotoXmpMetadata(exif, disk.photo, photos, statsByPath),
+        );
+      }
       const records = buildFolderCatalogRecords(
         diskBatch.map((d) => d.photo),
         tagsByPath,
         sizeByPath,
+        xmpByRel,
       );
 
       if (await pollCancelAndYield(libDb, isCancelled, yieldState)) {
@@ -222,6 +266,7 @@ export async function syncFolderCatalog(
       }
 
       const mtimeByKey = new Map<string, number>();
+      const sidecarSigByKey = new Map<string, string>();
       const changedRelPaths = new Set<string>();
       const previewStaleKeys: { key: string; filepath: string }[] = [];
 
@@ -231,13 +276,22 @@ export async function syncFolderCatalog(
           const rel = String(record.id);
           const disk = diskBatch.find((d) => d.photo.relPath === rel);
           if (!disk) continue;
+          const sideSig = sidecarSigForPhoto(disk.photo, ambiguousStemSidecarDirs, statsByPath);
 
           const existingKey = existingKeyByRel.get(rel);
           if (existingKey !== undefined) {
-            updateFolderRecordInPlace(libDb, existingKey, record, disk.stat.mtimeMs, true);
+            updateFolderRecordInPlace(
+              libDb,
+              existingKey,
+              record,
+              disk.stat.mtimeMs,
+              true,
+              sideSig,
+            );
             counters.changed += 1;
             changedRelPaths.add(rel);
             mtimeByKey.set(existingKey, disk.stat.mtimeMs);
+            sidecarSigByKey.set(existingKey, sideSig);
             continue;
           }
 
@@ -251,7 +305,13 @@ export async function syncFolderCatalog(
             const gone = goneMatches[0]!;
             matchedGoneKeys.add(gone.key);
             movedKeysThisRun.add(gone.key);
-            applyFolderMove(libDb, gone.key, { ...record, key: gone.key }, disk.stat.mtimeMs);
+            applyFolderMove(
+              libDb,
+              gone.key,
+              { ...record, key: gone.key },
+              disk.stat.mtimeMs,
+              sideSig,
+            );
             counters.moved += 1;
             previewStaleKeys.push({ key: gone.key, filepath: disk.photo.filepath });
             continue;
@@ -261,16 +321,18 @@ export async function syncFolderCatalog(
             inserts.push(record);
             keysInDb.add(record.key);
             mtimeByKey.set(record.key, disk.stat.mtimeMs);
+            sidecarSigByKey.set(record.key, sideSig);
             continue;
           }
           const existing = dbRows.find((r) => r.key === record.key);
           if (existing && existing.id !== rel) counters.collisions += 1;
-          updateFolderRecordInPlace(libDb, record.key, record, disk.stat.mtimeMs, true);
+          updateFolderRecordInPlace(libDb, record.key, record, disk.stat.mtimeMs, true, sideSig);
           counters.changed += 1;
           changedRelPaths.add(rel);
           mtimeByKey.set(record.key, disk.stat.mtimeMs);
+          sidecarSigByKey.set(record.key, sideSig);
         }
-        counters.added += insertFolderRecords(libDb, inserts, mtimeByKey);
+        counters.added += insertFolderRecords(libDb, inserts, mtimeByKey, sidecarSigByKey);
       });
 
       for (const { key, filepath } of previewStaleKeys) {
@@ -286,6 +348,30 @@ export async function syncFolderCatalog(
 
       const pct = 10 + Math.trunc((80 * (batchIndex + 1)) / Math.max(batches.length, 1));
       opts.progress?.(pct, FOLDER_CATALOG_READ_PROGRESS);
+    }
+
+    for (const disk of plan.metadataOnly) {
+      if (await pollCancelAndYield(libDb, isCancelled, yieldState)) {
+        return cancelledOutcome(
+          stats.photoCount,
+          walkMs,
+          statMs,
+          unreadableDirectories,
+          plan.unreadablePaths,
+          libDb,
+          counters,
+        );
+      }
+      const row = dbByRel.get(disk.photo.relPath);
+      if (!row) continue;
+      const tags = await exif.read(disk.photo.filepath);
+      const xmp = await readFolderPhotoXmpMetadata(exif, disk.photo, photos, statsByPath);
+      const record = folderPhotoToCatalogRecord(disk.photo, tags, disk.stat.size, xmp);
+      const sideSig = sidecarSigForPhoto(disk.photo, ambiguousStemSidecarDirs, statsByPath);
+      libraryWrite(libDb, () => {
+        updateFolderMetadataOnly(libDb, row.key, record, sideSig);
+        counters.metadata_changed += 1;
+      });
     }
 
     const movedGoneKeys = movedKeysThisRun;
@@ -306,6 +392,7 @@ export async function syncFolderCatalog(
     noteRankingStaleAfterFolderSync(libDb, {
       added: counters.added,
       changed: counters.changed,
+      metadata_changed: counters.metadata_changed,
       moved: counters.moved,
       newly_gone: newlyGone,
     });
@@ -315,8 +402,9 @@ export async function syncFolderCatalog(
     log(
       'info',
       `[cache] [sync] added=${counters.added} stale=${stale} changed=${counters.changed} ` +
-        `moved=${counters.moved} newly_gone=${newlyGone} collisions=${counters.collisions} ` +
-        `unreadable=${counters.unreadable} walk_ms=${walkMs} stat_ms=${statMs}`,
+        `metadata_changed=${counters.metadata_changed} moved=${counters.moved} newly_gone=${newlyGone} ` +
+        `collisions=${counters.collisions} unreadable=${counters.unreadable} ` +
+        `walk_ms=${walkMs} stat_ms=${statMs}`,
     );
     opts.progress?.(100, 'Folder read complete');
 
@@ -327,6 +415,7 @@ export async function syncFolderCatalog(
         added: counters.added,
         stale,
         changed: counters.changed,
+        metadata_changed: counters.metadata_changed,
         moved: counters.moved,
         newly_gone: newlyGone,
         collisions: counters.collisions,
@@ -372,7 +461,14 @@ function cancelledOutcome(
   unreadableDirectories: string[],
   unreadablePaths: string[],
   libDb: Db,
-  partial?: { added: number; changed: number; moved: number; collisions: number; unreadable: number },
+  partial?: {
+    added: number;
+    changed: number;
+    metadata_changed: number;
+    moved: number;
+    collisions: number;
+    unreadable: number;
+  },
 ): SyncFolderCatalogOutcome {
   const libraryTotal = libDb.prepare('SELECT COUNT(*) AS c FROM images').get() as { c: number };
   return {
@@ -380,6 +476,7 @@ function cancelledOutcome(
       added: partial?.added ?? 0,
       stale: 0,
       changed: partial?.changed ?? 0,
+      metadata_changed: partial?.metadata_changed ?? 0,
       moved: partial?.moved ?? 0,
       newly_gone: 0,
       collisions: partial?.collisions ?? 0,

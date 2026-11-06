@@ -13,13 +13,15 @@ export interface FolderLibraryRow {
   file_size: number;
   date_taken: string;
   catalog_file_mtime: number | null;
+  catalog_sidecar_sig: string | null;
   catalog_missing_since: string | null;
 }
 
 export function listFolderLibraryRows(db: Db): FolderLibraryRow[] {
   const rows = db
     .prepare(
-      `SELECT key, id, filepath, file_size, date_taken, catalog_file_mtime, catalog_missing_since
+      `SELECT key, id, filepath, file_size, date_taken, catalog_file_mtime, catalog_sidecar_sig,
+              catalog_missing_since
        FROM images`,
     )
     .all() as FolderLibraryRow[];
@@ -27,18 +29,36 @@ export function listFolderLibraryRows(db: Db): FolderLibraryRow[] {
     ...r,
     id: r.id == null ? '' : String(r.id),
     file_size: Number(r.file_size ?? 0),
+    catalog_sidecar_sig: r.catalog_sidecar_sig ?? null,
   }));
 }
 
-export function insertFolderRecords(db: Db, records: readonly CatalogRecord[], mtimeByKey: ReadonlyMap<string, number>): number {
+function pickForDb(record: CatalogRecord): number {
+  const raw = record.pick as boolean | number;
+  if (Number(raw) === -1) return -1;
+  if (raw === true || Number(raw) === 1) return 1;
+  return 0;
+}
+
+export function insertFolderRecords(
+  db: Db,
+  records: readonly CatalogRecord[],
+  mtimeByKey: ReadonlyMap<string, number>,
+  sidecarSigByKey?: ReadonlyMap<string, string>,
+): number {
   if (!records.length) return 0;
   storeImagesBatch(db, records);
   const stmt = db.prepare(
     'UPDATE images SET catalog_file_mtime = ?, catalog_missing_since = NULL WHERE key = ?',
   );
+  const sigStmt = sidecarSigByKey
+    ? db.prepare('UPDATE images SET catalog_sidecar_sig = ? WHERE key = ?')
+    : null;
   for (const record of records) {
     const mtime = mtimeByKey.get(record.key);
     if (mtime != null) stmt.run(mtime, record.key);
+    const sig = sidecarSigByKey?.get(record.key);
+    if (sig != null && sigStmt) sigStmt.run(sig, record.key);
   }
   return records.length;
 }
@@ -49,8 +69,9 @@ export function updateFolderRecordInPlace(
   record: CatalogRecord,
   catalogFileMtime: number,
   clearMissing: boolean,
+  sidecarSig?: string | null,
 ): void {
-  const pickVal = record.pick === true || Number(record.pick) === 1 ? 1 : 0;
+  const pickVal = pickForDb(record);
   if (clearMissing) {
     db.prepare(
       `UPDATE images SET
@@ -59,7 +80,7 @@ export function updateFolderRecordInPlace(
         camera_make = ?, camera_model = ?, lens = ?, focal_length = ?, aperture = ?,
         shutter_speed = ?, iso = ?, gps_latitude = ?, gps_longitude = ?,
         width = ?, height = ?, file_size = ?, orientation = ?,
-        catalog_file_mtime = ?, catalog_missing_since = NULL
+        catalog_file_mtime = ?, catalog_sidecar_sig = ?, catalog_missing_since = NULL
        WHERE key = ?`,
     ).run(
       String(record.id),
@@ -87,6 +108,7 @@ export function updateFolderRecordInPlace(
       record.file_size,
       record.orientation,
       catalogFileMtime,
+      sidecarSig ?? null,
       key,
     );
     return;
@@ -98,7 +120,7 @@ export function updateFolderRecordInPlace(
       camera_make = ?, camera_model = ?, lens = ?, focal_length = ?, aperture = ?,
       shutter_speed = ?, iso = ?, gps_latitude = ?, gps_longitude = ?,
       width = ?, height = ?, file_size = ?, orientation = ?,
-      catalog_file_mtime = ?
+      catalog_file_mtime = ?, catalog_sidecar_sig = ?
      WHERE key = ?`,
   ).run(
     String(record.id),
@@ -126,6 +148,32 @@ export function updateFolderRecordInPlace(
     record.file_size,
     record.orientation,
     catalogFileMtime,
+    sidecarSig ?? null,
+    key,
+  );
+}
+
+export function updateFolderMetadataOnly(
+  db: Db,
+  key: string,
+  record: CatalogRecord,
+  sidecarSig: string,
+): void {
+  const pickVal = pickForDb(record);
+  db.prepare(
+    `UPDATE images SET
+      rating = ?, pick = ?, color_label = ?, keywords = ?, title = ?, caption = ?, copyright = ?,
+      catalog_sidecar_sig = ?
+     WHERE key = ?`,
+  ).run(
+    record.rating,
+    pickVal,
+    record.color_label,
+    JSON.stringify(record.keywords ?? []),
+    record.title,
+    record.caption,
+    record.copyright,
+    sidecarSig,
     key,
   );
 }
@@ -147,6 +195,7 @@ export function applyFolderMove(
   key: string,
   record: CatalogRecord,
   catalogFileMtime: number,
+  sidecarSig?: string | null,
 ): void {
-  updateFolderRecordInPlace(db, key, record, catalogFileMtime, true);
+  updateFolderRecordInPlace(db, key, record, catalogFileMtime, true, sidecarSig);
 }

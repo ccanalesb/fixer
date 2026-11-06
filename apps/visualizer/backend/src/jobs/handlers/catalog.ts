@@ -54,6 +54,7 @@ export interface CatalogSyncStageResult {
   failed?: true;
   error?: string;
   changed?: number;
+  metadata_changed?: number;
   moved?: number;
   newly_gone?: number;
   collisions?: number;
@@ -171,6 +172,7 @@ export async function runCatalogSyncPass(
 function folderReportFields(result: FolderCatalogSyncResult): Partial<CatalogSyncStageResult> {
   return {
     changed: result.changed,
+    metadata_changed: result.metadata_changed,
     moved: result.moved,
     newly_gone: result.newly_gone,
     collisions: result.collisions,

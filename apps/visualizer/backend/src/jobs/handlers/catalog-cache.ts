@@ -268,6 +268,7 @@ async function runCacheStages(
   // new leaves the last full run's ranking in place unless an earlier sync set the mark.
   const folderChanges =
     (sync.changed ?? 0) +
+    (sync.metadata_changed ?? 0) +
     (sync.moved ?? 0) +
     (sync.newly_gone ?? 0) +
     (sync.collisions ?? 0);

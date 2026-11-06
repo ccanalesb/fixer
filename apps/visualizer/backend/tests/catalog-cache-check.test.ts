@@ -168,10 +168,44 @@ describe('the catalog cache check', () => {
     const { messages } = await check();
 
     expect(messages.some((m) => m.includes('[cache] stage=stack status=start'))).toBe(true);
+    expect(messages.some((m) => m.includes('[cache] stage=similarity status=start'))).toBe(true);
     const mark = fx.query<{ value: string }>(
       `SELECT value FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`,
     );
     expect(mark).toHaveLength(0);
+  });
+
+  it('leaves the changed-since-ranking mark when stack detection fails', async () => {
+    await seedCatalog(['shot-a']);
+    await check();
+    fx.withDb((db) => {
+      libraryWrite(db, () => markChangedSinceRanking(db));
+    });
+
+    await withLibraryAsync(async (db) => {
+      await withJobsDb(async (jobsDb) => {
+        const runner = new JobRunner(jobsDb);
+        const jobId = createJob(jobsDb, 'batch_cull_photos_before_scoring', {
+          delta_ms: 'nonsense',
+        });
+        runner.startJob(jobId, 'batch_cull_photos_before_scoring');
+        const { runStackDetectPass } = await import('../src/jobs/handlers/stacks.js');
+        const { OWN_JOB } = await import('../src/jobs/handlers/common.js');
+        const result = await runStackDetectPass(
+          runner,
+          jobId,
+          { delta_ms: 'nonsense' },
+          db,
+          OWN_JOB,
+        );
+        expect(result).toBeNull();
+        expect(getJob(jobsDb, jobId)!.status).toBe('failed');
+      });
+    });
+
+    expect(
+      fx.query(`SELECT 1 FROM library_meta WHERE key = '${CHANGED_SINCE_RANKING_META_KEY}'`),
+    ).toHaveLength(1);
   });
 
   it('recomputes stacks after a standalone sync found a photo newly gone', async () => {

@@ -248,6 +248,14 @@ describe('syncCatalog', () => {
     withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(true));
   });
 
+  it('marks the library changed-since-ranking when a photo is added', async () => {
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'new-shot' }]);
+
+    const { result } = await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    expect(result.added).toBe(1);
+    withLibrary((db) => expect(hasChangedSinceRanking(db)).toBe(true));
+  });
+
   it('does not re-mark a photo that was already gone', async () => {
     makeFakeCatalog(lrcatPath, []);
     seedLibraryImage('gone', '42');

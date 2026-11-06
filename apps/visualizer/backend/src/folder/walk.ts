@@ -37,6 +37,8 @@ export interface ResolvedFolderPhoto {
   relPath: string;
   filename: string;
   stem: string;
+  /** JPEG beside a paired RAW — pixels and secondary XMP source. */
+  jpegFilepath?: string;
 }
 
 function collectFiles(root: string): { files: WalkedPhotoFile[]; unreadableDirectories: string[] } {
@@ -109,6 +111,7 @@ export function resolveFolderPhotos(files: WalkedPhotoFile[]): ResolvedFolderPho
         relPath: raw.relPath,
         filename: raw.stem,
         stem: raw.stem,
+        jpegFilepath: jpeg.absPath,
       });
       continue;
     }

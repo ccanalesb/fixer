@@ -24,12 +24,19 @@ export function clearChangedSinceRanking(db: Db): void {
 export interface FolderSyncRankingSignals {
   added: number;
   changed: number;
+  metadata_changed: number;
   moved: number;
   newly_gone: number;
 }
 
 export function noteRankingStaleAfterFolderSync(db: Db, report: FolderSyncRankingSignals): void {
-  if (report.added > 0 || report.changed > 0 || report.moved > 0 || report.newly_gone > 0) {
+  if (
+    report.added > 0 ||
+    report.changed > 0 ||
+    report.metadata_changed > 0 ||
+    report.moved > 0 ||
+    report.newly_gone > 0
+  ) {
     libraryWrite(db, () => markChangedSinceRanking(db));
   }
 }

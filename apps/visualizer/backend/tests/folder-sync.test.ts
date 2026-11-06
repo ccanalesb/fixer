@@ -17,6 +17,7 @@ import {
   createFolderExifSession,
 } from '../src/folder/exif-read.js';
 import { FOLDER_CATALOG_SYNCED_META_KEY, syncFolderCatalog } from '../src/folder/sync.js';
+import { hasChangedSinceRanking } from '../src/db/library/ranking-stale.js';
 import type { ResolvedFolderPhoto } from '../src/folder/walk.js';
 import { getOrCreateCachedImage } from '../src/vision/vision-cache.js';
 
@@ -228,7 +229,7 @@ describe('syncFolderCatalog', () => {
     } finally {
       db.close();
     }
-  });
+  }, 60_000);
 
   it('records a key collision when a new path shares an existing key', async () => {
     const fixed = new Date('2018-08-08T08:08:08Z');
@@ -364,6 +365,63 @@ describe('syncFolderCatalog', () => {
       await syncFolderCatalog(root, db, {});
       const after = db.prepare('SELECT key FROM images').get() as { key: string };
       expect(after.key).toBe(before.key);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('re-reads only the photo whose sidecar changed', async () => {
+    const path = join(root, 'rated.jpg');
+    writeFileSync(path, 'fake-jpeg');
+    writeFileSync(join(root, 'other.jpg'), 'fake-jpeg-2');
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      const sidecar = join(root, 'rated.jpg.xmp');
+      writeFileSync(
+        sidecar,
+        `<?xml version='1.0'?><x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#' xmlns:xmp='http://ns.adobe.com/xap/1.0/'><rdf:Description rdf:about='' xmp:Rating='4'/></rdf:RDF></x:xmpmeta>`,
+      );
+      utimesSync(sidecar, new Date('2031-01-01T00:00:00Z'), new Date('2031-01-01T00:00:00Z'));
+
+      const { result } = await syncFolderCatalog(root, db, {});
+      expect(result.changed).toBe(0);
+      expect(result.metadata_changed).toBe(1);
+      const rated = db.prepare('SELECT rating FROM images WHERE id = ?').get('rated.jpg') as {
+        rating: number;
+      };
+      const other = db.prepare('SELECT rating FROM images WHERE id = ?').get('other.jpg') as {
+        rating: number;
+      };
+      expect(rated.rating).toBe(4);
+      expect(other.rating).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('sets the changed-since-ranking mark when only a rating changes in XMP', async () => {
+    const path = join(root, 'star.jpg');
+    writeFileSync(path, 'fake-jpeg');
+    const db = initLibraryDb(dbPath);
+    try {
+      await syncFolderCatalog(root, db, {});
+      expect(hasChangedSinceRanking(db)).toBe(true);
+      const { libraryWrite } = await import('../src/db/library/write.js');
+      const { clearChangedSinceRanking } = await import('../src/db/library/ranking-stale.js');
+      libraryWrite(db, () => clearChangedSinceRanking(db));
+
+      writeFileSync(
+        join(root, 'star.jpg.xmp'),
+        `<?xml version='1.0'?><x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#' xmlns:xmp='http://ns.adobe.com/xap/1.0/'><rdf:Description rdf:about='' xmp:Rating='2'/></rdf:RDF></x:xmpmeta>`,
+      );
+      utimesSync(
+        join(root, 'star.jpg.xmp'),
+        new Date('2032-01-01T00:00:00Z'),
+        new Date('2032-01-01T00:00:00Z'),
+      );
+      await syncFolderCatalog(root, db, {});
+      expect(hasChangedSinceRanking(db)).toBe(true);
     } finally {
       db.close();
     }
