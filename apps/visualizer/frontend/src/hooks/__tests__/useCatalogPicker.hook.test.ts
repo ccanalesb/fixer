@@ -88,4 +88,26 @@ describe('useCatalogPicker pickLrcat', () => {
       'Path updated to Holiday. The library stays; a catalog sync is queued.',
     )
   })
+
+  it('shows the reopened-library notice after switching back to a catalog with a library', async () => {
+    mockPutCatalog.mockResolvedValue({
+      catalog_path: '/Volumes/NAS/Holiday.lrcat',
+      change: 'switch',
+      reopened_library: true,
+      library_photo_count: 4300,
+      catalog_sync_job_id: 'sync-2',
+      cancelled_job_ids: [],
+    })
+
+    const { result } = renderHook(() => useCatalogPicker())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.applyChange('/Volumes/NAS/Holiday.lrcat', 'switch')
+    })
+
+    expect(result.current.notice).toBe(
+      'Reopened Holiday: 4,300 photos with their descriptions, scores and culling. A catalog sync is queued.',
+    )
+  })
 })

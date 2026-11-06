@@ -24,7 +24,7 @@ import {
   INSIGHTS_TOP_PHOTOS_TAB_POSTED,
   INSIGHTS_TOP_PHOTOS_TAB_UNPOSTED,
 } from '../constants/strings'
-import { ErrorBoundary, ErrorState, useQuery } from '../data'
+import { ErrorBoundary, ErrorState, catalogLibraryChanged, useQuery } from '../data'
 import { keys } from '../data/keys'
 import { useFilters } from '../hooks/useFilters'
 import {
@@ -125,8 +125,11 @@ function DashboardPageInner() {
     firstRun.showInsightsSetup || (pendingCatalogImport && !firstRun.loading)
 
   useEffect(() => {
+    if (pendingCatalogImport) catalogLibraryChanged()
+  }, [pendingCatalogImport])
+
+  useEffect(() => {
     if (!pendingCatalogImport || firstRun.loading || !showSetup) return
-    if (firstRun.firstCatalogImportCompleted) return
     navigate(location.pathname, { replace: true, state: null })
     if (!firstRun.importRunning && !firstRun.importStarting) {
       void firstRun.startImport()
@@ -136,7 +139,6 @@ function DashboardPageInner() {
     showSetup,
     location.pathname,
     firstRun.loading,
-    firstRun.firstCatalogImportCompleted,
     firstRun.importRunning,
     firstRun.importStarting,
     firstRun.startImport,
@@ -147,7 +149,7 @@ function DashboardPageInner() {
     if (firstRun.loading) {
       return dashboardSuspenseFallback
     }
-    return <FirstRunSetupScreen setup={firstRun} />
+    return <FirstRunSetupScreen setup={firstRun} forceCatalogImport={pendingCatalogImport} />
   }
 
   return <DashboardInsightsView />

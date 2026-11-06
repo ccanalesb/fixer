@@ -4,7 +4,6 @@ import { Suspense } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from './DashboardPage'
 import { deleteMatching } from '../data/cache'
-import { catalogLibraryChanged } from '../data'
 import {
   ConfigAPI,
   IdentityAPI,
@@ -208,8 +207,8 @@ describe('DashboardPage first-run setup', () => {
     vi.spyOn(SystemAPI, 'insightsSummary').mockImplementation(() => {
       insightsCalls += 1
       return Promise.resolve({
-        first_catalog_import_completed: insightsCalls === 1,
-        catalog_images: insightsCalls === 1 ? 1000 : 0,
+        first_catalog_import_completed: insightsCalls >= 2 ? false : true,
+        catalog_images: insightsCalls >= 2 ? 0 : 1000,
         scoring_9_plus: 0,
         burst_stacks: 0,
         pending_stack_suggestions: 0,
@@ -246,7 +245,6 @@ describe('DashboardPage first-run setup', () => {
     )
 
     await screen.findByRole('heading', { name: FIRST_RUN_WELCOME_TITLE })
-    catalogLibraryChanged()
     await waitFor(() => expect(createSpy).toHaveBeenCalledWith('catalog_cache_build', {}))
   })
 })

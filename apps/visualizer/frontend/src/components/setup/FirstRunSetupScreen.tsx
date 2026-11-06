@@ -105,7 +105,13 @@ function catalogStatsLine(
   return `${photoCount.toLocaleString('en-US')} photos`
 }
 
-export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
+export function FirstRunSetupScreen({
+  setup,
+  forceCatalogImport = false,
+}: {
+  setup: SetupState
+  forceCatalogImport?: boolean
+}) {
   const {
     catalog,
     catalogConfigured,
@@ -143,7 +149,7 @@ export function FirstRunSetupScreen({ setup }: { setup: SetupState }) {
       ? 'error'
       : importRunning || importStarting
         ? 'active'
-        : setup.firstCatalogImportCompleted
+        : setup.firstCatalogImportCompleted && !forceCatalogImport
           ? 'done'
           : 'active'
 

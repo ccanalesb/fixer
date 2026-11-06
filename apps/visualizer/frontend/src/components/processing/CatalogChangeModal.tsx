@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { Button } from '../ui/Button'
 import { STATUS_LABELS } from '../../constants/strings'
+import { jobTypeLabel } from '../../utils/jobTypeLabel'
 import type { ConfigCatalogChangePreviewResponse } from '../../types/config'
 
 type SameChoice = 'same' | 'different'
@@ -175,7 +176,7 @@ function Consequences({
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {jobs.map((job) => (
               <li key={job.id}>
-                {job.type} — {STATUS_LABELS[job.status] ?? job.status}
+                {jobTypeLabel(job.type)} — {STATUS_LABELS[job.status] ?? job.status}
               </li>
             ))}
           </ul>

@@ -170,7 +170,9 @@ export function CatalogSettingRow() {
         under={
           <>
             {notice ? (
-              <p className="mb-3 text-sm text-text-secondary">{notice}</p>
+              <div className="mb-3 rounded-base border border-success/25 bg-success/[0.06] px-3.5 py-2.5 text-sm text-text">
+                {notice}
+              </div>
             ) : null}
             {(error || previewError) && (
               <p className="mb-3 text-sm text-error">{error ?? previewError}</p>

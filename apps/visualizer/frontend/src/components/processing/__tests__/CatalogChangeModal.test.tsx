@@ -89,8 +89,8 @@ describe('CatalogChangeModal', () => {
     expect(screen.getByText(/starts empty/i)).toBeInTheDocument()
     expect(screen.getByText(/Everything for/)).toHaveTextContent('old')
     expect(screen.getByText(/Switching cancels 2 jobs on photos:/)).toBeInTheDocument()
-    expect(screen.getByText(/batch_describe — Running/)).toBeInTheDocument()
-    expect(screen.getByText(/batch_score — Queued/)).toBeInTheDocument()
+    expect(screen.getByText(/Describe — Running/)).toBeInTheDocument()
+    expect(screen.getByText(/Score — Queued/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Switch catalog' })).toBeEnabled()
   })
 
