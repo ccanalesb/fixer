@@ -108,6 +108,12 @@ describe('CatalogCacheTab', () => {
           }),
         });
       }
+      if (url.includes('/config/catalog')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ catalog_kind: 'lightroom' }),
+        });
+      }
       return Promise.reject(new Error(`Unhandled fetch in test: ${url}`));
     });
   });

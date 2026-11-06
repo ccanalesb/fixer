@@ -6,7 +6,7 @@ import {
   useTransition,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ImagesAPI, PerspectivesAPI, ConfigAPI } from '../../services/api';
+import { ImagesAPI, PerspectivesAPI } from '../../services/api';
 import { ImageDetailModal, ImageTile, fromCatalogListRow, modalPropsFor, useListNav } from '../image-view';
 import { Pagination } from '../ui/Pagination';
 import { TileGrid } from '../ui/TileGrid';
@@ -73,6 +73,7 @@ import type { FilterSchema } from '../filters/types';
 import { FILTER_PERSIST_KEYS } from '../../stores/pageUiStore';
 import { stableSerializeRecord } from '../../utils/stableQueryKey';
 import { forCatalogKind } from '../../utils/catalogKindCopy';
+import { useCatalogKind } from '../../hooks/useCatalogKind';
 
 const LIMIT = 50;
 
@@ -97,8 +98,7 @@ export function CatalogTab({ onPostedFilterChange, cullCatalog = false }: Catalo
   const perspectivesRows = useQuery(keys.perspectives.active(), () =>
     PerspectivesAPI.list({ active_only: true }),
   );
-  const catalogConfig = useQuery(['config', 'catalog'] as const, () => ConfigAPI.getCatalog());
-  const catalogKind = catalogConfig.catalog_kind ?? 'lightroom';
+  const catalogKind = useCatalogKind();
   const missingCountQuery = useQuery(
     keys.images.catalogList({ catalog_presence: 'missing', limit: 0, offset: 0 }),
     () => ImagesAPI.listCatalog({ catalog_presence: 'missing', limit: 0, offset: 0 }),

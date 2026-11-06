@@ -6,6 +6,7 @@ import { CullingModelsSection } from '../processing/CullingModelsSection'
 import { TaskAssignmentsBlock } from '../providers/TaskAssignmentsBlock'
 import {
   AppModelsAPI,
+  ConfigAPI,
   CullingModelsAPI,
   CullingProfilesAPI,
   ScoreForecastQuestionsAPI,
@@ -58,6 +59,16 @@ beforeEach(() => {
   vi.spyOn(CullingModelsAPI, 'get').mockImplementation(async () => stages)
   vi.spyOn(AppModelsAPI, 'list').mockResolvedValue({ models: [ready('m')], picker_available: true })
   vi.spyOn(ScoreForecastQuestionsAPI, 'get').mockResolvedValue({ questions: [], version: 0, perspectives: [] })
+  vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+    catalog_path: '/tmp/test.lrcat',
+    resolved_path: '/tmp/test.lrcat',
+    exists: true,
+    catalog_kind: 'lightroom',
+    photo_count: 0,
+    folder_count: null,
+    unreadable_directories: [],
+    picker_available: false,
+  })
 })
 
 function renderBoth() {

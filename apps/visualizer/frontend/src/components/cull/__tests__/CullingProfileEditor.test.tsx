@@ -43,6 +43,19 @@ vi.mock('../../../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/api')>()
   return {
     ...actual,
+    ConfigAPI: {
+      ...actual.ConfigAPI,
+      getCatalog: vi.fn().mockResolvedValue({
+        catalog_path: '/tmp/test.lrcat',
+        resolved_path: '/tmp/test.lrcat',
+        exists: true,
+        catalog_kind: 'lightroom',
+        photo_count: 0,
+        folder_count: null,
+        unreadable_directories: [],
+        picker_available: false,
+      }),
+    },
     CullingModelsAPI: { ...actual.CullingModelsAPI, usable: () => mockUsable() },
     CullingProfilesAPI: {
       ...actual.CullingProfilesAPI,

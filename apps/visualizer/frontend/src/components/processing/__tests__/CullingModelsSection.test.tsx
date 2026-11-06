@@ -6,6 +6,7 @@ import {
   AppModelsAPI,
   CullingModelsAPI,
   CullingProfilesAPI,
+  ConfigAPI,
   JobsAPI,
   ScoreForecastQuestionsAPI,
   type AppModel,
@@ -133,6 +134,16 @@ beforeEach(() => {
   }
   appModels = [ready('culling-model'), ready('forecast-model')]
   questionCount = 4
+  vi.spyOn(ConfigAPI, 'getCatalog').mockResolvedValue({
+    catalog_path: '/tmp/test.lrcat',
+    resolved_path: '/tmp/test.lrcat',
+    exists: true,
+    catalog_kind: 'lightroom',
+    photo_count: 0,
+    folder_count: null,
+    unreadable_directories: [],
+    picker_available: false,
+  })
   vi.spyOn(ScoreForecastQuestionsAPI, 'get').mockImplementation(async () => questionsResponse())
   vi.spyOn(CullingModelsAPI, 'get').mockImplementation(async () => stages)
   vi.spyOn(CullingModelsAPI, 'save').mockImplementation(async (k: Stage, body) => {
