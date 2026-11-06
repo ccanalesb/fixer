@@ -141,6 +141,44 @@ describe('XmpTab', () => {
     expect(undoSpy).toHaveBeenCalledWith('k', 'stars')
   })
 
+  it('shows the undo error when undo fails', async () => {
+    vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(sampleDetail())
+    vi.spyOn(LrWritebackAPI, 'getPhoto').mockResolvedValue({
+      image_key: 'k',
+      rating: {
+        live: 2,
+        app_wrote: true,
+        before_label: LR_WRITEBACK_BEFORE_NO_RATING,
+        undo_available: true,
+        user_changed: false,
+      },
+      flag: {
+        live_pick: 0,
+        app_wrote_reject: false,
+        undo_available: false,
+        user_changed: false,
+      },
+      keywords: ['lrt-auto-stars'],
+      strong_dimensions_line: null,
+      written_at: null,
+      written_file_label: 'beach.jpg',
+      user_changed_message: null,
+    })
+    vi.spyOn(LrWritebackAPI, 'undo').mockResolvedValue({
+      ok: false,
+      reason: 'The file is read-only.',
+    })
+
+    render(
+      <Suspense fallback={null}>
+        <XmpTab image={{ image_type: 'catalog', key: 'k' }} />
+      </Suspense>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: LR_WRITEBACK_UNDO }))
+    expect(await screen.findByText('The file is read-only.')).toBeInTheDocument()
+  })
+
   it('shows user-changed warning when the file no longer matches what the app wrote', async () => {
     vi.spyOn(ImagesAPI, 'getFolderXmpDetail').mockResolvedValue(sampleDetail())
     vi.spyOn(LrWritebackAPI, 'getPhoto').mockResolvedValue({

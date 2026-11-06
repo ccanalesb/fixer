@@ -6,12 +6,16 @@ import { CatalogTab } from '../CatalogTab'
 import {
   CATALOG_FILTER_LABEL_KEYWORD,
   CATALOG_FILTER_LABEL_CATALOG,
+  CATALOG_FILTER_LABEL_MIN_RATING,
+  CATALOG_MIN_RATING_CLEAR,
+  CATALOG_MIN_RATING_EMPTY_INTRO,
+  CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER,
   FILTER_DESCRIPTION_SEARCH_ARIA,
   formatStackCountBadge,
 } from '../../../constants/strings'
 import type { CatalogImageInput } from '../../../services/api'
-import { deleteMatching } from '../../../data/cache'
-import { cullingChanged } from '../../../data/keys'
+import { deleteMatching, setEntry } from '../../../data/cache'
+import { keys, cullingChanged } from '../../../data/keys'
 import { CULL_MODAL_NEXT, CULL_MODAL_PREV } from '../../../constants/strings'
 import {
   clickModalNav,
@@ -111,6 +115,14 @@ function catalogRow(key: string, id: number): CatalogImageInput {
   }
 }
 
+function seedFulfilledQuery(key: readonly unknown[], value: unknown): void {
+  setEntry(JSON.stringify(key), {
+    status: 'fulfilled',
+    promise: Promise.resolve(value),
+    value,
+  })
+}
+
 describe('CatalogTab', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -157,6 +169,69 @@ describe('CatalogTab', () => {
       },
       merged_stack_id: 7,
     })
+  })
+
+  it('shows folder Min rating empty copy in the grid when nothing is rated', async () => {
+    const folderCatalog = {
+      catalog_path: '/photos',
+      resolved_path: '/photos',
+      exists: true,
+      catalog_kind: 'folder' as const,
+      photo_count: 2,
+      folder_count: 1,
+      unreadable_directories: [],
+      picker_available: false,
+    }
+    apiMocks.getCatalogMock.mockResolvedValue(folderCatalog)
+    seedFulfilledQuery(keys.config.catalog(), folderCatalog)
+    seedFulfilledQuery(keys.images.catalogList({ min_rating: 1, limit: 0, offset: 0 }), {
+      images: [],
+      total: 0,
+    })
+    seedFulfilledQuery(keys.images.catalogList({ catalog_presence: 'missing', limit: 0, offset: 0 }), {
+      images: [],
+      total: 0,
+    })
+    apiMocks.listCatalogMock.mockImplementation(async (params: Record<string, unknown> = {}) => {
+      const limit = params.limit
+      const minRating = params.min_rating
+      if (limit === 0) {
+        return { images: [], total: 0 }
+      }
+      if (minRating != null && Number(minRating) >= 1) {
+        return { images: [], total: 0 }
+      }
+      return {
+        images: [
+          { ...catalogRow('unrated-a', 1), rating: 0 },
+          { ...catalogRow('unrated-b', 2), rating: 0 },
+        ],
+        total: 2,
+      }
+    })
+
+    render(
+      <MemoryRouter>
+        <Suspense fallback={null}>
+          <CatalogTab />
+        </Suspense>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('image-tile')).toHaveLength(2)
+    })
+
+    const minRatingSelect = screen.getByLabelText(CATALOG_FILTER_LABEL_MIN_RATING)
+    await act(async () => {
+      fireEvent.change(minRatingSelect, { target: { value: '3' } })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: CATALOG_MIN_RATING_CLEAR })).toBeInTheDocument()
+    })
+    expect(screen.getByText(CATALOG_MIN_RATING_EMPTY_INTRO(3), { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(CATALOG_MIN_RATING_EMPTY_SOURCE_FOLDER, { exact: false })).toBeInTheDocument()
   })
 
   it('renders catalog filter labels and calls listCatalog with pagination defaults', async () => {

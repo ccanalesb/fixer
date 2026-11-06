@@ -156,10 +156,10 @@ function byMtimeDesc(statsByPath: ReadonlyMap<string, FileStatSnapshot>) {
 }
 
 /**
- * Paths to read in PRD order. For a RAW+JPEG pair all of the RAW's sources come
- * first — its sidecars (newer first), then its embedded XMP/IPTC — and only then
- * the JPEG's sidecars and embedded XMP/IPTC. A lone photo is just its sidecars
- * (newer first) then its embedded XMP/IPTC.
+ * Metadata source paths in the precedence order the reader applies: for a RAW+JPEG
+ * pair all of the RAW's sources come first — its sidecars (newer mtime first), then
+ * its embedded XMP/IPTC — and only then the JPEG's sidecars and embedded XMP/IPTC.
+ * A lone photo is its sidecars (newer first) then its embedded XMP/IPTC.
  */
 export function metadataSourcePathsInOrder(
   photo: ResolvedFolderPhoto,

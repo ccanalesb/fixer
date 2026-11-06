@@ -5,6 +5,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -85,6 +86,32 @@ async function seedFilteredPhoto(): Promise<{ db: ReturnType<typeof initLibraryD
 }
 
 describe('folder write-back detail and undo', () => {
+  it('removing the app’s only keyword leaves no dc:subject in the file', async () => {
+    const { db, imageKey } = await seedFilteredPhoto();
+    const path = join(root, 'shot.jpg');
+    try {
+      await reconcileLrWriteback(db, { trigger: 'write_pending', catalogPath: root });
+      const written = await tool.read(path);
+      const writtenSubjects =
+        written.Subject == null
+          ? []
+          : Array.isArray(written.Subject)
+            ? written.Subject.map(String)
+            : [String(written.Subject)];
+      expect(writtenSubjects).toEqual([AUTO_REJECT_KEYWORD]);
+
+      const undo = await undoWritebackKind(db, root, imageKey, 'reject');
+      expect(undo.ok).toBe(true);
+
+      const tags = await tool.read(path);
+      expect(tags.Subject).toBeUndefined();
+      const embedded = readFileSync(path);
+      expect(embedded.toString('latin1')).not.toMatch(/dc:subject/i);
+    } finally {
+      db.close();
+    }
+  });
+
   it('reads live reject and offers undo after write-back', async () => {
     const { db, imageKey } = await seedFilteredPhoto();
     try {
