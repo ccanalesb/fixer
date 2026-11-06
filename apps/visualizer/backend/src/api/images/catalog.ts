@@ -118,7 +118,12 @@ catalogRoutes.get('/images/catalog/:image_key/thumbnail', async (c) => {
 
   const viewable = await getViewablePathManaged(filepath);
   if (!existsSync(viewable.path)) return errorNotFound(c, 'file');
-  if (!isPathUnderAllowedRoots(viewable.path, allowed)) return errorNotFound(c, 'file');
+  // A temp file is one we just decoded from an allowed original (RAW, HEIC); it
+  // lives outside the allowed roots by construction, so the boundary check only
+  // applies to paths we hand back untouched.
+  if (!viewable.isTemp && !isPathUnderAllowedRoots(viewable.path, allowed)) {
+    return errorNotFound(c, 'file');
+  }
 
   // Declared mimetype is `image/jpeg` even for RAW originals; the browser sniffs content.
   return sendFile(c, viewable.path, { mimetype: 'image/jpeg' });

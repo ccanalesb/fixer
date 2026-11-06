@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { decodeHeicToJpegPath } from '../src/imaging/heic-decode.js';
-import { getViewablePathManaged } from '../src/imaging/image-prep.js';
+import { getViewablePathManaged, makeTempJpgPath } from '../src/imaging/image-prep.js';
 import { getOrCreateCachedImage } from '../src/vision/vision-cache.js';
 import { LibraryFixture } from './helpers/library-fixture.js';
 import { openLibraryDb, type Db } from '../src/db/connection.js';
@@ -47,7 +47,7 @@ describe('decodeHeicToJpegPath', () => {
     const heicPath = join(workDir, 'photo.heic');
     copyFileSync(sampleHeic, heicPath);
 
-    const jpegPath = (await decodeHeicToJpegPath(heicPath))!;
+    const jpegPath = (await decodeHeicToJpegPath(heicPath, makeTempJpgPath))!;
     expect(jpegPath).toBeTruthy();
     const meta = await sharp(jpegPath).metadata();
     expect(meta.width).toBe(1280);
@@ -59,7 +59,7 @@ describe('decodeHeicToJpegPath', () => {
     if (process.platform !== 'darwin') return;
     const heicPath = join(workDir, 'sips.heic');
     copyFileSync(sampleHeic, heicPath);
-    const jpegPath = (await decodeHeicToJpegPath(heicPath))!;
+    const jpegPath = (await decodeHeicToJpegPath(heicPath, makeTempJpgPath))!;
     expect(jpegPath).toBeTruthy();
     expect(await sharp(jpegPath).metadata()).toMatchObject({ format: 'jpeg' });
   });

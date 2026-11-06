@@ -124,7 +124,7 @@ export interface ViewablePath {
  */
 export async function getViewablePathManaged(imagePath: string): Promise<ViewablePath> {
   if (isHeicPath(imagePath)) {
-    const decoded = await decodeHeicToJpegPath(imagePath);
+    const decoded = await decodeHeicToJpegPath(imagePath, makeTempJpgPath);
     if (decoded) return { path: decoded, isTemp: true, orientation: UPRIGHT };
     return { path: imagePath, isTemp: false, orientation: UPRIGHT };
   }

@@ -6,8 +6,7 @@
  */
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { extname, join } from 'node:path';
+import { extname } from 'node:path';
 import { promisify } from 'node:util';
 import decodeHeic from 'heic-decode';
 import sharp from 'sharp';
@@ -18,23 +17,6 @@ export const HEIC_EXTENSIONS = new Set(['.heic', '.heif']);
 
 export function isHeicPath(imagePath: string): boolean {
   return HEIC_EXTENSIONS.has(extname(imagePath).toLowerCase());
-}
-
-let tempDirPromise: Promise<string> | null = null;
-let tempCounter = 0;
-
-async function tempDir(): Promise<string> {
-  if (!tempDirPromise) {
-    const { mkdtemp } = await import('node:fs/promises');
-    tempDirPromise = mkdtemp(join(tmpdir(), 'lt-heic-'));
-  }
-  return tempDirPromise;
-}
-
-async function makeTempJpegPath(): Promise<string> {
-  const dir = await tempDir();
-  tempCounter += 1;
-  return join(dir, `heic-${process.pid}-${tempCounter}.jpg`);
 }
 
 async function sipsPresent(): Promise<boolean> {
@@ -70,12 +52,16 @@ async function decodeWithLibheif(inputPath: string, outputPath: string): Promise
 }
 
 /**
- * Decode the primary HEIC/HEIF image to a JPEG temp file.
+ * Decode the primary HEIC/HEIF image to a JPEG temp file. Returns `null` when
+ * it cannot.
  *
- * libheif applies the image's rotation while decoding.
+ * libheif applies the image's rotation while decoding, so the JPEG is upright.
  */
-export async function decodeHeicToJpegPath(inputPath: string): Promise<string | null> {
-  const outputPath = await makeTempJpegPath();
+export async function decodeHeicToJpegPath(
+  inputPath: string,
+  tempPathFactory: () => Promise<string>,
+): Promise<string | null> {
+  const outputPath = await tempPathFactory();
   if ((await sipsPresent()) && (await decodeWithSips(inputPath, outputPath))) {
     return outputPath;
   }
