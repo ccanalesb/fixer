@@ -14,7 +14,10 @@ import { lstatPathsParallel } from './lstat-parallel.js';
 import { resolveFolderPhotoAtPath, stemSidecarAmbiguousForDir } from './resolve-photo.js';
 import {
   finalizeFolderXmpMetadata,
+  keywordsFromTags,
   metadataSourcePathsInOrder,
+  partialFromTags,
+  stringField,
   type FolderXmpMetadata,
 } from './xmp-metadata.js';
 import { sidecarPathsForPhoto } from './xmp-sidecars.js';
@@ -54,62 +57,6 @@ export interface FolderXmpDetail {
 
 type FieldSources = Partial<Record<MetadataField, string>>;
 
-function keywordsFromTags(tags: Tags): string[] | null {
-  const subject = tags.Subject;
-  if (subject != null) {
-    if (Array.isArray(subject)) {
-      const flat = subject.map((s) => String(s).trim()).filter(Boolean);
-      if (flat.length) return flat;
-    } else {
-      const flat = String(subject)
-        .split(/[,;]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (flat.length) return flat;
-    }
-  }
-  const iptc = tags.Keywords;
-  if (iptc != null && iptc !== '') {
-    if (Array.isArray(iptc)) {
-      const flat = iptc.map((s) => String(s).trim()).filter(Boolean);
-      if (flat.length) return flat;
-    } else {
-      const flat = String(iptc)
-        .split(/[,;]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (flat.length) return flat;
-    }
-  }
-  return null;
-}
-
-function ratingFromTags(tags: Tags): number | null {
-  const raw = tags.Rating ?? (tags as Record<string, unknown>)['XMP:Rating'];
-  if (raw == null || raw === '') return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return null;
-  if (n === -1) return -1;
-  if (n >= 1 && n <= 5) return Math.trunc(n);
-  if (n === 0) return 0;
-  return null;
-}
-
-function labelFromTags(tags: Tags): string | null {
-  const raw = tags.Label ?? (tags as Record<string, unknown>)['XMP:Label'];
-  if (raw == null || raw === '') return null;
-  return String(raw);
-}
-
-function stringField(tags: Tags, ...keys: string[]): string | null {
-  for (const key of keys) {
-    const raw = (tags as Record<string, unknown>)[key];
-    if (raw == null || raw === '') continue;
-    return String(raw);
-  }
-  return null;
-}
-
 function autoKeywordSuffix(tags: Tags): string {
   const kws = keywordsFromTags(tags);
   if (!kws) return '';
@@ -138,7 +85,7 @@ function embeddedSourceForField(tags: Tags, field: MetadataField): string {
   return 'embedded XMP';
 }
 
-function sourceLabelForRead(path: string, photo: ResolvedFolderPhoto, tags: Tags, field: MetadataField): string {
+function sourceLabelForRead(path: string, tags: Tags, field: MetadataField): string {
   const suffix =
     (field === 'rating' || field === 'pick') && autoKeywordSuffix(tags) ? autoKeywordSuffix(tags) : '';
   if (path.endsWith('.xmp')) {
@@ -150,56 +97,13 @@ function sourceLabelForRead(path: string, photo: ResolvedFolderPhoto, tags: Tags
 function partialAndSourcesFromTags(
   tags: Tags,
   sourcePath: string,
-  photo: ResolvedFolderPhoto,
 ): { partial: Partial<FolderXmpMetadata>; sources: FieldSources } {
-  const partial: Partial<FolderXmpMetadata> = {};
+  const partial = partialFromTags(tags);
   const sources: FieldSources = {};
-  const rating = ratingFromTags(tags);
-  if (rating === -1) {
-    partial.rating = 0;
-    partial.pick = -1;
-    sources.rating = sourceLabelForRead(sourcePath, photo, tags, 'rating');
-    sources.pick = sources.rating;
-  } else if (rating != null && rating >= 1) {
-    partial.rating = rating;
-    partial.pick = 0;
-    sources.rating = sourceLabelForRead(sourcePath, photo, tags, 'rating');
-  } else if (rating === 0) {
-    partial.rating = 0;
-    partial.pick = 0;
-    sources.rating = sourceLabelForRead(sourcePath, photo, tags, 'rating');
+  for (const field of FIELD_ORDER) {
+    if (!(field in partial)) continue;
+    sources[field] = sourceLabelForRead(sourcePath, tags, field);
   }
-
-  const label = labelFromTags(tags);
-  if (label != null) {
-    partial.color_label = label;
-    sources.color_label = sourceLabelForRead(sourcePath, photo, tags, 'color_label');
-  }
-
-  const keywords = keywordsFromTags(tags);
-  if (keywords != null) {
-    partial.keywords = keywords;
-    sources.keywords = sourceLabelForRead(sourcePath, photo, tags, 'keywords');
-  }
-
-  const title = stringField(tags, 'Title', 'XMP:Title');
-  if (title != null) {
-    partial.title = title;
-    sources.title = sourceLabelForRead(sourcePath, photo, tags, 'title');
-  }
-
-  const caption = stringField(tags, 'Description', 'Caption-Abstract', 'XMP:Description');
-  if (caption != null) {
-    partial.caption = caption;
-    sources.caption = sourceLabelForRead(sourcePath, photo, tags, 'caption');
-  }
-
-  const copyright = stringField(tags, 'Rights', 'XMP:Rights');
-  if (copyright != null) {
-    partial.copyright = copyright;
-    sources.copyright = sourceLabelForRead(sourcePath, photo, tags, 'copyright');
-  }
-
   return { partial, sources };
 }
 
@@ -214,7 +118,7 @@ async function readWithSources(
   const sources: FieldSources = {};
   for (const path of readOrder) {
     const tags = await session.read(path);
-    const { partial, sources: fromPath } = partialAndSourcesFromTags(tags, path, photo);
+    const { partial, sources: fromPath } = partialAndSourcesFromTags(tags, path);
     for (const field of FIELD_ORDER) {
       if (field in merged) continue;
       if (!(field in partial)) continue;

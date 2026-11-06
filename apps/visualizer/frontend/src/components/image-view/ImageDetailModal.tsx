@@ -163,9 +163,11 @@ function ImageDetailModalBody({
   const [catalogKind, setCatalogKind] = useState<'lightroom' | 'folder'>('lightroom')
   useEffect(() => {
     let cancelled = false
-    void ConfigAPI.getCatalog().then((cfg) => {
-      if (!cancelled) setCatalogKind(cfg.catalog_kind ?? 'lightroom')
-    })
+    void ConfigAPI.getCatalog()
+      .then((cfg) => {
+        if (!cancelled) setCatalogKind(cfg.catalog_kind)
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }

@@ -30,7 +30,7 @@ const FIELD_ORDER: MetadataField[] = [
   'copyright',
 ];
 
-function ratingFromTags(tags: Tags): number | null {
+export function ratingFromTags(tags: Tags): number | null {
   const raw = tags.Rating ?? (tags as Record<string, unknown>)['XMP:Rating'];
   if (raw == null || raw === '') return null;
   const n = Number(raw);
@@ -41,13 +41,13 @@ function ratingFromTags(tags: Tags): number | null {
   return null;
 }
 
-function labelFromTags(tags: Tags): string | null {
+export function labelFromTags(tags: Tags): string | null {
   const raw = tags.Label ?? (tags as Record<string, unknown>)['XMP:Label'];
   if (raw == null || raw === '') return null;
   return String(raw);
 }
 
-function keywordsFromTags(tags: Tags): string[] | null {
+export function keywordsFromTags(tags: Tags): string[] | null {
   const subject = tags.Subject;
   if (subject != null) {
     if (Array.isArray(subject)) {
@@ -77,7 +77,7 @@ function keywordsFromTags(tags: Tags): string[] | null {
   return null;
 }
 
-function stringField(tags: Tags, ...keys: string[]): string | null {
+export function stringField(tags: Tags, ...keys: string[]): string | null {
   for (const key of keys) {
     const raw = (tags as Record<string, unknown>)[key];
     if (raw == null || raw === '') continue;
@@ -86,7 +86,7 @@ function stringField(tags: Tags, ...keys: string[]): string | null {
   return null;
 }
 
-function partialFromTags(tags: Tags): Partial<FolderXmpMetadata> {
+export function partialFromTags(tags: Tags): Partial<FolderXmpMetadata> {
   const out: Partial<FolderXmpMetadata> = {};
   const rating = ratingFromTags(tags);
   if (rating === -1) {
