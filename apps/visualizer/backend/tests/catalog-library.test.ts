@@ -33,7 +33,7 @@ import {
 import { openLibraryDb } from '../src/db/connection.js';
 import { getLibraryMeta, initLibraryDb } from '../src/db/library/bootstrap.js';
 import { libraryWrite } from '../src/db/library/write.js';
-import { resolveOpenLibraryPaths } from '../src/open-library.js';
+import { prepareStartupLibrary, resolveOpenLibraryPaths } from '../src/open-library.js';
 
 let dir: string;
 let cfgPath: string;
@@ -379,5 +379,36 @@ describe('resolveOpenLibraryPaths', () => {
     const paths = resolveOpenLibraryPaths();
     expect(existsSync(paths.libraryDbPath)).toBe(true);
     expect(paths.visionCacheDir).toBe(join(dirname(paths.libraryDbPath), 'vision-cache'));
+  });
+});
+
+describe('prepareStartupLibrary', () => {
+  it('creates an empty library in the data folder when no catalog is set, so health answers 200', async () => {
+    const { createApp } = await import('../src/app.js');
+    expect((await createApp().request('/api/health')).status).toBe(503);
+
+    expect(prepareStartupLibrary()).toBe(join(dir, 'library.db'));
+    expect(existsSync(join(dir, 'library.db'))).toBe(true);
+    expect((await createApp().request('/api/health')).status).toBe(200);
+  });
+
+  it('opens the catalog library and creates nothing in the data folder when a catalog is set', () => {
+    const lrcat = join(dir, 'set.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+
+    expect(prepareStartupLibrary()).toBe(findCatalogLibrariesForPath(lrcat)[0]!.libraryDbPath);
+    expect(existsSync(join(dir, 'library.db'))).toBe(false);
+  });
+
+  it('gives a catalog set later its own library under catalogs/', () => {
+    prepareStartupLibrary();
+    const lrcat = join(dir, 'later.lrcat');
+    writeFileSync(lrcat, '');
+    writeFileSync(cfgPath, `catalog_path: ${JSON.stringify(lrcat)}\n`);
+
+    const paths = resolveOpenLibraryPaths();
+    expect(dirname(dirname(paths.libraryDbPath))).toBe(join(dir, 'catalogs'));
+    expect(existsSync(paths.libraryDbPath)).toBe(true);
   });
 });
