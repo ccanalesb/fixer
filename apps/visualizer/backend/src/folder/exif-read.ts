@@ -103,7 +103,7 @@ export function folderPhotoToCatalogRecord(
     filepath: photo.filepath,
     date_taken,
     rating: 0,
-    pick: false,
+    pick: 0,
     color_label: '',
     keywords: [],
     title: '',
