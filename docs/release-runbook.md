@@ -50,6 +50,10 @@ Perform this on a Mac (Apple Silicon, macOS 14+) using the draft release’s mac
 
 WebView2 (Windows) and WebKitGTK (Linux) rendering are **not** part of this checklist; that is an accepted risk for v1.
 
+## Linux: Perl for folder catalogs
+
+Folder catalogs read EXIF and XMP through `exiftool-vendored`, which runs the vendored Perl script on macOS and Linux. The `.deb` declares a dependency on `perl`. If you add other Linux bundle formats (for example `.rpm` or AppImage), declare the same `perl` requirement there so folder catalogs can read capture dates, ratings and keywords after install.
+
 ## Publish the draft
 
 1. Open the draft release on GitHub when all workflow legs succeeded.

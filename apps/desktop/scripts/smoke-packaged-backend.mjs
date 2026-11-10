@@ -96,6 +96,33 @@ async function main() {
   const { env } = await import(transformersUrl);
   env.allowRemoteModels = false;
 
+  const heicDecodeUrl = pathToFileURL(join(backendRoot, 'dist/src/imaging/heic-decode.js')).href;
+  const { decodeHeicToJpegPath } = await import(heicDecodeUrl);
+  const heicPath = join(fixtureDir, 'example.heic');
+  if (!existsSync(heicPath)) throw new Error('missing example.heic fixture');
+  let heicOutSerial = 0;
+  const heicJpeg = await decodeHeicToJpegPath(heicPath, async () => {
+    heicOutSerial += 1;
+    return join(tmp, 'heic-' + heicOutSerial + '.jpg');
+  });
+  if (!heicJpeg || !existsSync(heicJpeg)) throw new Error('heic-decode failed');
+  const heicMeta = await sharp(heicJpeg).metadata();
+  if (!(heicMeta.width > 0 && heicMeta.height > 0)) throw new Error('heic decode produced empty JPEG');
+
+  const exifReadUrl = pathToFileURL(join(backendRoot, 'dist/src/folder/exif-read.js')).href;
+  const { createFolderExifSession, captureDateFromTags } = await import(exifReadUrl);
+  const exifFixture = join(fixtureDir, 'exif-capture-date.jpg');
+  if (!existsSync(exifFixture)) throw new Error('missing exif-capture-date.jpg fixture');
+  const exif = createFolderExifSession();
+  const exifStartError = await exif.ensureReady();
+  if (exifStartError) throw new Error(exifStartError);
+  const tags = await exif.read(exifFixture);
+  await exif.end();
+  const captureDate = captureDateFromTags(tags, exifFixture);
+  if (!captureDate.startsWith('2018-05-06')) {
+    throw new Error('exiftool read failed: capture date was "' + captureDate + '"');
+  }
+
   rmSync(tmp, { recursive: true, force: true });
   console.log('smoke ok');
 }
