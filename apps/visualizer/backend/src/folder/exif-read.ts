@@ -48,8 +48,30 @@ export function captureDateFromTags(tags: Tags, filepath: string): string {
   }
 }
 
+export function folderExifStartupErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const lower = raw.toLowerCase();
+  const mentionsPerl = lower.includes('perl');
+  const spawnMissing =
+    lower.includes('enoent') || lower.includes('not found') || lower.includes('spawn');
+  if (spawnMissing && (mentionsPerl || lower.includes('exiftool'))) {
+    if (process.platform === 'linux') {
+      return (
+        '[cache] [sync] exiftool failed to start: install the perl package ' +
+        '(folder catalogs read photo metadata through exiftool-vendored).'
+      );
+    }
+    return (
+      '[cache] [sync] exiftool failed to start: Perl was not found ' +
+      '(folder catalogs need a Perl interpreter for exiftool-vendored).'
+    );
+  }
+  return `[cache] [sync] exiftool failed to start: ${raw}`;
+}
+
 export interface FolderExifSession {
   maxProcs: number;
+  ensureReady: () => Promise<string | null>;
   read: (filepath: string) => Promise<Tags>;
   readParallel: (paths: readonly string[]) => Promise<Map<string, Tags>>;
   end: () => Promise<void>;
@@ -59,6 +81,17 @@ export interface FolderExifSession {
 export function createFolderExifSession(): FolderExifSession {
   const maxProcs = FOLDER_EXIF_WORKERS;
   const tool = new ExifTool({ maxProcs });
+  let startupError: string | null | undefined;
+  async function ensureReady(): Promise<string | null> {
+    if (startupError !== undefined) return startupError;
+    try {
+      await tool.version();
+      startupError = null;
+    } catch (error) {
+      startupError = folderExifStartupErrorMessage(error);
+    }
+    return startupError;
+  }
   async function read(filepath: string): Promise<Tags> {
     try {
       return await tool.read(filepath);
@@ -68,6 +101,7 @@ export function createFolderExifSession(): FolderExifSession {
   }
   return {
     maxProcs,
+    ensureReady,
     read,
     async readParallel(paths: readonly string[]): Promise<Map<string, Tags>> {
       const out = new Map<string, Tags>();

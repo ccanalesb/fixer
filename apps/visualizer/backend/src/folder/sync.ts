@@ -246,6 +246,13 @@ export async function syncFolderCatalog(
 
   const exif = createFolderExifSession();
   try {
+    const needsExif =
+      plan.toRead.length + plan.newOnDisk.length + plan.metadataOnly.length > 0;
+    if (needsExif) {
+      const exifStartError = await exif.ensureReady();
+      if (exifStartError) log('error', exifStartError);
+    }
+
     const movedKeysThisRun = new Set<string>();
     const insertedKeys = new Set<string>();
 

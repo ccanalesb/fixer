@@ -223,6 +223,7 @@ describe('folder XMP metadata', () => {
     const sidecar = join(root, 'mix.jpg.xmp');
     const session = {
       maxProcs: 1,
+      ensureReady: async () => null,
       read: async (path: string) => {
         if (path === sidecar) return { Title: 'from sidecar' } as import('exiftool-vendored').Tags;
         return {
