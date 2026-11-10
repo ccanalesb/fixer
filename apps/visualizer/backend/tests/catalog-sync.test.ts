@@ -133,15 +133,14 @@ describe('lightroom reader', () => {
     ]);
   });
 
-  it('coalesces on falsiness for pick, rating, focal length, and GPS', () => {
+  it('preserves reject pick as -1 and coalesces on falsiness for rating, focal length, and GPS', () => {
     makeFakeCatalog(lrcatPath, [
       { id: 100, baseName: 'zeroes', rating: 0, pick: -1, focalLength: 0, gpsLatitude: 0 },
     ]);
 
     const record = withCatalog((conn) => getImageById(conn, 100))!;
 
-    // A rejected pick is -1 in the catalog, and `bool(-1)` is true.
-    expect(record.pick).toBe(true);
+    expect(record.pick).toBe(-1);
     expect(record.rating).toBe(0);
     // Zero focal length is falsy and becomes empty text.
     expect(record.focal_length).toBe('');
@@ -412,6 +411,13 @@ describe('syncCatalog', () => {
     expect(logs[1]).toContain('orientation updated=0 stale=0');
     expect(logs[2]).toContain('keyword_backfill mode=auto rows=2');
     expect(logs[3]).toContain('complete added=2 stale=0 newly_gone=0 keywords_backfilled=2');
+  });
+
+  it('stores a rejected pick as -1 in library.db', async () => {
+    makeFakeCatalog(lrcatPath, [{ id: 1, baseName: 'rejected', pick: -1 }]);
+    await withLibraryAsync((db) => syncCatalog(lrcatPath, db));
+    const pick = withLibrary((db) => db.prepare('SELECT pick FROM images LIMIT 1').get() as { pick: number });
+    expect(pick.pick).toBe(-1);
   });
 
   it('stops on cancellation and keeps what it already fetched', async () => {
