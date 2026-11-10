@@ -148,6 +148,15 @@ describe('lightroom reader', () => {
     expect(record.gps_latitude).toBeNull();
   });
 
+  it('keeps a real pick as 1 and an unflagged photo as 0', () => {
+    makeFakeCatalog(lrcatPath, [
+      { id: 100, baseName: 'picked', pick: 1 },
+      { id: 101, baseName: 'plain', pick: 0 },
+    ]);
+    expect(withCatalog((conn) => getImageById(conn, 100))!.pick).toBe(1);
+    expect(withCatalog((conn) => getImageById(conn, 101))!.pick).toBe(0);
+  });
+
   it('returns null for a file id the catalog does not have', () => {
     makeFakeCatalog(lrcatPath, [{ id: 100, baseName: 'a' }]);
     expect(withCatalog((conn) => getImageById(conn, 999))).toBeNull();

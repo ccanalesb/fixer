@@ -112,11 +112,14 @@ export function generateRecordKey(record: { date_taken?: string; filename?: stri
   return `${datePart}_${record.filename ?? 'unknown'}`;
 }
 
-/** `Adobe_images.pick` as a record field: reject is numeric, pick and unflagged stay boolean. */
-export function lrPickFromCatalog(pickFlag: unknown): boolean | -1 {
-  if (pickFlag === null || pickFlag === undefined) return false;
+/** A catalog pick flag, as Lightroom stores it: 1 pick, 0 unflagged, -1 reject. */
+export type CatalogPickFlag = -1 | 0 | 1;
+
+/** `Adobe_images.pick` as a record field: reject stays -1 rather than collapsing to a pick. */
+export function lrPickFromCatalog(pickFlag: unknown): CatalogPickFlag {
+  if (pickFlag === null || pickFlag === undefined) return 0;
   if (Number(pickFlag) === -1) return -1;
-  return Number(pickFlag) === 1;
+  return Number(pickFlag) === 1 ? 1 : 0;
 }
 
 /** One catalog image, in the shape `store_image` writes to `library.db`. */
@@ -127,7 +130,7 @@ export interface CatalogRecord {
   filepath: string;
   date_taken: string;
   rating: number;
-  pick: boolean | -1;
+  pick: CatalogPickFlag;
   color_label: string;
   keywords: string[];
   title: string;
