@@ -39,7 +39,7 @@ describe('folderExifStartupErrorMessage', () => {
 
   it('passes through other startup errors', () => {
     const msg = folderExifStartupErrorMessage(new Error('batch cluster timeout'));
-    expect(msg).toBe('[cache] [sync] exiftool failed to start: batch cluster timeout');
+    expect(msg).toBe('exiftool failed to start: batch cluster timeout');
   });
 });
 

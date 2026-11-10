@@ -250,7 +250,7 @@ export async function syncFolderCatalog(
       plan.toRead.length + plan.newOnDisk.length + plan.metadataOnly.length > 0;
     if (needsExif) {
       const exifStartError = await exif.ensureReady();
-      if (exifStartError) log('error', exifStartError);
+      if (exifStartError) log('error', `[cache] [sync] ${exifStartError}`);
     }
 
     const movedKeysThisRun = new Set<string>();

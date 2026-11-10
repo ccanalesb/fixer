@@ -57,16 +57,16 @@ export function folderExifStartupErrorMessage(error: unknown): string {
   if (spawnMissing && (mentionsPerl || lower.includes('exiftool'))) {
     if (process.platform === 'linux') {
       return (
-        '[cache] [sync] exiftool failed to start: install the perl package ' +
+        'exiftool failed to start: install the perl package ' +
         '(folder catalogs read photo metadata through exiftool-vendored).'
       );
     }
     return (
-      '[cache] [sync] exiftool failed to start: Perl was not found ' +
+      'exiftool failed to start: Perl was not found ' +
       '(folder catalogs need a Perl interpreter for exiftool-vendored).'
     );
   }
-  return `[cache] [sync] exiftool failed to start: ${raw}`;
+  return `exiftool failed to start: ${raw}`;
 }
 
 export interface FolderExifSession {
