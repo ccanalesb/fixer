@@ -17,7 +17,7 @@ import {
   runLegacyUpgradeOnce,
   type LegacyUpgradeResult,
 } from './catalog-library.js';
-import { resolveOpenLibraryPaths } from './open-library.js';
+import { prepareStartupLibrary } from './open-library.js';
 import { createApp } from './app.js';
 import { serveApp } from './http-server.js';
 import { upgradeLibraryDb } from './api/library-db.js';
@@ -73,7 +73,7 @@ for (const line of legacyUpgrade ? legacyUpgradeLines(legacyUpgrade) : []) {
 
 // A library.db that cannot be found or upgraded still lets the server start; its requests answer 500 saying why.
 try {
-  upgradeLibraryDb(resolveOpenLibraryPaths().libraryDbPath);
+  upgradeLibraryDb(prepareStartupLibrary());
 } catch (e) {
   process.stderr.write(`library.db not upgraded: ${e instanceof Error ? e.message : String(e)}\n`);
 }
